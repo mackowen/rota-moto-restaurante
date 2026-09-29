@@ -1,0 +1,8 @@
+{
+  "name":"rota-moto-ifood-integration",
+  "version":"0.1.0",
+  "private":true,
+  "type":"commonjs",
+  "engines":{"node":">=18"},
+  "scripts":{"start":"node server.js","check":"node --check server.js","test:sync":"node tests/test-sync-contract.js"}
+}
