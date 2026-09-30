@@ -1,4 +1,4 @@
-# Rota Moto — Painel Restaurante v5.41
+# Rota Moto — Painel Restaurante v5.50-ui-mobile-fix5
 
 Reorganização de pedidos e integrações:
 - Configurações → Pedidos e integrações define somente as origens habilitadas.
