@@ -59,10 +59,11 @@ function create99FoodService(env = process.env) {
   async function order(id) { await ensureToken(); return request(cfg.paths.order, { id }); }
   async function action(name, id, body) { await ensureToken(); const path = cfg.paths[name]; if (!path) throw new Error(`99Food: ação ${name} não configurada.`); return request(path, { id, method: 'POST', body }); }
   function verifyWebhook(rawBody, signature) {
+    // Keep the project's current convention; confirm external compatibility against 99Food's official provider documentation.
     if (!cfg.webhookSecret) return { configured: false, valid: null };
-    if (!signature) return { configured: true, valid: false };
+    if (typeof signature !== 'string' || !/^[a-f0-9]{64}$/i.test(signature)) return { configured: true, valid: false };
     const expected = crypto.createHmac('sha256', cfg.webhookSecret).update(rawBody).digest('hex');
-    return { configured: true, valid: crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(signature))) };
+    return { configured: true, valid: crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signature, 'hex')) };
   }
   return { config: cfg, configured, authenticate, ensureToken, orders, order, action, verifyWebhook, diagnostics: () => ({ provider: '99food', configured: configured(), baseUrlConfigured: Boolean(cfg.baseUrl), tokenConfigured: Boolean(token), webhookVerificationConfigured: Boolean(cfg.webhookSecret) }) };
 }

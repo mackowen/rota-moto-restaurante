@@ -12,6 +12,7 @@ const {create99FoodService}=require('./99food-service');
 const {createKeetaService}=require('./keeta-service');
 
 const PORT=Number(process.env.PORT||8787);
+const HOST=process.env.HOST||'127.0.0.1';
 const IFOOD_API='https://merchant-api.ifood.com.br';
 const CLIENT_ID=process.env.IFOOD_CLIENT_ID||'';
 const CLIENT_SECRET=process.env.IFOOD_CLIENT_SECRET||'';
@@ -21,6 +22,8 @@ const REFRESH_TOKEN=process.env.IFOOD_REFRESH_TOKEN||'';
 const food99=create99FoodService();
 const keeta=createKeetaService();
 const ALLOWED_ORIGIN=process.env.ALLOWED_ORIGIN||'http://localhost:8787';
+const KEETA_WEBHOOK_SECRET=process.env.KEETA_WEBHOOK_SECRET||'';
+const seenWebhooks=new Map();
 
 const state={
   integration:{provider:'ifood',status:CLIENT_ID&&CLIENT_SECRET?'configured':'not_configured',lastPollAt:null,lastSuccessAt:null,lastError:null},
@@ -30,9 +33,12 @@ const state={
   orders:new Map()
 };
 
-function json(res,status,payload){const body=JSON.stringify(payload);res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Access-Control-Allow-Origin':ALLOWED_ORIGIN});res.end(body)}
-function readRawBody(req){return new Promise((resolve,reject)=>{let raw='';req.on('data',c=>{raw+=c;if(raw.length>1024*1024){req.destroy(new Error('Payload too large'));return}});req.on('end',()=>resolve(raw));req.on('error',reject)})}
-async function readBody(req){const raw=await readRawBody(req);if(!raw)return {};try{return JSON.parse(raw)}catch(e){const err=new Error('JSON inválido.');err.status=400;throw err}}
+function json(res,status,payload){const body=JSON.stringify(payload);const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin'};if(res.req?.headers.origin===ALLOWED_ORIGIN)headers['Access-Control-Allow-Origin']=ALLOWED_ORIGIN;res.writeHead(status,headers);res.end(body)}
+function readRawBody(req){return new Promise((resolve,reject)=>{let chunks=[],size=0;req.on('data',c=>{size+=c.length;if(size>1024*1024){const err=new Error('Payload too large');err.status=413;reject(err);req.destroy();return}chunks.push(c)});req.on('end',()=>resolve(Buffer.concat(chunks).toString('utf8')));req.on('error',reject)})}
+async function readBody(req){if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']||'')){const err=new Error('Content-Type application/json obrigatório.');err.status=415;throw err}const raw=await readRawBody(req);if(!raw){const err=new Error('JSON obrigatório.');err.status=400;throw err}try{const body=JSON.parse(raw);if(!body||typeof body!=='object'||Array.isArray(body)){const err=new Error('Objeto JSON obrigatório.');err.status=400;throw err}return body}catch(e){if(e.status)throw e;const err=new Error('JSON inválido.');err.status=400;throw err}}
+function verifyHmac(secret,raw,signature,encoding='hex'){if(!secret||typeof signature!=='string')return false;const expected=crypto.createHmac('sha256',secret).update(raw).digest(encoding);if(encoding==='hex'&&!/^[a-f0-9]{64}$/i.test(signature))return false;const a=Buffer.from(expected,encoding),b=Buffer.from(signature,encoding);return a.length===b.length&&crypto.timingSafeEqual(a,b)}
+function verifyKeetaSignature(secret,url,payload){if(!secret||typeof payload?.sig!=='string'||! /^[a-f0-9]{64}$/i.test(payload.sig))return false;const params=Object.keys(payload).filter(k=>k!=='sig').sort().map(k=>{const v=payload[k];const value=v===null?'null':typeof v==='object'?JSON.stringify(v):String(v);return `${k}=${value}`}).join('&');const expected=crypto.createHash('sha256').update(`${url}?${params}${secret}`,'utf8').digest('hex');const a=Buffer.from(expected,'hex'),b=Buffer.from(payload.sig,'hex');return a.length===b.length&&crypto.timingSafeEqual(a,b)}
+function rememberWebhook(provider,id){const key=`${provider}:${id}`;if(seenWebhooks.has(key))return false;seenWebhooks.set(key,Date.now());if(seenWebhooks.size>10000)seenWebhooks.delete(seenWebhooks.keys().next().value);return true}
 function bearer(){return state.token.accessToken||''}
 async function ifood(path,{method='GET',body,headers={}}={}){
   const response=await fetch(IFOOD_API+path,{method,headers:{Authorization:`Bearer ${bearer()}`,Accept:'application/json','Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body)});
@@ -95,20 +101,23 @@ async function orderAction(id,action){
   return ifood(routes[action],{method:'POST',body:action==='cancel'?{cancellationReason:'OTHER'}:undefined});
 }
 async function route(req,res){
+  res.req=req;
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
-    if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Origin':ALLOWED_ORIGIN,'Access-Control-Allow-Headers':'Content-Type','Access-Control-Allow-Methods':'GET,POST,OPTIONS'});return res.end()}
+    if(req.method==='OPTIONS'){if(req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});res.writeHead(204,{'Access-Control-Allow-Origin':ALLOWED_ORIGIN,'Access-Control-Allow-Headers':'Content-Type, X-99Food-Signature, X-Signature, X-Keeta-Signature','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Vary':'Origin'});return res.end()}
+    if(!['GET','POST'].includes(req.method))return json(res,405,{error:'METHOD_NOT_ALLOWED',message:'Método não permitido.'});
+    if(req.headers.origin&&req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
     if(req.method==='GET'&&u.pathname==='/health')return json(res,200,{ok:true,service:'rota-moto-ifood',time:new Date().toISOString()});
     if(req.method==='GET'&&u.pathname==='/api/ifood/status')return json(res,200,{provider:'ifood',status:state.integration.status,clientConfigured:Boolean(CLIENT_ID&&CLIENT_SECRET),authenticated:Boolean(state.token.accessToken),expiresAt:state.token.expiresAt||null,lastPollAt:state.integration.lastPollAt,lastSuccessAt:state.integration.lastSuccessAt,lastError:state.integration.lastError,pendingEvents:state.events.size});
     if(req.method==='GET'&&u.pathname==='/api/99food/status')return json(res,200,food99.diagnostics());
     if(req.method==='GET'&&u.pathname==='/api/99food/orders')return json(res,200,await food99.orders());
     if(req.method==='GET'&&u.pathname.startsWith('/api/99food/orders/'))return json(res,200,await food99.order(decodeURIComponent(u.pathname.split('/').pop())));
-    if(req.method==='POST'&&u.pathname==='/api/99food/webhook'){const raw=await readRawBody(req);const valid=food99.verifyWebhook(raw,req.headers['x-99food-signature']||req.headers['x-signature']);if(valid.configured&&!valid.valid)return json(res,401,{error:'INVALID_SIGNATURE',message:'Assinatura 99Food inválida.'});const payload=raw?JSON.parse(raw):{};return json(res,202,{accepted:true,eventId:payload.id||payload.eventId||null});}
+    if(req.method==='POST'&&u.pathname==='/api/99food/webhook'){if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']||''))return json(res,415,{error:'UNSUPPORTED_MEDIA_TYPE',message:'Content-Type application/json obrigatório.'});const raw=await readRawBody(req);const valid=food99.verifyWebhook(raw,req.headers['x-99food-signature']||req.headers['x-signature']);if(!valid.configured)return json(res,503,{error:'WEBHOOK_NOT_CONFIGURED',message:'Webhook 99Food não configurado.'});if(!valid.valid)return json(res,401,{error:'INVALID_SIGNATURE',message:'Assinatura 99Food inválida.'});let payload;try{payload=JSON.parse(raw)}catch(_){return json(res,400,{error:'INVALID_PAYLOAD',message:'Payload JSON inválido.'})}if(!payload||typeof payload!=='object'||Array.isArray(payload))return json(res,400,{error:'INVALID_PAYLOAD',message:'Payload deve ser um objeto.'});const eventId=payload.id||payload.eventId;if(typeof eventId!=='string'||!eventId.trim()||eventId.length>256)return json(res,400,{error:'INVALID_PAYLOAD',message:'Identificador de evento inválido.'});const accepted=rememberWebhook('99food',eventId);return json(res,accepted?202:200,{accepted,eventId,duplicate:!accepted});}
     if(req.method==='GET'&&u.pathname==='/api/keeta/status')return json(res,200,keeta.diagnostics());
     if(req.method==='GET'&&u.pathname==='/api/keeta/merchant')return json(res,200,await keeta.merchant());
     if(req.method==='GET'&&u.pathname==='/api/keeta/events/poll')return json(res,200,await keeta.poll());
     if(req.method==='POST'&&u.pathname==='/api/keeta/events/ack'){const b=await readBody(req);return json(res,200,await keeta.acknowledge(b.eventIds));}
-    if(req.method==='POST'&&u.pathname==='/api/keeta/webhook'){const b=await readBody(req);if(!b||(!b.eventId&&!b.messageId))return json(res,400,{code:1,message:'Webhook Keeta sem identificador.'});return json(res,200,{code:0,message:'success',data:{eventId:b.eventId,messageId:b.messageId}});}
+    if(req.method==='POST'&&u.pathname==='/api/keeta/webhook'){if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']||''))return json(res,415,{code:1,message:'Content-Type application/json obrigatório.'});const raw=await readRawBody(req);if(!raw.trim())return json(res,200,{code:0,message:'success',data:{}});let b;try{b=JSON.parse(raw)}catch(_){return json(res,400,{code:1,message:'Payload JSON inválido.'})}if(!b||typeof b!=='object'||Array.isArray(b)||!Number.isInteger(b.eventId)||typeof b.messageId!=='string'||!b.messageId.trim()||typeof b.sig!=='string')return json(res,400,{code:1,message:'Payload Keeta estruturalmente inválido.'});if(!KEETA_WEBHOOK_SECRET)return json(res,503,{code:1,message:'Webhook Keeta não configurado.'});const forwardedProto=String(req.headers['x-forwarded-proto']||'').split(',')[0].trim();const protocol=forwardedProto==='https'||forwardedProto==='http'?forwardedProto:req.socket.encrypted?'https':'http';const webhookUrl=`${protocol}://${req.headers.host}${req.url}`;if(!verifyKeetaSignature(KEETA_WEBHOOK_SECRET,webhookUrl,b))return json(res,401,{code:1,message:'Assinatura Keeta inválida.'});const accepted=rememberWebhook('keeta',b.messageId);return json(res,200,{code:0,message:'success',data:{eventId:b.eventId,messageId:b.messageId,duplicate:!accepted}});}
     if(req.method==='GET'&&u.pathname.startsWith('/api/keeta/orders/'))return json(res,200,await keeta.order(decodeURIComponent(u.pathname.split('/').pop())));
     if(req.method==='POST'&&u.pathname==='/api/ifood/auth/exchange'){const b=await readBody(req);return json(res,200,await exchangeAuthorizationCode(b.authorizationCode,b.authorizationCodeVerifier))}
     if(req.method==='POST'&&u.pathname==='/api/ifood/auth/refresh')return json(res,200,await refresh());
@@ -120,8 +129,9 @@ async function route(req,res){
     const kAction=u.pathname.match(/^\/api\/keeta\/orders\/([^/]+)\/(confirm|readyForPickup|dispatch|delivered|cancel)$/); if(req.method==='POST'&&kAction){const map={confirm:'confirm',readyForPickup:'readyForPickup',dispatch:'dispatch',delivered:'delivered',cancel:'cancel'};return json(res,202,await keeta.action(map[kAction[2]],kAction[1],kAction[2]==='cancel'?{reason:'MERCHANT'}:undefined));}
     const fAction=u.pathname.match(/^\/api\/99food\/orders\/([^/]+)\/(confirm|ready|dispatch|cancel)$/); if(req.method==='POST'&&fAction)return json(res,202,await food99.action(fAction[2],fAction[1],fAction[2]==='cancel'?{reason:'MERCHANT'}:undefined));
     return json(res,404,{error:'NOT_FOUND',message:'Rota não encontrada.'});
-  }catch(err){state.integration.lastError={message:err.message,status:err.status||500,at:new Date().toISOString()};if(err.status===401){state.token.accessToken='';state.integration.status='configured'}return json(res,err.status===401?401:500,{error:'IFOOD_INTEGRATION_ERROR',message:err.message})}
+  }catch(err){state.integration.lastError={message:err.status&&err.status<500?err.message:'Falha interna de integração.',status:err.status||500,at:new Date().toISOString()};if(err.status===401){state.token.accessToken='';state.integration.status='configured'}const status=err.status||500;return json(res,status,{error:status<500?'INVALID_REQUEST':'INTEGRATION_ERROR',message:status<500?err.message:'Falha interna ao processar a integração.'})}
 }
 
-setInterval(()=>{if(state.token.accessToken&&(!state.token.expiresAt||Date.now()<state.token.expiresAt-60000))poll().catch(()=>{});},30000);
-http.createServer(route).listen(PORT,()=>console.log(`Rota Moto iFood service listening on http://localhost:${PORT}`));
+const pollTimer=setInterval(()=>{if(state.token.accessToken&&(!state.token.expiresAt||Date.now()<state.token.expiresAt-60000))poll().catch(()=>{});},30000);pollTimer.unref();
+if(require.main===module)http.createServer(route).listen(PORT,HOST,()=>console.log(`Rota Moto integration service listening on http://${HOST}:${PORT}`));
+module.exports={route,verifyHmac,verifyKeetaSignature,rememberWebhook};
