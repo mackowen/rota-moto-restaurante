@@ -17,3 +17,7 @@ O Laboratório de Integrações possui fluxo local-first para 99Food e Keeta, co
 - 99Food: adaptador servidor configurável (`99food-service.js`) para sandbox/certificação e endpoints de pedidos; URLs/caminhos devem ser preenchidos conforme as credenciais e o contrato disponibilizados à aplicação no portal de desenvolvedores.
 - Keeta: adaptador Open Delivery (`keeta-service.js`) com OAuth, assinatura HMAC-SHA256/Base64 no servidor, polling, ACK, consulta e ações de pedido.
 - O navegador chama somente `/api/99food/*` e `/api/keeta/*`.
+
+## Limite de exposição do serviço
+
+O serviço de integrações ainda não autentica usuários nem associa chamadas a uma empresa. Por isso, ele só inicia em loopback (`127.0.0.1`, `::1` ou `localhost`); CORS não é autenticação. Para acesso remoto, use um proxy reverso que autentique usuários e encaminhe ao listener local. Não exponha a porta do Node diretamente na rede.

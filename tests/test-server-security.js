@@ -1,13 +1,22 @@
 'use strict';
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
+const {spawnSync}=require('node:child_process');
 process.env.FOOD99_WEBHOOK_SECRET='test-99-secret';
 process.env.KEETA_WEBHOOK_SECRET='test-keeta-secret';
 process.env.ALLOWED_ORIGIN='http://localhost:8787';
 const http=require('node:http');
-const {route,rememberWebhook}=require('../server');
+const {route,rememberWebhook,assertLoopbackHost}=require('../server');
 
 async function main(){
+  assert.equal(assertLoopbackHost('127.0.0.1'),true);
+  assert.equal(assertLoopbackHost('::1'),true);
+  assert.equal(assertLoopbackHost('localhost'),true);
+  assert.throws(()=>assertLoopbackHost('0.0.0.0'),/não possui autenticação de usuário/);
+  assert.throws(()=>assertLoopbackHost('192.168.1.20'),/mantenha HOST em loopback/);
+  const exposedBoot=spawnSync(process.execPath,['server.js'],{cwd:require('node:path').join(__dirname,'..'),env:{...process.env,HOST:'0.0.0.0'},encoding:'utf8'});
+  assert.notEqual(exposedBoot.status,0,'server refuses to start on a public interface without user authentication');
+  assert.match(exposedBoot.stderr,/mantenha HOST em loopback/);
   const server=http.createServer(route);
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;

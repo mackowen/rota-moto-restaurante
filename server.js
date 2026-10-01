@@ -34,6 +34,7 @@ const state={
 };
 
 function json(res,status,payload){const body=JSON.stringify(payload);const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin'};if(res.req?.headers.origin===ALLOWED_ORIGIN)headers['Access-Control-Allow-Origin']=ALLOWED_ORIGIN;res.writeHead(status,headers);res.end(body)}
+function assertLoopbackHost(host=HOST){const value=String(host).toLowerCase().replace(/^\[|\]$/g,'');if(!['127.0.0.1','::1','localhost'].includes(value))throw new Error('O servidor de integrações não possui autenticação de usuário; mantenha HOST em loopback e exponha acesso remoto somente por um proxy autenticado que encaminhe para loopback.');return true}
 function readRawBody(req){return new Promise((resolve,reject)=>{let chunks=[],size=0,settled=false;req.on('data',c=>{if(settled)return;size+=c.length;if(size>1024*1024){settled=true;const err=new Error('Payload too large');err.status=413;reject(err);req.resume();return}chunks.push(c)});req.on('end',()=>{if(settled)return;settled=true;resolve(Buffer.concat(chunks).toString('utf8'))});req.on('error',err=>{if(!settled){settled=true;reject(err)}})})}
 async function readBody(req){if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']||'')){const err=new Error('Content-Type application/json obrigatório.');err.status=415;throw err}const raw=await readRawBody(req);if(!raw){const err=new Error('JSON obrigatório.');err.status=400;throw err}try{const body=JSON.parse(raw);if(!body||typeof body!=='object'||Array.isArray(body)){const err=new Error('Objeto JSON obrigatório.');err.status=400;throw err}return body}catch(e){if(e.status)throw e;const err=new Error('JSON inválido.');err.status=400;throw err}}
 function verifyHmac(secret,raw,signature,encoding='hex'){if(!secret||typeof signature!=='string')return false;const expected=crypto.createHmac('sha256',secret).update(raw).digest(encoding);if(encoding==='hex'&&!/^[a-f0-9]{64}$/i.test(signature))return false;const a=Buffer.from(expected,encoding),b=Buffer.from(signature,encoding);return a.length===b.length&&crypto.timingSafeEqual(a,b)}
@@ -133,5 +134,5 @@ async function route(req,res){
 }
 
 const pollTimer=setInterval(()=>{if(state.token.accessToken&&(!state.token.expiresAt||Date.now()<state.token.expiresAt-60000))poll().catch(()=>{});},30000);pollTimer.unref();
-if(require.main===module)http.createServer(route).listen(PORT,HOST,()=>console.log(`Rota Moto integration service listening on http://${HOST}:${PORT}`));
-module.exports={route,verifyHmac,verifyKeetaSignature,rememberWebhook};
+if(require.main===module){assertLoopbackHost();http.createServer(route).listen(PORT,HOST,()=>console.log(`Rota Moto integration service listening on http://${HOST}:${PORT}`));}
+module.exports={route,verifyHmac,verifyKeetaSignature,rememberWebhook,assertLoopbackHost};
