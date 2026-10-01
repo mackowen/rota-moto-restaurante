@@ -158,3 +158,57 @@ Depois de editar:
 Preservar a estabilidade do projeto.
 
 Quando uma mudança solicitada puder afetar outras funcionalidades, especialmente integrações ou persistência de dados, analisar o impacto antes de alterar o comportamento existente.
+
+## Browser Testing automatizado
+
+O ambiente de browser testing compartilhado está em:
+
+`~/projetos/browser-tests`
+
+Ele fornece infraestrutura para o Codex executar testes reais nos aplicativos usando:
+
+- Chromium instalado em `$PREFIX/lib/chromium/chrome`;
+- Chrome DevTools Protocol (CDP);
+- `chrome-remote-interface`;
+- servidores HTTP temporários;
+- screenshots e logs fora dos repositórios.
+
+### Regra para alterações de frontend e fluxos
+
+Quando uma alteração puder afetar comportamento visual, navegação, interação, formulários ou fluxo de negócio:
+
+1. O Codex deve analisar a alteração e criar os testes de browser necessários para validá-la.
+2. Os testes devem ser orientados pelo comportamento esperado, não por uma suíte fixa previamente criada.
+3. O Codex deve executar o aplicativo no Chromium via CDP.
+4. Deve verificar, quando aplicável:
+   - erros JavaScript;
+   - respostas HTTP 4xx/5xx;
+   - navegação;
+   - elementos esperados;
+   - comportamento do fluxo;
+   - responsividade;
+   - screenshots.
+5. Após corrigir problemas, deve executar novamente os testes relevantes.
+6. Testes de browser podem ser criados temporariamente fora do repositório, em `~/projetos/browser-tests`.
+
+### Execução autônoma
+
+O Codex deve executar os testes de browser diretamente quando tiver acesso ao ambiente.
+
+Não é obrigatório utilizar scripts de testes previamente existentes. O Codex deve criar, adaptar ou remover seus próprios testes conforme a necessidade da alteração.
+
+O fluxo preferencial é:
+
+`iniciar aplicação → iniciar Chromium/CDP → executar teste → coletar evidências → corrigir causa raiz → executar novamente → validar resultado`
+
+Se o Chromium for encerrado pelo Android/Termux durante a execução, tratar isso como falha de infraestrutura/runtime e não modificar o código da aplicação para contornar o problema.
+
+### Infraestrutura x testes
+
+`~/projetos/browser-tests` é a infraestrutura compartilhada de browser testing.
+
+Os testes de browser não fazem parte da aplicação e não devem ser adicionados ao código de produção.
+
+Testes unitários, de contrato e de lógica pertencentes ao projeto continuam dentro dos respectivos repositórios.
+
+Não usar Playwright diretamente neste ambiente Termux Android. O mecanismo suportado para browser automation é CDP através de `chrome-remote-interface`.
