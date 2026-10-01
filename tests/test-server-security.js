@@ -35,6 +35,8 @@ async function main(){
     assert.equal((await request('/api/keeta/webhook',{method:'POST',headers:headersKeeta,body:JSON.stringify(malformedKeeta)})).status,400,'structurally invalid payload rejected');
     assert.equal((await request('/api/99food/webhook',{method:'POST',headers:{...headers99,'x-99food-signature':'bad'},body:body99})).status,401,'malformed signature is rejected safely');
     assert.equal((await request('/api/keeta/webhook',{method:'POST',headers:{...headersKeeta,'content-type':'text/plain'},body:bodyKeeta})).status,415,'unsupported webhook media type rejected');
+    const oversized=await request('/api/keeta/webhook',{method:'POST',headers:headersKeeta,body:JSON.stringify({payload:'x'.repeat(1024*1024)})});
+    assert.equal(oversized.status,413,'oversized payload receives an HTTP 413 response');
     const forbidden=await request('/api/ifood/status',{headers:{origin:'https://attacker.example'}});
     assert.equal(forbidden.status,403);assert.equal(forbidden.headers.get('access-control-allow-origin'),null,'untrusted origins receive no CORS access');
     const sameOrigin=await request('/api/ifood/status',{headers:{origin:'http://localhost:8787'}});
