@@ -4,5 +4,5 @@
   "private":true,
   "type":"commonjs",
   "engines":{"node":">=18"},
-  "scripts":{"start":"node server.js","check":"node --check server.js","test:sync":"node tests/test-sync-contract.js && node tests/test-sync-flows.js","test":"node tests/test-audit.js && node tests/test-integrations.js && node tests/test-server-security.js && node tests/test-sync-contract.js && node tests/test-sync-adversarial.js && node tests/test-sync-flows.js && node test-billing.js && node test-ifood.js"}
+  "scripts":{"start":"node server.js","check":"node --check server.js","test:sync":"node tests/test-sync-contract.js && node tests/test-sync-flows.js","test":"node tests/test-audit.js && node tests/test-status-security.js && node tests/test-integrations.js && node tests/test-server-security.js && node tests/test-sync-contract.js && node tests/test-sync-adversarial.js && node tests/test-sync-flows.js && node test-billing.js && node test-ifood.js"}
 }
