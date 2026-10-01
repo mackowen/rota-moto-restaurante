@@ -30,7 +30,7 @@ const context=vm.createContext({
  canonicalToRestaurantStatus:()=>null,recordOrderStatus(){},event(type){if(type==='success')effects.successEvents++},render(){effects.renders++},filterEvents(){},uid:()=> 'panel-fixed',
 });
 vm.runInContext(`${receiver}\nthis.receive=receiveMotoboyData;`,context);
-const packet={packetId:'packet-1',deviceId:'rider-1',receivedAt:1790856000000,data:{deliveries:[{id:'delivery-1',companyId:'company_local',status:'OUT_FOR_DELIVERY',updatedAt:'2026-10-01T12:00:00.000Z',version:2}],deliveryEvents:[{id:'event-1',eventId:'event-1',deliveryId:'delivery-1',type:'started'}]}};
+const packet={packetId:'packet-1',deviceId:'rider-1',receivedAt:1790856000000,data:{deliveries:[{id:'delivery-1',companyId:'company_local',status:'OUT_FOR_DELIVERY',updatedAt:'2026-10-01T12:00:00.000Z',version:2}],deliveryEvents:[{id:'event-1',eventId:'event-1',deliveryId:'delivery-1',type:'started'}],tombstones:[{id:'delivery-old',store:'deliveries',deleted:true,updatedAt:'2026-10-01T11:00:00.000Z',version:3}]}};
 const snapshot=()=>JSON.stringify(Object.fromEntries([...db.data].map(([name,rows])=>[name,[...rows.values()]])));
 async function run(){
  const memoryBefore=JSON.stringify({deliveries:context.state.deliveries,events:context.state.deliveryEvents,settings:context.state.settings});const persistedBefore=snapshot();
@@ -46,13 +46,14 @@ async function run(){
  assert.equal(effects.successEvents,0,'aborted packet must not record success');assert.equal(effects.renders,0);
 
  const applied=await context.receive(packet);assert.equal(applied.duplicate,false);
- assert.equal(context.state.deliveries.length,1);assert.equal(context.state.deliveryEvents.length,1);
+ assert.equal(context.state.deliveries.length,2);assert.equal(context.state.deliveryEvents.length,1);
+ assert.equal(context.state.deliveries.find(d=>d.id==='delivery-old').deleted,true);
  assert(db.data.get('meta').get('syncReceipts').value.includes('packet-1'));
  assert.equal(db.data.get('meta').get('settings').value.global.sync.lastPacketId,'packet-1');
- assert.equal(db.data.get('deliveries').size,1);assert.equal(db.data.get('deliveryEvents').size,1);
+ assert.equal(db.data.get('deliveries').size,2);assert.equal(db.data.get('deliveries').get('delivery-old').deleted,true);assert.equal(db.data.get('deliveryEvents').size,1);
  const committed=snapshot();const repeated=await context.receive(packet);
  assert.equal(repeated.duplicate,true);assert.equal(snapshot(),committed,'replayed packet must be idempotent');
- assert.equal(context.state.deliveries.length,1);assert.equal(context.state.deliveryEvents.length,1);
+ assert.equal(context.state.deliveries.length,2);assert.equal(context.state.deliveryEvents.length,1);
  console.log('sync persistence tests: OK');
 }
 run().catch(error=>{console.error(error);process.exitCode=1});
