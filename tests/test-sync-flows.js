@@ -37,6 +37,13 @@ const olderTombstone={id:'del-1',updatedAt:'2026-09-30T12:04:00.000Z',version:4,
 assert(C.isNewer(stagedDelivery,olderTombstone));
 assert(appSource.includes('const staged=[...writes].reverse().find(([name,item])=>name===store&&(item.id===id||item.remoteId===id))?.[1]'));
 
+// Packet receipts are rechecked in the same readwrite transaction as domain writes,
+// so concurrent receives of one packet cannot both apply it.
+assert(appSource.includes("const receiptRequest=tx.objectStore('meta').get('syncReceipts')"));
+assert(appSource.includes('if(currentReceipts.includes(packetId)){duplicateInTransaction=true;return}'));
+assert(appSource.includes('const newReceipts=[...currentReceipts,packetId].slice(-200)'));
+assert(appSource.includes('if(duplicateInTransaction)return {received:0,updated:0,ignored:0,deleted:0,duplicate:true,packetId}'));
+
 // f) Impossible transitions are rejected, never persisted as a newer revision.
 assert.throws(()=>C.assertTransition('DELIVERED','OUT_FOR_DELIVERY'));
 assert.throws(()=>C.assertTransition('ASSIGNED','DELIVERED'));

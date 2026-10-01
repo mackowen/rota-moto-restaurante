@@ -144,12 +144,21 @@ async function receiveMotoboyData(envelope={}){
  const tombstones=Array.isArray(payload.tombstones)?payload.tombstones:[];
  const txStores=[...new Set([...writes.map(x=>x[0]),...tombstones.map(t=>t.store).filter(s=>['deliveries','deliveryEvents','locations','proofs','earnings','orders','bikes'].includes(s))]), 'meta'];
  const tx=db.transaction(txStores,'readwrite');
- for(const [store,item] of writes)tx.objectStore(store).put(item);
- for(const t of tombstones){const store=['deliveries','deliveryEvents','locations','proofs','earnings','orders','bikes'].includes(t.store)?t.store:null;const id=t.id||t.remoteId;if(!store||!id)continue;const staged=[...writes].reverse().find(([name,item])=>name===store&&(item.id===id||item.remoteId===id))?.[1];const current=staged||(state[store]||[]).find(x=>x.id===id||x.remoteId===id);const deletedAt=RotaMotoContract.timestampMs(t.deletedAt)||receivedAt;const updatedAt=new Date(RotaMotoContract.timestampMs(t.updatedAt||t.deletedAt)||deletedAt).toISOString();const tomb={...t,id,deleted:true,deletedAt,updatedAt,version:Number(t.version||0)};if(!current||RotaMotoContract.isNewer(tomb,current)){const item={...current,...tomb,companyId:check.companyId||state.settings.global.companyId};tx.objectStore(store).put(item);writes.push([store,item]);deleted++;}}
- const newReceipts=[...receipts,packetId].slice(-200);
+ let duplicateInTransaction=false;
  const syncMeta={...(state.settings.global?.sync||{}),status:'ready',transport:'shared-database-ready',lastReceivedAt:receivedAt,lastSuccessAt:receivedAt,queue:0,revision:Number(state.settings.global?.sync?.revision||0)+1,deviceId:state.settings.global?.sync?.deviceId||uid('panel'),lastSourceDeviceId:sourceId,lastPacketId:packetId,protocolVersion:1,schemaVersion:1};
- tx.objectStore('meta').put({key:'syncReceipts',value:newReceipts});tx.objectStore('meta').put({key:'settings',value:{...state.settings,global:{...state.settings.global,sync:syncMeta}}});
- await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('Falha ao receber dados do aplicativo do motoboy.'));tx.onabort=()=>reject(tx.error||new Error('Recebimento de dados abortado.'))});
+ await new Promise((resolve,reject)=>{
+  tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('Falha ao receber dados do aplicativo do motoboy.'));tx.onabort=()=>reject(tx.error||new Error('Recebimento de dados abortado.'));
+  const receiptRequest=tx.objectStore('meta').get('syncReceipts');
+  receiptRequest.onsuccess=()=>{
+  const currentReceipts=Array.isArray(receiptRequest.result?.value)?receiptRequest.result.value:[];
+  if(currentReceipts.includes(packetId)){duplicateInTransaction=true;return}
+  for(const [store,item] of writes)tx.objectStore(store).put(item);
+  for(const t of tombstones){const store=['deliveries','deliveryEvents','locations','proofs','earnings','orders','bikes'].includes(t.store)?t.store:null;const id=t.id||t.remoteId;if(!store||!id)continue;const staged=[...writes].reverse().find(([name,item])=>name===store&&(item.id===id||item.remoteId===id))?.[1];const current=staged||(state[store]||[]).find(x=>x.id===id||x.remoteId===id);const deletedAt=RotaMotoContract.timestampMs(t.deletedAt)||receivedAt;const updatedAt=new Date(RotaMotoContract.timestampMs(t.updatedAt||t.deletedAt)||deletedAt).toISOString();const tomb={...t,id,deleted:true,deletedAt,updatedAt,version:Number(t.version||0)};if(!current||RotaMotoContract.isNewer(tomb,current)){const item={...current,...tomb,companyId:check.companyId||state.settings.global.companyId};tx.objectStore(store).put(item);writes.push([store,item]);deleted++;}}
+  const newReceipts=[...currentReceipts,packetId].slice(-200);
+   tx.objectStore('meta').put({key:'syncReceipts',value:newReceipts});tx.objectStore('meta').put({key:'settings',value:{...state.settings,global:{...state.settings.global,sync:syncMeta}}});
+  };
+ });
+ if(duplicateInTransaction)return {received:0,updated:0,ignored:0,deleted:0,duplicate:true,packetId};
  for(const [store,item] of writes){const arr=state[store]||[];const i=arr.findIndex(x=>x.id===item.id);if(i>=0)arr[i]=item;else arr.push(item);state[store]=arr}
  state.settings.global.sync=syncMeta;
  event('success',`Dados recebidos do Rota Moto: ${received} novo(s), ${updated} atualizado(s), ${deleted} excluído(s).`,'Delivery, eventos e evidências sincronizados.','automatic');
