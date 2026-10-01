@@ -30,6 +30,13 @@ assert(appSource.includes('RotaMotoContract.assertTransition(previous,status)'))
 assert(appSource.includes("store:'deliveries'"));
 assert(appSource.includes('tombstones=(state.tombstones||[])'));
 
+// A tombstone in one packet must be compared with that packet's staged delivery,
+// not only with the stale in-memory projection from before the transaction.
+const stagedDelivery={id:'del-1',updatedAt:'2026-09-30T12:05:00.000Z',version:5,deleted:false};
+const olderTombstone={id:'del-1',updatedAt:'2026-09-30T12:04:00.000Z',version:4,deleted:true};
+assert(C.isNewer(stagedDelivery,olderTombstone));
+assert(appSource.includes('const staged=[...writes].reverse().find(([name,item])=>name===store&&(item.id===id||item.remoteId===id))?.[1]'));
+
 // f) Impossible transitions are rejected, never persisted as a newer revision.
 assert.throws(()=>C.assertTransition('DELIVERED','OUT_FOR_DELIVERY'));
 assert.throws(()=>C.assertTransition('ASSIGNED','DELIVERED'));
