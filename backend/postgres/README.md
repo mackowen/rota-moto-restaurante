@@ -1,4 +1,4 @@
-# PostgreSQL identity foundation (DEC-0002, phase 1)
+# PostgreSQL identity and domain foundation (DEC-0002)
 
 This directory contains the PostgreSQL schema and migration infrastructure for
 DEC-0002. Identity services and an HTTP identity API now exist in
@@ -9,7 +9,7 @@ operator adapter is configured.
 The applications remain Local-First: their IndexedDB stores continue to hold
 the offline operational cache and outbox. PostgreSQL is being prepared as the
 canonical authority for server identity, memberships, permissions, integrations,
-ID mappings, and server-side sync receipts.
+ID mappings, canonical domain records, and server-side sync receipts/outbox.
 
 ## Migrations
 
@@ -30,6 +30,39 @@ details are never printed.
 The first migration enables row-level security with a default-deny tenant
 context on every tenant-owned table. Identity and session tables are global and
 must only be queried by trusted server code.
+
+Migrations `0005` and `0006` add the canonical domain/sync foundation without
+changing `0001`–`0004`. `domain_records` stores the existing v1 entity payload
+as JSONB while the database enforces canonical UUID, tenant, revision,
+relationship and Delivery status constraints. `companies` remains the canonical
+Company identity table. Installations namespace local aliases by tenant, app
+and device; packet receipts and outbox records have installation FKs. Tenant
+RLS is enabled and forced on the new tables. Runtime receives only the DML
+needed by authenticated sync; it cannot delete canonical rows or mutate ID
+aliases.
+
+`POST /api/sync/push` and `GET /api/sync/pull` are loopback-only through the
+existing server. They require an authenticated session and the dedicated
+`sync.push` or `sync.pull` permission keys; push also checks CSRF. Tenant identity is taken from the session,
+never from packet `companyId`. Push is transactional with packet receipt,
+canonical writes, audit and outbox. Packet IDs are content-digest idempotent;
+event IDs are unique within a tenant across installations. DeliveryEvent rows
+are immutable, Delivery transitions follow `CONTRACT.md`, and tombstones are
+soft deletes. Pull uses a microsecond-precision keyset cursor.
+
+The current v1 contract does not define per-field ownership or entity-specific
+payload schemas. The service preserves unknown contract payload fields, rejects
+known writes from the wrong application, and merges omitted fields when a newer
+Delivery projection arrives. Ambiguous order/delivery aliases fail with a
+conflict instead of automatic reconciliation. `races` and `settings` are
+accepted only because current clients include those local projections in the
+v1 envelope; they are not persisted as canonical entities. `source.app` is
+client-supplied protocol metadata, not an authentication claim; current
+membership permission `sync.push` is the authorization boundary. Before adding
+less-trusted roles, entity-specific permissions and field ownership must be
+defined. Client integration, conflict UX, explicit field-level Delivery
+ownership, and ack/worker behavior remain future work. A schema or semantic
+incompatibility requires a versioned contract change.
 
 Do not set the migrator URL in the HTTP server environment. `server.js` creates
 the API pool with `rotamoto_app`; the migration CLI is a separate process.

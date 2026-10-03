@@ -65,6 +65,21 @@ async function main() {
   assert.match(integrityMigration.up, /sessions_expiry_order_check/);
   assert.match(integrityMigration.up, /sync_outbox_publish_time_check/);
   assert.match(integrityMigration.down, /rollback bloqueado/);
+  const domainSyncMigration = getMigrations()[4];
+  assert.equal(domainSyncMigration.id, '0005_canonical_domain_sync');
+  assert.match(domainSyncMigration.up, /CREATE TABLE rotamoto\.domain_records/);
+  assert.match(domainSyncMigration.up, /CREATE TABLE rotamoto\.sync_installations/);
+  assert.match(domainSyncMigration.up, /FORCE ROW LEVEL SECURITY/);
+  assert.match(domainSyncMigration.up, /DeliveryEvent é um fato imutável/);
+  assert.match(domainSyncMigration.down, /rollback bloqueado/);
+  const eventIdempotencyMigration = getMigrations()[5];
+  assert.equal(eventIdempotencyMigration.id, '0006_global_event_idempotency');
+  assert.match(eventIdempotencyMigration.up, /domain_records_event_idempotency_uq/);
+  assert.match(eventIdempotencyMigration.down, /rollback bloqueado/);
+  const syncPermissionMigration = getMigrations()[6];
+  assert.equal(syncPermissionMigration.id, '0007_sync_permissions');
+  assert.match(syncPermissionMigration.up, /'sync\.push'/);
+  assert.match(syncPermissionMigration.up, /'sync\.pull'/);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
   assert.match(migration.up, /CREATE TABLE rotamoto\.memberships/);
@@ -117,10 +132,10 @@ async function main() {
       NOT EXISTS (SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
         WHERE d.defaclrole='rotamoto_migrator'::regrole AND d.defaclobjtype='f'
           AND a.grantee=0 AND a.privilege_type='EXECUTE') AS no_public_execute_default`);
-    assert.equal(ownership.rows[0].owned_relations, 18);
-    assert.equal(ownership.rows[0].owned_routines, 2);
+    assert.equal(ownership.rows[0].owned_relations, 20);
+    assert.equal(ownership.rows[0].owned_routines, 3);
     assert.equal(ownership.rows[0].migrator_ledger, 1);
-    assert.equal(ownership.rows[0].forced_policies, 10);
+    assert.equal(ownership.rows[0].forced_policies, 12);
     assert.equal(ownership.rows[0].no_public_execute_default, true,
       'future migrator functions do not receive PUBLIC EXECUTE by default');
     assert.equal(await migrationClient.query("SELECT has_schema_privilege(current_user,'rotamoto','CREATE') AS can_ddl")
@@ -143,16 +158,16 @@ async function main() {
     await client.query('BEGIN');
     try {
       for (const item of getMigrations()) {
-        await client.query(item.up.replaceAll('rotamoto', cleanSchema));
+        await client.query(item.up.replace(/\brotamoto\b/gu, cleanSchema));
       }
       const cleanTables = await client.query('SELECT count(*)::int AS count FROM pg_tables WHERE schemaname=$1', [cleanSchema]);
-      assert.equal(cleanTables.rows[0].count, 17, 'all domain tables install into an empty schema');
+      assert.equal(cleanTables.rows[0].count, 19, 'all domain tables install into an empty schema');
       const cleanRls = await client.query(`SELECT count(*)::int AS count FROM pg_class c
         JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
-      assert.equal(cleanRls.rows[0].count, 10, 'fresh schema has all forced tenant RLS policies');
+      assert.equal(cleanRls.rows[0].count, 12, 'fresh schema has all forced tenant RLS policies');
       const cleanForeignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c
         JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-      assert.equal(cleanForeignKeys.rows[0].count, 25, 'fresh schema installs all expected foreign keys');
+      assert.equal(cleanForeignKeys.rows[0].count, 33, 'fresh schema installs all expected foreign keys');
       await client.query('ROLLBACK');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
@@ -168,7 +183,8 @@ async function main() {
     assert.deepEqual(new Set(tables.rows.map(row => row.table_name)), new Set([
       'schema_migrations','users','credentials','recovery_tokens','companies','permissions',
       'roles','role_permissions','memberships','sessions','integrations','external_accounts',
-      'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens'
+      'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens',
+      'sync_installations','domain_records'
     ]));
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -176,7 +192,7 @@ async function main() {
       WHERE n.nspname='rotamoto' AND c.relkind='r' AND c.relname <> 'schema_migrations'
     `);
     const tenantTables = rls.rows.filter(row => row.relrowsecurity);
-    assert.equal(tenantTables.length, 10);
+    assert.equal(tenantTables.length, 12);
     assert(tenantTables.every(row => row.relforcerowsecurity), 'all tenant-scoped tables enforce RLS');
     const auditTenant = crypto.randomUUID();
     await migrationClient.query('BEGIN');

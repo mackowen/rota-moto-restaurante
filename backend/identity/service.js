@@ -5,7 +5,8 @@ const { hashPassword, verifyPassword } = require('./passwords');
 const { requireEmailProvider } = require('./email-provider');
 
 const OWNER_PERMISSIONS = Object.freeze([
-  'company.manage', 'members.invite', 'members.read', 'orders.read', 'orders.manage', 'integrations.manage'
+  'company.manage', 'members.invite', 'members.read', 'orders.read', 'orders.manage', 'integrations.manage',
+  'sync.pull', 'sync.push'
 ]);
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 const SESSION_ABSOLUTE_MS = 12 * 60 * 60 * 1000;
