@@ -1,9 +1,10 @@
 # PostgreSQL identity foundation (DEC-0002, phase 1)
 
-This directory contains the first server persistence layer for DEC-0002. It is
-schema and migration infrastructure only. It does not add login routes, tenant
-provisioning, API exposure, or credentials. The existing integration service
-remains bound to loopback.
+This directory contains the PostgreSQL schema and migration infrastructure for
+DEC-0002. Identity services and an HTTP identity API now exist in
+`backend/identity/` and `server.js`; the listener remains bound to loopback.
+The API still fails closed for administrative provisioning until an operational
+operator adapter is configured.
 
 The applications remain Local-First: their IndexedDB stores continue to hold
 the offline operational cache and outbox. PostgreSQL is being prepared as the
@@ -27,15 +28,28 @@ refuses to run if an applied migration file was edited. Database connection
 details are never printed.
 
 The first migration enables row-level security with a default-deny tenant
-context on every tenant-owned table. The application role must not own these
-tables or have `BYPASSRLS`; deployment role grants and tenant context setup
-belong to later API authorization work. Identity and session tables are global
-and must only be queried by trusted server code.
+context on every tenant-owned table. Identity and session tables are global and
+must only be queried by trusted server code.
 
-The down migration deliberately refuses to run under `rotamoto_app`. Forced RLS
-means this limited application role cannot safely prove that every tenant table
-is empty. Production changes should use forward migrations; a separately
-authorized migration role is required before a rollback can be considered.
-The current runner therefore refuses `down` under `rotamoto_app`.
+## Role ownership gate
+
+The official development database currently has `rotamoto_app` as database,
+schema, and owner of all 18 tables. It is not superuser and has no
+`BYPASSRLS`/`CREATEDB`/`CREATEROLE` role attributes, but as database and table
+owner it can create objects and alter or disable policies. `FORCE ROW LEVEL
+SECURITY` does not prevent an owner from changing the policy itself. Therefore
+this setup is suitable only for isolated development and tests; it is not a
+complete production privilege boundary and must not be exposed as one.
+
+Changing ownership requires an existing migration owner role and explicit DBA
+ownership/grant operations. The current task deliberately does not change role
+privileges, create substitute roles, or use a different PostgreSQL login. A
+separate migration/app role boundary is a prerequisite before treating the
+database/API foundation as production-ready.
+
+Down migrations are conservative and may refuse rollback when tenant data
+exists or when an explicit review is required. Prefer forward migrations; do
+not treat an application-owned development schema as a production migration
+boundary.
 
 No production database URL, password, or secret-manager value belongs in Git.

@@ -1,11 +1,11 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const path = require('node:path');
 const { Client } = require('pg');
-const { assertChecksums, getMigrations } = require('../backend/postgres/migrate');
+const { assertChecksums, getMigrations, withTransaction } = require('../backend/postgres/migrate');
 
 async function tenantQuery(client, tenantId, sql, values = []) {
   await client.query('BEGIN');
@@ -18,6 +18,20 @@ async function tenantQuery(client, tenantId, sql, values = []) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
   }
+}
+
+function runMigration(command) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), command], {
+      env: process.env, stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', status => resolve({ status, stdout, stderr }));
+  });
 }
 
 async function main() {
@@ -33,6 +47,12 @@ async function main() {
   const membershipConstraintMigration = getMigrations()[2];
   assert.equal(membershipConstraintMigration.id, '0003_provisioning_membership_constraint');
   assert.match(membershipConstraintMigration.up, /FOREIGN KEY \(company_id, user_id\)/);
+  const integrityMigration = getMigrations()[3];
+  assert.equal(integrityMigration.id, '0004_foundation_integrity_constraints');
+  assert.match(integrityMigration.up, /audit_log_user_actor_required/);
+  assert.match(integrityMigration.up, /sessions_expiry_order_check/);
+  assert.match(integrityMigration.up, /sync_outbox_publish_time_check/);
+  assert.match(integrityMigration.down, /rollback bloqueado/);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
   assert.match(migration.up, /CREATE TABLE rotamoto\.memberships/);
@@ -50,6 +70,45 @@ async function main() {
     await assert.rejects(assertChecksums(client, getMigrations().map(item => item.id === migration.id
       ? { ...item, checksum: '0'.repeat(64) } : item)),
       /Checksum divergente/, 'applied migration files cannot be edited silently');
+    const installed = await client.query('SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id');
+    assert.deepEqual(installed.rows.map(row => row.migration_id), getMigrations().map(item => item.id),
+      'official database has every checked-in migration applied');
+    const concurrentUp = await Promise.all([runMigration('up'), runMigration('up')]);
+    assert(concurrentUp.every(result => result.status === 0), 'concurrent up runs serialize through advisory lock');
+    assert(concurrentUp.every(result => /schema atualizado/u.test(result.stdout)), 'reapplying up is idempotent');
+
+    const tempTable = `rollback_${crypto.randomUUID().replaceAll('-', '')}`;
+    await assert.rejects(withTransaction(client, async () => {
+      await client.query(`CREATE TEMP TABLE ${tempTable} (value integer)`);
+      await client.query(`INSERT INTO ${tempTable} VALUES (1)`);
+      throw new Error('synthetic migration failure');
+    }), /synthetic migration failure/);
+    const rollbackResult = await client.query('SELECT to_regclass($1) IS NULL AS rolled_back', [`pg_temp.${tempTable}`]);
+    assert.equal(rollbackResult.rows[0].rolled_back, true, 'failed transaction removes all staged DDL and remains reusable');
+    await client.query('SELECT 1');
+
+    const cleanSchema = `migration_sandbox_${crypto.randomUUID().replaceAll('-', '')}`;
+    await client.query('BEGIN');
+    try {
+      for (const item of getMigrations()) {
+        await client.query(item.up.replaceAll('rotamoto', cleanSchema));
+      }
+      const cleanTables = await client.query('SELECT count(*)::int AS count FROM pg_tables WHERE schemaname=$1', [cleanSchema]);
+      assert.equal(cleanTables.rows[0].count, 17, 'all domain tables install into an empty schema');
+      const cleanRls = await client.query(`SELECT count(*)::int AS count FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
+      assert.equal(cleanRls.rows[0].count, 10, 'fresh schema has all forced tenant RLS policies');
+      const cleanForeignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c
+        JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
+      assert.equal(cleanForeignKeys.rows[0].count, 25, 'fresh schema installs all expected foreign keys');
+      await client.query('ROLLBACK');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    }
+    const sandboxGone = await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [cleanSchema]);
+    assert.equal(sandboxGone.rowCount, 0, 'clean-install sandbox leaves no schema behind');
+
     const tables = await client.query(`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'rotamoto' AND table_type = 'BASE TABLE'
@@ -83,6 +142,14 @@ async function main() {
       await client.query(`SELECT set_config('app.tenant_id',$1,true)`, [tenantA]);
       await assert.rejects(client.query(`INSERT INTO rotamoto.companies (id,name) VALUES ($1,'cross-tenant')`, [tenantB]), /row-level security|policy/i, 'tenant context rejects cross-tenant writes');
       await client.query('ROLLBACK');
+      await assert.rejects(tenantQuery(client, tenantA, `INSERT INTO rotamoto.audit_log(id,company_id,actor_kind,action)
+        VALUES ($1,$2,'user','qa.invalid.actor')`, [crypto.randomUUID(), tenantA]), /audit_log_user_actor_required/,
+      'user audit entries require a canonical actor user');
+      await assert.rejects(tenantQuery(client, tenantA, `INSERT INTO rotamoto.sync_outbox
+        (company_id,event_id,app_key,installation_id,created_at,published_at,payload)
+        VALUES ($1,$2,'restaurante',$3,now(),now()-interval '1 second','{}'::jsonb)`,
+      [tenantA, crypto.randomUUID(), crypto.randomUUID()]), /sync_outbox_publish_time_check/,
+      'outbox cannot be published before creation');
     } finally {
       await client.query('ROLLBACK').catch(() => {});
       await tenantQuery(client, tenantA, `DELETE FROM rotamoto.companies WHERE id=$1`, [tenantA]);
@@ -100,6 +167,11 @@ async function main() {
       VALUES ($1,$2,'qa-rollback','QA rollback')`, [rollbackGuardRoleId, rollbackGuardId]);
     await tenantQuery(client, rollbackGuardId, `INSERT INTO rotamoto.memberships (id,company_id,user_id,role_id,status)
       VALUES ($1,$2,$3,$4,'invited')`, [rollbackGuardMembershipId, rollbackGuardId, rollbackGuardUserId, rollbackGuardRoleId]);
+    await assert.rejects(tenantQuery(client, rollbackGuardId, `INSERT INTO rotamoto.sessions
+      (id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at)
+      VALUES ($1,$2,$3,$4,$5,now(),now(),now()+interval '4 hours',now()+interval '3 hours')`,
+    [crypto.randomUUID(), rollbackGuardUserId, rollbackGuardId, crypto.randomBytes(32), crypto.randomBytes(32)]),
+    /sessions_expiry_order_check/, 'session idle expiry cannot exceed its absolute expiry');
     await tenantQuery(client, rollbackGuardId, `INSERT INTO rotamoto.provisioning_requests
       (idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES ($1,$2,$3,$4,'sent')`,
     [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);

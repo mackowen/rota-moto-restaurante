@@ -152,7 +152,8 @@ async function main() {
     const loginAgain = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId } });
     const idleCookie = loginAgain.headers.get('set-cookie').split(';', 1)[0];
     const idleToken = idleCookie.slice(idleCookie.indexOf('=') + 1);
-    await client.query(`UPDATE rotamoto.sessions SET created_at=now()-interval '2 seconds',idle_expires_at=now()-interval '1 second'
+    await client.query(`UPDATE rotamoto.sessions SET created_at=now()-interval '3 seconds',last_seen_at=now()-interval '2 seconds',
+      idle_expires_at=now()-interval '1 second'
       WHERE token_digest=$1`, [crypto.createHash('sha256').update(idleToken).digest()]);
     assert.equal((await call('/api/identity/session', { cookie: idleCookie })).status, 401, 'expired session is rejected');
 
