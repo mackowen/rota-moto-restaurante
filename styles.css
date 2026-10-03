@@ -91,7 +91,7 @@ html[data-theme="dark"] .status.cancel,html.system-dark .status.cancel{backgroun
 
 /* v4.7 — modal seguro entre cabeçalho e navegação inferior */
 :root{--mobile-topbar-space:66px;--mobile-bottom-space:78px}
-.modal-back{z-index:1400;overscroll-behavior:contain}
+.modal-back{z-index:1600;overscroll-behavior:contain}
 .modal{min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .modal .actions{position:sticky;bottom:-1px;z-index:5;padding-top:12px;padding-bottom:2px;background:linear-gradient(to bottom,transparent 0,var(--surface) 14px,var(--surface) 100%)}
 @media(max-width:800px){
@@ -411,11 +411,16 @@ html[data-theme="dark"] .status.cancel,html.system-dark .status.cancel{backgroun
 .table th:nth-child(5),.table td:nth-child(5){width:125px}
 .table th:nth-child(6),.table td:nth-child(6){width:95px}
 .table th:nth-child(7),.table td:nth-child(7){width:65px}
-.table th:last-child,.table td:last-child{width:132px;min-width:132px;max-width:132px;box-sizing:border-box}
+.table th:last-child,.table td:last-child{width:168px;min-width:168px;max-width:168px;box-sizing:border-box}
 .table td:last-child{overflow:hidden}
 .table-actions .order-card-actions{width:100%;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .table-actions .order-open-btn{flex:0 0 72px;min-width:72px;white-space:nowrap}
 .table-actions .order-qr-wrap{flex:0 0 58px;width:58px;min-width:58px}
+.dashboard-orders-table .table{width:100%;min-width:0;table-layout:fixed}
+.dashboard-orders-table .table th:nth-child(1),.dashboard-orders-table .table td:nth-child(1){width:15%}
+.dashboard-orders-table .table th:nth-child(2),.dashboard-orders-table .table td:nth-child(2){width:44%}
+.dashboard-orders-table .table th:nth-child(3),.dashboard-orders-table .table td:nth-child(3){width:16%}
+.dashboard-orders-table .table th:last-child,.dashboard-orders-table .table td:last-child{width:25%;min-width:0;max-width:none;box-sizing:border-box}
 .rolegrid{align-items:stretch}
 .rolecard{display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;min-height:150px;gap:12px;box-sizing:border-box}
 .role-main{display:grid;gap:7px;align-content:start;flex:1;min-width:0;width:100%}
@@ -490,17 +495,17 @@ body{background:var(--bg);color:var(--text)}
   .report-grid{grid-template-columns:minmax(0,1.35fr) minmax(320px,.65fr)}
   .smart-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
   .card{padding:20px}
-  .table-scroll{width:100%;overflow-x:visible;overflow-y:visible}
-  .table{width:100%;min-width:0;table-layout:fixed}
+  .orders-table-scroll{width:100%;overflow-x:auto;overflow-y:visible}
+  .orders-table-scroll .table{width:100%;min-width:1054px;table-layout:fixed}
   .table th,.table td{padding:11px 12px}
   .table th:nth-child(1),.table td:nth-child(1){width:10%}
-  .table th:nth-child(2),.table td:nth-child(2){width:25%}
+  .table th:nth-child(2),.table td:nth-child(2){width:21%}
   .table th:nth-child(3),.table td:nth-child(3){width:12%}
   .table th:nth-child(4),.table td:nth-child(4){width:13%}
   .table th:nth-child(5),.table td:nth-child(5){width:12%}
   .table th:nth-child(6),.table td:nth-child(6){width:9%}
   .table th:nth-child(7),.table td:nth-child(7){width:7%}
-  .table th:last-child,.table td:last-child{width:12%!important;min-width:150px!important;max-width:180px!important}
+  .table th:last-child,.table td:last-child{width:16%;min-width:168px;max-width:168px}
   .table td:not(:last-child){overflow:hidden;text-overflow:ellipsis}
   .table td:nth-child(2) b,.table td:nth-child(2) small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 }
@@ -728,7 +733,7 @@ button:disabled,.btn:disabled{cursor:not-allowed;opacity:.55;transform:none!impo
 /* v6 — responsive hardening / UI consistency */
 :root{--focus-ring:0 0 0 3px color-mix(in srgb,var(--accent,#2563eb) 22%,transparent);--radius-sm:10px;--radius-md:14px;--radius-lg:18px}
 *,*::before,*::after{box-sizing:border-box}html,body{max-width:100%;overflow-x:clip}body{line-height:1.45}.card,.grid,.table-wrap,.panel,.modal,.modal-back,.setting-grid,.formgrid,.actions,.section-head,.row{min-width:0}.card{overflow:hidden}.grid,.setting-grid,.formgrid{width:100%}.actions{flex-wrap:wrap}.btn{min-height:40px;max-width:100%;white-space:normal}.btn:focus-visible,.nav-item:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px;box-shadow:var(--focus-ring)}
-.table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:14px}.table{min-width:720px}.table td,.table th{overflow-wrap:anywhere}.table-actions{min-width:110px!important}.modal-back{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));overflow:auto}.modal{width:min(960px,100%);max-width:100%;max-height:calc(100dvh - 24px);overflow:auto}.modal-large{width:min(1180px,100%)}.modal-title-row{gap:12px}.modal-title-row h2,.section-head h2,.section-head h3{overflow-wrap:anywhere}.formgrid>label{min-width:0}.input,.select{max-width:100%;min-width:0}.actions .btn{flex:0 1 auto}.toast{max-width:min(420px,calc(100vw - 24px));overflow-wrap:anywhere}.event-row{min-width:0}.event-row>div:nth-child(2){min-width:0}.event-detail{overflow-wrap:anywhere}
+ .table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:14px}.table{min-width:720px}.table td,.table th{overflow-wrap:anywhere}.modal-back{padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));overflow:auto}.modal{width:min(960px,100%);max-width:100%;max-height:calc(100dvh - 24px);overflow:auto}.modal-large{width:min(1180px,100%)}.modal-title-row{gap:12px}.modal-title-row h2,.section-head h2,.section-head h3{overflow-wrap:anywhere}.formgrid>label{min-width:0}.input,.select{max-width:100%;min-width:0}.actions .btn{flex:0 1 auto}.toast{max-width:min(420px,calc(100vw - 24px));overflow-wrap:anywhere}.event-row{min-width:0}.event-row>div:nth-child(2){min-width:0}.event-detail{overflow-wrap:anywhere}
 .integration-provider-grid,.provider-lab-grid,.ifood-lab-grid{min-width:0}.integration-provider-card,.provider-lab-panel,.ifood-lab-panel{min-width:0;overflow:hidden}.integration-provider-actions{display:flex;flex-wrap:wrap;gap:8px}.provider-lab-orders,.ifood-lab-orders{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px}.provider-lab-order,.ifood-lab-order{min-width:0;text-align:left;overflow:hidden}.provider-lab-order>* ,.ifood-lab-order>*{min-width:0;overflow-wrap:anywhere}.provider-lab-order span,.provider-lab-order strong,.ifood-lab-order span,.ifood-lab-order strong{overflow-wrap:anywhere}.provider-lab-detail,.ifood-lab-detail{min-width:0;overflow:hidden}.ifood-lab-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.ifood-lab-meta pre,.provider-lab-detail pre{max-width:100%;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.provider-lab-json,.ifood-lab-json{width:100%;max-width:100%;resize:vertical}
 @media(max-width:900px){.grid.two,.grid.three,.provider-lab-grid,.ifood-lab-grid,.ifood-lab-meta{grid-template-columns:1fr!important}.setting-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.section-head{align-items:flex-start}.actions{justify-content:flex-start}.table-wrap{margin-inline:-2px;width:calc(100% + 4px)}}
 @media(max-width:640px){body{font-size:14px}.setting-grid,.formgrid{grid-template-columns:1fr!important}.card{border-radius:14px}.actions{display:grid;grid-template-columns:1fr;gap:8px}.actions .btn{width:100%}.table-wrap{border:1px solid var(--border);background:var(--surface)}.table{min-width:680px}.modal-back{padding:8px}.modal,.modal-large{max-height:calc(100dvh - 16px);border-radius:16px}.modal-title-row{display:grid;grid-template-columns:1fr}.modal-title-row>.btn{justify-self:stretch}.provider-lab-order,.ifood-lab-order{padding:12px}.integration-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.nav-label-full{display:none}.nav-label-short{display:inline}.chart-box-large,.chart-box{max-width:100%;overflow:hidden}.kpi{min-width:0}.kpi-value{font-size:clamp(18px,6vw,28px)}}
