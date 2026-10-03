@@ -26,6 +26,13 @@ async function main() {
   }
   const migration = getMigrations()[0];
   assert.equal(migration.id, '0001_identity_tenant_foundation');
+  const provisioningMigration = getMigrations()[1];
+  assert.equal(provisioningMigration.id, '0002_identity_provisioning_tokens');
+  assert.match(provisioningMigration.up, /CREATE TABLE rotamoto\.identity_tokens/);
+  assert.match(provisioningMigration.up, /token_digest bytea NOT NULL UNIQUE/);
+  const membershipConstraintMigration = getMigrations()[2];
+  assert.equal(membershipConstraintMigration.id, '0003_provisioning_membership_constraint');
+  assert.match(membershipConstraintMigration.up, /FOREIGN KEY \(company_id, user_id\)/);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
   assert.match(migration.up, /CREATE TABLE rotamoto\.memberships/);
@@ -40,7 +47,8 @@ async function main() {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
-    await assert.rejects(assertChecksums(client, [{ ...migration, checksum: '0'.repeat(64) }]),
+    await assert.rejects(assertChecksums(client, getMigrations().map(item => item.id === migration.id
+      ? { ...item, checksum: '0'.repeat(64) } : item)),
       /Checksum divergente/, 'applied migration files cannot be edited silently');
     const tables = await client.query(`
       SELECT table_name FROM information_schema.tables
@@ -49,7 +57,7 @@ async function main() {
     assert.deepEqual(new Set(tables.rows.map(row => row.table_name)), new Set([
       'schema_migrations','users','credentials','recovery_tokens','companies','permissions',
       'roles','role_permissions','memberships','sessions','integrations','external_accounts',
-      'local_id_maps','audit_log','sync_inbox','sync_outbox'
+      'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens'
     ]));
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -81,7 +89,20 @@ async function main() {
       await tenantQuery(client, tenantB, `DELETE FROM rotamoto.companies WHERE id=$1`, [tenantB]);
     }
     const rollbackGuardId = crypto.randomUUID();
+    const rollbackGuardUserId = crypto.randomUUID();
+    const rollbackGuardRoleId = crypto.randomUUID();
+    const rollbackGuardMembershipId = crypto.randomUUID();
+    const rollbackGuardDigest = crypto.randomBytes(32);
     await tenantQuery(client, rollbackGuardId, `INSERT INTO rotamoto.companies (id,name) VALUES ($1,'QA rollback guard')`, [rollbackGuardId]);
+    await tenantQuery(client, rollbackGuardId, `INSERT INTO rotamoto.users (id,email) VALUES ($1,$2)`,
+      [rollbackGuardUserId, `rollback-${rollbackGuardUserId}@example.invalid`]);
+    await tenantQuery(client, rollbackGuardId, `INSERT INTO rotamoto.roles (id,company_id,role_key,display_name)
+      VALUES ($1,$2,'qa-rollback','QA rollback')`, [rollbackGuardRoleId, rollbackGuardId]);
+    await tenantQuery(client, rollbackGuardId, `INSERT INTO rotamoto.memberships (id,company_id,user_id,role_id,status)
+      VALUES ($1,$2,$3,$4,'invited')`, [rollbackGuardMembershipId, rollbackGuardId, rollbackGuardUserId, rollbackGuardRoleId]);
+    await tenantQuery(client, rollbackGuardId, `INSERT INTO rotamoto.provisioning_requests
+      (idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES ($1,$2,$3,$4,'sent')`,
+    [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);
     try {
       const rollback = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
         env: process.env, encoding: 'utf8', timeout: 10000
@@ -91,6 +112,10 @@ async function main() {
       const preserved = await tenantQuery(client, rollbackGuardId, `SELECT id FROM rotamoto.companies WHERE id=$1`, [rollbackGuardId]);
       assert.equal(preserved.rowCount, 1, 'rollback guard preserves existing rows');
     } finally {
+      await client.query(`DELETE FROM rotamoto.provisioning_requests WHERE idempotency_key_digest=$1`, [rollbackGuardDigest]);
+      await tenantQuery(client, rollbackGuardId, `DELETE FROM rotamoto.memberships WHERE id=$1`, [rollbackGuardMembershipId]);
+      await tenantQuery(client, rollbackGuardId, `DELETE FROM rotamoto.roles WHERE id=$1`, [rollbackGuardRoleId]);
+      await tenantQuery(client, rollbackGuardId, `DELETE FROM rotamoto.users WHERE id=$1`, [rollbackGuardUserId]);
       await tenantQuery(client, rollbackGuardId, `DELETE FROM rotamoto.companies WHERE id=$1`, [rollbackGuardId]);
     }
     console.log('PostgreSQL migrations and default-deny RLS tests: OK');
