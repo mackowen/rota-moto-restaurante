@@ -13,13 +13,13 @@ ID mappings, and server-side sync receipts.
 
 ## Migrations
 
-Use the configured development database and its existing `.pgpass` entry. The
-URL intentionally contains no password:
+After the DBA applies the role split, run the migration CLI against the official
+development database as `rotamoto_migrator`. The URL intentionally contains no
+password and is for the migration process only:
 
 ```sh
-DATABASE_URL='postgresql://rotamoto_app@127.0.0.1:5432/rotamoto' node backend/postgres/migrate.js up
-DATABASE_URL='postgresql://rotamoto_app@127.0.0.1:5432/rotamoto' node backend/postgres/migrate.js status
-DATABASE_URL='postgresql://rotamoto_app@127.0.0.1:5432/rotamoto' npm run test:postgres
+DATABASE_URL='postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto' node backend/postgres/migrate.js up
+DATABASE_URL='postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto' node backend/postgres/migrate.js status
 ```
 
 The runner applies each migration in a transaction, serializes migration
@@ -31,21 +31,26 @@ The first migration enables row-level security with a default-deny tenant
 context on every tenant-owned table. Identity and session tables are global and
 must only be queried by trusted server code.
 
+Do not set the migrator URL in the HTTP server environment. `server.js` creates
+the API pool with `rotamoto_app`; the migration CLI is a separate process.
+Migrations own and update `rotamoto.schema_migrations`. Runtime has no access to
+the ledger. See [`admin/role-split-runbook.md`](admin/role-split-runbook.md) for
+the prepared administrative script, backup gate, manual credential setup,
+postflight queries, and rollback limits.
+
+`npm run test:postgres` currently uses one `DATABASE_URL` for migration DDL,
+runtime RLS checks, and fixtures. Do not use `rotamoto_migrator` as a substitute
+for testing runtime privileges or assume the suite is split-role ready; adapt
+that harness to separate migration and runtime connections before post-split
+database test execution.
+
 ## Role ownership gate
 
-The official development database currently has `rotamoto_app` as database,
-schema, and owner of all 18 tables. It is not superuser and has no
-`BYPASSRLS`/`CREATEDB`/`CREATEROLE` role attributes, but as database and table
-owner it can create objects and alter or disable policies. `FORCE ROW LEVEL
-SECURITY` does not prevent an owner from changing the policy itself. Therefore
-this setup is suitable only for isolated development and tests; it is not a
-complete production privilege boundary and must not be exposed as one.
-
-Changing ownership requires an existing migration owner role and explicit DBA
-ownership/grant operations. The current task deliberately does not change role
-privileges, create substitute roles, or use a different PostgreSQL login. A
-separate migration/app role boundary is a prerequisite before treating the
-database/API foundation as production-ready.
+The live database remains in the pre-split state until the manual DBA procedure
+in `admin/role-split-runbook.md` is executed and postflight checks pass. The
+versioned SQL is preparation only; it has not been run. Until then,
+`rotamoto_app` is still database/schema/table owner and this setup is suitable
+only for isolated development and tests, not external exposure.
 
 Down migrations are conservative and may refuse rollback when tenant data
 exists or when an explicit review is required. Prefer forward migrations; do
