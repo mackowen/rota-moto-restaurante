@@ -26,3 +26,16 @@ Session tokens and CSRF tokens are random 256-bit values; only SHA-256 digests a
 ## Remaining deployment work
 
 No email domain/provider, administrative ownership proof mechanism, HTTPS origin, MFA secret manager, HTTP authentication routes, API rate limiter, or production CSRF middleware is configured here. Those pieces must be supplied and verified before mounting these services or enabling remote access. The owner MFA flag intentionally remains required until a real MFA enrollment/verification flow can protect its secret with an approved KMS/secret manager.
+
+
+## HTTP identity API
+
+`http.js` mounts a loopback-only HTTP adapter around the existing identity service. It exposes `POST /api/identity/login`, `POST /api/identity/logout`, `GET /api/identity/session`, `POST /api/identity/tenant`, `POST /api/identity/recovery`, `POST /api/identity/recovery/consume`, `POST /api/identity/invitations/accept`, and the protected `POST /api/admin/tenants/provision`. There is no public signup.
+
+State-changing authenticated requests require same-origin `Origin` when present and the session CSRF token in `X-CSRF-Token`. The browser session remains an opaque `__Host-rotamoto_session` Secure, HttpOnly, SameSite=Lax cookie; JSON responses never return the raw session token, password hash, or recovery/invitation token. Tenant context and permission decisions come from the validated session and PostgreSQL membership/role tables; client `companyId` is only a requested membership selection. The HTTP adapter caps JSON bodies at 16 KiB, rejects unknown fields, rate-limits by socket IP and endpoint, ignores forwarded IP headers, returns normalized errors, and logs only request ID/method/path/status/duration.
+
+Provisioning is closed unless the existing `authorizeProvisioner` adapter is configured. The adapter receives `{ action, email, context: { request } }` and must authenticate a real privileged operator, enforce the administrative permission and MFA policy, validate CSRF for browser callers, and return an auditable `actorRef`. A fake adapter is used only by rollback-based tests; there is no HTTP header bypass or public provisioning fallback.
+
+Recovery delivery is closed unless the existing email provider is configured. The HTTP API returns a generic accepted result and never returns a raw token. Invite acceptance also marks the verified address in the existing transaction. Production HTTPS/domain, email delivery, real operator/MFA adapter, and a shared rate-limit store for multiple server instances remain deployment work.
+
+Password hashing uses the maintained `argon2` Node binding (Argon2id v19 with the existing 64 MiB / 3-pass / 2-lane parameters). The package supports Node >=18; on Termux/Android it compiles from source because the upstream prebuilt matrix does not include Android. The built addon was validated on the current Termux Node runtime.

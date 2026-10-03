@@ -1,6 +1,7 @@
 'use strict';
 
-const { argon2, randomBytes, timingSafeEqual } = require('node:crypto');
+const { randomBytes } = require('node:crypto');
+const argon2 = require('argon2');
 
 const PARAMETERS = Object.freeze({ memory: 65536, passes: 3, parallelism: 2, tagLength: 32 });
 const MIN_PASSWORD_BYTES = 12;
@@ -16,14 +17,14 @@ function validatePassword(password) {
 }
 
 function argon2id(message, nonce, parameters = PARAMETERS) {
-  if (typeof argon2 !== 'function') {
-    throw new Error('Identidade exige Node.js 24.7 ou superior com crypto.argon2; operação interrompida.');
-  }
-  return new Promise((resolve, reject) => {
-    argon2('argon2id', { message, nonce, ...parameters }, (error, result) => {
-      if (error) reject(new Error('Falha interna ao processar credencial.'));
-      else resolve(result);
-    });
+  return argon2.hash(message, {
+    type: argon2.argon2id,
+    salt: nonce,
+    memoryCost: parameters.memory,
+    timeCost: parameters.passes,
+    parallelism: parameters.parallelism,
+    hashLength: parameters.tagLength,
+    raw: true
   });
 }
 
@@ -59,13 +60,7 @@ async function verifyPassword(phc, password) {
   const parsed = parsePhc(phc);
   if (!parsed) return false;
   try {
-    const actual = await argon2id(password, parsed.salt, {
-      memory: parsed.memory,
-      passes: parsed.passes,
-      parallelism: parsed.parallelism,
-      tagLength: parsed.expected.length
-    });
-    return actual.length === parsed.expected.length && timingSafeEqual(actual, parsed.expected);
+    return await argon2.verify(phc, password, { type: argon2.argon2id });
   } catch (_) {
     return false;
   }

@@ -1,9 +1,29 @@
 {
-  "name":"rota-moto-ifood-integration",
-  "version":"0.1.0",
-  "private":true,
-  "type":"commonjs",
-  "engines":{"node":">=18"},
-  "scripts":{"start":"node server.js","check":"node --check server.js","test:sync":"node tests/test-sync-contract.js && node tests/test-sync-flows.js && node tests/test-sync-persistence.js","test:postgres":"node tests/test-postgres-migrations.js && node tests/test-identity-postgres.js","test":"node tests/test-audit.js && node tests/test-status-security.js && node tests/test-integrations.js && node tests/test-server-security.js && node tests/test-sync-contract.js && node tests/test-sync-adversarial.js && node tests/test-sync-flows.js && node tests/test-sync-persistence.js && node tests/test-identity-crypto.js && node test-billing.js && node test-ifood.js"},
-  "dependencies":{"pg":"^8.23.1"}
+  "name": "rota-moto-ifood-integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js",
+    "test:sync": "node tests/test-sync-contract.js && node tests/test-sync-flows.js && node tests/test-sync-persistence.js",
+    "test:postgres": "node tests/test-postgres-migrations.js && node tests/test-identity-postgres.js && node tests/test-identity-http-postgres.js",
+    "test": "node tests/test-audit.js && node tests/test-status-security.js && node tests/test-integrations.js && node tests/test-server-security.js && node tests/test-sync-contract.js && node tests/test-sync-adversarial.js && node tests/test-sync-flows.js && node tests/test-sync-persistence.js && node tests/test-identity-crypto.js && node test-billing.js && node test-ifood.js",
+    "test:identity-http": "node tests/test-identity-http-postgres.js"
+  },
+  "dependencies": {
+    "argon2": "0.45.1",
+    "pg": "^8.23.1"
+  },
+  "allowScripts": {
+    "argon2@0.45.1": true
+  },
+  "overrides": {
+    "argon2": {
+      "cross-env": "7.0.3"
+    }
+  }
 }

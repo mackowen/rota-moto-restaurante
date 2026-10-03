@@ -123,14 +123,14 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
     await verifyPassword(await dummyPasswordHash, password);
   };
 
-  async function provisionInitialOwner(input) {
+  async function provisionInitialOwner(input, context = undefined) {
     const { companyName, email, idempotencyKey } = validateProvisioningInput(input);
     if (typeof authorizeProvisioner !== 'function') {
       throw new IdentityError('PROVISIONER_NOT_CONFIGURED', 'Autorização administrativa não configurada.');
     }
     let actorRef;
     try {
-      const actor = await authorizeProvisioner({ action: 'tenant.owner.provision', email });
+      const actor = await authorizeProvisioner({ action: 'tenant.owner.provision', email, context });
       actorRef = requiredText(actor?.actorRef, 'Identidade administrativa', 160);
     } catch (_) {
       throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');

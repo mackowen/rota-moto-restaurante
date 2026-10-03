@@ -8,8 +8,11 @@
 const http=require('node:http');
 const crypto=require('node:crypto');
 const {URL}=require('node:url');
+const {Pool}=require('pg');
 const {create99FoodService}=require('./99food-service');
 const {createKeetaService}=require('./keeta-service');
+const {createIdentityService}=require('./backend/identity/service');
+const {createIdentityHttpHandler}=require('./backend/identity/http');
 
 const PORT=Number(process.env.PORT||8787);
 const HOST=process.env.HOST||'127.0.0.1';
@@ -24,6 +27,10 @@ const keeta=createKeetaService();
 const ALLOWED_ORIGIN=process.env.ALLOWED_ORIGIN||'http://localhost:8787';
 const KEETA_WEBHOOK_SECRET=process.env.KEETA_WEBHOOK_SECRET||'';
 const seenWebhooks=new Map();
+const identityPool=new Pool({host:'127.0.0.1',port:5432,database:'rotamoto',user:'rotamoto_app',max:5,allowExitOnIdle:true});
+identityPool.on('error',()=>console.error('PostgreSQL identity pool connection failed.'));
+const identityService=createIdentityService({pool:identityPool});
+const identityHttp=createIdentityHttpHandler({identityService,logger:entry=>console.info(JSON.stringify(entry))});
 
 const state={
   integration:{provider:'ifood',status:CLIENT_ID&&CLIENT_SECRET?'configured':'not_configured',lastPollAt:null,lastSuccessAt:null,lastError:null},
@@ -105,6 +112,7 @@ async function route(req,res){
   res.req=req;
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
+    if(await identityHttp(req,res))return;
     if(req.method==='OPTIONS'){if(req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});res.writeHead(204,{'Access-Control-Allow-Origin':ALLOWED_ORIGIN,'Access-Control-Allow-Headers':'Content-Type, X-99Food-Signature, X-Signature, X-Keeta-Signature','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Vary':'Origin'});return res.end()}
     if(!['GET','POST'].includes(req.method))return json(res,405,{error:'METHOD_NOT_ALLOWED',message:'Método não permitido.'});
     if(req.headers.origin&&req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
