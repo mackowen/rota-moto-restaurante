@@ -182,6 +182,15 @@ async function main() {
     assert.equal(await service.revokeSession(logoutSession.sessionToken), false);
     await expectCode(service.withAuthenticatedTenant(logoutSession.sessionToken, async () => true), 'UNAUTHENTICATED');
 
+    const idleExpiredSession = await service.authenticate(email, password, provisioned.companyId);
+    await client.query(`UPDATE rotamoto.sessions SET created_at=now()-interval '1 hour',
+      idle_expires_at=now()-interval '1 second' WHERE id=$1`, [idleExpiredSession.sessionId]);
+    await expectCode(service.withAuthenticatedTenant(idleExpiredSession.sessionToken, async () => true), 'UNAUTHENTICATED');
+    const absoluteExpiredSession = await service.authenticate(email, password, provisioned.companyId);
+    await client.query(`UPDATE rotamoto.sessions SET created_at=now()-interval '24 hours',last_seen_at=now()-interval '24 hours',
+      idle_expires_at=now()+interval '5 minutes',absolute_expires_at=now()-interval '1 second' WHERE id=$1`, [absoluteExpiredSession.sessionId]);
+    await expectCode(service.withAuthenticatedTenant(absoluteExpiredSession.sessionToken, async () => true), 'UNAUTHENTICATED');
+
     await expectCode(service.authenticate(email, password, crypto.randomUUID()), 'INVALID_CREDENTIALS');
     await client.query(`UPDATE rotamoto.credentials SET failed_attempts=9,locked_until=NULL WHERE user_id=$1`, [provisioned.userId]);
     await expectCode(service.authenticate(email, 'another wrong synthetic password', provisioned.companyId), 'INVALID_CREDENTIALS');
