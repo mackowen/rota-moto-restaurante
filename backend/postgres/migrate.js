@@ -23,12 +23,18 @@ function getMigrations() {
     });
 }
 
-function connectionString() {
-  const value = process.env.DATABASE_URL;
-  if (!value) throw new Error('DATABASE_URL não configurada.');
+function migrationConnectionString() {
+  const value = process.env.MIGRATOR_DATABASE_URL;
+  if (!value) throw new Error('MIGRATOR_DATABASE_URL não configurada.');
   const parsed = new URL(value);
   if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
-    throw new Error('DATABASE_URL deve usar PostgreSQL.');
+    throw new Error('MIGRATOR_DATABASE_URL deve usar PostgreSQL.');
+  }
+  if (decodeURIComponent(parsed.username) !== 'rotamoto_migrator') {
+    throw new Error('MIGRATOR_DATABASE_URL deve autenticar como rotamoto_migrator.');
+  }
+  if (parsed.password || parsed.hostname !== '127.0.0.1' || (parsed.port || '5432') !== '5432' || parsed.pathname !== '/rotamoto') {
+    throw new Error('MIGRATOR_DATABASE_URL deve apontar sem senha para rotamoto_migrator em 127.0.0.1:5432/rotamoto.');
   }
   return value;
 }
@@ -121,10 +127,14 @@ async function main() {
   if (!['up', 'down', 'status'].includes(command)) {
     throw new Error('Uso: node backend/postgres/migrate.js [up|down|status]');
   }
-  const client = new Client({ connectionString: connectionString(), connectionTimeoutMillis: 5000 });
+  const client = new Client({ connectionString: migrationConnectionString(), connectionTimeoutMillis: 5000 });
   let lockHeld = false;
   try {
     await client.connect();
+    const identity = await client.query('SELECT current_user AS role');
+    if (identity.rows[0]?.role !== 'rotamoto_migrator') {
+      throw new Error('A conexão de migration não autenticou como rotamoto_migrator.');
+    }
     await client.query('SELECT pg_advisory_lock($1, $2)', [LOCK_KEY_1, LOCK_KEY_2]);
     lockHeld = true;
     await ensureMetadata(client);
@@ -146,4 +156,4 @@ async function main() {
 }
 
 if (require.main === module) main();
-module.exports = { getMigrations, assertChecksums, withTransaction };
+module.exports = { getMigrations, assertChecksums, withTransaction, migrationConnectionString };

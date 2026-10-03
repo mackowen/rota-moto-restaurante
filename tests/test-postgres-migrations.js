@@ -5,7 +5,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const path = require('node:path');
 const { Client } = require('pg');
-const { assertChecksums, getMigrations, withTransaction } = require('../backend/postgres/migrate');
+const { assertChecksums, getMigrations, withTransaction, migrationConnectionString } = require('../backend/postgres/migrate');
 
 async function tenantQuery(client, tenantId, sql, values = []) {
   await client.query('BEGIN');
@@ -35,9 +35,21 @@ function runMigration(command) {
 }
 
 async function main() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error('Defina DATABASE_URL para o banco PostgreSQL de desenvolvimento configurado por pgpass; não use produção.');
+  if (!process.env.DATABASE_URL || !process.env.MIGRATOR_DATABASE_URL) {
+    throw new Error('Defina DATABASE_URL (rotamoto_app) e MIGRATOR_DATABASE_URL (rotamoto_migrator) via pgpass.');
   }
+  const runtimeUrl = new URL(process.env.DATABASE_URL);
+  const migratorUrl = new URL(process.env.MIGRATOR_DATABASE_URL);
+  assert.equal(decodeURIComponent(runtimeUrl.username), 'rotamoto_app', 'runtime tests must use the restricted role');
+  assert.equal(decodeURIComponent(migratorUrl.username), 'rotamoto_migrator', 'migration tests must use the migrator role');
+  const configuredMigratorUrl = process.env.MIGRATOR_DATABASE_URL;
+  process.env.MIGRATOR_DATABASE_URL = 'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto';
+  assert.throws(migrationConnectionString, /deve autenticar como rotamoto_migrator/,
+    'migration runner rejects the runtime URL before connecting');
+  process.env.MIGRATOR_DATABASE_URL = 'postgresql://rotamoto_migrator@192.0.2.1:5432/rotamoto';
+  assert.throws(migrationConnectionString, /deve apontar sem senha para rotamoto_migrator/,
+    'migration runner refuses a non-official host');
+  process.env.MIGRATOR_DATABASE_URL = configuredMigratorUrl;
   const migration = getMigrations()[0];
   assert.equal(migration.id, '0001_identity_tenant_foundation');
   const provisioningMigration = getMigrations()[1];
@@ -64,15 +76,55 @@ async function main() {
   await assert.rejects(assertChecksums({ query: async () => ({ rows: [{ migration_id: '9999_removed_migration', checksum_sha256: '0'.repeat(64) }] }) }, []),
     /não existe mais/, 'runner refuses an applied migration missing from source');
 
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({ connectionString: process.env.MIGRATOR_DATABASE_URL });
+  const runtimeClient = new Client({ connectionString: process.env.DATABASE_URL });
+  const migrationClient = new Client({ connectionString: process.env.MIGRATOR_DATABASE_URL });
   await client.connect();
+  await runtimeClient.connect();
+  await migrationClient.connect();
   try {
+    assert.equal((await runtimeClient.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_app');
+    assert.equal((await migrationClient.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_migrator');
     await assert.rejects(assertChecksums(client, getMigrations().map(item => item.id === migration.id
       ? { ...item, checksum: '0'.repeat(64) } : item)),
       /Checksum divergente/, 'applied migration files cannot be edited silently');
-    const installed = await client.query('SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id');
+    await assert.rejects(runtimeClient.query('SELECT migration_id FROM rotamoto.schema_migrations'), /permission denied/i,
+      'runtime cannot inspect the migration ledger');
+    const installed = await migrationClient.query('SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id');
     assert.deepEqual(installed.rows.map(row => row.migration_id), getMigrations().map(item => item.id),
       'official database has every checked-in migration applied');
+    const runtimePrivileges = await runtimeClient.query(`SELECT
+      has_database_privilege(current_user,current_database(),'CREATE') AS db_create,
+      has_database_privilege(current_user,current_database(),'TEMP') AS db_temp,
+      has_schema_privilege(current_user,'rotamoto','CREATE') AS schema_create,
+      has_table_privilege(current_user,'rotamoto.schema_migrations','SELECT') AS ledger_select,
+      has_table_privilege(current_user,'rotamoto.audit_log','UPDATE') AS audit_update,
+      has_table_privilege(current_user,'rotamoto.audit_log','DELETE') AS audit_delete`);
+    assert.deepEqual(runtimePrivileges.rows[0], { db_create: false, db_temp: false, schema_create: false,
+      ledger_select: false, audit_update: false, audit_delete: false }, 'runtime role has no DDL, temp, ledger or audit mutation rights');
+    const ownership = await migrationClient.query(`SELECT
+      (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p','S','v','m')
+         AND pg_get_userbyid(c.relowner)='rotamoto_migrator') AS owned_relations,
+      (SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname='rotamoto' AND pg_get_userbyid(p.proowner)='rotamoto_migrator') AS owned_routines,
+      (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='rotamoto' AND c.relname='schema_migrations'
+         AND pg_get_userbyid(c.relowner)='rotamoto_migrator') AS migrator_ledger,
+      (SELECT count(*)::int FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid
+       JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rotamoto'
+         AND c.relrowsecurity AND c.relforcerowsecurity) AS forced_policies,
+      NOT EXISTS (SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+        WHERE d.defaclrole='rotamoto_migrator'::regrole AND d.defaclobjtype='f'
+          AND a.grantee=0 AND a.privilege_type='EXECUTE') AS no_public_execute_default`);
+    assert.equal(ownership.rows[0].owned_relations, 18);
+    assert.equal(ownership.rows[0].owned_routines, 2);
+    assert.equal(ownership.rows[0].migrator_ledger, 1);
+    assert.equal(ownership.rows[0].forced_policies, 10);
+    assert.equal(ownership.rows[0].no_public_execute_default, true,
+      'future migrator functions do not receive PUBLIC EXECUTE by default');
+    assert.equal(await migrationClient.query("SELECT has_schema_privilege(current_user,'rotamoto','CREATE') AS can_ddl")
+      .then(result => result.rows[0].can_ddl), true, 'migrator can create schema objects');
     const concurrentUp = await Promise.all([runMigration('up'), runMigration('up')]);
     assert(concurrentUp.every(result => result.status === 0), 'concurrent up runs serialize through advisory lock');
     assert(concurrentUp.every(result => /schema atualizado/u.test(result.stdout)), 'reapplying up is idempotent');
@@ -126,34 +178,60 @@ async function main() {
     const tenantTables = rls.rows.filter(row => row.relrowsecurity);
     assert.equal(tenantTables.length, 10);
     assert(tenantTables.every(row => row.relforcerowsecurity), 'all tenant-scoped tables enforce RLS');
-    const noTenant = await client.query(`SELECT count(*)::int AS count FROM rotamoto.companies`);
+    const auditTenant = crypto.randomUUID();
+    await migrationClient.query('BEGIN');
+    try {
+      await migrationClient.query("SELECT set_config('app.tenant_id',$1,true)", [auditTenant]);
+      await migrationClient.query(`INSERT INTO rotamoto.companies(id,name) VALUES($1,'QA append-only')`, [auditTenant]);
+      await migrationClient.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_kind,action)
+        VALUES($1,$2,'system','qa.append-only')`, [crypto.randomUUID(), auditTenant]);
+      await migrationClient.query('SAVEPOINT audit_update_check');
+      await assert.rejects(migrationClient.query(`UPDATE rotamoto.audit_log SET action='changed'
+        WHERE company_id=$1 AND action='qa.append-only'`, [auditTenant]), /append-only/);
+      await migrationClient.query('ROLLBACK TO SAVEPOINT audit_update_check');
+      await migrationClient.query('RELEASE SAVEPOINT audit_update_check');
+      await migrationClient.query('SAVEPOINT audit_delete_check');
+      await assert.rejects(migrationClient.query(`DELETE FROM rotamoto.audit_log
+        WHERE company_id=$1 AND action='qa.append-only'`, [auditTenant]), /append-only/);
+      await migrationClient.query('ROLLBACK TO SAVEPOINT audit_delete_check');
+      await migrationClient.query('RELEASE SAVEPOINT audit_delete_check');
+      await migrationClient.query('ROLLBACK');
+    } catch (error) {
+      await migrationClient.query('ROLLBACK').catch(() => {});
+      throw error;
+    }
+    const noTenant = await runtimeClient.query(`SELECT count(*)::int AS count FROM rotamoto.companies`);
     assert.equal(noTenant.rows[0].count, 0, 'missing tenant context denies visibility');
     const tenantA = crypto.randomUUID();
     const tenantB = crypto.randomUUID();
-    await tenantQuery(client, tenantA, `INSERT INTO rotamoto.companies (id,name) VALUES ($1,'QA tenant A')`, [tenantA]);
-    await tenantQuery(client, tenantB, `INSERT INTO rotamoto.companies (id,name) VALUES ($1,'QA tenant B')`, [tenantB]);
+    await tenantQuery(runtimeClient, tenantA, `INSERT INTO rotamoto.companies (id,name) VALUES ($1,'QA tenant A')`, [tenantA]);
+    await tenantQuery(runtimeClient, tenantB, `INSERT INTO rotamoto.companies (id,name) VALUES ($1,'QA tenant B')`, [tenantB]);
     try {
-      await client.query('BEGIN');
-      await client.query(`SELECT set_config('app.tenant_id',$1,true)`, [tenantA]);
-      const visible = await client.query(`SELECT id::text FROM rotamoto.companies ORDER BY id`);
+      await runtimeClient.query('BEGIN');
+      await runtimeClient.query(`SELECT set_config('app.tenant_id',$1,true)`, [tenantA]);
+      const visible = await runtimeClient.query(`SELECT id::text FROM rotamoto.companies ORDER BY id`);
       assert.deepEqual(visible.rows.map(row => row.id), [tenantA], 'tenant context reveals only the selected company');
-      await client.query('ROLLBACK');
-      await client.query('BEGIN');
-      await client.query(`SELECT set_config('app.tenant_id',$1,true)`, [tenantA]);
-      await assert.rejects(client.query(`INSERT INTO rotamoto.companies (id,name) VALUES ($1,'cross-tenant')`, [tenantB]), /row-level security|policy/i, 'tenant context rejects cross-tenant writes');
-      await client.query('ROLLBACK');
-      await assert.rejects(tenantQuery(client, tenantA, `INSERT INTO rotamoto.audit_log(id,company_id,actor_kind,action)
+      await runtimeClient.query('ROLLBACK');
+      await runtimeClient.query('BEGIN');
+      await runtimeClient.query(`SELECT set_config('app.tenant_id',$1,true)`, [tenantA]);
+      await assert.rejects(runtimeClient.query(`INSERT INTO rotamoto.companies (id,name) VALUES ($1,'cross-tenant')`, [tenantB]), /row-level security|policy/i, 'tenant context rejects cross-tenant writes');
+      await runtimeClient.query('ROLLBACK');
+      await assert.rejects(tenantQuery(runtimeClient, tenantA, `INSERT INTO rotamoto.audit_log(id,company_id,actor_kind,action)
         VALUES ($1,$2,'user','qa.invalid.actor')`, [crypto.randomUUID(), tenantA]), /audit_log_user_actor_required/,
       'user audit entries require a canonical actor user');
-      await assert.rejects(tenantQuery(client, tenantA, `INSERT INTO rotamoto.sync_outbox
+      await assert.rejects(runtimeClient.query(`UPDATE rotamoto.audit_log SET action='changed' WHERE false`), /permission denied/i,
+        'runtime cannot update append-only audit entries');
+      await assert.rejects(runtimeClient.query(`DELETE FROM rotamoto.audit_log WHERE false`), /permission denied/i,
+        'runtime cannot delete append-only audit entries');
+      await assert.rejects(tenantQuery(migrationClient, tenantA, `INSERT INTO rotamoto.sync_outbox
         (company_id,event_id,app_key,installation_id,created_at,published_at,payload)
         VALUES ($1,$2,'restaurante',$3,now(),now()-interval '1 second','{}'::jsonb)`,
       [tenantA, crypto.randomUUID(), crypto.randomUUID()]), /sync_outbox_publish_time_check/,
       'outbox cannot be published before creation');
     } finally {
       await client.query('ROLLBACK').catch(() => {});
-      await tenantQuery(client, tenantA, `DELETE FROM rotamoto.companies WHERE id=$1`, [tenantA]);
-      await tenantQuery(client, tenantB, `DELETE FROM rotamoto.companies WHERE id=$1`, [tenantB]);
+      await tenantQuery(migrationClient, tenantA, `DELETE FROM rotamoto.companies WHERE id=$1`, [tenantA]);
+      await tenantQuery(migrationClient, tenantB, `DELETE FROM rotamoto.companies WHERE id=$1`, [tenantB]);
     }
     const rollbackGuardId = crypto.randomUUID();
     const rollbackGuardUserId = crypto.randomUUID();
@@ -193,6 +271,8 @@ async function main() {
     console.log('PostgreSQL migrations and default-deny RLS tests: OK');
   } finally {
     await client.end();
+    await runtimeClient.end();
+    await migrationClient.end();
   }
 }
 

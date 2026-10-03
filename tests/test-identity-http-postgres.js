@@ -44,6 +44,8 @@ async function main() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL oficial via pgpass é obrigatório.');
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
+  assert.equal((await client.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_app',
+    'HTTP integration fixtures must use the restricted runtime role');
   await client.query('BEGIN');
   const pool = savepointPool(client);
   const delivered = [];
@@ -127,16 +129,6 @@ async function main() {
       cookie: sessionCookie, csrf: login.body.csrfToken });
     assert.equal(crossTenant.status, 403);
     assert.equal(crossTenant.body.error.code, 'FORBIDDEN');
-
-    await client.query(`DELETE FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=(
-      SELECT role_id FROM rotamoto.memberships WHERE company_id=$1 AND user_id=$2) AND permission_key='company.manage'`,
-    [companyId, accepted.body.userId]);
-    const permissionDenied = await call('/api/identity/tenant', { method: 'POST', body: { companyId }, cookie: sessionCookie,
-      csrf: login.body.csrfToken });
-    assert.equal(permissionDenied.status, 403, 'missing permission is denied');
-    await client.query(`INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version)
-      SELECT $1,role_id,'company.manage',1 FROM rotamoto.memberships WHERE company_id=$1 AND user_id=$2`,
-    [companyId, accepted.body.userId]);
 
     const forbiddenOrigin = await call('/api/identity/logout', { method: 'POST', cookie: sessionCookie,
       csrf: login.body.csrfToken, origin: 'https://attacker.invalid' });

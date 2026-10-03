@@ -27,7 +27,16 @@ const keeta=createKeetaService();
 const ALLOWED_ORIGIN=process.env.ALLOWED_ORIGIN||'http://localhost:8787';
 const KEETA_WEBHOOK_SECRET=process.env.KEETA_WEBHOOK_SECRET||'';
 const seenWebhooks=new Map();
-const identityPool=new Pool({host:'127.0.0.1',port:5432,database:'rotamoto',user:'rotamoto_app',max:5,allowExitOnIdle:true});
+function runtimeDatabaseConnectionString(value=process.env.DATABASE_URL){
+  const connectionString=value||'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto';
+  let parsed;
+  try{parsed=new URL(connectionString)}catch(_){throw new Error('DATABASE_URL de runtime inválida.')}
+  if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!=='rotamoto_app'||
+    parsed.password||parsed.hostname!=='127.0.0.1'||(parsed.port||'5432')!=='5432'||parsed.pathname!=='/rotamoto')
+    throw new Error('DATABASE_URL deve apontar sem senha para rotamoto_app em 127.0.0.1:5432/rotamoto.');
+  return connectionString;
+}
+const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),max:5,allowExitOnIdle:true});
 identityPool.on('error',()=>console.error('PostgreSQL identity pool connection failed.'));
 const identityService=createIdentityService({pool:identityPool});
 const identityHttp=createIdentityHttpHandler({identityService,logger:entry=>console.info(JSON.stringify(entry))});
@@ -142,5 +151,5 @@ async function route(req,res){
 }
 
 const pollTimer=setInterval(()=>{if(state.token.accessToken&&(!state.token.expiresAt||Date.now()<state.token.expiresAt-60000))poll().catch(()=>{});},30000);pollTimer.unref();
-if(require.main===module){assertLoopbackHost();http.createServer(route).listen(PORT,HOST,()=>console.log(`Rota Moto integration service listening on http://${HOST}:${PORT}`));}
-module.exports={route,verifyHmac,verifyKeetaSignature,rememberWebhook,assertLoopbackHost};
+if(require.main===module){assertLoopbackHost();identityPool.query('SELECT current_user AS role').then(result=>{if(result.rows[0]?.role!=='rotamoto_app')throw new Error('A conexão runtime não autenticou como rotamoto_app.');http.createServer(route).listen(PORT,HOST,()=>console.log(`Rota Moto integration service listening on http://${HOST}:${PORT}`));}).catch(error=>{console.error(error.code?`PostgreSQL runtime indisponível (${error.code})`:error.message);process.exitCode=1;});}
+module.exports={route,verifyHmac,verifyKeetaSignature,rememberWebhook,assertLoopbackHost,runtimeDatabaseConnectionString};

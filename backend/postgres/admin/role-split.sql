@@ -195,6 +195,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE rotamoto_migrator IN SCHEMA rotamoto
   REVOKE ALL PRIVILEGES ON SEQUENCES FROM PUBLIC, rotamoto_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE rotamoto_migrator IN SCHEMA rotamoto
   REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, rotamoto_app;
+-- PostgreSQL's global default EXECUTE grant to PUBLIC is not cancelled by a
+-- per-schema REVOKE. Remove it globally for future migrator-owned routines.
+ALTER DEFAULT PRIVILEGES FOR ROLE rotamoto_migrator
+  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 
 DO $postflight$
 DECLARE
@@ -247,6 +251,13 @@ BEGIN
      OR has_table_privilege('rotamoto_app','rotamoto.audit_log','UPDATE')
      OR has_table_privilege('rotamoto_app','rotamoto.audit_log','DELETE') THEN
     RAISE EXCEPTION 'Runtime possui DML/DDL além do perfil previsto.';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+    WHERE d.defaclrole=migrator_oid AND d.defaclobjtype='f'
+      AND a.grantee=0 AND a.privilege_type='EXECUTE'
+  ) THEN
+    RAISE EXCEPTION 'Rotinas futuras do migrator ainda concedem EXECUTE a PUBLIC.';
   END IF;
   IF NOT has_table_privilege('rotamoto_app','rotamoto.users','SELECT')
      OR NOT has_table_privilege('rotamoto_app','rotamoto.users','INSERT')

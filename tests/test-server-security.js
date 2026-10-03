@@ -6,7 +6,7 @@ process.env.FOOD99_WEBHOOK_SECRET='test-99-secret';
 process.env.KEETA_WEBHOOK_SECRET='test-keeta-secret';
 process.env.ALLOWED_ORIGIN='http://localhost:8787';
 const http=require('node:http');
-const {route,rememberWebhook,assertLoopbackHost}=require('../server');
+const {route,rememberWebhook,assertLoopbackHost,runtimeDatabaseConnectionString}=require('../server');
 
 async function main(){
   assert.equal(assertLoopbackHost('127.0.0.1'),true);
@@ -14,6 +14,12 @@ async function main(){
   assert.equal(assertLoopbackHost('localhost'),true);
   assert.throws(()=>assertLoopbackHost('0.0.0.0'),/não possui autenticação de usuário/);
   assert.throws(()=>assertLoopbackHost('192.168.1.20'),/mantenha HOST em loopback/);
+  assert.equal(runtimeDatabaseConnectionString('postgresql://rotamoto_app@127.0.0.1:5432/rotamoto'),
+    'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto');
+  assert.throws(()=>runtimeDatabaseConnectionString('postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto'),
+    /DATABASE_URL deve apontar sem senha para rotamoto_app/);
+  assert.throws(()=>runtimeDatabaseConnectionString('postgresql://rotamoto_app@192.0.2.1:5432/rotamoto'),
+    /DATABASE_URL deve apontar sem senha para rotamoto_app/);
   const exposedBoot=spawnSync(process.execPath,['server.js'],{cwd:require('node:path').join(__dirname,'..'),env:{...process.env,HOST:'0.0.0.0'},encoding:'utf8'});
   assert.notEqual(exposedBoot.status,0,'server refuses to start on a public interface without user authentication');
   assert.match(exposedBoot.stderr,/mantenha HOST em loopback/);

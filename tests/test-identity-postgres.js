@@ -7,7 +7,7 @@ const { createIdentityService } = require('../backend/identity/service');
 const { createEmailDeliveryProvider } = require('../backend/identity/email-provider');
 const { verifyPassword } = require('../backend/identity/passwords');
 
-function savepointPool(client) {
+function savepointPool(client, onQuery = () => {}) {
   let nextSavepoint = 0;
   const scopes = [];
   return { async connect() {
@@ -30,6 +30,7 @@ function savepointPool(client) {
           await client.query(`ROLLBACK TO SAVEPOINT ${name}`);
           return client.query(`RELEASE SAVEPOINT ${name}`);
         }
+        onQuery(sql, values);
         return client.query(sql, values);
       },
       release() {}
@@ -50,8 +51,13 @@ async function main() {
   const password = 'synthetic-owner-password-42';
   const newPassword = 'synthetic-recovery-password-73';
   const delivered = [];
+  const auditEntries = [];
   const provider = createEmailDeliveryProvider(async message => { delivered.push(message); return { accepted: true }; });
-  const pool = savepointPool(client);
+  const pool = savepointPool(client, (sql, values = []) => {
+    if (/INSERT\s+INTO\s+rotamoto\.audit_log/iu.test(sql)) {
+      auditEntries.push({ action: values[4], details: values[7] });
+    }
+  });
   const service = createIdentityService({
     pool,
     authorizeProvisioner: async () => ({ actorRef: 'test:transactional-synthetic' }),
@@ -223,8 +229,8 @@ async function main() {
 
     const noAccount = await service.requestPasswordRecovery(`missing-${crypto.randomUUID()}@example.invalid`);
     assert.deepEqual(noAccount, { accepted: true }, 'recovery response does not enumerate account existence');
-    const audit = await client.query(`SELECT action,details FROM rotamoto.audit_log WHERE company_id=$1`, [provisioned.companyId]);
-    for (const row of audit.rows) {
+    assert(auditEntries.length > 0, 'identity operations emit audit entries');
+    for (const row of auditEntries) {
       assert.equal(JSON.stringify(row.details).includes(password), false);
       assert.equal(JSON.stringify(row.details).includes(delivered[0].token), false);
       assert.equal(JSON.stringify(row.details).includes(recoveryMessage.token), false);

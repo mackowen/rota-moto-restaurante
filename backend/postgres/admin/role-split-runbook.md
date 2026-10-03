@@ -162,11 +162,10 @@ policies tenant com RLS enabled/forced; API grants apenas nas tabelas da
 identidade; auditoria somente INSERT; defaults sem grants para PUBLIC/runtime.
 Nenhuma migration é executada pelo script.
 
-Depois, teste uma conexão Node da API com a configuração existente (que usa
-`rotamoto_app`) e `migrate.js status` com `DATABASE_URL` apontando a
-`rotamoto_migrator`. Não execute `npm run test:postgres` como migrator para
-validar privilégios runtime: o harness atual usa uma única URL para etapas de
-DDL e runtime e precisa de adaptação própria antes da validação pós-split.
+Depois, teste uma conexão Node da API com `DATABASE_URL` autenticando
+`rotamoto_app` e `migrate.js status` com `MIGRATOR_DATABASE_URL` apontando a
+`rotamoto_migrator`. A suíte `npm run test:postgres` requer as duas URLs e
+separa operações de DDL/fixtures dos testes de privilégio runtime.
 
 ## Rollback de emergência
 
