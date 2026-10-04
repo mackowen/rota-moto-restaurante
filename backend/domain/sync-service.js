@@ -465,7 +465,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       }
       if (entityType === 'DeliveryEvent' && String(canonical.entity || '').toLowerCase() === 'delivery' && !existing.rowCount) {
         const executionStatus = ({ DELIVERY_STARTED: 'OUT_FOR_DELIVERY', DELIVERY_ARRIVED: 'ARRIVED',
-          DELIVERY_COMPLETED: 'DELIVERED', DELIVERY_FAILED: 'FAILED' })[canonical.type];
+          DELIVERY_COMPLETED: 'DELIVERED', DELIVERY_FAILED: 'FAILED', DELIVERY_RETURNED: 'RETURNED' })[canonical.type];
         if (!executionStatus) throw new SyncError('FORBIDDEN_EVENT', 'Evento de execução não reconhecido ou não permitido.');
         const currentDelivery = await client.query(`SELECT payload,version,created_at,deleted_at FROM rotamoto.domain_records
           WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' FOR UPDATE`, [companyId, relatedId]);

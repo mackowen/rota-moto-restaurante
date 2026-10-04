@@ -383,6 +383,32 @@ async function main() {
       const reassignedPacket={...redeliveryPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...redeliveryPacket.data,deliveries:[reassignedRecord]}};
       const reassignedResult=await call('/api/sync/push',{method:'POST',body:reassignedPacket});
       assert.equal(reassignedResult.body.operationResults[0].status,'accepted',JSON.stringify(reassignedResult.body.operationResults));
+      const returnStart={eventId:`evt_${crypto.randomUUID()}`,entity:'delivery',entityId:deliveryId,
+        type:'DELIVERY_STARTED',occurredAt:new Date(Date.now()+12000).toISOString()};
+      const returnStartPacket={...executionPacket,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...executionPacket.data,deliveryEvents:[returnStart],earnings:[]}};
+      const returnStartResult=await call('/api/sync/push',{method:'POST',body:returnStartPacket});
+      assert.equal(returnStartResult.body.operationResults[0].status,'accepted');
+      const returnEvent={eventId:`evt_${crypto.randomUUID()}`,entity:'delivery',entityId:deliveryId,
+        type:'DELIVERY_RETURNED',occurredAt:new Date(Date.now()+13000).toISOString()};
+      const returnPacket={...executionPacket,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...executionPacket.data,deliveryEvents:[returnEvent],earnings:[]}};
+      const returnResult=await call('/api/sync/push',{method:'POST',body:returnPacket});
+      assert.equal(returnResult.body.operationResults[0].status,'accepted',JSON.stringify(returnResult.body.operationResults));
+      const afterReturn=await client.query("SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
+      assert.equal(afterReturn.rows[0].payload.status,'RETURNED');assert.equal(Number(afterReturn.rows[0].version),7);
+      const returnedRedelivery={...afterReturn.rows[0].payload,status:'REDELIVERY',version:8,baseVersion:7,
+        updatedAt:new Date(Date.now()+14000).toISOString()};
+      const returnedRedeliveryPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],
+        deliveries:[returnedRedelivery],deliveryEvents:[],earnings:[],routes:[],proofs:[],locationUpdates:[]}};
+      const returnedRedeliveryResult=await call('/api/sync/push',{method:'POST',body:returnedRedeliveryPacket});
+      assert.equal(returnedRedeliveryResult.body.operationResults[0].status,'accepted',JSON.stringify(returnedRedeliveryResult.body.operationResults));
+      const afterReturnedRedelivery=await client.query("SELECT payload FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
+      const afterReturnedAssignment={...afterReturnedRedelivery.rows[0].payload,status:'ASSIGNED',version:9,baseVersion:8,
+        updatedAt:new Date(Date.now()+15000).toISOString()};
+      const returnedAssignmentPacket={...returnedRedeliveryPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...returnedRedeliveryPacket.data,deliveries:[afterReturnedAssignment]}};
+      const returnedAssignment=await call('/api/sync/push',{method:'POST',body:returnedAssignmentPacket});
+      assert.equal(returnedAssignment.body.operationResults[0].status,'accepted',JSON.stringify(returnedAssignment.body.operationResults));
       const riderSecondInstall = await registerDevice('motoboy', 'rider-second-device');
       assert.equal(riderSecondInstall.status, 200);
       const eventRetryPacket = { ...executionPacket, packetId: `pkt_${crypto.randomUUID()}`, deviceId: 'rider-second-device',
@@ -407,7 +433,7 @@ async function main() {
 
       const tombstonePacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, data: { ...packet.data, orders: [], deliveries: [],
         tombstones: [{ store: 'deliveries', id: 'delivery-local-1', deleted: true,
-          deletedAt: new Date(Date.now() + 3000).toISOString(), updatedAt: new Date(Date.now() + 3000).toISOString(), version: 6, baseVersion: 5 }] } };
+          deletedAt: new Date(Date.now() + 3000).toISOString(), updatedAt: new Date(Date.now() + 3000).toISOString(), version: 10, baseVersion: 9 }] } };
       const tombstoneResult = await call('/api/sync/push', { method: 'POST', body: tombstonePacket });
       assert.equal(tombstoneResult.status, 200, JSON.stringify(tombstoneResult.body));
       assert.equal(tombstoneResult.body.operationResults.find(result => result.operation === 'tombstones:0').status, 'accepted');
