@@ -5,18 +5,24 @@
   let current = null;
   let offlineMode = false;
   let working = false;
+  let driverRows = [];
+  let driverCursor = null;
+  let previousFocus = null;
   const codeMessages = {
     INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta exige verificação MFA. Se o autenticador seguro ainda não estiver configurado, o acesso permanece bloqueado.', MFA_PROVIDER_UNAVAILABLE: 'A verificação MFA está temporariamente indisponível. Tente novamente mais tarde.',
     UNAUTHENTICATED: 'Sua sessão expirou. Entre novamente.', EMAIL_PROVIDER_NOT_CONFIGURED: 'Convites e recuperação ainda dependem da configuração segura de entrega de email.',
     FORBIDDEN: 'Seu perfil não permite esta ação.', LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um owner ativo.',
+    DRIVER_MEMBERSHIP_INELIGIBLE: 'Esta conta precisa estar ativa, verificada e autorizada para sincronizar como Motoboy.',
+    DRIVER_NOT_FOUND: 'Motorista não encontrado nesta empresa.', DRIVER_ALREADY_LINKED: 'Este motorista já está associado a outra conta.',
+    MEMBERSHIP_DRIVER_CONFLICT: 'Desvincule o motorista atual antes de trocar a associação.',
     INVALID_STATE_TRANSITION: 'Esta mudança de estado não é permitida.', EMAIL_DELIVERY_FAILED: 'Não foi possível entregar o convite. Nenhum link utilizável foi enviado.', AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar este convite.', CONFLICT: 'A conta já possui um vínculo ou estado incompatível.',
     RATE_LIMITED: 'Muitas tentativas. Aguarde antes de tentar novamente.', NETWORK: 'Servidor indisponível. O modo local continua disponível.'
   };
   const host = document.createElement('div');
   host.id = 'rmIdentityRoot';
-  host.innerHTML = `<button type="button" class="rm-account-trigger" aria-controls="rmIdentityPanel" aria-expanded="false">Conta e acesso</button>
-    <section id="rmIdentityPanel" class="rm-identity-panel" role="region" aria-label="Conta e autenticação" hidden>
-      <header><div><strong>Conta RotaMoto</strong><small data-identity-status>Verificando sessão…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
+  host.innerHTML = `<button type="button" class="rm-account-trigger" aria-label="Abrir conta e acesso" aria-controls="rmIdentityPanel" aria-expanded="false">Conta</button>
+    <section id="rmIdentityPanel" class="rm-identity-panel" role="dialog" aria-modal="true" aria-labelledby="rmIdentityTitle" hidden>
+      <header><div><strong id="rmIdentityTitle">Conta RotaMoto</strong><small data-identity-status>Verificando sessão…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
       <div class="rm-identity-content">
         <form data-login novalidate><h2>Entrar</h2><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label>
           <label>Senha<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
@@ -34,7 +40,7 @@
         <details data-invitation><summary>Aceitar convite</summary><form data-accept-invitation><label>Código do convite<input name="token" required maxlength="43" autocomplete="off"></label><label>Crie sua senha<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><button type="submit">Aceitar convite</button><p role="status" data-invitation-result></p></form></details>
         <section data-admin hidden><h2>Administração da empresa</h2><p data-admin-error role="alert" aria-live="polite"></p><button type="button" data-refresh-admin>Atualizar usuários e perfis</button>
           <form data-invite><h3>Convidar usuário</h3><label>Email<input name="email" type="email" required maxlength="320"></label><label>Perfil<select name="roleId" required></select></label><button type="submit">Enviar convite</button><p role="status" data-invite-result></p></form>
-          <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><div data-members aria-live="polite"></div><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><section data-roles-list><h3>Perfis existentes</h3></section><form data-create-role><h3>Novo perfil</h3><label>Identificador<input name="key" required pattern="[a-z][a-z0-9_-]{1,63}" maxlength="64"></label><label>Nome<input name="name" required maxlength="100"></label><fieldset><legend>Permissões</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form>
+          <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><div data-members aria-live="polite"></div><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><p data-driver-access-note role="status" hidden>Para listar motoristas, sua sessão precisa da permissão de leitura de sync. A desassociação continua disponível para vínculos existentes.</p><section data-roles-list><h3>Perfis existentes</h3></section><form data-create-role><h3>Novo perfil</h3><label>Identificador<input name="key" required pattern="[a-z][a-z0-9_-]{1,63}" maxlength="64"></label><label>Nome<input name="name" required maxlength="100"></label><fieldset><legend>Permissões</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form>
         </section>
         <button type="button" data-offline class="rm-offline">Continuar somente com dados locais</button>
         <p class="rm-privacy">Senha e códigos são enviados somente ao servidor por HTTPS em produção. Sessão e proteção CSRF permanecem em cookie seguro e memória; nada disso é salvo no armazenamento local.</p>
@@ -67,7 +73,41 @@
     if (!response.ok) { const error = new Error(body.error?.code || 'REQUEST_FAILED'); error.code = body.error?.code; error.status = response.status; throw error; }
     return body;
   }
-  function setOpen(open) { panel.hidden = !open; trigger.setAttribute('aria-expanded', String(open)); if (open) panel.querySelector('input:not([disabled])')?.focus(); }
+  function placeTrigger() {
+    const app = document.querySelector('#app');
+    const anchor = current || offlineMode ? app?.querySelector('.top-actions, .top') : null;
+    const parent = anchor || host;
+    if (trigger.parentElement !== parent) parent.append(trigger);
+    trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
+  }
+  function visibleControls() {
+    return [...panel.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[href],[tabindex]:not([tabindex="-1"])')]
+      .filter(element => !element.closest('[hidden]') && element.getClientRects().length > 0);
+  }
+  function setOpen(open) {
+    if (open && panel.hidden) previousFocus = document.activeElement;
+    panel.hidden = !open;
+    trigger.setAttribute('aria-expanded', String(open));
+    const app = document.querySelector('#app');
+    const gated = host.dataset.gated === 'true';
+    if (app) { app.inert = open || gated; app.setAttribute('aria-hidden', String(open || gated)); }
+    if (open) (visibleControls()[0] || panel).focus();
+    else if (previousFocus?.isConnected && !panel.contains(previousFocus) && !previousFocus.closest('[inert]')) previousFocus.focus();
+    else if (!gated) trigger.focus();
+  }
+  panel.tabIndex = -1;
+  panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      if (current || offlineMode) { event.preventDefault(); setOpen(false); }
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const controls = visibleControls();
+    if (!controls.length) { event.preventDefault(); panel.focus(); return; }
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
   function setStatus(text) { $('[data-identity-status]').textContent = text; }
   function setBusy(form, busy) { form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); }
   function showSession(session) {
@@ -83,6 +123,7 @@
     host.dataset.gated = String(!session && !offlineMode);
     $('[data-admin]').hidden = !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
     trigger.hidden = false;
+    placeTrigger();
     if (session) {
       $('[data-user-email]').textContent = session.email;
       $('[data-company-id]').textContent = session.activeCompanyId;
@@ -166,12 +207,18 @@
       form.reset(); $('[data-existing-invitation-result]').textContent = `Convite aceito para a empresa ${result.companyId}. Confirme a troca para ativar o vínculo.`; $('[data-switch] [name=companyId]').value = result.companyId; }
     catch (error) { $('[data-existing-invitation-result]').textContent = message(error); } finally { setBusy(form, false); }
   });
-  async function loadAdmin() {
+  async function loadAdmin({ appendDrivers = false } = {}) {
     const canReadMembers = current.permissions.includes('members.read');
+    const canReadDrivers = current.permissions.includes('sync.pull');
     const [company, members, roles, permissionResult, integrations] = await Promise.all([
       request('/admin/company'), canReadMembers ? request('/admin/memberships?limit=100') : Promise.resolve({ members: [] }), request('/admin/roles'), request('/admin/permissions'),
       current.permissions.includes('integrations.manage') ? request('/admin/integrations') : Promise.resolve(null)
     ]);
+    const driverPage = canReadDrivers ? await request(`/domain/drivers?limit=100${appendDrivers && driverCursor ? `&cursor=${encodeURIComponent(driverCursor)}` : ''}`) : { records: [], nextCursor: null };
+    if (!appendDrivers) driverRows = [];
+    driverRows.push(...driverPage.records);
+    driverCursor = driverPage.nextCursor;
+    $('[data-driver-access-note]').hidden = canReadDrivers;
     $('[data-company-name]').textContent = company.name;
     const integrationBox = $('[data-integrations]'); integrationBox.hidden = !integrations;
     if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); integrations.integrations.forEach(item => { const row = document.createElement('p'); row.textContent = `${item.provider} · ${item.status}${item.externalAccount ? ` · ${item.externalAccount.linkStatus}` : ''}`; list.append(row); }); }
@@ -217,11 +264,59 @@
         save.addEventListener('click', async () => { save.disabled = true; try { await request(`/admin/memberships/${member.membershipId}`, { method: 'PATCH', body: JSON.stringify({ roleId: select.value }) }); await loadAdmin(); } catch (error) { $('[data-admin-error]').textContent = message(error); } finally { save.disabled = false; } });
         card.append(select, save);
         }
-        if (member.status === 'active' || member.status === 'suspended') { const stateButton = document.createElement('button'); stateButton.type = 'button'; stateButton.className = 'rm-secondary'; stateButton.textContent = member.status === 'active' ? 'Suspender' : 'Reativar';
+      if (member.status === 'active' || member.status === 'suspended') { const stateButton = document.createElement('button'); stateButton.type = 'button'; stateButton.className = 'rm-secondary'; stateButton.textContent = member.status === 'active' ? 'Suspender' : 'Reativar';
           stateButton.addEventListener('click', async () => { if (member.status === 'active' && !window.confirm(`Suspender o acesso de ${member.email}?`)) return; stateButton.disabled = true; try { await request(`/admin/memberships/${member.membershipId}`, { method: 'PATCH', body: JSON.stringify({ status: member.status === 'active' ? 'suspended' : 'active' }) }); await loadAdmin(); } catch (error) { $('[data-admin-error]').textContent = message(error); } finally { stateButton.disabled = false; } }); card.append(stateButton); }
+      }
+      if (current.permissions.includes('company.manage')) {
+        const linkBox = document.createElement('div'); linkBox.className = 'rm-driver-link';
+        const title = document.createElement('strong'); title.textContent = 'Motorista operacional'; linkBox.append(title);
+        const feedback = document.createElement('p'); feedback.className = 'rm-driver-link-status'; feedback.setAttribute('role', 'status');
+        const driver = driverRows.find(row => row.id === member.driverId);
+        if (member.driverId) {
+          feedback.textContent = `Vinculado a ${driver?.record?.name || driver?.record?.displayName || `ID ${member.driverId}`}.`;
+          const unlink = document.createElement('button'); unlink.type = 'button'; unlink.className = 'rm-secondary'; unlink.textContent = 'Desvincular motorista';
+          unlink.addEventListener('click', async () => {
+            if (!window.confirm(`Desvincular o motorista de ${member.email}? A conta deixará de sincronizar entregas até receber outro vínculo.`)) return;
+            unlink.disabled = true;
+            try { await request(`/admin/memberships/${member.membershipId}/driver`, { method: 'DELETE' }); await loadAdmin(); }
+            catch (error) { feedback.textContent = message(error); unlink.disabled = false; }
+          });
+          linkBox.append(feedback, unlink);
+        } else {
+          const eligible = member.status === 'active' && !member.disabled && member.emailVerified &&
+            member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push');
+          if (!eligible) feedback.textContent = 'Disponível quando a conta estiver ativa, verificada e autorizada para sincronizar.';
+          else if (!canReadDrivers) feedback.textContent = 'Seu perfil não pode listar os motoristas desta empresa.';
+          else {
+            const select = document.createElement('select');
+            select.setAttribute('aria-label', `Motorista para ${member.email}`);
+            const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Selecione um motorista'; select.append(placeholder);
+            const linkedElsewhere = new Set(members.members.filter(item => item.membershipId !== member.membershipId && item.driverId).map(item => item.driverId));
+            driverRows.filter(row => !linkedElsewhere.has(row.id)).forEach(row => {
+              const option = document.createElement('option'); option.value = row.id;
+              option.textContent = `${row.record?.name || row.record?.displayName || 'Motorista'}${row.record?.status ? ` · ${row.record.status}` : ''}`;
+              select.append(option);
+            });
+            const link = document.createElement('button'); link.type = 'button'; link.className = 'rm-primary'; link.textContent = 'Vincular motorista'; link.disabled = true;
+            select.addEventListener('change', () => { link.disabled = !select.value; });
+            link.addEventListener('click', async () => {
+              if (!select.value) return;
+              link.disabled = true;
+              try { await request(`/admin/memberships/${member.membershipId}/driver`, { method: 'PUT', body: JSON.stringify({ driverId: select.value }) }); await loadAdmin(); }
+              catch (error) { feedback.textContent = message(error); link.disabled = !select.value; }
+            });
+            linkBox.append(select, link, feedback);
+          }
+        }
+        card.append(linkBox);
       }
       list.append(card);
     });
+    if (driverCursor && canReadDrivers) {
+      const more = document.createElement('button'); more.type = 'button'; more.className = 'rm-secondary'; more.textContent = 'Carregar mais motoristas';
+      more.addEventListener('click', async () => { more.disabled = true; try { await loadAdmin({ appendDrivers: true }); } catch (error) { $('[data-admin-error]').textContent = message(error); more.disabled = false; } });
+      list.append(more);
+    }
   }
   $('[data-refresh-admin]')?.addEventListener('click', () => loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); }));
   $('[data-invite]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true);
@@ -236,5 +331,7 @@
   window.addEventListener('rotamoto:session-expired', expireSession);
   const initialAppRoot = document.querySelector('#app'); if (initialAppRoot) { initialAppRoot.inert = true; initialAppRoot.setAttribute('aria-hidden', 'true'); }
   host.dataset.gated = 'true'; trigger.hidden = false; setOpen(true); restore().then(async session => { if (session) { setOpen(false); await syncAfterAuthentication(); } });
+  const appRoot = document.querySelector('#app');
+  if (appRoot) new MutationObserver(placeTrigger).observe(appRoot, { childList: true, subtree: true });
   window.RotaMotoIdentity = Object.freeze({ restore, getSession: () => current, isOfflineMode: () => offlineMode });
 })();

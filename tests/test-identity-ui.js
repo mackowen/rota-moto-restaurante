@@ -6,6 +6,7 @@ const path = require('node:path');
 const uiPath = path.join(__dirname, '..', 'identity-ui.js');
 const htmlPath = path.join(__dirname, '..', 'index.html');
 const source = fs.readFileSync(uiPath, 'utf8');
+const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const html = fs.readFileSync(htmlPath, 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, '..', 'identity-ui.css'), 'utf8');
 
@@ -21,6 +22,14 @@ assert.match(source, /\/admin\/roles/u);
 assert.match(source, /\/admin\/invitations/u);
 assert.match(source, /members\.invite/u, 'invitation controls are gated by the effective permission');
 assert.match(source, /canReadMembers/u, 'membership data is fetched only with its read permission');
+assert.match(source, /memberships\/\$\{member\.membershipId\}\/driver/u, 'administrators use the tenant-scoped membership-to-driver endpoints');
+assert.match(source, /role="dialog" aria-modal="true"/u, 'account access is exposed as a modal dialog');
+assert.match(source, /visibleControls\(\)/u, 'account dialog keeps keyboard focus within visible controls');
+assert.match(source, /driverCursor/u, 'driver linking can navigate a paginated driver list');
+assert.match(source, /app\.inert = open \|\| gated/u, 'opening the account dialog makes the background inert');
+assert.match(appSource, /let modalReturnFocus=null/u, 'operational dialogs remember their invoking control');
+assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog=/u, 'operational dialogs trap keyboard focus and handle Escape');
+assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
 assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed');
 assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');
 assert.match(source, /function expireSession/u, 'an HTTP 401 also clears the authenticated UI state');
@@ -30,6 +39,9 @@ assert.doesNotMatch(source, /localStorage\.(?:setItem|getItem)\(['"](?:session|c
 assert.match(html, /identity-ui\.css/u);
 assert.match(html, /identity-ui\.js/u);
 assert.equal(fs.existsSync(path.join(__dirname, '..', 'identity-ui.css')), true);
-assert.match(styles, /#rmIdentityRoot \[hidden\]\s*\{\s*display:\s*none\s*!important/u,
+assert.match(styles, /#rmIdentityRoot \[hidden\],[\s\S]*?display:\s*none\s*!important/u,
   'auth form and permission-gated controls honor the hidden state despite component display rules');
+assert.match(styles, /z-index:\s*2302/u, 'account dialog appears above fixed application navigation');
+assert.match(styles, /safe-area-inset-bottom/u, 'identity panel respects device safe areas');
+assert.match(styles, /prefers-reduced-motion:\s*reduce/u, 'identity panel respects reduced motion');
 console.log('identity UI and secure session client contract: OK');
