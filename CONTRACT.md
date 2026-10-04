@@ -12,6 +12,8 @@
 ## Identidade
 Todo dado compartilhável usa `id` global, `companyId`, `createdAt`, `updatedAt` e `version`.
 
+O vínculo de execução é mantido somente no servidor: cada Membership pode apontar para zero ou um `Driver` canônico da mesma Company, e cada Driver pode estar associado a no máximo uma Membership. A associação exige uma operação administrativa autorizada; não é inferida por email, perfil local, `source.app` ou `actor`. A sessão retorna o `driverId` resolvido pelo servidor; ele não é autoridade quando enviado pelo cliente.
+
 ## Entidades
 `Company`, `Driver`, `Order`, `Delivery`, `Route`, `DeliveryEvent`, `LocationPoint`, `DeliveryProof`, `Earning`.
 
@@ -58,6 +60,7 @@ O Motoboy emite `DELIVERY_ACCEPTED`, `DELIVERY_PICKED_UP`, `DELIVERY_STARTED`, `
 - `packetId` repetido com o mesmo digest devolve o mesmo resultado idempotente; conteúdo diferente com o mesmo `packetId` é conflito. `eventId` repetido com o mesmo fato é `duplicate`; reutilizado com fato diferente é conflito.
 - Revisões canônicas são controladas pelo servidor. Atualização concorrente ou baseada em revisão obsoleta retorna `conflict` com a revisão canônica. Não há last-write-wins genérico. Nenhuma operação rejeitada apaga/atualiza a cópia local pendente.
 - Pull usa cursor keyset estável; aplicar a mesma página/eventos mais de uma vez deve ser idempotente. O cliente só avança cursor e remove outbox após ACK inequívoco, preservando operações em conflito ou sem rede.
+- Pull e leituras de domínio do Motoboy são limitados ao `Driver` da sessão server-side e às Deliveries atualmente atribuídas a ele; filtros `driverId` enviados pelo cliente não ampliam acesso. Push de DeliveryEvent, LocationPoint e DeliveryProof verifica a atribuição atual sob lock da Delivery. Após reatribuição, fatos pendentes do motorista anterior são rejeitados como `DRIVER_NOT_ASSIGNED` sem apagar fatos já aceitos; o servidor envia a ele somente uma notificação mínima `CANONICAL_ASSIGNMENT_REVOKED`, que encerra a projeção local sem tombstonar nem apagar o histórico.
 
 ## Relações e payloads canônicos (schema v1 aditivo)
 

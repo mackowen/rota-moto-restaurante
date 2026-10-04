@@ -100,6 +100,13 @@ async function main() {
   assert.match(identityLifecycleMigration.up, /membership_invitation/);
   assert.match(identityLifecycleMigration.up, /GRANT DELETE ON TABLE rotamoto\.role_permissions TO rotamoto_app/);
   assert.match(identityLifecycleMigration.down, /preservar registros e futuras/);
+  const driverBindingMigration = getMigrations()[12];
+  assert.equal(driverBindingMigration.id, '0013_membership_driver_binding');
+  assert.match(driverBindingMigration.up, /memberships_driver_record_fk/);
+  assert.match(driverBindingMigration.up, /memberships_driver_unique/);
+  assert.match(driverBindingMigration.up, /sync_outbox_recipient_driver_fk/);
+  assert.match(driverBindingMigration.down, /WHERE driver_id IS NOT NULL/u);
+  assert.match(driverBindingMigration.down, /WHERE recipient_driver_id IS NOT NULL/u);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
   assert.match(migration.up, /CREATE TABLE rotamoto\.memberships/);
@@ -149,6 +156,17 @@ async function main() {
       has_table_privilege(current_user,'rotamoto.role_permissions','DELETE') AS role_permission_delete`);
     assert.deepEqual(lifecyclePrivileges.rows[0], { role_name_update: true, role_permission_delete: true },
       'runtime has only explicit role-maintenance privileges required by authorized admin use cases');
+    const driverBindingPrivileges = await runtimeClient.query(`SELECT
+      has_column_privilege(current_user,'rotamoto.memberships','driver_id','UPDATE') AS driver_link_update,
+      has_column_privilege(current_user,'rotamoto.memberships','driver_id','SELECT') AS driver_link_read,
+      has_table_privilege(current_user,'rotamoto.sync_outbox','DELETE') AS outbox_delete,
+      (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='rotamoto.memberships'::regclass) AS membership_forced_rls,
+      (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='rotamoto.sync_outbox'::regclass) AS outbox_forced_rls`);
+    assert.deepEqual(driverBindingPrivileges.rows[0], { driver_link_update: true, driver_link_read: true, outbox_delete: false,
+      membership_forced_rls: true, outbox_forced_rls: true }, 'driver binding is tenant protected and runtime has no destructive outbox rights');
+    const driverForeignKeys = await migrationClient.query(`SELECT count(*)::int AS count FROM pg_constraint
+      WHERE connamespace='rotamoto'::regnamespace AND conname IN ('memberships_driver_record_fk','sync_outbox_recipient_driver_fk')`);
+    assert.equal(driverForeignKeys.rows[0].count, 2, 'both driver foreign keys are installed');
     const ownership = await migrationClient.query(`SELECT
       (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p','S','v','m')
@@ -207,7 +225,7 @@ async function main() {
       assert.equal(cleanRls.rows[0].count, 12, 'fresh schema has all forced tenant RLS policies');
       const cleanForeignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c
         JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-    assert.equal(cleanForeignKeys.rows[0].count, 34, 'fresh schema installs all expected foreign keys');
+    assert.equal(cleanForeignKeys.rows[0].count, 36, 'fresh schema installs all expected foreign keys');
       await client.query('ROLLBACK');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
@@ -310,6 +328,16 @@ async function main() {
       (idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES ($1,$2,$3,$4,'sent')`,
     [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);
     try {
+      const bindingDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
+        env: process.env, encoding: 'utf8', timeout: 10000
+      });
+      assert.equal(bindingDown.status,0,'empty additive driver binding migration can be rolled back safely');
+      assert.match(bindingDown.stdout,/revertida 0013_membership_driver_binding/);
+      const bindingReapplied=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'up'],{env:process.env,encoding:'utf8',timeout:10000});
+      assert.equal(bindingReapplied.status,0,'driver binding migration reapplies after an empty rollback');
+      const bindingDownForLifecycle=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'down'],{env:process.env,encoding:'utf8',timeout:10000});
+      assert.equal(bindingDownForLifecycle.status,0,'empty driver binding is removed before testing the preceding migration rollback');
+      assert.match(bindingDownForLifecycle.stdout,/revertida 0013_membership_driver_binding/);
       const reversibleDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
         env: process.env, encoding: 'utf8', timeout: 10000
       });
@@ -327,8 +355,13 @@ async function main() {
       const lifecycleRollbackAgain = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
         env: process.env, encoding: 'utf8', timeout: 10000
       });
-      assert.equal(lifecycleRollbackAgain.status,0,'identity lifecycle grants roll back safely a second time');
-      assert.match(lifecycleRollbackAgain.stdout,/revertida 0012_identity_rbac_lifecycle/);
+      assert.equal(lifecycleRollbackAgain.status,0,'empty driver binding rolls back after the lifecycle migration is reapplied');
+      assert.match(lifecycleRollbackAgain.stdout,/revertida 0013_membership_driver_binding/);
+      const lifecycleRollbackSecond = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
+        env: process.env, encoding: 'utf8', timeout: 10000
+      });
+      assert.equal(lifecycleRollbackSecond.status,0,'identity lifecycle grants roll back safely a second time');
+      assert.match(lifecycleRollbackSecond.stdout,/revertida 0012_identity_rbac_lifecycle/);
       const previousGrantDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
         env: process.env, encoding: 'utf8', timeout: 10000
       });

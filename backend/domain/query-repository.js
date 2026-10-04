@@ -28,18 +28,59 @@ function cursorDecode(value) {
 }
 function cursorEncode(row) { return Buffer.from(`${row.updated_at_cursor}\n${row.record_id}`).toString('base64url'); }
 
+function appendDriverScope(where, params, entityType, driverId) {
+  if (!driverId) return;
+  params.push(driverId);
+  const p = `$${params.length}`;
+  const scopes = {
+    Driver: `d.record_id=${p}::uuid`,
+    Delivery: `d.payload->>'driverId'=${p}`,
+    Order: `EXISTS (SELECT 1 FROM rotamoto.domain_records x WHERE x.company_id=d.company_id
+      AND x.entity_type='Delivery' AND x.related_entity_type='Order' AND x.related_record_id=d.record_id AND x.payload->>'driverId'=${p})`,
+    Route: `EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(d.payload->'deliveryIds')='array'
+      THEN d.payload->'deliveryIds' ELSE '[]'::jsonb END) i(id) JOIN rotamoto.domain_records x
+      ON x.company_id=d.company_id AND x.record_id=i.id::uuid WHERE x.entity_type='Delivery' AND x.payload->>'driverId'=${p})`,
+    DeliveryEvent: `d.related_entity_type='Delivery' AND EXISTS (SELECT 1 FROM rotamoto.domain_records x
+      WHERE x.company_id=d.company_id AND x.record_id=d.related_record_id AND x.entity_type='Delivery' AND x.payload->>'driverId'=${p})`,
+    LocationPoint: `d.related_entity_type='Delivery' AND EXISTS (SELECT 1 FROM rotamoto.domain_records x
+      WHERE x.company_id=d.company_id AND x.record_id=d.related_record_id AND x.entity_type='Delivery' AND x.payload->>'driverId'=${p})`,
+    DeliveryProof: `d.related_entity_type='Delivery' AND EXISTS (SELECT 1 FROM rotamoto.domain_records x
+      WHERE x.company_id=d.company_id AND x.record_id=d.related_record_id AND x.entity_type='Delivery' AND x.payload->>'driverId'=${p})`,
+    Earning: `(d.payload->>'driverId'=${p} OR EXISTS (SELECT 1 FROM rotamoto.domain_records x
+      WHERE x.company_id=d.company_id AND x.record_id=d.related_record_id AND x.entity_type='Delivery' AND x.payload->>'driverId'=${p}))`
+  };
+  where.push(scopes[entityType]);
+}
+
+async function projectDriverRoute(client, companyId, row, driverId) {
+  if (!driverId || row.entity_type !== 'Route') return row;
+  const ids = Array.isArray(row.payload.deliveryIds) ? row.payload.deliveryIds : [];
+  const validIds = ids.filter(id => UUID.test(id));
+  const allowed = validIds.length ? await client.query(`SELECT record_id::text FROM rotamoto.domain_records
+    WHERE company_id=$1 AND entity_type='Delivery' AND payload->>'driverId'=$2 AND record_id=ANY($3::uuid[])`,
+  [companyId, driverId, validIds]) : { rows: [] };
+  const visible = new Set(allowed.rows.map(item => item.record_id));
+  const payload = { ...row.payload, deliveryIds: validIds.filter(id => visible.has(id)) };
+  delete payload.stops;
+  delete payload.driverId;
+  return { ...row, payload };
+}
+
 function createDomainQueryRepository() {
-  async function get(client, { companyId, entityType, id }) {
+  async function get(client, { companyId, entityType, id, driverId = null }) {
     if (!Object.values(COLLECTIONS).includes(entityType) || !UUID.test(id)) invalid('Identificador inválido.');
+    const params = [companyId, entityType, id.toLowerCase()];
+    const where = ['company_id=$1', 'entity_type=$2', 'record_id=$3::uuid', 'deleted_at IS NULL'];
+    appendDriverScope(where, params, entityType, driverId);
     const result = await client.query(`SELECT record_id::text,payload,version,created_at,updated_at,deleted_at
-      FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type=$2 AND record_id=$3::uuid
-        AND deleted_at IS NULL`, [companyId, entityType, id.toLowerCase()]);
+      FROM rotamoto.domain_records d WHERE ${where.join(' AND ')}`, params);
     if (!result.rowCount) { const error = new Error('Recurso não encontrado.'); error.code = 'NOT_FOUND'; throw error; }
     const row = result.rows[0];
-    return { id: row.record_id, record: row.payload, version: row.version,
+    const projected = await projectDriverRoute(client, companyId, { ...row, entity_type: entityType }, driverId);
+    return { id: row.record_id, record: projected.payload, version: row.version,
       createdAt: row.created_at, updatedAt: row.updated_at, deletedAt: row.deleted_at };
   }
-  async function list(client, { companyId, entityType, limit, cursor, filters, includeDeleted }) {
+  async function list(client, { companyId, entityType, limit, cursor, filters, includeDeleted, driverId = null }) {
     if (!Object.values(COLLECTIONS).includes(entityType)) invalid('Entidade não consultável.');
     const params = [companyId, entityType];
     const where = ['company_id=$1', 'entity_type=$2'];
@@ -67,16 +108,17 @@ function createDomainQueryRepository() {
         where.push(`payload->>'status'=$${params.length}`);
       }
     }
+    appendDriverScope(where, params, entityType, driverId);
     params.push(limit + 1);
     const result = await client.query(`SELECT record_id::text,payload,version,created_at,updated_at,deleted_at,
         to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at_cursor
-      FROM rotamoto.domain_records WHERE ${where.join(' AND ')}
+      FROM rotamoto.domain_records d WHERE ${where.join(' AND ')}
       ORDER BY updated_at DESC,record_id ASC LIMIT $${params.length}`, params);
     const hasMore = result.rowCount > limit;
     const rows = result.rows.slice(0, limit);
     return {
-      records: rows.map(row => ({ id: row.record_id, record: row.payload, version: row.version,
-        createdAt: row.created_at, updatedAt: row.updated_at, deletedAt: row.deleted_at })),
+      records: await Promise.all(rows.map(async row => ({ id: row.record_id, record: (await projectDriverRoute(client, companyId, { ...row, entity_type: entityType }, driverId)).payload, version: row.version,
+        createdAt: row.created_at, updatedAt: row.updated_at, deletedAt: row.deleted_at }))),
       nextCursor: hasMore && rows.length ? cursorEncode(rows.at(-1)) : null,
       hasMore
     };
@@ -84,4 +126,4 @@ function createDomainQueryRepository() {
   return Object.freeze({ get, list });
 }
 
-module.exports = { COLLECTIONS, FILTERS, cursorDecode, cursorEncode, createDomainQueryRepository };
+module.exports = { COLLECTIONS, FILTERS, cursorDecode, cursorEncode, appendDriverScope, createDomainQueryRepository };

@@ -56,12 +56,13 @@ function createDomainQueryHttpHandler({ identityService, queryService, rateLimit
       return true;
     } catch (error) {
       errorCode = /^[A-Z][A-Z0-9_]{1,63}$/u.test(error?.code || '') ? error.code : 'INTERNAL_ERROR';
-      const statusByCode = { INVALID_INPUT: 400, UNAUTHENTICATED: 401, FORBIDDEN: 403,
+      const statusByCode = { INVALID_INPUT: 400, UNAUTHENTICATED: 401, FORBIDDEN: 403, DRIVER_LINK_REQUIRED: 403,
         NOT_FOUND: 404, RATE_LIMITED: 429, DEPENDENCY_UNAVAILABLE: 503 };
       status = statusByCode[errorCode] || 500;
       const code = status === 500 ? 'INTERNAL_ERROR' : errorCode;
       req.apiErrorCode = code;
       const message = status === 400 ? error.message : ({ UNAUTHENTICATED: 'Sessão inválida ou expirada.',
+        DRIVER_LINK_REQUIRED: 'A associação desta conta a um motorista precisa ser configurada pela empresa.',
         FORBIDDEN: 'Operação não autorizada.', NOT_FOUND: 'Recurso não encontrado.', RATE_LIMITED: 'Limite de solicitações excedido.',
         DEPENDENCY_UNAVAILABLE: 'Dependência indisponível.', INTERNAL_ERROR: 'Falha interna ao consultar o domínio.' })[code];
       const body = JSON.stringify({ error: { code, message }, requestId });

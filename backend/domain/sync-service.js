@@ -22,6 +22,7 @@ const TRANSITIONS = Object.freeze({
 const DELIVERY_RESTAURANT_FIELDS = new Set(['driverId','priority','assignedAt','estimatedDistanceM','status']);
 const DELIVERY_MOTOBOY_FIELDS = new Set(['status','acceptedAt','pickedUpAt','arrivedAt','completedAt','actualDistanceM']);
 const DELIVERY_META_FIELDS = new Set(['id','companyId','orderId','createdAt','updatedAt','version','baseVersion','sync','deleted','deletedAt']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 function operationAuthorityError(appKey, entityType, record) {
   if (entityType === 'Company') return new SyncError('FORBIDDEN', 'Company é provisionada pelo serviço de identidade.');
@@ -117,6 +118,7 @@ function validatePacket(packet) {
 function createSyncService({ clock = () => new Date(), mediaStorage = createMediaStorage() } = {}) {
   async function registerInstallation(client, principal, appKey, deviceId) {
     if (!['restaurante', 'motoboy'].includes(appKey)) invalid('Aplicativo de instalação inválido.');
+    requireDriverInstallation({ app_key: appKey }, principal);
     const localDeviceId = boundedText(deviceId, 'deviceId', 128);
     const result = await client.query(`INSERT INTO rotamoto.sync_installations
       (id,company_id,app_key,local_device_id,registered_by_user_id) VALUES($1,$2,$3,$4,$5)
@@ -138,6 +140,23 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
     if (result.rowCount > 1) throw new SyncError('INSTALLATION_AMBIGUOUS', 'deviceId está vinculado a mais de um aplicativo.');
     await client.query('UPDATE rotamoto.sync_installations SET last_seen_at=greatest(last_seen_at,now()) WHERE company_id=$1 AND id=$2', [principal.company_id, result.rows[0].id]);
     return result.rows[0];
+  }
+
+  function requireDriverInstallation(installation, principal) {
+    if (installation.app_key === 'motoboy' && !principal?.driver_id) {
+      throw new SyncError('DRIVER_LINK_REQUIRED', 'A associação desta conta a um motorista precisa ser configurada pela empresa.');
+    }
+  }
+
+  async function assertAssignedDriver(client, principal, appKey, deliveryId) {
+    if (appKey !== 'motoboy') return;
+    if (!principal?.driver_id) throw new SyncError('DRIVER_LINK_REQUIRED', 'A associação desta conta a um motorista precisa ser configurada pela empresa.');
+    const delivery = await client.query(`SELECT payload->>'driverId' AS driver_id,deleted_at
+      FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Delivery' FOR UPDATE`,
+    [principal.company_id, deliveryId]);
+    if (!delivery.rowCount || delivery.rows[0].deleted_at || delivery.rows[0].driver_id !== principal.driver_id) {
+      throw new SyncError('DRIVER_NOT_ASSIGNED', 'A entrega não está atribuída ao motorista desta sessão.');
+    }
   }
 
   async function resolveLocal(client, companyId, appKey, installationId, entityType, localId, { create = false } = {}) {
@@ -198,6 +217,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
     const { packetId, deviceId, data, events } = validated;
     const installation = await findInstallation(client, principal, deviceId);
     const appKey = installation.app_key;
+    requireDriverInstallation(installation, principal);
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 402117))', [`${companyId}:${packetId}`]);
     const prior = await client.query(`SELECT payload_digest,result FROM rotamoto.sync_inbox
       WHERE company_id=$1 AND packet_id=$2`, [companyId, packetId]);
@@ -210,6 +230,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
     }
     const installationId = installation.id;
     const pending = [];
+    const assignmentRevocations = [];
     const aliases = [];
     const operationResults = [];
     const outcomes = { received: 0, updated: 0, ignored: 0, deleted: 0 };
@@ -229,6 +250,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       }
       await client.query('SAVEPOINT sync_operation');
       const pendingBefore = pending.length;
+      const revocationsBefore = assignmentRevocations.length;
       const aliasesBefore = aliases.length;
       const resultBefore = operationResults.length;
       const countsBefore = { ...outcomes };
@@ -283,6 +305,14 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           record.components.some(item=>!item||typeof item.code!=='string'||!item.code.trim()||item.code.length>4000||!Number.isSafeInteger(item.amountMinor)||Math.abs(item.amountMinor)>9000000000000000)))invalid('Earning.components inválido.');
         if(Object.hasOwn(record,'ruleVersion')&&(typeof record.ruleVersion!=='string'||record.ruleVersion.length>4000))invalid('Earning.ruleVersion inválida.');
       }
+      if (entityType === 'Delivery' && canonical.driverId) {
+        const driverId = await resolveReferencedAlias(client, companyId, 'Driver', canonical.driverId);
+        if (!driverId) throw new SyncError('UNRESOLVED_REFERENCE', 'Delivery.driverId ainda não possui ID canônico.');
+        const driver = await client.query(`SELECT 1 FROM rotamoto.domain_records
+          WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Driver' AND deleted_at IS NULL FOR UPDATE`, [companyId, driverId]);
+        if (!driver.rowCount) throw new SyncError('UNRESOLVED_REFERENCE', 'Delivery.driverId não referencia um motorista ativo desta empresa.');
+        canonical.driverId = driverId;
+      }
       if(entityType==='DeliveryProof'){
         const media=record.media;
         if(media!==undefined){
@@ -322,6 +352,9 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         relatedId = await resolveReferencedAlias(client, companyId, relatedType, targetLocalId);
         if (!relatedId) throw new SyncError('UNRESOLVED_REFERENCE', `Referência ${relatedType} ainda não possui ID canônico.`);
         canonical[referenceField] = relatedId;
+      }
+      if (['DeliveryEvent','LocationPoint','DeliveryProof'].includes(entityType) && relatedId) {
+        await assertAssignedDriver(client, principal, appKey, relatedId);
       }
       if(entityType==='Earning'&&canonical.driverId){
         const driverId=await resolveReferencedAlias(client,companyId,'Driver',canonical.driverId);
@@ -369,6 +402,13 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       canonical.version = 1;
       if (existing.rowCount) {
         const old = existing.rows[0];
+        if (entityType === 'Driver' && appKey === 'restaurante' && canonical.deletedAt) {
+          const linked = await client.query(`SELECT 1 FROM rotamoto.memberships WHERE company_id=$1 AND driver_id=$2::uuid
+            UNION ALL SELECT 1 FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='Delivery'
+              AND payload->>'driverId'=$2 AND deleted_at IS NULL
+              AND payload->>'status' IN ('CREATED','ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY') LIMIT 1`, [companyId, canonicalId]);
+          if (linked.rowCount) throw new SyncError('DRIVER_LINKED', 'Desvincule a identidade e reatribua entregas ativas antes de remover o motorista.');
+        }
         canonicalVersion = Number(old.version);
         if (entityType === 'Delivery' && appKey === 'motoboy' && canonical.status === 'CANCELLED') {
           throw new SyncError('FORBIDDEN_FIELD', 'Cancelamento administrativo de Delivery pertence ao Restaurante.');
@@ -407,6 +447,11 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           throw new SyncError('REVISION_CONFLICT', 'A revisão local não corresponde à revisão canônica atual.');
         }
         canonicalVersion = Number(old.version) + 1;
+        if (entityType === 'Delivery' && appKey === 'restaurante' && old.payload.driverId &&
+            old.payload.driverId !== canonical.driverId) {
+          assignmentRevocations.push({ deliveryId: canonicalId, driverId: old.payload.driverId,
+            version: canonicalVersion, updatedAt: now.toISOString() });
+        }
         // v1 sends complete records today, but merging absent fields prevents a
         // partial device projection from erasing fields owned by another client.
         canonical = { ...old.payload, ...canonical,
@@ -500,11 +545,12 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         if (/^(08|57P)/u.test(String(error?.code || ''))) throw error;
         await client.query('ROLLBACK TO SAVEPOINT sync_operation');
         pending.length = pendingBefore;
+        assignmentRevocations.length = revocationsBefore;
         aliases.length = aliasesBefore;
         operationResults.length = resultBefore;
         Object.assign(outcomes, countsBefore);
         if (seenKey) seen.delete(seenKey);
-        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','INVALID_TRANSITION','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT','ROUTE_DELIVERY_ALREADY_ACTIVE']);
+        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','INVALID_TRANSITION','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT','ROUTE_DELIVERY_ALREADY_ACTIVE','DRIVER_LINKED']);
         operationResults.push({ operation: item.operationIndex, entity: entityType, localId: localId || null,
           ...(ackCanonicalId ? { canonicalId: ackCanonicalId } : {}), ...(ackVersion ? { canonicalVersion: ackVersion } : {}),
           status: conflictCodes.has(error.code) ? 'conflict' : 'rejected', error: { code: error.code || 'OPERATION_REJECTED' } });
@@ -523,6 +569,15 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       await client.query(`INSERT INTO rotamoto.sync_outbox(company_id,event_id,app_key,installation_id,payload)
         VALUES($1,$2,$3,$4,$5::jsonb)`, [companyId, eventId, appKey, installationId, JSON.stringify(outboxEvent)]);
     }
+    for (const revocation of assignmentRevocations) {
+      const eventId = uuidV7(now.getTime());
+      const event = { eventId, type: 'CANONICAL_ASSIGNMENT_REVOKED', entity: 'Delivery',
+        entityId: revocation.deliveryId, occurredAt: now.toISOString(), actor: { type: 'user', id: userId },
+        payload: { id: revocation.deliveryId, companyId, version: revocation.version, updatedAt: revocation.updatedAt }, protocolVersion: 1 };
+      await client.query(`INSERT INTO rotamoto.sync_outbox(company_id,event_id,app_key,installation_id,recipient_driver_id,payload)
+        VALUES($1,$2,'restaurante',$3,$4,$5::jsonb)`,
+      [companyId, eventId, installationId, revocation.driverId, JSON.stringify(event)]);
+    }
 
     for (const [index, tombstone] of (data.tombstones || []).entries()) {
       await client.query('SAVEPOINT sync_tombstone');
@@ -535,6 +590,16 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         if (!tombstone || typeof tombstone !== 'object' || Array.isArray(tombstone)) invalid('Tombstone inválido.');
         if (typeof tombstone.store !== 'string' || !Object.hasOwn(TOMBSTONE_TYPES, tombstone.store)) invalid('Tipo de tombstone não suportado pelo contrato v1.');
         entityType = TOMBSTONE_TYPES[tombstone.store];
+        if (entityType === 'Driver' && appKey === 'restaurante') {
+          const resolvedDriver = await resolveReferencedAlias(client, companyId, 'Driver', tombstone.id);
+          if (resolvedDriver) {
+            const linked = await client.query(`SELECT 1 FROM rotamoto.memberships WHERE company_id=$1 AND driver_id=$2::uuid
+              UNION ALL SELECT 1 FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='Delivery'
+                AND payload->>'driverId'=$2 AND deleted_at IS NULL
+                AND payload->>'status' IN ('CREATED','ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY') LIMIT 1`, [companyId, resolvedDriver]);
+            if (linked.rowCount) throw new SyncError('DRIVER_LINKED', 'Desvincule a identidade e reatribua entregas ativas antes de remover o motorista.');
+          }
+        }
         localId = boundedText(tombstone.id, 'Tombstone.id');
         if (entityType === 'DeliveryEvent') throw new SyncError('IMMUTABLE_EVENT', 'Eventos são fatos e não aceitam tombstone.');
         const ownerError = operationAuthorityError(appKey, entityType, tombstone);
@@ -581,7 +646,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         if (/^(08|57P)/u.test(String(error?.code || ''))) throw error;
         await client.query('ROLLBACK TO SAVEPOINT sync_tombstone');
         operationResults.length = resultBefore;
-        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT']);
+        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT','DRIVER_LINKED']);
         operationResults.push({ operation: `tombstones:${index}`, ...(entityType ? { entity: entityType } : {}), localId,
           ...(canonicalId ? { canonicalId } : {}), ...(canonicalVersion ? { canonicalVersion } : {}),
           status: conflictCodes.has(error.code) ? 'conflict' : 'rejected', error: { code: error.code || 'OPERATION_REJECTED' } });
@@ -604,6 +669,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
   async function pull(client, principal, { cursor = null, limit = 100, deviceId } = {}) {
     const responseDeviceId = boundedText(deviceId, 'deviceId', 128);
     const installation = await findInstallation(client, principal, responseDeviceId);
+    requireDriverInstallation(installation, principal);
     const size = Number(limit);
     if (!Number.isSafeInteger(size) || size < 1 || size > 100) invalid('limit deve estar entre 1 e 100.');
     let afterAt = new Date(0).toISOString();
@@ -618,13 +684,51 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       // truncates the cursor and can replay rows created in the same millisecond.
       afterAt = decoded[0]; afterId = decoded[1];
     }
-    const result = await client.query(`SELECT event_id::text,payload,created_at,
-        to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_cursor
-      FROM rotamoto.sync_outbox WHERE company_id=$1 AND (created_at,event_id)>($2::timestamptz,$3::uuid)
-      ORDER BY created_at,event_id LIMIT $4`, [principal.company_id, afterAt, afterId, size + 1]);
+    const scope = installation.app_key === 'restaurante' ? '' : `AND (
+      o.recipient_driver_id=$4::uuid OR (o.recipient_driver_id IS NULL AND EXISTS (
+        SELECT 1 FROM rotamoto.domain_records d
+        WHERE d.company_id=o.company_id AND d.record_id::text=o.payload->>'entityId' AND d.entity_type=o.payload->>'entity' AND (
+          (d.entity_type='Delivery' AND d.payload->>'driverId'=$4::text) OR
+          (d.entity_type='Driver' AND d.record_id=$4::uuid) OR
+          (d.entity_type='Order' AND EXISTS (SELECT 1 FROM rotamoto.domain_records x
+            WHERE x.company_id=d.company_id AND x.entity_type='Delivery' AND x.related_entity_type='Order'
+              AND x.related_record_id=d.record_id AND x.payload->>'driverId'=$4::text)) OR
+          (d.entity_type IN ('DeliveryEvent','LocationPoint','DeliveryProof') AND EXISTS
+            (SELECT 1 FROM rotamoto.domain_records x WHERE x.company_id=d.company_id AND x.entity_type='Delivery'
+              AND x.record_id=d.related_record_id AND x.payload->>'driverId'=$4::text)) OR
+          (d.entity_type='Earning' AND (d.payload->>'driverId'=$4::text OR EXISTS
+            (SELECT 1 FROM rotamoto.domain_records x WHERE x.company_id=d.company_id AND x.entity_type='Delivery'
+              AND x.record_id=d.related_record_id AND x.payload->>'driverId'=$4::text))) OR
+          (d.entity_type='Route' AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(
+              CASE WHEN jsonb_typeof(d.payload->'deliveryIds')='array' THEN d.payload->'deliveryIds' ELSE '[]'::jsonb END) ids(id)
+            JOIN rotamoto.domain_records x ON x.company_id=d.company_id AND x.record_id=ids.id::uuid
+            WHERE x.entity_type='Delivery' AND x.payload->>'driverId'=$4::text))
+        ))))`;
+    const params = [principal.company_id, afterAt, afterId];
+    if (installation.app_key === 'motoboy') params.push(principal.driver_id);
+    params.push(size + 1);
+    const pullSql = `SELECT o.event_id::text,o.payload,o.created_at,
+        to_char(o.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_cursor
+      FROM rotamoto.sync_outbox o WHERE o.company_id=$1 AND (o.created_at,o.event_id)>($2::timestamptz,$3::uuid)
+        ${scope} ORDER BY o.created_at,o.event_id LIMIT $${params.length}`;
+    const result = await client.query(pullSql, params);
     const hasMore = result.rowCount > size;
     const rows = result.rows.slice(0, size);
-    const events = rows.map(row => row.payload);
+    const events = [];
+    for (const row of rows) {
+      const event = row.payload;
+      if (installation.app_key === 'motoboy' && event.entity === 'Route' && Array.isArray(event.payload?.deliveryIds)) {
+        const localIds = event.payload.deliveryIds.filter(id => UUID.test(id));
+        const allowed = localIds.length ? await client.query(`SELECT record_id::text FROM rotamoto.domain_records
+          WHERE company_id=$1 AND entity_type='Delivery' AND payload->>'driverId'=$2 AND record_id=ANY($3::uuid[])`,
+        [principal.company_id, principal.driver_id, localIds]) : { rows: [] };
+        const visible = new Set(allowed.rows.map(item => item.record_id));
+        const payload = { ...event.payload, deliveryIds: event.payload.deliveryIds.filter(id => visible.has(id)) };
+        delete payload.stops;
+        delete payload.driverId;
+        events.push({ ...event, payload });
+      } else events.push(event);
+    }
     return { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1,
       packetId: `pkt_${uuidV7(clock().getTime())}`, companyId: principal.company_id,
       deviceId: responseDeviceId, createdAt: clock().toISOString(), ackFor: null, events,

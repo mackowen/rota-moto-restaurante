@@ -153,6 +153,49 @@ function createAdminRepository() {
       { roleChanged: Boolean(input.roleId), status: nextStatus });
     return { membershipId, roleId: nextRoleId, status: nextStatus };
   }
+  async function associateMembershipDriver(client, principal, membershipId, driverId) {
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))', [principal.company_id]);
+    const member = await client.query(`SELECT m.id::text,m.driver_id::text,m.status,u.disabled_at,u.email_verified_at,
+        EXISTS (SELECT 1 FROM rotamoto.role_permissions rp WHERE rp.company_id=m.company_id AND rp.role_id=m.role_id
+          AND rp.catalog_version=1 AND rp.permission_key='sync.pull') AND
+        EXISTS (SELECT 1 FROM rotamoto.role_permissions rp WHERE rp.company_id=m.company_id AND rp.role_id=m.role_id
+          AND rp.catalog_version=1 AND rp.permission_key='sync.push') AS sync_permissions
+      FROM rotamoto.memberships m JOIN rotamoto.users u ON u.id=m.user_id
+      WHERE m.company_id=$1 AND m.id=$2 FOR UPDATE OF m`, [principal.company_id, membershipId]);
+    if (!member.rowCount) { const error = new Error('Associação não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
+    const row = member.rows[0];
+    if (row.status !== 'active' || row.disabled_at || !row.email_verified_at || !row.sync_permissions) {
+      const error = new Error('A associação precisa estar ativa e autorizada para sincronização Motoboy.'); error.code = 'DRIVER_MEMBERSHIP_INELIGIBLE'; throw error;
+    }
+    const driver = await client.query(`SELECT 1 FROM rotamoto.domain_records
+      WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Driver' AND deleted_at IS NULL FOR UPDATE`,
+    [principal.company_id, driverId]);
+    if (!driver.rowCount) { const error = new Error('Motorista canônico não encontrado.'); error.code = 'DRIVER_NOT_FOUND'; throw error; }
+    if (row.driver_id === driverId) return { membershipId, driverId, changed: false };
+    if (row.driver_id) { const error = new Error('Remova o vínculo atual antes de associar outro motorista.'); error.code = 'MEMBERSHIP_DRIVER_CONFLICT'; throw error; }
+    try {
+      await client.query(`UPDATE rotamoto.memberships SET driver_id=$3,updated_at=now()
+        WHERE company_id=$1 AND id=$2`, [principal.company_id, membershipId, driverId]);
+    } catch (cause) {
+      if (cause.code === '23505') { const error = new Error('Este motorista já está vinculado a outra associação.'); error.code = 'DRIVER_ALREADY_LINKED'; throw error; }
+      if (cause.code === '23503') { const error = new Error('Motorista canônico não encontrado nesta empresa.'); error.code = 'DRIVER_NOT_FOUND'; throw error; }
+      throw cause;
+    }
+    await writeAudit(client, principal, 'membership.driver.linked', 'membership', membershipId, { driverId });
+    return { membershipId, driverId, changed: true };
+  }
+  async function disassociateMembershipDriver(client, principal, membershipId) {
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))', [principal.company_id]);
+    const member = await client.query(`SELECT id::text,driver_id::text FROM rotamoto.memberships
+      WHERE company_id=$1 AND id=$2 FOR UPDATE`, [principal.company_id, membershipId]);
+    if (!member.rowCount) { const error = new Error('Associação não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
+    const driverId = member.rows[0].driver_id;
+    if (!driverId) return { membershipId, driverId: null, changed: false };
+    await client.query('UPDATE rotamoto.memberships SET driver_id=NULL,updated_at=now() WHERE company_id=$1 AND id=$2',
+      [principal.company_id, membershipId]);
+    await writeAudit(client, principal, 'membership.driver.unlinked', 'membership', membershipId, { driverId });
+    return { membershipId, driverId: null, previousDriverId: driverId, changed: true };
+  }
   async function company(client, companyId) {
     const result = await client.query(`SELECT id::text,name,status,created_at,updated_at
       FROM rotamoto.companies WHERE id=$1`, [companyId]);
@@ -169,7 +212,7 @@ function createAdminRepository() {
       keyset = `AND (m.created_at < $2::timestamptz OR (m.created_at=$2::timestamptz AND m.id > $3::uuid))`;
     }
     params.push(limit + 1);
-    const result = await client.query(`SELECT m.id::text,m.user_id::text,u.email,u.email_verified_at IS NOT NULL AS email_verified,
+    const result = await client.query(`SELECT m.id::text,m.user_id::text,m.driver_id::text,u.email,u.email_verified_at IS NOT NULL AS email_verified,
         u.disabled_at,m.status,m.role_id::text,r.role_key,r.display_name,m.created_at,m.activated_at,
         to_char(m.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_cursor,
         coalesce((SELECT jsonb_agg(rp.permission_key ORDER BY rp.permission_key)
@@ -181,7 +224,7 @@ function createAdminRepository() {
     const rows = result.rows.slice(0, limit);
     return { members: rows.map(row => ({ membershipId: row.id, userId: row.user_id, email: row.email,
       emailVerified: row.email_verified, disabled: Boolean(row.disabled_at), status: row.status, roleId: row.role_id,
-      roleKey: row.role_key, roleName: row.display_name, permissions: row.permissions,
+      roleKey: row.role_key, roleName: row.display_name, permissions: row.permissions, driverId: row.driver_id,
       createdAt: row.created_at, activatedAt: row.activated_at })),
       nextCursor: hasMore && rows.length ? encodeCursor(rows.at(-1)) : null, hasMore };
   }
@@ -205,7 +248,8 @@ function createAdminRepository() {
         linkStatus: row.link_status, confirmedAt: row.confirmed_at },
       createdAt: row.created_at, updatedAt: row.updated_at })) };
   }
-  return Object.freeze({ company, memberships, roles, integrations, permissions, createRole, updateRole, updateMembership });
+  return Object.freeze({ company, memberships, roles, integrations, permissions, createRole, updateRole, updateMembership,
+    associateMembershipDriver, disassociateMembershipDriver });
 }
 
 module.exports = { createAdminRepository, decodeCursor, encodeCursor };

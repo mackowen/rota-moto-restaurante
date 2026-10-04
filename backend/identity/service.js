@@ -583,7 +583,8 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
       WHERE s.token_digest=$1 AND s.user_id=u.id AND s.active_company_id=m.company_id AND m.user_id=s.user_id
         AND m.company_id=c.id AND s.revoked_at IS NULL AND s.idle_expires_at>$2 AND s.absolute_expires_at>$2
         AND u.disabled_at IS NULL AND m.status='active' AND c.status='active'
-      RETURNING s.id::text AS session_id,s.user_id::text,s.active_company_id::text AS company_id,m.role_id::text,s.mfa_verified_at`, [digest, now]);
+      RETURNING s.id::text AS session_id,s.user_id::text,s.active_company_id::text AS company_id,m.role_id::text,
+        m.driver_id::text AS driver_id,s.mfa_verified_at`, [digest, now]);
     return result.rowCount ? { ...result.rows[0], authenticated: true } : null;
   }
 

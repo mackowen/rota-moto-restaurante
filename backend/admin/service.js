@@ -27,6 +27,12 @@ function createAdminService({ repository }) {
     updateMembership(client, principal, membershipId, input) {
       return repository.updateMembership(client, principal, membershipId, input);
     },
+    associateMembershipDriver(client, principal, membershipId, driverId) {
+      return repository.associateMembershipDriver(client, principal, membershipId, driverId);
+    },
+    disassociateMembershipDriver(client, principal, membershipId) {
+      return repository.disassociateMembershipDriver(client, principal, membershipId);
+    },
     integrations: (client, principal) => repository.integrations(client, principal.company_id)
   });
 }

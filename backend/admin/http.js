@@ -43,6 +43,11 @@ function validateMembership(body) {
       body.status !== undefined && !['active', 'suspended', 'revoked'].includes(body.status)) throw error('INVALID_INPUT');
   return body;
 }
+function validateDriverLink(body) {
+  exact(body, ['driverId']);
+  if (typeof body.driverId !== 'string' || !UUID.test(body.driverId)) throw error('INVALID_INPUT');
+  return body.driverId.toLowerCase();
+}
 
 function createAdminHttpHandler({ identityService, adminService, rateLimiter = createRateLimiter(), logger = () => {}, allowedOrigin }) {
   if (!identityService || !adminService) throw new TypeError('Serviços de identidade e administração obrigatórios.');
@@ -57,6 +62,9 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
         : ROUTES[url.pathname]; let match;
       if (!config && (match = /^\/api\/admin\/roles\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateRole', id: match[1] };
       if (!config && (match = /^\/api\/admin\/memberships\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateMembership', id: match[1] };
+      if (!config && (match = /^\/api\/admin\/memberships\/([0-9a-f-]{36})\/driver$/iu.exec(url.pathname)))
+        config = { method: req.method === 'DELETE' ? 'DELETE' : 'PUT', permission: 'company.manage',
+          operation: req.method === 'DELETE' ? 'disassociateMembershipDriver' : 'associateMembershipDriver', id: match[1] };
       if (!config) throw error('NOT_FOUND');
       if (config.id && !UUID.test(config.id)) throw error('INVALID_INPUT');
       if (req.method !== config.method) { status = 405; send(res, status, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' }, requestId }, { Allow: config.method }); return true; }
@@ -73,7 +81,7 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
         const allowList = Array.isArray(allowedOrigin) ? allowedOrigin : [allowedOrigin];
         if (origin && !allowList.includes(origin) && origin.toLowerCase() !== `${req.socket.encrypted ? 'https' : 'http'}://${String(req.headers.host || '').toLowerCase()}`) throw error('ORIGIN_INVALID');
       }
-      const body = req.method === 'GET' ? null : await readBody(req);
+      const body = req.method === 'GET' || req.method === 'DELETE' ? null : await readBody(req);
       const result = await identityService.withAuthenticatedTenant(token, async (client, principal) => {
         if (req.method !== 'GET') {
           const csrf = req.headers['x-csrf-token'];
@@ -88,6 +96,8 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
           case 'createRole': return adminService.createRole(client, principal, validateRole(body, true));
           case 'updateRole': return adminService.updateRole(client, principal, config.id, validateRole(body, false));
           case 'updateMembership': return adminService.updateMembership(client, principal, config.id, validateMembership(body));
+          case 'associateMembershipDriver': return adminService.associateMembershipDriver(client, principal, config.id, validateDriverLink(body));
+          case 'disassociateMembershipDriver': return adminService.disassociateMembershipDriver(client, principal, config.id);
           default: throw error('NOT_FOUND');
         }
       }, config.permission);
@@ -98,10 +108,15 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
       const map = { INVALID_INPUT: 400, INVALID_STATE_TRANSITION: 409, LAST_OWNER_REQUIRED: 409, CONFLICT: 409,
         REVISION_CONFLICT: 409, UNAUTHENTICATED: 401, FORBIDDEN: 403, MFA_REQUIRED: 403,
         CSRF_INVALID: 403, ORIGIN_INVALID: 403, NOT_FOUND: 404, RATE_LIMITED: 429,
-        PAYLOAD_TOO_LARGE: 413, UNSUPPORTED_MEDIA_TYPE: 415, DEPENDENCY_UNAVAILABLE: 503 };
+        PAYLOAD_TOO_LARGE: 413, UNSUPPORTED_MEDIA_TYPE: 415, DEPENDENCY_UNAVAILABLE: 503,
+        DRIVER_MEMBERSHIP_INELIGIBLE: 409, DRIVER_NOT_FOUND: 404, DRIVER_ALREADY_LINKED: 409, MEMBERSHIP_DRIVER_CONFLICT: 409 };
       status = map[errorCode] || 500;
       const messages = { INVALID_INPUT: 'Dados inválidos.', INVALID_STATE_TRANSITION: 'Transição de conta inválida.',
         LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um owner ativo.', UNAUTHENTICATED: 'Sessão inválida ou expirada.',
+        DRIVER_MEMBERSHIP_INELIGIBLE: 'A associação não está apta para sincronização Motoboy.',
+        DRIVER_NOT_FOUND: 'Motorista canônico não encontrado nesta empresa.',
+        DRIVER_ALREADY_LINKED: 'Este motorista já está vinculado a outra associação.',
+        MEMBERSHIP_DRIVER_CONFLICT: 'Remova o vínculo atual antes de associar outro motorista.',
         FORBIDDEN: 'Operação não autorizada.', MFA_REQUIRED: 'Esta operação exige MFA verificado.',
         CSRF_INVALID: 'Validação da solicitação inválida.', ORIGIN_INVALID: 'Origem não permitida.',
         CONFLICT: 'Conflito com o estado atual do recurso.', REVISION_CONFLICT: 'O recurso foi atualizado por outra operação.',
@@ -115,4 +130,4 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
   };
 }
 
-module.exports = { ROUTES, createAdminHttpHandler };
+module.exports = { ROUTES, createAdminHttpHandler, validateDriverLink };

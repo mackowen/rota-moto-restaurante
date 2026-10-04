@@ -27,7 +27,7 @@ Este documento descreve a API local do backend do Restaurante. O servidor deve p
 | Método/path | Auth/permissão | Entrada | Saída/efeito | Idempotência/erros |
 |---|---|---|---|---|
 | `POST /api/identity/login` | Anônima; rate limit | `email,password,companyId`; `mfaCode` quando solicitado | Define cookie de sessão; retorna `userId,companyId,csrfToken` | Não enumera conta; 401/400/429. Roles com permissão administrativa e contas marcadas exigem provider MFA; sem provider, falha fechado. |
-| `GET /api/identity/session` | Cookie de sessão | — | usuário, empresa ativa, permissões, indicador `mfaVerified` e CSRF renovado | 401 se sessão inválida/expirada. |
+| `GET /api/identity/session` | Cookie de sessão | — | usuário, empresa ativa, permissões, `driverId` canônico associado (ou `null`), indicador `mfaVerified` e CSRF renovado | 401 se sessão inválida/expirada. Motoboy sem `driverId` permanece sem acesso às operações Motoboy. |
 | `POST /api/identity/logout` | Sessão + CSRF | — | Revoga a sessão e limpa cookie; 204 | Repetição permanece segura. |
 | `POST /api/identity/tenant` | Sessão + CSRF | `companyId` como seleção | Atualiza empresa ativa somente após validar membership ativo; retorna `activeCompanyId` | A entrada seleciona; nunca concede acesso. Tenant administrativo também exige que a sessão já tenha MFA verificado. |
 | `POST /api/identity/recovery` | Anônima; rate limit | `email` | 202 `{accepted:true}` | Resposta não enumera usuários. Entrega depende de provider configurado. |
@@ -48,6 +48,8 @@ Este documento descreve a API local do backend do Restaurante. O servidor deve p
 | `GET /api/sync/pull?deviceId=…&limit=…&cursor=…` | Sessão + `sync.pull` | Instalação registrada; cursor keyset | Eventos/snapshots do tenant e próximo cursor | Retry seguro; instalação/tenant validados server-side. |
 
 Operações de negócio autorizadas devem continuar no fluxo outbox/inbox/reconciliação do cliente. O servidor deriva tenant e actor da sessão/instalação registrada; `source.app` não é identidade confiável.
+
+Para `motoboy`, instalação, push, pull e leituras de domínio exigem Driver resolvido pela membership ativa da sessão. Pull limita Delivery ao Driver associado e Order/eventos/localização/provas/earnings/rotas ao contexto das entregas atribuídas. Push de `DeliveryEvent`, `LocationPoint` e `DeliveryProof` valida atribuição atual sob lock da Delivery; reatribuição gera `CANONICAL_ASSIGNMENT_REVOKED` direcionado ao Driver anterior, sem apagar fatos aceitos. Operações offline continuam locais e podem receber `DRIVER_NOT_ASSIGNED` quando sincronizadas após reatribuição.
 
 ## Consulta do domínio
 
@@ -78,8 +80,10 @@ Lista retorna `{records:[{id,record,version,createdAt,updatedAt,deletedAt}],next
 | `POST /api/admin/roles` | `company.manage` + MFA verificado + CSRF | `{key,name,permissions[]}` | 201 com role criada | Permissões devem existir e ser subconjunto das permissões efetivas do ator; keys `owner`/`admin` são reservadas. |
 | `PATCH /api/admin/roles/{roleId}` | `company.manage` + MFA verificado + CSRF | `{name,permissions[]}` | Atualiza role custom e auditoria | Role owner/system e perfil atualmente usado pelo ator são imutáveis; usuários afetados têm sessões revogadas e MFA marcado quando ganha permissão administrativa. |
 | `PATCH /api/admin/memberships/{membershipId}` | `company.manage` + MFA verificado + CSRF | `{roleId?}` e/ou `{status:active\|suspended\|revoked}` | Atualiza associação e revoga sessões dela | Não permite autoalteração; role acima do ator, ativação sem credencial verificada e remoção do último owner válido retornam erro estável. |
+| `PUT /api/admin/memberships/{membershipId}/driver` | `company.manage` + MFA verificado + CSRF | `{driverId}` UUID canônico | Associa uma membership Motoboy ativa/verificada com sync push/pull a um Driver da mesma empresa; retorna `{membershipId,driverId,changed}` | Sem inferência por email/perfil local; Driver ou membership já vinculados produzem conflito. Auditoria `membership.driver.linked`. |
+| `DELETE /api/admin/memberships/{membershipId}/driver` | `company.manage` + MFA verificado + CSRF | — | Remove associação explícita; retorna membership, Driver anterior e `changed` | Idempotente; a sessão deixa de resolver Driver no próximo request. Auditoria `membership.driver.unlinked`. |
 
-O tenant e o ator vêm da sessão verificada e RLS; nenhum endpoint recebe `companyId` para autorizar acesso. Mutações escrevem `audit_log` sem senha, token ou PII desnecessária. Roles não são apagadas; memberships revogadas permanecem como histórico. `active` só pode ser restaurado a uma associação suspensa com conta habilitada, senha e email verificados; convite é ativado pelo token de uso único. O último owner válido (associação ativa, conta habilitada/verificada, credencial habilitada para sessão MFA) não pode ser removido/rebaixado. As mudanças críticas usam lock transacional por tenant.
+O tenant e o ator vêm da sessão verificada e RLS; nenhum endpoint recebe `companyId` para autorizar acesso. Mutações escrevem `audit_log` sem senha, token ou PII desnecessária. Roles não são apagadas; memberships revogadas permanecem como histórico. `active` só pode ser restaurado a uma associação suspensa com conta habilitada, senha e email verificados; convite é ativado pelo token de uso único. O último owner válido (associação ativa, conta habilitada/verificada, credencial habilitada para sessão MFA) não pode ser removido/rebaixado. As mudanças críticas usam lock transacional por tenant. O vínculo de Driver exige membership ativa e verificada com `sync.pull`/`sync.push`, tem FK tenant-scoped e unicidade por Driver.
 
 ## Providers legados / internos
 
