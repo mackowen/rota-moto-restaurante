@@ -31,7 +31,7 @@ The first migration enables row-level security with a default-deny tenant
 context on every tenant-owned table. Identity and session tables are global and
 must only be queried by trusted server code.
 
-Migrations `0005`–`0008` add the canonical domain/sync foundation without
+Migrations `0005`–`0010` add the canonical domain/sync foundation without
 changing `0001`–`0004`. `0008` binds each installation to its registering user.
 `domain_records` stores the existing v1 entity payload
 as JSONB while the database enforces canonical UUID, tenant, revision,
@@ -67,6 +67,20 @@ Restaurant creates/plans/assigns/cancels Delivery; Moto cannot publish Delivery
 or canonical Earning. `races` and `settings` are local projections and are not
 persisted as canonical entities. Tombstones follow the owning application and
 share the operation ACK semantics.
+
+Migration `0009` bounds Route.deliveryIds to distinct canonical UUIDs and adds
+safe Earning amount/currency/components checks plus a Route membership GIN
+index. Route.deliveryIds is the only stored relation; the push transaction
+resolves aliases, checks tenant/existence/active uniqueness under an advisory
+lock, and records changes in audit_log. Migration `0010` grants rotamoto_app
+only EXECUTE on the immutable validation function called by the CHECK.
+
+Canonical Earning uses integer amountMinor and explicit ISO currency, without
+a fixed calculation formula. Legacy decimal input is normalized to minor units
+with BRL compatibility at the sync boundary. DeliveryProof separates metadata
+from a SHA-256 and storageRef; the sync service fails closed when no configured
+blob validation provider is available. Legacy Data URLs stay in IndexedDB and
+protected backups, not in canonical PostgreSQL payloads.
 
 Both clients expose `RotaMotoSync.loginToServer` and `syncWithServer`. They keep
 session CSRF only in memory, retain packet retries in the existing local outbox,

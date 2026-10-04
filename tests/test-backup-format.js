@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('node:assert/strict');
+require('../backup-format.js');
+const B=globalThis.RotaMotoBackupFormat;
+const stores={meta:[{key:'settings',value:{theme:'dark',accessToken:'no-export',session_token:'no-session',api_key:'no-key'}}],outbox:[{id:'op1',status:'pending'}],inbox:[{id:'in1',status:'conflict'}],tombstones:[{id:'del1'}],proofs:[{id:'p1',dataUrl:'data:image/png;base64,aGVsbG8='}]};
+const file=B.create({app:'motoboy',schemaVersion:7,stores});
+assert.equal(file.format,B.FORMAT);assert.equal(file.version,1);assert.equal(file.stores.meta[0].value.accessToken,undefined);
+assert.equal(file.stores.meta[0].value.session_token,undefined);assert.equal(file.stores.meta[0].value.api_key,undefined);
+const normalized=B.normalize(file,'motoboy',['meta','outbox','inbox','tombstones','proofs']);
+const current={meta:[{key:'settings',value:{theme:'light'}}],outbox:[{id:'op1',status:'pending-local'}],inbox:[],tombstones:[],proofs:[]};
+const merged=B.mergePlan(current,normalized,['meta','outbox','inbox','tombstones','proofs']);
+assert.equal(merged.plan.outbox.length,0);assert.equal(merged.summary.kept,2);assert.equal(merged.plan.inbox[0].status,'conflict');
+assert.throws(()=>B.normalize({...file,app:'restaurante'},'motoboy',['meta']),/BACKUP_INCOMPATIBLE/);
+assert.throws(()=>B.create({app:'motoboy',stores:{proofs:[{id:'bad',image:'data:image/gif;base64,AAAA'}]}}),/BACKUP_MEDIA/);
+assert.throws(()=>B.create({app:'motoboy',stores:{proofs:[{id:'large',image:'data:image/png;base64,'+'A'.repeat(11184816)}]}}),/BACKUP_MEDIA/);
+console.log('Local-First backup format and non-overwriting merge: OK');

@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { uuidV7 } = require('../identity/service');
+const { createMediaStorage } = require('./media-storage');
 
 const WRITE_OWNERS = Object.freeze({ Order: 'restaurante', Route: 'restaurante', Driver: 'restaurante', Earning: 'restaurante',
   LocationPoint: 'motoboy', DeliveryProof: 'motoboy' });
@@ -113,7 +114,7 @@ function validatePacket(packet) {
   return { packetId: id, deviceId, data, events: packet.events || [] };
 }
 
-function createSyncService({ clock = () => new Date() } = {}) {
+function createSyncService({ clock = () => new Date(), mediaStorage = createMediaStorage() } = {}) {
   async function registerInstallation(client, principal, appKey, deviceId) {
     if (!['restaurante', 'motoboy'].includes(appKey)) invalid('Aplicativo de instalação inválido.');
     const localDeviceId = boundedText(deviceId, 'deviceId', 128);
@@ -243,6 +244,61 @@ function createSyncService({ clock = () => new Date() } = {}) {
       let canonical = { ...record, id: canonicalId, companyId,
         ...(entityType === 'DeliveryEvent' ? { eventId: canonicalId } : {}),
         createdAt: meta.createdAt.toISOString(), updatedAt: meta.updatedAt.toISOString(), version: meta.version };
+      let routeMembershipChange = null;
+      if(entityType==='Route'&&record.deliveryIds===undefined&&resolved.created)canonical.deliveryIds=[];
+      if(entityType==='Route'&&record.deliveryIds!==undefined){
+        if(appKey!=='restaurante')throw new SyncError('FORBIDDEN','Somente o Restaurante planeja a associação de rotas.');
+        if(!Array.isArray(record.deliveryIds)||record.deliveryIds.length>500||new Set(record.deliveryIds).size!==record.deliveryIds.length||
+          record.deliveryIds.some(id=>typeof id!=='string'||!id.trim()||id.length>200))invalid('Route.deliveryIds inválido.');
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 402119))',[companyId+':active-route-membership']);
+        const canonicalIds=[];
+        for(const localDeliveryId of record.deliveryIds){
+          const deliveryId=await resolveReferencedAlias(client,companyId,'Delivery',localDeliveryId);
+          if(!deliveryId)throw new SyncError('UNRESOLVED_REFERENCE','Route referencia Delivery sem ID canônico.');
+          const exists=await client.query('SELECT 1 FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type=\'Delivery\' AND deleted_at IS NULL',[companyId,deliveryId]);
+          if(!exists.rowCount)throw new SyncError('UNRESOLVED_REFERENCE','Route referencia Delivery ausente ou tombstonada.');
+          const activeElsewhere=await client.query(`SELECT record_id::text FROM rotamoto.domain_records
+            WHERE company_id=$1 AND entity_type='Route' AND record_id<>$2 AND deleted_at IS NULL
+              AND payload->'deliveryIds' ? $3 LIMIT 1`,[companyId,canonicalId,deliveryId]);
+          if(activeElsewhere.rowCount)throw new SyncError('ROUTE_DELIVERY_ALREADY_ACTIVE','Delivery já pertence a outra Route ativa.');
+          canonicalIds.push(deliveryId);
+        }
+        if(new Set(canonicalIds).size!==canonicalIds.length)invalid('Route.deliveryIds contém a mesma Delivery por aliases diferentes.');
+        canonical.deliveryIds=canonicalIds;
+      }
+      if(entityType==='Earning'){
+        if(record.amountMinor===undefined&&typeof record.amount==='number'&&Number.isFinite(record.amount)){
+          const legacyMinor=Math.round(record.amount*100);
+          if(!Number.isSafeInteger(legacyMinor)||Math.abs(legacyMinor)>9000000000000000)invalid('Earning.amount legado fora do limite seguro.');
+          canonical.amountMinor=legacyMinor;
+          canonical.currency=record.currency||'BRL';
+          canonical.components=Array.isArray(record.components)?record.components:[];
+          delete canonical.amount;
+        }
+        if(!Number.isSafeInteger(canonical.amountMinor)||typeof canonical.currency!=='string'||!/^[A-Z]{3}$/u.test(canonical.currency))
+          invalid('Earning exige amountMinor inteiro seguro e currency ISO explícita.');
+        if(Object.hasOwn(record,'amountMinor')&&(!Number.isSafeInteger(record.amountMinor)||Math.abs(record.amountMinor)>9000000000000000))invalid('Earning.amountMinor deve ser um inteiro seguro em unidade monetária mínima.');
+        if(Object.hasOwn(record,'currency')&&(typeof record.currency!=='string'||!/^[A-Z]{3}$/u.test(record.currency)))invalid('Earning.currency inválida.');
+        if(Object.hasOwn(record,'components')&&(!Array.isArray(record.components)||record.components.length>100||
+          record.components.some(item=>!item||typeof item.code!=='string'||!Number.isSafeInteger(item.amountMinor))))invalid('Earning.components inválido.');
+      }
+      if(entityType==='DeliveryProof'){
+        const media=record.media;
+        if(media!==undefined){
+          if(!media||typeof media!=='object'||Array.isArray(media)||typeof media.mimeType!=='string'||
+            !['image/png','image/jpeg'].includes(media.mimeType)||!Number.isSafeInteger(media.sizeBytes)||media.sizeBytes<0||media.sizeBytes>8388608)
+            invalid('DeliveryProof.media inválida.');
+          if(media.dataUrl!==undefined)invalid('Conteúdo inline legado deve permanecer local até existir um blob storage configurado.');
+          if(!media.storageRef||typeof media.storageRef!=='object'||Array.isArray(media.storageRef)||
+            typeof media.storageRef.provider!=='string'||media.storageRef.provider.length>64||
+            typeof media.storageRef.objectKey!=='string'||!media.storageRef.objectKey.trim()||media.storageRef.objectKey.length>512||
+            typeof media.sha256!=='string'||!/^[a-f0-9]{64}$/iu.test(media.sha256))
+            invalid('DeliveryProof exige referência de armazenamento e digest SHA-256.');
+          const storageResult=await mediaStorage.validateReference(media.storageRef,{companyId,deliveryId:record.deliveryId,
+            mimeType:media.mimeType,sizeBytes:media.sizeBytes,sha256:media.sha256});
+          if(!storageResult.valid)throw new SyncError(storageResult.code||'MEDIA_STORAGE_UNAVAILABLE','Storage de prova não está configurado ou a referência não foi validada.');
+        }
+      }
       if (entityType === 'DeliveryEvent') canonical.actor = { type: 'user', id: userId };
       if (canonical.deletedAt !== undefined && canonical.deletedAt !== null) canonical.deletedAt = timestamp(canonical.deletedAt, now, `${entityType}.deletedAt`).toISOString();
       if (entityType === 'Delivery' && !Object.hasOwn(TRANSITIONS, canonical.status)) invalid('Delivery.status inválido.');
@@ -266,6 +322,11 @@ function createSyncService({ clock = () => new Date() } = {}) {
         if (!relatedId) throw new SyncError('UNRESOLVED_REFERENCE', `Referência ${relatedType} ainda não possui ID canônico.`);
         canonical[referenceField] = relatedId;
       }
+      if(entityType==='Earning'&&canonical.driverId){
+        const driverId=await resolveReferencedAlias(client,companyId,'Driver',canonical.driverId);
+        if(!driverId)throw new SyncError('UNRESOLVED_REFERENCE','Earning.driverId ainda não possui ID canônico.');
+        canonical.driverId=driverId;
+      }
       if (entityType === 'Delivery' && resolved.created && relatedId) {
         const matches = await client.query(`SELECT record_id::text FROM rotamoto.domain_records
           WHERE company_id=$1 AND entity_type='Delivery' AND related_entity_type='Order' AND related_record_id=$2
@@ -285,6 +346,10 @@ function createSyncService({ clock = () => new Date() } = {}) {
         related_entity_type,related_record_id::text
         FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 FOR UPDATE`, [companyId, canonicalId]);
       if (existing.rowCount && existing.rows[0].entity_type !== entityType) throw new SyncError('SYNC_CONFLICT', 'ID canônico já pertence a outro tipo de entidade.');
+      if(entityType==='Route'&&record.deliveryIds!==undefined){
+        const before=existing.rows[0]?.payload?.deliveryIds||[],after=canonical.deliveryIds||[];
+        routeMembershipChange={added:after.filter(id=>!before.includes(id)),removed:before.filter(id=>!after.includes(id))};
+      }
       if (existing.rowCount) {
         ackCanonicalId = canonicalId;
         ackVersion = Number(existing.rows[0].version);
@@ -383,6 +448,12 @@ function createSyncService({ clock = () => new Date() } = {}) {
           outcomes.updated += 1;
         }
       }
+      if(entityType==='Route'&&routeMembershipChange&&(routeMembershipChange.added.length||routeMembershipChange.removed.length)){
+        await client.query(`INSERT INTO rotamoto.audit_log
+          (id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
+          VALUES($1,$2,$3,'user','route.delivery-membership.changed','Route',$4,$5::jsonb)`,
+        [uuidV7(now.getTime()),companyId,userId,canonicalId,JSON.stringify(routeMembershipChange)]);
+      }
       if (entityType === 'DeliveryEvent' && String(canonical.entity || '').toLowerCase() === 'delivery' && !existing.rowCount) {
         const executionStatus = ({ DELIVERY_STARTED: 'OUT_FOR_DELIVERY', DELIVERY_ARRIVED: 'ARRIVED',
           DELIVERY_COMPLETED: 'DELIVERED', DELIVERY_FAILED: 'FAILED' })[canonical.type];
@@ -421,7 +492,7 @@ function createSyncService({ clock = () => new Date() } = {}) {
         operationResults.length = resultBefore;
         Object.assign(outcomes, countsBefore);
         if (seenKey) seen.delete(seenKey);
-        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','INVALID_TRANSITION','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT']);
+        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','INVALID_TRANSITION','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT','ROUTE_DELIVERY_ALREADY_ACTIVE']);
         operationResults.push({ operation: item.operationIndex, entity: entityType, localId: localId || null,
           ...(ackCanonicalId ? { canonicalId: ackCanonicalId } : {}), ...(ackVersion ? { canonicalVersion: ackVersion } : {}),
           status: conflictCodes.has(error.code) ? 'conflict' : 'rejected', error: { code: error.code || 'OPERATION_REJECTED' } });

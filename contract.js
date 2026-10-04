@@ -30,6 +30,18 @@
     cancelled:'CANCELLED', issue:'FAILED'
   });
   const WRITE_AUTHORITY = Object.freeze({Company:'server',Order:'restaurante',Earning:'restaurante',Route:'restaurante',Driver:'restaurante',Delivery:'shared',DeliveryEvent:'shared',LocationPoint:'motoboy',DeliveryProof:'motoboy'});
+  // Canonical fields are deliberately explicit. Legacy/local-only fields stay
+  // outside these shapes and may be carried under namespaced extensions.
+  const ENTITY_SCHEMAS = Object.freeze({
+    Order:Object.freeze({required:['id','companyId','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',deletedAt:'nullable-timestamp',number:'text',customer:'object-or-text',phone:'text',address:'text',notes:'text',items:'array',payments:'array',amountMinor:'money-minor',currency:'currency',source:'text',externalId:'text',extensions:'extensions'})}),
+    Driver:Object.freeze({required:['id','companyId','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',deletedAt:'nullable-timestamp',name:'text',phone:'text',email:'text',status:'text',extensions:'extensions'})}),
+    Route:Object.freeze({required:['id','companyId','createdAt','updatedAt','version','deliveryIds'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',deletedAt:'nullable-timestamp',deliveryIds:'id-array',stops:'array',origin:'object',status:'text',extensions:'extensions'})}),
+    Delivery:Object.freeze({required:['id','companyId','status','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',orderId:'id',driverId:'id',status:'delivery-status',priority:'text',assignedAt:'nullable-timestamp',acceptedAt:'nullable-timestamp',pickedUpAt:'nullable-timestamp',arrivedAt:'nullable-timestamp',completedAt:'nullable-timestamp',estimatedDistanceM:'nullable-number',actualDistanceM:'nullable-number',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',deletedAt:'nullable-timestamp',extensions:'extensions'})}),
+    DeliveryEvent:Object.freeze({required:['eventId','entity','entityId','type','occurredAt','protocolVersion'],fields:Object.freeze({eventId:'id',entity:'text',entityId:'id',type:'text',occurredAt:'timestamp',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',companyId:'id',actor:'object',payload:'object',protocolVersion:'positive-integer',extensions:'extensions'})}),
+    LocationPoint:Object.freeze({required:['id','deliveryId','latitude','longitude','recordedAt'],fields:Object.freeze({id:'id',deliveryId:'id',latitude:'latitude',longitude:'longitude',accuracyM:'nullable-number',recordedAt:'timestamp',eventId:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',extensions:'extensions'})}),
+    DeliveryProof:Object.freeze({required:['id','deliveryId','createdAt','media'],fields:Object.freeze({id:'id',deliveryId:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',kind:'text',media:'media-ref',note:'text',extensions:'extensions'})}),
+    Earning:Object.freeze({required:['id','companyId','amountMinor','currency','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',deliveryId:'id',driverId:'id',amountMinor:'money-minor',currency:'currency',components:'money-components',rule:'object',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',extensions:'extensions'})})
+  });
   const SYNC_ACK = Object.freeze({ACCEPTED:'accepted',DUPLICATE:'duplicate',REJECTED:'rejected',CONFLICT:'conflict'});
   function timestampMs(value){
     if(typeof value==='number'&&Number.isFinite(value))return value;
@@ -108,5 +120,46 @@
   function normalizeDeliveryStatus(value,source='restaurante'){
     return source==='motoboy' ? (BOY_TO_CANONICAL[value] || value) : (REST_TO_CANONICAL[value] || value);
   }
-  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,WRITE_AUTHORITY,SYNC_ACK,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,event,packet,normalizeDeliveryStatus,now,id});
+  const DOMAIN_TYPES={
+    id:v=>typeof v==='string'&&v.trim().length>0&&v.length<=200,
+    text:v=>typeof v==='string'&&v.length<=4000,
+    object:v=>!!v&&typeof v==='object'&&!Array.isArray(v),
+    array:Array.isArray,
+    timestamp:v=>typeof v==='string'&&Number.isFinite(Date.parse(v)),
+    'nullable-timestamp':v=>v===null||typeof v==='string'&&Number.isFinite(Date.parse(v)),
+    revision:v=>Number.isSafeInteger(v)&&v>0,
+    'positive-integer':v=>Number.isSafeInteger(v)&&v>0,
+    'nullable-number':v=>v===null||Number.isFinite(v),
+    'money-minor':v=>Number.isSafeInteger(v)&&Math.abs(v)<=9000000000000000,
+    currency:v=>typeof v==='string'&&/^[A-Z]{3}$/u.test(v),
+    'delivery-status':v=>Object.hasOwn(STATUS,v),
+    latitude:v=>Number.isFinite(v)&&v>=-90&&v<=90,
+    longitude:v=>Number.isFinite(v)&&v>=-180&&v<=180,
+    'object-or-text':v=>typeof v==='string'||!!v&&typeof v==='object'&&!Array.isArray(v),
+    'id-array':v=>Array.isArray(v)&&v.length<=500&&v.every(x=>DOMAIN_TYPES.id(x)),
+    'money-components':v=>Array.isArray(v)&&v.length<=100&&v.every(x=>DOMAIN_TYPES.object(x)&&Number.isSafeInteger(x.amountMinor)),
+    'media-ref':v=>DOMAIN_TYPES.object(v)&&DOMAIN_TYPES.text(v.mimeType)&&['image/png','image/jpeg'].includes(v.mimeType)&&Number.isSafeInteger(v.sizeBytes)&&v.sizeBytes>=0&&v.sizeBytes<=8388608&&DOMAIN_TYPES.object(v.storageRef)&&DOMAIN_TYPES.id(v.storageRef.provider)&&DOMAIN_TYPES.text(v.storageRef.objectKey)&&v.storageRef.objectKey.trim().length<=512&&/^[a-f0-9]{64}$/iu.test(v.sha256||''),
+    extensions:v=>DOMAIN_TYPES.object(v)
+  };
+  function validateEntity(entity,record){
+    const schema=ENTITY_SCHEMAS[entity],errors=[];
+    if(!schema)return{valid:false,errors:['UNKNOWN_ENTITY']};
+    if(!record||typeof record!=='object'||Array.isArray(record))return{valid:false,errors:['INVALID_RECORD']};
+    for(const key of schema.required)if(record[key]===undefined||record[key]===null)errors.push('REQUIRED:'+key);
+    for(const [key,value]of Object.entries(record)){
+      const type=schema.fields[key];
+      if(!type){if(/^x_[a-z0-9]+_/iu.test(key))continue;errors.push('UNKNOWN_FIELD:'+key);continue}
+      if(!DOMAIN_TYPES[type](value))errors.push('INVALID:'+key);
+    }
+    return{valid:errors.length===0,errors};
+  }
+  function validateRouteMembership(routes){
+    const assigned=new Map(),errors=[];
+    for(const route of routes||[])for(const deliveryId of route.deliveryIds||[]){
+      if(assigned.has(deliveryId))errors.push('DELIVERY_IN_MULTIPLE_ACTIVE_ROUTES:'+deliveryId);
+      else assigned.set(deliveryId,route.id);
+    }
+    return{valid:errors.length===0,errors};
+  }
+  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,WRITE_AUTHORITY,SYNC_ACK,ENTITY_SCHEMAS,validateEntity,validateRouteMembership,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,event,packet,normalizeDeliveryStatus,now,id});
 })();

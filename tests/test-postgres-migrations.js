@@ -50,6 +50,8 @@ async function main() {
   assert.throws(migrationConnectionString, /deve apontar sem senha para rotamoto_migrator/,
     'migration runner refuses a non-official host');
   process.env.MIGRATOR_DATABASE_URL = configuredMigratorUrl;
+  const initialUp=await runMigration('up');
+  assert.equal(initialUp.status,0,'new additive domain constraints migration applies through the migrator');
   const migration = getMigrations()[0];
   assert.equal(migration.id, '0001_identity_tenant_foundation');
   const provisioningMigration = getMigrations()[1];
@@ -84,6 +86,11 @@ async function main() {
   assert.equal(syncInstallIdentityMigration.id, '0008_sync_installation_identity');
   assert.match(syncInstallIdentityMigration.up, /registered_by_user_id uuid REFERENCES rotamoto\.users/);
   assert.match(syncInstallIdentityMigration.down, /rollback bloqueado/);
+  const canonicalModelMigration = getMigrations()[8];
+  assert.equal(canonicalModelMigration.id, '0009_domain_model_constraints');
+  assert.match(canonicalModelMigration.up, /valid_route_delivery_ids/);
+  assert.match(canonicalModelMigration.up, /domain_earning_amount_minor_check/);
+  assert.match(canonicalModelMigration.up, /domain_active_route_delivery_gin_idx/);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
   assert.match(migration.up, /CREATE TABLE rotamoto\.memberships/);
@@ -137,11 +144,19 @@ async function main() {
         WHERE d.defaclrole='rotamoto_migrator'::regrole AND d.defaclobjtype='f'
           AND a.grantee=0 AND a.privilege_type='EXECUTE') AS no_public_execute_default`);
     assert.equal(ownership.rows[0].owned_relations, 20);
-    assert.equal(ownership.rows[0].owned_routines, 3);
+    assert.equal(ownership.rows[0].owned_routines, 4);
     assert.equal(ownership.rows[0].migrator_ledger, 1);
     assert.equal(ownership.rows[0].forced_policies, 12);
     assert.equal(ownership.rows[0].no_public_execute_default, true,
       'future migrator functions do not receive PUBLIC EXECUTE by default');
+    assert.equal((await runtimeClient.query("SELECT has_function_privilege(current_user,'rotamoto.valid_route_delivery_ids(jsonb)','EXECUTE') AS can_validate")).rows[0].can_validate,
+      true,'runtime has only the explicit execution grant needed by the domain constraint');
+    const routeIdsChecks = await migrationClient.query(
+      'SELECT rotamoto.valid_route_delivery_ids($1::jsonb) AS empty_ok, rotamoto.valid_route_delivery_ids($2::jsonb) AS duplicate_rejected, rotamoto.valid_route_delivery_ids($3::jsonb) AS malformed_rejected',
+      ['[]', '["00000000-0000-4000-8000-000000000001","00000000-0000-4000-8000-000000000001"]',
+        '["not-a-canonical-uuid"]']);
+    assert.deepEqual(routeIdsChecks.rows[0], { empty_ok: true, duplicate_rejected: false, malformed_rejected: false },
+      'route membership accepts empty plans and rejects duplicate or noncanonical IDs');
     assert.equal(await migrationClient.query("SELECT has_schema_privilege(current_user,'rotamoto','CREATE') AS can_ddl")
       .then(result => result.rows[0].can_ddl), true, 'migrator can create schema objects');
     const concurrentUp = await Promise.all([runMigration('up'), runMigration('up')]);
@@ -274,13 +289,30 @@ async function main() {
       (idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES ($1,$2,$3,$4,'sent')`,
     [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);
     try {
-      const rollback = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
+      const reversibleDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
         env: process.env, encoding: 'utf8', timeout: 10000
       });
-      assert.notEqual(rollback.status, 0, 'application role cannot run a destructive down migration');
-      assert.match(rollback.stderr, /(P0001|42501)/, 'migration runner reports the guarded rollback failure without row contents');
+      assert.equal(reversibleDown.status,0,'additive constraint/index migration has a safe reversible down');
+      assert.match(reversibleDown.stdout,/revertida 0010_route_validation_runtime_grant/);
+      const stillThere=await tenantQuery(client,rollbackGuardId,'SELECT id FROM rotamoto.companies WHERE id=$1',[rollbackGuardId]);
+      assert.equal(stillThere.rowCount,1,'schema-only rollback preserves tenant data');
+      const reapplied=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'up'],{env:process.env,encoding:'utf8',timeout:10000});
+      assert.equal(reapplied.status,0,'safe migration reapplies cleanly after rollback');
+      const grantDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
+        env: process.env, encoding: 'utf8', timeout: 10000
+      });
+      assert.equal(grantDown.status,0,'runtime grant migration rolls back safely');
+      const constraintDown=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'down'],{env:process.env,encoding:'utf8',timeout:10000});
+      assert.equal(constraintDown.status,0,'domain constraints and index roll back without deleting data');
+      const guardedDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
+        env: process.env, encoding: 'utf8', timeout: 10000
+      });
+      assert.notEqual(guardedDown.status, 0, 'foundation rollback remains guarded');
+      assert.match(guardedDown.stderr, /(P0001|42501)/, 'migration runner reports the guarded rollback failure without row contents');
       const preserved = await tenantQuery(client, rollbackGuardId, `SELECT id FROM rotamoto.companies WHERE id=$1`, [rollbackGuardId]);
       assert.equal(preserved.rowCount, 1, 'rollback guard preserves existing rows');
+      const restored=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'up'],{env:process.env,encoding:'utf8',timeout:10000});
+      assert.equal(restored.status,0,'full schema is restored after rollback guard verification');
     } finally {
       await client.query(`DELETE FROM rotamoto.provisioning_requests WHERE idempotency_key_digest=$1`, [rollbackGuardDigest]);
       await tenantQuery(client, rollbackGuardId, `DELETE FROM rotamoto.memberships WHERE id=$1`, [rollbackGuardMembershipId]);

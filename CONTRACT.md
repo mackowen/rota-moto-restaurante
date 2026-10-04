@@ -54,3 +54,22 @@ Dados sincronizáveis usam tombstone (`deletedAt`) em vez de remoção física i
 - `packetId` repetido com o mesmo digest devolve o mesmo resultado idempotente; conteúdo diferente com o mesmo `packetId` é conflito. `eventId` repetido com o mesmo fato é `duplicate`; reutilizado com fato diferente é conflito.
 - Revisões canônicas são controladas pelo servidor. Atualização concorrente ou baseada em revisão obsoleta retorna `conflict` com a revisão canônica. Não há last-write-wins genérico. Nenhuma operação rejeitada apaga/atualiza a cópia local pendente.
 - Pull usa cursor keyset estável; aplicar a mesma página/eventos mais de uma vez deve ser idempotente. O cliente só avança cursor e remove outbox após ACK inequívoco, preservando operações em conflito ou sem rede.
+
+## Relações e payloads canônicos (schema v1 aditivo)
+
+- Todo registro canônico tem id, companyId, createdAt, updatedAt e revisão inteira positiva version. IDs locais são aceitos somente como referências de operação; o servidor grava UUID canônico e devolve o alias.
+- Order: identidade e dados comerciais do pedido pertencem ao Restaurante. Campos conhecidos incluem number, customer, phone, address, notes, items, payments, source e externalId; montantes canônicos usam amountMinor inteiro e currency ISO 4217. Campos legados continuam locais/compatíveis até serem mapeados sem perda.
+- Driver: cadastro administrativo do Restaurante/servidor; campos contratuais comuns são name, phone, email e status. Autenticação/User/Membership não se duplicam em Driver.
+- Route: autoridade de planejamento do Restaurante. deliveryIds é uma lista de 0..500 IDs canônicos das entregas atualmente planejadas. A relação só existe neste campo; não existe Delivery.routeId inverso. Uma Delivery aparece em no máximo uma lista de Route não tombstonada. O serviço resolve os IDs, verifica tenant/existência, serializa mudanças concorrentes e rejeita duplicidade com ROUTE_DELIVERY_ALREADY_ACTIVE. Remoções/adições são preservadas em audit_log, sem apagar fatos/eventos.
+- Delivery: liga orderId e opcionalmente driverId; estados, transições, atribuição/cancelamento e campos de execução continuam sujeitos às autoridades já descritas acima. Tombstone é revisão canônica e não apaga fatos.
+- DeliveryEvent: eventId, entity, entityId, type, occurredAt, actor, payload e protocolVersion; append-only. Correção gera outro fato.
+- LocationPoint: id, deliveryId, latitude, longitude, recordedAt e, quando disponível, accuracyM/eventId. Latitude/longitude devem estar em [-90,90]/[-180,180].
+- DeliveryProof: metadados (id, deliveryId, kind, createdAt, revisão) e media com MIME permitido (image/png ou image/jpeg), tamanho até 8 MiB, SHA-256 e storageRef (provider + objectKey). O backend não aceita Data URL canônica enquanto não houver storage de blobs configurado; Data URLs PNG/JPEG legadas permanecem locais e podem constar em backup sensível, limitadas a 8 MiB.
+- Earning: somente Restaurante calcula/escreve. amountMinor é inteiro seguro na unidade monetária mínima, currency é explícita, components é lista de valores inteiros assinados e rule/versão são opcionais. Não existe fórmula rígida no schema. Payload legado decimal recebe adaptação determinística a centavos BRL na entrada; a representação persistida é amountMinor + moeda.
+- Extensibilidade: campos adicionais canônicos devem usar x_<namespace>_<field> ou o objeto extensions; campos desconhecidos sem namespace são inválidos no validador compartilhado. Entidades legadas preservadas fora do payload canônico não são descartadas por essa regra.
+
+## Backup Local-First v1
+
+O envelope format=rotamoto-local-backup, version=1 contém app, exportedAt, databaseSchemaVersion e snapshots de todas as stores IndexedDB. Export remove campos de senha/hash, sessão/cookie, CSRF, MFA, tokens e secrets. Mídia inline legada é mantida somente para PNG/JPEG até 8 MiB por arquivo. O envelope indica contentProtection=plaintext-sensitive: export não é cifrado e deve ser protegido pelo operador; não existe chave/UX aprovada para criptografia.
+
+Restauração v1 oferece merge não destrutivo: acrescenta apenas chaves ausentes; colisões preservam o registro atual, incluindo settings, dados e operações de sync pendentes/conflitos. A transação abrange as stores e é atômica no IndexedDB. Backups legados versão 8 continuam aceitos pelo adaptador. Replace de dados atuais, import de credenciais e export cifrado não são oferecidos.

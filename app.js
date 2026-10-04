@@ -36,8 +36,11 @@ function canonicalizeRestaurantData(){
 function canonicalEarningFromOrder(order,companyId){
  const amount=motoboyEarningsForDelivery(order,state.settings);
  if(!order?.deliveryId||!Number.isFinite(amount))return null;
+ const amountMinor=Math.round(amount*100);
+ if(!Number.isSafeInteger(amountMinor))return null;
  return {id:order.earningId||`earning:${order.id}`,companyId:order.companyId||companyId,deliveryId:order.deliveryId,
-  amount,createdAt:order.createdAt||order.updatedAt||Date.now(),updatedAt:order.updatedAt||Date.now(),version:Number(order.version||order.sync?.version||1)};
+  amountMinor,currency:'BRL',components:[],createdAt:new Date(Number(order.createdAt)||Date.parse(order.createdAt)||Date.now()).toISOString(),
+  updatedAt:new Date(Number(order.updatedAt)||Date.parse(order.updatedAt)||Date.now()).toISOString(),version:Number(order.version||order.sync?.version||1)};
 }
 
 const dateFmt=t=>{const l=state?.settings?.language||'pt-BR';return new Date(t).toLocaleString(l==='en'?'en-US':l==='es'?'es-ES':'pt-BR',{dateStyle:'short',timeStyle:'short'});};
@@ -730,7 +733,15 @@ async function deleteAllLocalData(){
   setTimeout(()=>location.reload(),1200);
  }catch(e){toast(e.message||'Não foi possível apagar os dados locais.','error');console.error(e)}
 }
-function backup(){const data={schema:'rota-moto-restaurante-local',version:8,appVersion:'5.50',protocolVersion:1,schemaVersion:1,exportedAt:new Date().toISOString(),settings:state.settings,companies:state.companies,user:state.user,profiles:state.profiles,users:state.users,orders:state.orders,bikes:state.bikes,routes:state.routes,events:state.events,logs:state.logs};const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download=`rota-moto-restaurante-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();event('success','Backup completo exportado.');toast('Backup completo criado.')}
+async function createRestaurantBackup(){
+ const snapshot=await new Promise((resolve,reject)=>{const tx=db.transaction(STORES,'readonly'),rows={};for(const name of STORES){const request=tx.objectStore(name).getAll();request.onsuccess=()=>{rows[name]=request.result||[]};request.onerror=()=>reject(request.error)}tx.oncomplete=()=>resolve(rows);tx.onerror=()=>reject(tx.error||new Error('Falha ao ler snapshot local para backup.'))});
+ return RotaMotoBackupFormat.create({app:'restaurante',schemaVersion:DB_VERSION,stores:snapshot});
+}
+async function downloadRestaurantBackup(){
+ const data=await createRestaurantBackup(),url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');
+ a.href=url;a.download=`rota-moto-restaurante-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return Object.values(data.stores).reduce((n,rows)=>n+rows.length,0);
+}
+function backup(){downloadRestaurantBackup().then(total=>{event('success','Backup Local-First exportado.',`${total} registros incluídos.`);toast('Backup Local-First criado. Trate o arquivo como sensível.','success')}).catch(error=>{log('error',error.message,'backup export');toast('Não foi possível criar o backup.','error')})}
 function adminProgress(title,subtitle,steps){
  const rows=steps.map((x,i)=>`<div class="diagnostic-step" id="adminStep${i}"><span class="diagnostic-step-icon">${i+1}</span><div><b>${esc(x.title)}</b><small>${esc(x.note||'')}</small></div><span class="diagnostic-step-status">Aguardando</span></div>`).join('');
  modal(`<div class="diagnostic-run"><div class="diagnostic-run-head"><div><span class="eyebrow">Administração</span><h2>${esc(title)}</h2><p>${esc(subtitle||'A operação está sendo executada no banco local.')}</p></div><div class="diagnostic-spinner" id="adminSpinner"></div></div><div class="diagnostic-progress">${rows}</div><div class="diagnostic-summary" id="adminSummary">Preparando execução…</div><div class="actions diagnostic-run-actions" id="adminRunActions" hidden><button class="btn primary" id="adminClose">Fechar</button></div></div>`);
@@ -805,7 +816,7 @@ async function adminCleanup(){
 
 async function adminBackup(){
  adminProgress('Exportar backup', 'Gerando uma cópia completa do banco local.',[{title:'Preparar dados',note:'Coletando configurações e registros.'},{title:'Gerar arquivo JSON',note:'Montando o backup completo.'},{title:'Disponibilizar arquivo',note:'Iniciando o download no dispositivo.'}]);
- try{adminStep(0,'Executando');await new Promise(r=>setTimeout(r,150));const data={schema:'rota-moto-restaurante-local',version:8,appVersion:'5.50',protocolVersion:1,schemaVersion:1,exportedAt:new Date().toISOString(),settings:state.settings,companies:state.companies,user:state.user,profiles:state.profiles,users:state.users,orders:state.orders,bikes:state.bikes,routes:state.routes,events:state.events,logs:state.logs};adminStep(0,'Concluído');adminStep(1,'Executando');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});adminStep(1,'Concluído');adminStep(2,'Executando');const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`rota-moto-restaurante-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);adminStep(2,'Concluído');const total=Object.entries(data).filter(([k])=>Array.isArray(data[k])).reduce((n,[,v])=>n+v.length,0);const msg=`Backup completo exportado com sucesso (${total} registros).`;event('success','Backup completo exportado.',`${total} registro(s) incluído(s).`,'manual');adminSummary(msg);adminFinishToast(msg)}catch(e){adminSummary(e.message,false);event('error','Falha ao exportar backup.',e.message,'manual');adminFinishToast(e.message,'error')}
+ try{adminStep(0,'Executando');await new Promise(r=>setTimeout(r,150));const data=await createRestaurantBackup();adminStep(0,'Concluído');adminStep(1,'Executando');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});adminStep(1,'Concluído');adminStep(2,'Executando');const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`rota-moto-restaurante-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);adminStep(2,'Concluído');const total=Object.values(data.stores).reduce((n,v)=>n+v.length,0);const msg=`Backup Local-First sensível exportado (${total} registros).`;event('success','Backup Local-First exportado.',`${total} registro(s) incluído(s).`,'manual');adminSummary(msg);adminFinishToast(msg)}catch(e){adminSummary(e.message,false);event('error','Falha ao exportar backup.',e.message,'manual');adminFinishToast(e.message,'error')}
 }
 async function adminSync(){
  adminProgress('Estado da sincronização','Consultando somente os dados locais; nenhuma conexão externa será simulada.',[{title:'Ler configuração global',note:'Empresa, transporte e revisão.'},{title:'Contar registros',note:'Pendentes e preparados para sincronização.'},{title:'Mostrar estado atual',note:'Último recebimento e dispositivo.'}]);
@@ -819,7 +830,35 @@ async function adminAction(action){
 }
 
 function stageImport(file){return importBackup(file)}
-async function importBackup(file){if(!file)return;try{const data=JSON.parse(await file.text());if(data.schema!=='rota-moto-restaurante-local')throw new Error('Arquivo de backup incompatível.');const diff=importDiff(data);modal(`<div class="modal-title-row"><div><span class="eyebrow">Importação segura</span><h2>Pré-visualização do backup</h2><p>Nenhuma alteração foi feita no banco. Revise os dados antes de confirmar.</p></div></div><div class="import-kpis"><div><small>Total processado</small><b>${diff.total}</b></div><div><small>Novos</small><b>${diff.new}</b></div><div><small>Atualizações</small><b>${diff.updated}</b></div><div><small>Iguais</small><b>${diff.equal}</b></div><div><small>Conflitos</small><b>${diff.conflict}</b></div><div><small>Erros</small><b>${diff.errors}</b></div></div><div class="import-groups">${importPreviewRows(diff)}</div><div class="import-warning">${diff.conflict?`Há ${diff.conflict} conflito(s). Eles não serão sobrescritos automaticamente.`:'Nenhum conflito detectado.'}</div><div class="actions"><button class="btn" id="cancelImport">Cancelar</button><button class="btn primary" id="confirmImport" ${(!diff.new&&!diff.updated&&!data.settings)?'disabled':''}>Confirmar importação</button></div>`);document.getElementById('cancelImport').onclick=closeModal;document.getElementById('confirmImport').onclick=()=>runStagedImport(data,diff)}catch(err){log('error',err.message,'backup validation');event('error','Falha ao validar backup.',err.message,'automatic');toast(err.message,'error')}}
+async function importBackup(file){
+ if(!file)return;
+ try{
+  const raw=JSON.parse(await file.text()),data=RotaMotoBackupFormat.normalize(raw,'restaurante',STORES);
+  modal('<div class="modal-title-row"><div><span class="eyebrow">Restauração segura</span><h2>Mesclar backup Local-First?</h2><p>Registros com chave já existente serão mantidos; apenas chaves ausentes serão acrescentadas. Outbox, conflitos e dados atuais não serão substituídos.</p></div></div><p>O backup pode conter dados pessoais, localização e mídia. Mantenha o arquivo protegido.</p><div class="actions"><button class="btn" id="cancelBackupMerge">Cancelar</button><button class="btn primary" id="confirmBackupMerge">Mesclar sem sobrescrever</button></div>');
+  document.getElementById('cancelBackupMerge').onclick=closeModal;
+  document.getElementById('confirmBackupMerge').onclick=()=>mergeRestaurantBackup(data);
+ }catch(error){log('error',error.message,'backup validation');event('error','Falha ao validar backup.',error.message,'automatic');toast('Backup inválido ou incompatível.','error')}
+}
+async function mergeRestaurantBackup(backupData){
+ const btn=document.getElementById('confirmBackupMerge');if(btn)btn.disabled=true;
+ try{
+  const summary=await new Promise((resolve,reject)=>{
+   const transaction=db.transaction(STORES,'readwrite'),counts={added:0,kept:0},names=STORES.slice();
+   for(const name of names){
+    const store=transaction.objectStore(name),request=store.getAll();
+    request.onsuccess=()=>{
+     const existing=new Set(request.result.map(row=>name==='meta'?row.key:row.id));
+     for(const row of backupData.stores[name]||[]){const key=name==='meta'?row.key:row.id;if(existing.has(key)){counts.kept++;continue}store.put(row);existing.add(key);counts.added++}
+    };
+    request.onerror=()=>{try{transaction.abort()}catch(_){}};
+   }
+   transaction.oncomplete=()=>resolve(counts);transaction.onerror=()=>reject(transaction.error||new Error('Falha ao mesclar backup.'));transaction.onabort=()=>reject(transaction.error||new Error('Mesclagem abortada.'));
+  });
+  for(const name of STORES.filter(name=>name!=='meta'))state[name]=await getAll(name);
+  const savedSettings=await getMeta('settings');if(savedSettings)state.settings={...state.settings,...savedSettings};
+  closeModal();applyTheme();render();toast('Mesclagem concluída: '+summary.added+' novos; '+summary.kept+' preservados.','success');
+ }catch(error){if(btn)btn.disabled=false;toast('A mesclagem falhou; a transação foi revertida.','error');console.error(error)}
+}
 async function runStagedImport(data,diff){
  const btn=document.getElementById('confirmImport');
  if(btn){btn.disabled=true;btn.textContent='Importando…'}

@@ -45,8 +45,8 @@ async function main() {
   await migrator.connect();
   await client.connect();
   try {
-    const migration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0008_sync_installation_identity'");
-    assert.equal(migration.rowCount, 1, 'canonical schema migration is applied by the migrator');
+    const migration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0009_domain_model_constraints'");
+    assert.equal(migration.rowCount, 1, 'canonical model constraints migration is applied by the migrator');
     assert.equal((await client.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_app');
     await client.query('BEGIN');
     const companyId = crypto.randomUUID();
@@ -136,7 +136,7 @@ async function main() {
       const pushed = await call('/api/sync/push', { method: 'POST', body: packet });
       assert.equal(pushed.status, 200, JSON.stringify({ response: pushed.body, logs }));
       assert.equal(pushed.body.companyId, companyId, 'tenant comes from the authenticated session, not packet.companyId');
-      assert.equal(pushed.body.received, 4);
+      assert.equal(pushed.body.received, 4, JSON.stringify(pushed.body.operationResults));
       assert.equal(pushed.body.operationResults.length, 4, 'ACK identifies each operation');
       assert(pushed.body.operationResults.every(result => result.status === 'accepted' && result.canonicalId && result.canonicalVersion === 1));
       const duplicate = await call('/api/sync/push', { method: 'POST', body: packet });
@@ -158,10 +158,33 @@ async function main() {
       assert.equal(stored.rows[0].related_entity_type, 'Order');
       assert.equal(stored.rows[0].payload.orderId, orderId, 'references in payload use canonical IDs');
       assert.equal(stored.rows[0].payload.companyId, companyId, 'client tenant was overwritten by session tenant');
-      const storedEarning = await client.query("SELECT payload->>'amount' AS amount,payload->>'deliveryId' AS delivery_id,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'", [companyId, earningId]);
-      assert.equal(storedEarning.rows[0].amount, '12.5');
+      const storedEarning = await client.query("SELECT payload->>'amountMinor' AS amount_minor,payload->>'currency' AS currency,payload->>'deliveryId' AS delivery_id,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'", [companyId, earningId]);
+      assert.equal(storedEarning.rows[0].amount_minor, '1250');
+      assert.equal(storedEarning.rows[0].currency, 'BRL');
       assert.equal(storedEarning.rows[0].delivery_id, deliveryId);
       assert.equal(storedEarning.rows[0].related_record_id, deliveryId);
+      const riderInstall=await registerDevice('motoboy','moto-proof-test-device');
+      assert.equal(riderInstall.status,200);
+      const proofPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,deviceId:'moto-proof-test-device',source:{app:'Rota Moto',deviceId:'moto-proof-test-device'},data:{...packet.data,orders:[],deliveries:[],deliveryEvents:[],earnings:[],proofs:[{
+        id:'proof-local-1',deliveryId:'delivery-local-1',createdAt:baseTime,
+        media:{mimeType:'image/png',sizeBytes:8,sha256:'a'.repeat(64),storageRef:{provider:'unconfigured',objectKey:'synthetic/ref'}}
+      }]}};
+      const proofWithoutProvider=await call('/api/sync/push',{method:'POST',body:proofPacket});
+      assert.equal(proofWithoutProvider.body.operationResults[0].status,'rejected');
+      assert.equal(proofWithoutProvider.body.operationResults[0].error.code,'MEDIA_STORAGE_UNAVAILABLE',
+        'canonical proof reference fails closed until a real blob provider validates it');
+      const routePacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],deliveries:[],deliveryEvents:[],earnings:[],routes:[{id:'route-local-1',deliveryIds:['delivery-local-1'],createdAt:baseTime,updatedAt:baseTime,version:1}]}};
+      const routePush=await call('/api/sync/push',{method:'POST',body:routePacket});
+      assert.equal(routePush.status,200);
+      assert.equal(routePush.body.operationResults[0].status,'accepted');
+      const canonicalRouteId=routePush.body.operationResults[0].canonicalId;
+      const canonicalRoute=await client.query("SELECT payload->'deliveryIds' AS delivery_ids FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Route'",[companyId,canonicalRouteId]);
+      assert.deepEqual(canonicalRoute.rows[0].delivery_ids,[deliveryId],'Route stores canonical Delivery IDs without a redundant inverse field');
+      const overlappingRoute={...routePacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...routePacket.data,routes:[{id:'route-local-2',deliveryIds:['delivery-local-1'],createdAt:baseTime,updatedAt:baseTime,version:1}]}};
+      const routeConflict=await call('/api/sync/push',{method:'POST',body:overlappingRoute});
+      assert.equal(routeConflict.status,200);
+      assert.equal(routeConflict.body.operationResults[0].status,'conflict');
+      assert.equal(routeConflict.body.operationResults[0].error.code,'ROUTE_DELIVERY_ALREADY_ACTIVE');
       const secretPacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`,
         data: { ...packet.data, orders: [{ ...packet.data.orders[0], accessToken: 'synthetic-secret-marker' }], deliveries: [] } };
       const secretRejected = await call('/api/sync/push', { method: 'POST', body: secretPacket });
@@ -195,8 +218,12 @@ async function main() {
       const lastPage = await call(`/api/sync/pull?limit=1&deviceId=restaurant-test-device&cursor=${encodeURIComponent(finalPage.body.nextCursor)}`);
       assert.equal(lastPage.status, 200);
       assert.equal(lastPage.body.events.length, 1);
-      assert.equal(lastPage.body.hasMore, false);
-      assert.equal(new Set([pull.body.events[0].eventId, next.body.events[0].eventId, finalPage.body.events[0].eventId, lastPage.body.events[0].eventId]).size, 4,
+      assert.equal(lastPage.body.hasMore, true);
+      const endPage=await call(`/api/sync/pull?limit=1&deviceId=restaurant-test-device&cursor=${encodeURIComponent(lastPage.body.nextCursor)}`);
+      assert.equal(endPage.status,200);
+      assert.equal(endPage.body.events.length,1);
+      assert.equal(endPage.body.hasMore,false);
+      assert.equal(new Set([pull.body.events[0].eventId,next.body.events[0].eventId,finalPage.body.events[0].eventId,lastPage.body.events[0].eventId,endPage.body.events[0].eventId]).size,5,
         'microsecond keyset cursor returns every outbox event exactly once');
 
       const riderTime = new Date(Date.now() + 2000).toISOString();
