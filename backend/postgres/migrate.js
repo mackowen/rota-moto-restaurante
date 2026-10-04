@@ -23,8 +23,8 @@ function getMigrations() {
     });
 }
 
-function migrationConnectionString() {
-  const value = process.env.MIGRATOR_DATABASE_URL;
+function migrationConnectionString(env = process.env) {
+  const value = env.MIGRATOR_DATABASE_URL;
   if (!value) throw new Error('MIGRATOR_DATABASE_URL não configurada.');
   const parsed = new URL(value);
   if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
@@ -37,6 +37,37 @@ function migrationConnectionString() {
     throw new Error('MIGRATOR_DATABASE_URL deve apontar sem senha para rotamoto_migrator em 127.0.0.1:5432/rotamoto.');
   }
   return value;
+}
+
+// This target is deliberately separate from the operational migration URL.
+// Resolve and validate it before constructing a PostgreSQL client.
+function e2eMigrationConnectionString(env = process.env) {
+  if (env.NODE_ENV !== 'test') throw new Error('Migrations E2E exigem NODE_ENV=test.');
+  const value = env.E2E_MIGRATOR_DATABASE_URL;
+  if (!value) throw new Error('E2E_MIGRATOR_DATABASE_URL não configurada.');
+  let parsed;
+  try { parsed = new URL(value); }
+  catch (_) { throw new Error('E2E_MIGRATOR_DATABASE_URL inválida.'); }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol) ||
+      parsed.username !== 'rotamoto_migrator' ||
+      parsed.password || parsed.hostname !== '127.0.0.1' || parsed.port !== '5432' ||
+      parsed.pathname !== '/rotamoto_e2e' || parsed.search || parsed.hash) {
+    throw new Error('Migrations E2E exigem rotamoto_migrator sem senha em 127.0.0.1:5432/rotamoto_e2e.');
+  }
+  return value;
+}
+
+function resolveMigrationInvocation(args = process.argv.slice(2), env = process.env) {
+  const command = args[0] || 'up';
+  const e2e = args.length === 2 && args[1] === '--e2e';
+  if (!['up', 'down', 'status'].includes(command) ||
+      (args.length > 1 && !e2e) || args.length > 2 ||
+      (e2e && command === 'down')) {
+    throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e (up/status somente)]');
+  }
+  return { command, connectionString: e2e
+    ? e2eMigrationConnectionString(env)
+    : migrationConnectionString(env) };
 }
 
 async function ensureMetadata(client) {
@@ -123,11 +154,8 @@ async function status(client, migrations) {
 }
 
 async function main() {
-  const command = process.argv[2] || 'up';
-  if (!['up', 'down', 'status'].includes(command)) {
-    throw new Error('Uso: node backend/postgres/migrate.js [up|down|status]');
-  }
-  const client = new Client({ connectionString: migrationConnectionString(), connectionTimeoutMillis: 5000 });
+  const { command, connectionString } = resolveMigrationInvocation();
+  const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
   let lockHeld = false;
   try {
     await client.connect();
@@ -155,5 +183,9 @@ async function main() {
   }
 }
 
-if (require.main === module) main();
-module.exports = { getMigrations, assertChecksums, withTransaction, migrationConnectionString };
+if (require.main === module) main().catch(error => {
+  console.error(error.message);
+  process.exitCode = 1;
+});
+module.exports = { getMigrations, assertChecksums, withTransaction, migrationConnectionString,
+  e2eMigrationConnectionString, resolveMigrationInvocation };

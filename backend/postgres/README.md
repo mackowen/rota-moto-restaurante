@@ -27,6 +27,30 @@ processes with a PostgreSQL advisory lock, and stores a SHA-256 checksum. It
 refuses to run if an applied migration file was edited. Database connection
 details are never printed.
 
+### Isolated E2E database (test process only)
+
+The normal CLI target remains exclusively `rotamoto`. A separate, explicit
+`--e2e` mode accepts only `up` and `status`, requires `NODE_ENV=test`, and uses
+only `E2E_MIGRATOR_DATABASE_URL`. Its pre-connection guard requires the exact
+target `rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e`, with no password in
+the URL. It rejects the official database, system databases, remote hosts and
+other roles before constructing a PostgreSQL client. No HTTP process or
+operational environment selects this mode.
+
+Run the guard test before any E2E migration:
+
+```sh
+npm run test:e2e-guards
+NODE_ENV=test E2E_MIGRATOR_DATABASE_URL='postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e' node backend/postgres/migrate.js up --e2e
+NODE_ENV=test E2E_MIGRATOR_DATABASE_URL='postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e' node backend/postgres/migrate.js status --e2e
+```
+
+The database must already exist and be accessible through the locally
+configured passwordless-command credential mechanism. This runner neither
+creates nor drops databases, changes PostgreSQL roles, or provisions E2E
+fixtures. `--e2e` never enables `down`. The isolated database's eventual
+teardown remains a separate, explicitly authorized administrative operation.
+
 The first migration enables row-level security with a default-deny tenant
 context on every tenant-owned table. Identity and session tables are global and
 must only be queried by trusted server code.
