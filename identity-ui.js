@@ -67,7 +67,7 @@
     try { response = await fetch(`${API}${path}`, { credentials: 'include', cache: 'no-store', ...options, headers }); }
     catch (_) { const error = new Error('NETWORK'); error.network = true; throw error; }
     let body = {}; try { body = await response.json(); } catch (_) {}
-    if (response.status === 401) expireSession();
+    if (response.status === 401 && path !== '/identity/session') expireSession();
     if (!response.ok && response.status === 403 && body.error?.code === 'CSRF_INVALID' && method !== 'GET' && !retried) {
       const session = await restore(); if (session) return request(path, options, true);
     }
