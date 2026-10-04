@@ -25,8 +25,15 @@ async function main(){
   assert.match(exposedBoot.stderr,/mantenha HOST em loopback/);
   const server=http.createServer(route);
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const base=`http://127.0.0.1:${server.address().port}`;
-  const request=(path,options={})=>fetch(base+path,options);
+    const base=`http://127.0.0.1:${server.address().port}`;
+    const request=(path,options={})=>fetch(base+path,options);
+    const live=await request('/health/live');
+    assert.equal(live.status,200);
+    assert.equal((await live.json()).status,'live');
+    assert.match(live.headers.get('x-request-id'),/^[0-9a-f-]{36}$/iu);
+    const ready=await request('/health/ready');
+    assert.equal(ready.status,200,'readiness confirms the runtime PostgreSQL connection and schema');
+    assert.equal((await ready.json()).dependencies.postgres,'ready');
   const signed=(secret,body)=>crypto.createHmac('sha256',secret).update(body).digest('hex');
   const keetaSig=(url,payload,secret='test-keeta-secret')=>{const params=Object.keys(payload).filter(k=>k!=='sig').sort().map(k=>`${k}=${payload[k]===null?'null':typeof payload[k]==='object'?JSON.stringify(payload[k]):String(payload[k])}`).join('&');return crypto.createHash('sha256').update(`${url}?${params}${secret}`,'utf8').digest('hex')};
   try{

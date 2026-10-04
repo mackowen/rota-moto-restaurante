@@ -29,6 +29,8 @@ function problemStatus(code) {
   if (['FORBIDDEN', 'PROVISIONER_UNAUTHORIZED', 'MFA_REQUIRED', 'CSRF_INVALID', 'ORIGIN_INVALID'].includes(code)) return 403;
   if (code === 'PROVISIONER_NOT_CONFIGURED' || code === 'EMAIL_PROVIDER_NOT_CONFIGURED') return 503;
   if (code === 'IDEMPOTENCY_CONFLICT') return 409;
+  if (['CONFLICT', 'REVISION_CONFLICT'].includes(code)) return 409;
+  if (['NOT_FOUND', 'TENANT_NOT_FOUND'].includes(code)) return 404;
   if (code === 'RATE_LIMITED') return 429;
   if (code === 'PAYLOAD_TOO_LARGE') return 413;
   if (code === 'UNSUPPORTED_MEDIA_TYPE') return 415;
@@ -44,6 +46,7 @@ function send(res, status, body, extraHeaders = {}) {
     'Pragma': 'no-cache',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
+    ...(res.req?.requestId ? { 'X-Request-ID': res.req.requestId } : {}),
     'Content-Length': Buffer.byteLength(payload),
     ...extraHeaders
   });
@@ -156,6 +159,10 @@ function publicError(error) {
     EMAIL_PROVIDER_NOT_CONFIGURED: 'Entrega de email indisponível.',
     MFA_REQUIRED: 'A autenticação multifator desta conta ainda não está configurada.',
     IDEMPOTENCY_CONFLICT: 'Chave idempotente já utilizada para outra solicitação.',
+    CONFLICT: 'Conflito com o estado atual do recurso.',
+    REVISION_CONFLICT: 'O recurso foi atualizado por outra operação.',
+    NOT_FOUND: 'Recurso não encontrado.',
+    TENANT_NOT_FOUND: 'Empresa não encontrada.',
     RATE_LIMITED: 'Limite de tentativas excedido.',
     PAYLOAD_TOO_LARGE: 'Payload excede o limite permitido.',
     UNSUPPORTED_MEDIA_TYPE: 'Content-Type application/json obrigatório.',
@@ -167,7 +174,7 @@ function publicError(error) {
     message: messages[code] || 'Falha interna ao processar a solicitação.' } } };
 }
 
-function createIdentityHttpHandler({ identityService, rateLimiter = createRateLimiter(), logger = () => {}, requestId = () => crypto.randomUUID() }) {
+function createIdentityHttpHandler({ identityService, rateLimiter = createRateLimiter(), logger = () => {}, requestId = req => req.requestId || crypto.randomUUID() }) {
   if (!identityService) throw new TypeError('Serviço de identidade obrigatório.');
 
   async function requireSessionMutation(req, permissionKey, operation) {
@@ -185,7 +192,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
   return async function identityHttpHandler(req, res) {
     const path = new URL(req.url, 'http://127.0.0.1').pathname;
     if (!path.startsWith('/api/identity/') && path !== '/api/admin/tenants/provision') return false;
-    const id = requestId();
+    const id = requestId(req);
     const startedAt = Date.now();
     let status = 500;
     try {
@@ -199,7 +206,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
       }
       if (ROUTE_METHODS[path] && ROUTE_METHODS[path] !== req.method) {
         status = 405;
-        send(res, status, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' } }, { Allow: ROUTE_METHODS[path] });
+        req.apiErrorCode = 'METHOD_NOT_ALLOWED';
+        send(res, status, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' }, requestId: id }, { Allow: ROUTE_METHODS[path] });
         return true;
       }
 
@@ -293,15 +301,18 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
       if (['GET', 'POST'].includes(req.method)) {
         status = 404;
-        send(res, status, { error: { code: 'NOT_FOUND', message: 'Rota não encontrada.' } });
+        req.apiErrorCode = 'NOT_FOUND';
+        send(res, status, { error: { code: 'NOT_FOUND', message: 'Rota não encontrada.' }, requestId: id });
       } else {
         status = 405;
-        send(res, status, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' } }, { Allow: 'GET, POST' });
+        req.apiErrorCode = 'METHOD_NOT_ALLOWED';
+        send(res, status, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' }, requestId: id }, { Allow: 'GET, POST' });
       }
       return true;
     } catch (error) {
       const mapped = publicError(error);
       status = mapped.status;
+      req.apiErrorCode = mapped.payload.error.code;
       send(res, status, { ...mapped.payload, requestId: id });
       return true;
     } finally {

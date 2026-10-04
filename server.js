@@ -15,6 +15,12 @@ const {createIdentityService}=require('./backend/identity/service');
 const {createIdentityHttpHandler}=require('./backend/identity/http');
 const {createSyncService}=require('./backend/domain/sync-service');
 const {createSyncHttpHandler}=require('./backend/domain/sync-http');
+const {createDomainQueryRepository}=require('./backend/domain/query-repository');
+const {createDomainQueryService}=require('./backend/domain/query-service');
+const {createDomainQueryHttpHandler}=require('./backend/domain/query-http');
+const {createAdminRepository}=require('./backend/admin/repository');
+const {createAdminService}=require('./backend/admin/service');
+const {createAdminHttpHandler}=require('./backend/admin/http');
 
 const PORT=Number(process.env.PORT||8787);
 const HOST=process.env.HOST||'127.0.0.1';
@@ -38,12 +44,17 @@ function runtimeDatabaseConnectionString(value=process.env.DATABASE_URL){
     throw new Error('DATABASE_URL deve apontar sem senha para rotamoto_app em 127.0.0.1:5432/rotamoto.');
   return connectionString;
 }
-const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),max:5,allowExitOnIdle:true});
-identityPool.on('error',()=>console.error('PostgreSQL identity pool connection failed.'));
+const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime'});
+identityPool.on('error',error=>console.error(JSON.stringify({event:'postgres.pool.error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'DATABASE_ERROR'})));
 const identityService=createIdentityService({pool:identityPool});
-const identityHttp=createIdentityHttpHandler({identityService,logger:entry=>console.info(JSON.stringify(entry))});
+const requestLogger=entry=>console.info(JSON.stringify(entry));
+const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{}});
 const syncService=createSyncService();
-const syncHttp=createSyncHttpHandler({identityService,syncService,logger:entry=>console.info(JSON.stringify(entry))});
+const syncHttp=createSyncHttpHandler({identityService,syncService,logger:()=>{}});
+const domainQueryService=createDomainQueryService({repository:createDomainQueryRepository()});
+const domainQueryHttp=createDomainQueryHttpHandler({identityService,queryService:domainQueryService,logger:()=>{}});
+const adminService=createAdminService({repository:createAdminRepository()});
+const adminHttp=createAdminHttpHandler({identityService,adminService,logger:()=>{}});
 
 const state={
   integration:{provider:'ifood',status:CLIENT_ID&&CLIENT_SECRET?'configured':'not_configured',lastPollAt:null,lastSuccessAt:null,lastError:null},
@@ -53,13 +64,24 @@ const state={
   orders:new Map()
 };
 
-function json(res,status,payload){const body=JSON.stringify(payload);const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin'};if(res.req?.headers.origin===ALLOWED_ORIGIN)headers['Access-Control-Allow-Origin']=ALLOWED_ORIGIN;res.writeHead(status,headers);res.end(body)}
+function json(res,status,payload){const body=JSON.stringify(payload);const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin',...(res.req?.requestId?{'X-Request-ID':res.req.requestId}:{})};if(res.req?.headers.origin===ALLOWED_ORIGIN)headers['Access-Control-Allow-Origin']=ALLOWED_ORIGIN;res.writeHead(status,headers);res.end(body)}
 function assertLoopbackHost(host=HOST){const value=String(host).toLowerCase().replace(/^\[|\]$/g,'');if(!['127.0.0.1','::1','localhost'].includes(value))throw new Error('O servidor de integrações não possui autenticação de usuário; mantenha HOST em loopback e exponha acesso remoto somente por um proxy autenticado que encaminhe para loopback.');return true}
 function readRawBody(req){return new Promise((resolve,reject)=>{let chunks=[],size=0,settled=false;req.on('data',c=>{if(settled)return;size+=c.length;if(size>1024*1024){settled=true;const err=new Error('Payload too large');err.status=413;reject(err);req.resume();return}chunks.push(c)});req.on('end',()=>{if(settled)return;settled=true;resolve(Buffer.concat(chunks).toString('utf8'))});req.on('error',err=>{if(!settled){settled=true;reject(err)}})})}
 async function readBody(req){if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']||'')){const err=new Error('Content-Type application/json obrigatório.');err.status=415;throw err}const raw=await readRawBody(req);if(!raw){const err=new Error('JSON obrigatório.');err.status=400;throw err}try{const body=JSON.parse(raw);if(!body||typeof body!=='object'||Array.isArray(body)){const err=new Error('Objeto JSON obrigatório.');err.status=400;throw err}return body}catch(e){if(e.status)throw e;const err=new Error('JSON inválido.');err.status=400;throw err}}
 function verifyHmac(secret,raw,signature,encoding='hex'){if(!secret||typeof signature!=='string')return false;const expected=crypto.createHmac('sha256',secret).update(raw).digest(encoding);if(encoding==='hex'&&!/^[a-f0-9]{64}$/i.test(signature))return false;const a=Buffer.from(expected,encoding),b=Buffer.from(signature,encoding);return a.length===b.length&&crypto.timingSafeEqual(a,b)}
 function verifyKeetaSignature(secret,url,payload){if(!secret||typeof payload?.sig!=='string'||! /^[a-f0-9]{64}$/i.test(payload.sig))return false;const params=Object.keys(payload).filter(k=>k!=='sig').sort().map(k=>{const v=payload[k];const value=v===null?'null':typeof v==='object'?JSON.stringify(v):String(v);return `${k}=${value}`}).join('&');const expected=crypto.createHash('sha256').update(`${url}?${params}${secret}`,'utf8').digest('hex');const a=Buffer.from(expected,'hex'),b=Buffer.from(payload.sig,'hex');return a.length===b.length&&crypto.timingSafeEqual(a,b)}
 function rememberWebhook(provider,id){const key=`${provider}:${id}`;if(seenWebhooks.has(key))return false;seenWebhooks.set(key,Date.now());if(seenWebhooks.size>10000)seenWebhooks.delete(seenWebhooks.keys().next().value);return true}
+async function databaseReadiness(){
+  const client=await identityPool.connect();
+  try{
+    await client.query('BEGIN');
+    await client.query("SET LOCAL statement_timeout='1500ms'");
+    const result=await client.query("SELECT current_user AS role,to_regclass('rotamoto.domain_records') IS NOT NULL AS domain_ready");
+    await client.query('COMMIT');
+    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true;
+  }catch(error){try{await client.query('ROLLBACK')}catch(_){}throw error}
+  finally{client.release()}
+}
 function bearer(){return state.token.accessToken||''}
 async function ifood(path,{method='GET',body,headers={}}={}){
   const response=await fetch(IFOOD_API+path,{method,headers:{Authorization:`Bearer ${bearer()}`,Accept:'application/json','Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body)});
@@ -122,15 +144,23 @@ async function orderAction(id,action){
   return ifood(routes[action],{method:'POST',body:action==='cancel'?{cancellationReason:'OTHER'}:undefined});
 }
 async function route(req,res){
+  const startedAt=Date.now();
+  req.requestId=crypto.randomUUID();
   res.req=req;
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
     if(await identityHttp(req,res))return;
+    if(await adminHttp(req,res))return;
+    if(await domainQueryHttp(req,res))return;
     if(await syncHttp(req,res))return;
-    if(req.method==='OPTIONS'){if(req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});res.writeHead(204,{'Access-Control-Allow-Origin':ALLOWED_ORIGIN,'Access-Control-Allow-Headers':'Content-Type, X-99Food-Signature, X-Signature, X-Keeta-Signature','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Vary':'Origin'});return res.end()}
+    if(req.method==='OPTIONS'){if(req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});res.writeHead(204,{'Access-Control-Allow-Origin':ALLOWED_ORIGIN,'Access-Control-Allow-Headers':'Content-Type, X-CSRF-Token, X-99Food-Signature, X-Signature, X-Keeta-Signature','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Vary':'Origin','X-Request-ID':req.requestId});return res.end()}
     if(!['GET','POST'].includes(req.method))return json(res,405,{error:'METHOD_NOT_ALLOWED',message:'Método não permitido.'});
     if(req.headers.origin&&req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
-    if(req.method==='GET'&&u.pathname==='/health')return json(res,200,{ok:true,service:'rota-moto-ifood',time:new Date().toISOString()});
+    if(req.method==='GET'&&['/health','/health/live'].includes(u.pathname))return json(res,200,{ok:true,status:'live',service:'rotamoto-api',time:new Date().toISOString(),requestId:req.requestId});
+    if(req.method==='GET'&&u.pathname==='/health/ready'){
+      try{const ready=await databaseReadiness();return json(res,ready?200:503,{status:ready?'ready':'not_ready',service:'rotamoto-api',dependencies:{postgres:ready?'ready':'unavailable'},time:new Date().toISOString(),requestId:req.requestId})}
+      catch(_){return json(res,503,{status:'not_ready',service:'rotamoto-api',dependencies:{postgres:'unavailable'},time:new Date().toISOString(),requestId:req.requestId})}
+    }
     if(req.method==='GET'&&u.pathname==='/api/ifood/status')return json(res,200,{provider:'ifood',status:state.integration.status,clientConfigured:Boolean(CLIENT_ID&&CLIENT_SECRET),authenticated:Boolean(state.token.accessToken),expiresAt:state.token.expiresAt||null,lastPollAt:state.integration.lastPollAt,lastSuccessAt:state.integration.lastSuccessAt,lastError:state.integration.lastError,pendingEvents:state.events.size});
     if(req.method==='GET'&&u.pathname==='/api/99food/status')return json(res,200,food99.diagnostics());
     if(req.method==='GET'&&u.pathname==='/api/99food/orders')return json(res,200,await food99.orders());
@@ -152,7 +182,8 @@ async function route(req,res){
     const kAction=u.pathname.match(/^\/api\/keeta\/orders\/([^/]+)\/(confirm|readyForPickup|dispatch|delivered|cancel)$/); if(req.method==='POST'&&kAction){const map={confirm:'confirm',readyForPickup:'readyForPickup',dispatch:'dispatch',delivered:'delivered',cancel:'cancel'};return json(res,202,await keeta.action(map[kAction[2]],kAction[1],kAction[2]==='cancel'?{reason:'MERCHANT'}:undefined));}
     const fAction=u.pathname.match(/^\/api\/99food\/orders\/([^/]+)\/(confirm|ready|dispatch|cancel)$/); if(req.method==='POST'&&fAction)return json(res,202,await food99.action(fAction[2],fAction[1],fAction[2]==='cancel'?{reason:'MERCHANT'}:undefined));
     return json(res,404,{error:'NOT_FOUND',message:'Rota não encontrada.'});
-  }catch(err){state.integration.lastError={message:err.status&&err.status<500?err.message:'Falha interna de integração.',status:err.status||500,at:new Date().toISOString()};if(err.status===401){state.token.accessToken='';state.integration.status='configured'}const status=err.status||500;return json(res,status,{error:status<500?'INVALID_REQUEST':'INTEGRATION_ERROR',message:status<500?err.message:'Falha interna ao processar a integração.'})}
+  }catch(err){const status=Number.isInteger(err.status)&&err.status>=400&&err.status<=599?err.status:500;const code=typeof err.code==='string'&&/^[A-Z][A-Z0-9_]{1,63}$/u.test(err.code)?err.code:'INTEGRATION_ERROR';state.integration.lastError={code:status<500?code:'PROVIDER_REQUEST_FAILED',status,at:new Date().toISOString()};if(status===401){state.token.accessToken='';state.integration.status='configured'}req.apiErrorCode=code;return json(res,status,{error:status<500?'INVALID_REQUEST':'INTEGRATION_ERROR',message:status<500?'Solicitação inválida.':'Falha interna ao processar a integração.',requestId:req.requestId})}
+  finally{try{requestLogger({requestId:req.requestId,method:req.method,path:u.pathname,status:res.statusCode||500,durationMs:Date.now()-startedAt,...(req.apiErrorCode?{errorCode:req.apiErrorCode}:{})})}catch(_) {}}
 }
 
 const pollTimer=setInterval(()=>{if(state.token.accessToken&&(!state.token.expiresAt||Date.now()<state.token.expiresAt-60000))poll().catch(()=>{});},30000);pollTimer.unref();

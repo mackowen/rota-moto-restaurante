@@ -8,6 +8,12 @@ const { createIdentityService, tokenDigest } = require('../backend/identity/serv
 const { COOKIE_NAME, createRateLimiter } = require('../backend/identity/http');
 const { createSyncService } = require('../backend/domain/sync-service');
 const { createSyncHttpHandler } = require('../backend/domain/sync-http');
+const { createDomainQueryRepository } = require('../backend/domain/query-repository');
+const { createDomainQueryService } = require('../backend/domain/query-service');
+const { createDomainQueryHttpHandler } = require('../backend/domain/query-http');
+const { createAdminRepository } = require('../backend/admin/repository');
+const { createAdminService } = require('../backend/admin/service');
+const { createAdminHttpHandler } = require('../backend/admin/http');
 
 function savepointPool(client) {
   let counter = 0;
@@ -66,7 +72,9 @@ async function main() {
     await client.query("INSERT INTO rotamoto.companies(id,name,status) VALUES($1,'Synthetic domain sync','active')", [companyId]);
     await client.query('INSERT INTO rotamoto.users(id,email) VALUES($1,$2)', [userId, `domain-sync-${userId}@example.invalid`]);
     await client.query("INSERT INTO rotamoto.roles(id,company_id,role_key,display_name) VALUES($1,$2,'qa-sync','Synthetic sync role')", [roleId, companyId]);
-    await client.query("INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version) VALUES($1,$2,'sync.push',1),($1,$2,'sync.pull',1)", [companyId, roleId]);
+    await client.query(`INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version)
+      VALUES($1,$2,'sync.push',1),($1,$2,'sync.pull',1),($1,$2,'orders.read',1),
+        ($1,$2,'company.manage',1),($1,$2,'members.read',1),($1,$2,'integrations.manage',1)`, [companyId, roleId]);
     await client.query("INSERT INTO rotamoto.memberships(id,company_id,user_id,role_id,status,activated_at) VALUES($1,$2,$3,$4,'active',now())", [membershipId, companyId, userId, roleId]);
     await client.query(`INSERT INTO rotamoto.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at)
       VALUES($1,$2,$3,$4,$5,now(),now(),now()+interval '30 minutes',now()+interval '12 hours')`,
@@ -80,10 +88,21 @@ async function main() {
 
     const identityService = createIdentityService({ pool: savepointPool(client) });
     const syncService = createSyncService();
+    const queryService = createDomainQueryService({ repository: createDomainQueryRepository() });
+    const adminService = createAdminService({ repository: createAdminRepository() });
     const logs = [];
     const handler = createSyncHttpHandler({ identityService, syncService, logger: value => logs.push(value),
       rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }) });
-    const server = http.createServer(handler);
+    const queryHttp = createDomainQueryHttpHandler({ identityService, queryService,
+      rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
+    const adminHttp = createAdminHttpHandler({ identityService, adminService,
+      rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
+    const server = http.createServer(async (req, res) => {
+      req.requestId = crypto.randomUUID();
+      if (await adminHttp(req, res)) return;
+      if (await queryHttp(req, res)) return;
+      return handler(req, res);
+    });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
     const cookie = `${COOKIE_NAME}=${sessionToken}`;
@@ -92,7 +111,7 @@ async function main() {
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(csrf ? { 'X-CSRF-Token': csrf } : {}), ...headers },
       body: body === undefined ? undefined : JSON.stringify(body) });
       const text = await response.text();
-      return { status: response.status, body: text ? JSON.parse(text) : null };
+      return { status: response.status, body: text ? JSON.parse(text) : null, headers: response.headers };
     };
     const registerDevice = async (appKey, deviceId) => call(`/api/sync/installations/${appKey}`, {
       method: 'POST', body: { deviceId }
@@ -151,6 +170,47 @@ async function main() {
       assert.match(deliveryId, /^[0-9a-f-]{36}$/iu);
       assert.match(earningId, /^[0-9a-f-]{36}$/iu);
       assert.notEqual(orderId, 'order-local-1');
+      const domainOrders = await call('/api/domain/orders?limit=1');
+      assert.equal(domainOrders.status, 200, JSON.stringify(domainOrders.body));
+      assert.equal(domainOrders.body.records.length, 1);
+      assert.equal(domainOrders.body.records[0].id, orderId);
+      assert.equal(domainOrders.body.records[0].version, 1);
+      assert.match(domainOrders.headers.get('x-request-id'), /^[0-9a-f-]{36}$/iu);
+      const ownDelivery = await call(`/api/domain/deliveries/${deliveryId}`);
+      assert.equal(ownDelivery.status, 200);
+      assert.equal(ownDelivery.body.record.status, 'ASSIGNED');
+      const hiddenTombstone = await call(`/api/domain/deliveries/${crypto.randomUUID()}`);
+      assert.equal(hiddenTombstone.status, 404, 'canonical IDs outside this tenant are indistinguishable from missing records');
+      const invalidDomainQuery = await call('/api/domain/orders?companyId=' + companyId);
+      assert.equal(invalidDomainQuery.status, 400);
+      assert.equal(invalidDomainQuery.body.error.code, 'INVALID_INPUT');
+      const invalidDomainCursor = await call('/api/domain/orders?cursor=' + Buffer.from(`2025-02-30T12:00:00.000000Z\n${crypto.randomUUID()}`).toString('base64url'));
+      assert.equal(invalidDomainCursor.status, 400, 'malformed calendar dates in opaque cursors are rejected as input');
+      const duplicateSessionCookie = await call('/api/domain/orders', { headers: { Cookie: `${cookie}; ${cookie}` } });
+      assert.equal(duplicateSessionCookie.status, 401, 'ambiguous duplicate session cookies fail closed');
+      assert.equal((await call('/api/domain/unsupported')).body.error.code, 'NOT_FOUND');
+      assert.equal((await call('/api/sync/unsupported')).body.error.code, 'NOT_FOUND');
+      assert.equal((await call('/api/domain/orders', { cookie: `${COOKIE_NAME}=${readOnlyToken}` })).status, 403,
+        'domain query requires explicit permission');
+      const companyView = await call('/api/admin/company');
+      assert.equal(companyView.status, 200);
+      assert.equal(companyView.body.id, companyId);
+      const membershipView = await call('/api/admin/memberships?limit=1');
+      assert.equal(membershipView.status, 200);
+      assert.equal(membershipView.body.members.length, 1);
+      assert(membershipView.body.members[0].email.includes('@example.invalid'));
+      const rolesView = await call('/api/admin/roles');
+      assert.equal(rolesView.status, 200);
+      assert(rolesView.body.roles.find(role => role.key === 'qa-sync').permissions.includes('orders.read'));
+      const integrationView = await call('/api/admin/integrations');
+      assert.equal(integrationView.status, 200);
+      assert.equal(JSON.stringify(integrationView.body).includes('secret_ref'), false);
+      const deniedMembershipView = await call('/api/admin/memberships', { cookie: `${COOKIE_NAME}=${readOnlyToken}` });
+      assert.equal(deniedMembershipView.status, 403);
+      const methodError = await call('/api/sync/push');
+      assert.equal(methodError.status, 405);
+      assert.equal(methodError.body.error.code, 'METHOD_NOT_ALLOWED');
+      assert.match(methodError.body.requestId, /^[0-9a-f-]{36}$/iu);
       const stored = await client.query(`SELECT d.payload,d.related_record_id::text,d.related_entity_type,o.payload AS order_payload
         FROM rotamoto.domain_records d JOIN rotamoto.domain_records o ON o.company_id=d.company_id AND o.record_id=d.related_record_id
         WHERE d.company_id=$1 AND d.record_id=$2 AND d.entity_type='Delivery'`, [companyId, deliveryId]);

@@ -91,6 +91,10 @@ async function main() {
   assert.match(canonicalModelMigration.up, /valid_route_delivery_ids/);
   assert.match(canonicalModelMigration.up, /domain_earning_amount_minor_check/);
   assert.match(canonicalModelMigration.up, /domain_active_route_delivery_gin_idx/);
+  const runtimeIntegrationReadMigration = getMigrations()[10];
+  assert.equal(runtimeIntegrationReadMigration.id, '0011_runtime_integration_read');
+  assert.match(runtimeIntegrationReadMigration.up, /GRANT SELECT ON TABLE rotamoto\.integrations, rotamoto\.external_accounts TO rotamoto_app/);
+  assert.match(runtimeIntegrationReadMigration.down, /REVOKE SELECT ON TABLE rotamoto\.integrations, rotamoto\.external_accounts FROM rotamoto_app/);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
   assert.match(migration.up, /CREATE TABLE rotamoto\.memberships/);
@@ -128,6 +132,13 @@ async function main() {
       has_table_privilege(current_user,'rotamoto.audit_log','DELETE') AS audit_delete`);
     assert.deepEqual(runtimePrivileges.rows[0], { db_create: false, db_temp: false, schema_create: false,
       ledger_select: false, audit_update: false, audit_delete: false }, 'runtime role has no DDL, temp, ledger or audit mutation rights');
+    const integrationPrivileges = await runtimeClient.query(`SELECT
+      has_table_privilege(current_user,'rotamoto.integrations','SELECT') AS integrations_read,
+      has_table_privilege(current_user,'rotamoto.integrations','INSERT') AS integrations_insert,
+      has_table_privilege(current_user,'rotamoto.external_accounts','SELECT') AS accounts_read,
+      has_table_privilege(current_user,'rotamoto.external_accounts','UPDATE') AS accounts_update`);
+    assert.deepEqual(integrationPrivileges.rows[0], { integrations_read: true, integrations_insert: false,
+      accounts_read: true, accounts_update: false }, 'runtime gets read-only integration metadata access');
     const ownership = await migrationClient.query(`SELECT
       (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p','S','v','m')
@@ -293,7 +304,7 @@ async function main() {
         env: process.env, encoding: 'utf8', timeout: 10000
       });
       assert.equal(reversibleDown.status,0,'additive constraint/index migration has a safe reversible down');
-      assert.match(reversibleDown.stdout,/revertida 0010_route_validation_runtime_grant/);
+      assert.match(reversibleDown.stdout,/revertida 0011_runtime_integration_read/);
       const stillThere=await tenantQuery(client,rollbackGuardId,'SELECT id FROM rotamoto.companies WHERE id=$1',[rollbackGuardId]);
       assert.equal(stillThere.rowCount,1,'schema-only rollback preserves tenant data');
       const reapplied=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'up'],{env:process.env,encoding:'utf8',timeout:10000});
@@ -301,7 +312,15 @@ async function main() {
       const grantDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
         env: process.env, encoding: 'utf8', timeout: 10000
       });
-      assert.equal(grantDown.status,0,'runtime grant migration rolls back safely');
+      assert.equal(grantDown.status,0,'runtime integration read grant migration rolls back safely');
+      assert.match(grantDown.stdout,/revertida 0011_runtime_integration_read/);
+      const runtimeReadRevoked=await runtimeClient.query("SELECT has_table_privilege(current_user,'rotamoto.integrations','SELECT') AS can_read");
+      assert.equal(runtimeReadRevoked.rows[0].can_read,false,'down migration revokes the additive integration read privilege');
+      const previousGrantDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
+        env: process.env, encoding: 'utf8', timeout: 10000
+      });
+      assert.equal(previousGrantDown.status,0,'previous route validation grant rolls back safely');
+      assert.match(previousGrantDown.stdout,/revertida 0010_route_validation_runtime_grant/);
       const constraintDown=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'down'],{env:process.env,encoding:'utf8',timeout:10000});
       assert.equal(constraintDown.status,0,'domain constraints and index roll back without deleting data');
       const guardedDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
