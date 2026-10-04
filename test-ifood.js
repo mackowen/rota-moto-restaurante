@@ -1,6 +1,10 @@
 const fs=require('fs');
 const src=fs.readFileSync('./ifood-integration.js','utf8');
-for(const x of ['normalize','simulateOrder','receiveLocalEvent','processLocalEvent','acknowledgeLocal','diagnostics','prepareOAuth']) if(!src.includes(x)) throw new Error('missing '+x);
+for(const x of ['normalize','simulateOrder','receiveLocalEvent','processLocalEvent','acknowledgeLocal','diagnostics']) if(!src.includes(x)) throw new Error('missing '+x);
+if(!src.includes("capability:'blocked_external'")||!src.includes("lab:'local_simulation'")) throw new Error('iFood capability must be explicitly local-only');
 const app=fs.readFileSync('./app.js','utf8');
 for(const x of ['Pedidos e integrações','data-ifood-simulate-event','data-ifood-diagnostics','data-ifood-clear-queue','processedEventIds','queue']) if(!app.includes(x)) throw new Error('missing app '+x);
+const lab=app.match(/async function processIFoodLabPayload\([\s\S]*?\nasync function transitionIFoodLab/);
+if(!lab||!lab[0].includes('labOnly=true')||lab[0].includes("put('orders'")||lab[0].includes('saveSettings(')) throw new Error('iFood laboratory must remain in-memory and isolated from commercial orders');
+if(!app.includes('iFood, 99Food e Keeta não conectados')||!app.includes('Os simuladores habilitados não consultam nem alteram plataformas externas.')) throw new Error('provider state must not be presented as connected');
 console.log('ifood structure tests: OK');

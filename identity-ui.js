@@ -221,7 +221,7 @@
     $('[data-driver-access-note]').hidden = canReadDrivers;
     $('[data-company-name]').textContent = company.name;
     const integrationBox = $('[data-integrations]'); integrationBox.hidden = !integrations;
-    if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); integrations.integrations.forEach(item => { const row = document.createElement('p'); row.textContent = `${item.provider} · ${item.status}${item.externalAccount ? ` · ${item.externalAccount.linkStatus}` : ''}`; list.append(row); }); }
+    if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); integrations.integrations.forEach(item => { const row = document.createElement('p'); row.textContent = `${item.displayName || item.provider} · ${item.state || item.status} · ${item.connectionVerified ? 'conexão verificada' : 'sem conexão externa verificada'}${item.externalAccount ? ' · conta externa cadastrada, ainda não validada' : ''}`; list.append(row); }); }
     const roleSelect = $('[data-invite] select'); roleSelect.replaceChildren();
     const assignableRoles = roles.roles.filter(role => role.permissions.every(permission => current.permissions.includes(permission)));
     assignableRoles.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; roleSelect.append(option); });

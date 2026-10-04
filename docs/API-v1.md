@@ -76,7 +76,7 @@ Lista retorna `{records:[{id,record,version,createdAt,updatedAt,deletedAt}],next
 | `GET /api/admin/memberships?limit=…&cursor=…` | `members.read` | `limit` (1–100) e cursor | Memberships da empresa ativa com identificadores, email, estado, role e permissions. Não retorna credenciais/sessões. |
 | `GET /api/admin/roles` | `company.manage` | — | Roles da empresa e permission keys. |
 | `GET /api/admin/permissions` | `company.manage` | — | Catálogo versionado e descrições de permission keys. |
-| `GET /api/admin/integrations` | `integrations.manage` | — | Provider, status e metadados de external account; nunca `secret_ref`, tokens ou credentials. |
+| `GET /api/admin/integrations` | `integrations.manage` + sessão/tenant/RLS | — | Catálogo iFood/99Food/Keeta com `capability=blocked_external`, estado sanitizado, `connectionVerified=false`, blockers e metadados mínimos de contas cadastradas. Nunca `secret_ref`, tokens ou credentials. |
 | `POST /api/admin/roles` | `company.manage` + MFA verificado + CSRF | `{key,name,permissions[]}` | 201 com role criada | Permissões devem existir e ser subconjunto das permissões efetivas do ator; keys `owner`/`admin` são reservadas. |
 | `PATCH /api/admin/roles/{roleId}` | `company.manage` + MFA verificado + CSRF | `{name,permissions[]}` | Atualiza role custom e auditoria | Role owner/system e perfil atualmente usado pelo ator são imutáveis; usuários afetados têm sessões revogadas e MFA marcado quando ganha permissão administrativa. |
 | `PATCH /api/admin/memberships/{membershipId}` | `company.manage` + MFA verificado + CSRF | `{roleId?}` e/ou `{status:active\|suspended\|revoked}` | Atualiza associação e revoga sessões dela | Não permite autoalteração; role acima do ator, ativação sem credencial verificada e remoção do último owner válido retornam erro estável. |
@@ -85,9 +85,13 @@ Lista retorna `{records:[{id,record,version,createdAt,updatedAt,deletedAt}],next
 
 O tenant e o ator vêm da sessão verificada e RLS; nenhum endpoint recebe `companyId` para autorizar acesso. Mutações escrevem `audit_log` sem senha, token ou PII desnecessária. Roles não são apagadas; memberships revogadas permanecem como histórico. `active` só pode ser restaurado a uma associação suspensa com conta habilitada, senha e email verificados; convite é ativado pelo token de uso único. O último owner válido (associação ativa, conta habilitada/verificada, credencial habilitada para sessão MFA) não pode ser removido/rebaixado. As mudanças críticas usam lock transacional por tenant. O vínculo de Driver exige membership ativa e verificada com `sync.pull`/`sync.push`, tem FK tenant-scoped e unicidade por Driver.
 
-## Providers legados / internos
+## Providers externos
 
-Rotas `/api/ifood/*`, `/api/99food/*` e `/api/keeta/*` existentes são interfaces internas legadas do servidor local e não fazem parte da API multi-tenant autenticada. Não devem ser expostas fora de loopback/proxy autenticado. Algumas ações ainda usam estado em memória; polling/webhooks persistentes, gestão de credenciais e isolamento por tenant pertencem à F4 e não são declarados prontos por este documento.
+As rotas legadas `/api/ifood/*`, `/api/99food/*` e `/api/keeta/*` respondem `503 PROVIDER_BLOCKED_EXTERNAL`. Não executam OAuth, polling, ACK, pedido, assinatura presumida ou webhook. Essa fronteira é deliberadamente fail-closed até validação de documentação oficial, credenciais de parceiro e homologação por provider.
+
+O catálogo é fornecido pela API administrativa tenant-scoped; leitura requer sessão e `integrations.manage`. O código de laboratório é local e sintético. Seus normalizadores e eventos não comprovam formato externo, autenticidade, lifecycle nem conexão. `GET /api/admin/integrations` é a única representação administrativa de estado disponível e não permite iniciar conexão. Um row persistido ou conta externa cadastrada nunca é exibido como conexão verificada.
+
+Arquitetura de implementação prevista: adapter validado por provider → serviço de integração tenant-scoped → caso de uso/importação canônica Order/Delivery → outbox/inbox e sync Local-First. A integração não grava projeções visuais. Um pedido só poderá ser importado quando o evento tiver autenticidade validada, external ID estável, mapping aprovado e idempotência persistente; colisão com edição local resulta em conflito revisável. Até essas condições existirem, nenhum payload externo é enfileirado ou normalizado para domínio.
 
 ## Não exposto intencionalmente
 

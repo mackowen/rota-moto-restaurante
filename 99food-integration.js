@@ -1,7 +1,16 @@
-/* RotaMoto — 99Food client/contract layer. Secrets remain server-side. */
-(function(global){'use strict';
- const API='/api/99food';
- const request=(path,options={})=>fetch(API+path,{headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})},...options}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||d.error||`99Food HTTP ${r.status}`);return d});
- const normalize=raw=>{const o=raw||{},customer=o.customer||o.user||{},address=o.delivery?.deliveryAddress||o.deliveryAddress||o.address||{};return {id:'99_'+String(o.id||o.orderId||Date.now()),sourceId:'99',externalId:o.id||o.orderId||null,externalDisplayId:o.displayId||o.orderNumber||null,externalStatus:o.status||o.code||null,status:o.status||o.code||'CREATED',customer:{name:customer.name||'',phone:customer.phone||''},address:typeof address==='string'?address:[address.formattedAddress,address.street,address.number,address.city].filter(Boolean).join(', '),obs:customer.observations||o.notes||'',items:Array.isArray(o.items)?o.items:[],payments:Array.isArray(o.payments)?o.payments:[],orderTotal:Number(o.total?.orderAmount||o.total?.value||o.amount||0),deliveryFee:Number(o.total?.deliveryFee||o.deliveryFee||0),sourceData:o};};
- global.RotaMoto99Food={available:()=>typeof fetch==='function',status:()=>request('/status'),orders:()=>request('/orders'),order:id=>request(`/orders/${encodeURIComponent(id)}`),confirm:id=>request(`/orders/${encodeURIComponent(id)}/confirm`,{method:'POST'}),ready:id=>request(`/orders/${encodeURIComponent(id)}/ready`,{method:'POST'}),dispatch:id=>request(`/orders/${encodeURIComponent(id)}/dispatch`,{method:'POST'}),cancel:id=>request(`/orders/${encodeURIComponent(id)}/cancel`,{method:'POST'}),normalize,localAck:eventId=>({eventId,accepted:true}),diagnostics:()=>({provider:'99food',backend:'/api/99food',webhook:'/api/99food/webhook',sandboxSupported:true,localFirst:true})};
+/* UI-facing capability boundary. 99Food protocol and field mappings are not
+ * verified; this module intentionally performs no network calls or storage. */
+(function (global) {
+  'use strict';
+  const blocked = () => Promise.reject(Object.assign(
+    new Error('Integração 99Food indisponível até validação externa.'),
+    { code: 'PROVIDER_BLOCKED_EXTERNAL' }
+  ));
+  global.RotaMoto99Food = Object.freeze({
+    available: () => false,
+    diagnostics: () => ({ provider: '99food', capability: 'blocked_external', connectionVerified: false }),
+    status: blocked, orders: blocked, order: blocked, confirm: blocked, ready: blocked,
+    dispatch: blocked, cancel: blocked,
+    normalize: () => { throw Object.assign(new Error('Mapeamento 99Food não validado.'), { code: 'PROVIDER_BLOCKED_EXTERNAL' }); }
+  });
 })(window);

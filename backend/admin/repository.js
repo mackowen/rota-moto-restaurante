@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { publicCatalog } = require('../integrations/registry');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 function invalid() { const error = new Error('cursor inválido.'); error.code = 'INVALID_INPUT'; throw error; }
@@ -243,10 +244,11 @@ function createAdminRepository() {
       FROM rotamoto.integrations i LEFT JOIN rotamoto.external_accounts ea
         ON ea.company_id=i.company_id AND ea.integration_id=i.id
       WHERE i.company_id=$1 ORDER BY i.provider,ea.created_at,ea.id`, [companyId]);
-    return { integrations: result.rows.map(row => ({ id: row.id, provider: row.provider, status: row.status,
+    const persisted = result.rows.map(row => ({ provider: row.provider, status: row.status,
       externalAccount: row.display_name === null ? null : { displayName: row.display_name,
         linkStatus: row.link_status, confirmedAt: row.confirmed_at },
-      createdAt: row.created_at, updatedAt: row.updated_at })) };
+      createdAt: row.created_at, updatedAt: row.updated_at }));
+    return { integrations: publicCatalog(persisted) };
   }
   return Object.freeze({ company, memberships, roles, integrations, permissions, createRole, updateRole, updateMembership,
     associateMembershipDriver, disassociateMembershipDriver });

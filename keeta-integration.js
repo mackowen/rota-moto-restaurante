@@ -1,8 +1,16 @@
-/* RotaMoto — Keeta Open Delivery client/contract layer. Secrets remain server-side. */
-(function(global){'use strict';
- const API='/api/keeta';
- const EVENT_CODES={1001:'ORDER_PLACED',1002:'ORDER_ACCEPTED',1003:'ORDER_COMPLETED',1004:'ORDER_CANCELLED',1005:'REFUND_REQUESTED',1006:'DELIVERY_STATUS_UPDATED',1007:'PARTIAL_REFUND_REQUESTED'};
- const request=(path,options={})=>fetch(API+path,{headers:{Accept:'application/json','Content-Type':'application/json',...(options.headers||{})},...options}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||d.error||`Keeta HTTP ${r.status}`);return d});
- const normalize=envelope=>{const e=envelope||{};let msg=e.message;try{if(typeof msg==='string')msg=JSON.parse(msg)}catch(_){} msg=msg&&typeof msg==='object'?msg:{};const status=msg.status||e.eventType||EVENT_CODES[e.eventId]||'CREATED';return {id:'keeta_'+String(msg.orderId||msg.orderViewId||e.messageId||Date.now()),sourceId:'keeta',externalId:msg.orderId||msg.orderViewId||null,externalDisplayId:msg.displayId||msg.orderNumber||msg.orderViewId||null,externalStatus:status,status,customer:{name:msg.customer?.name||msg.user?.name||'',phone:msg.customer?.phone||''},address:msg.deliveryAddress||msg.delivery?.deliveryAddress||msg.address||'',obs:msg.notes||'',items:Array.isArray(msg.items)?msg.items:[],orderTotal:Number(msg.total?.orderAmount||msg.total?.value||msg.amount||0),sourceData:e};};
- global.RotaMotoKeeta={available:()=>typeof fetch==='function',status:()=>request('/status'),merchant:()=>request('/merchant'),poll:()=>request('/events/poll'),ack:ids=>request('/events/ack',{method:'POST',body:JSON.stringify({eventIds:ids})}),order:id=>request(`/orders/${encodeURIComponent(id)}`),confirm:id=>request(`/orders/${encodeURIComponent(id)}/confirm`,{method:'POST'}),readyForPickup:id=>request(`/orders/${encodeURIComponent(id)}/readyForPickup`,{method:'POST'}),dispatch:id=>request(`/orders/${encodeURIComponent(id)}/dispatch`,{method:'POST'}),delivered:id=>request(`/orders/${encodeURIComponent(id)}/delivered`,{method:'POST'}),cancel:id=>request(`/orders/${encodeURIComponent(id)}/cancel`,{method:'POST'}),eventCode:id=>EVENT_CODES[id]||'UNKNOWN',normalize,localAck:(eventId)=>({eventId,accepted:true,code:0,message:'success'}),diagnostics:()=>({provider:'keeta',backend:'/api/keeta',webhook:'/api/keeta/webhook',signature:'server-side HMAC-SHA256/Base64',localFirst:true})};
+/* UI-facing capability boundary. Keeta protocol and field mappings are not
+ * verified; this module intentionally performs no network calls or storage. */
+(function (global) {
+  'use strict';
+  const blocked = () => Promise.reject(Object.assign(
+    new Error('Integração Keeta indisponível até validação externa.'),
+    { code: 'PROVIDER_BLOCKED_EXTERNAL' }
+  ));
+  global.RotaMotoKeeta = Object.freeze({
+    available: () => false,
+    diagnostics: () => ({ provider: 'keeta', capability: 'blocked_external', connectionVerified: false }),
+    status: blocked, merchant: blocked, poll: blocked, ack: blocked, order: blocked,
+    confirm: blocked, readyForPickup: blocked, dispatch: blocked, delivered: blocked, cancel: blocked,
+    normalize: () => { throw Object.assign(new Error('Mapeamento Keeta não validado.'), { code: 'PROVIDER_BLOCKED_EXTERNAL' }); }
+  });
 })(window);

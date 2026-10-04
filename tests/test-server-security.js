@@ -1,12 +1,9 @@
 'use strict';
 const assert=require('node:assert/strict');
-const crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
-process.env.FOOD99_WEBHOOK_SECRET='test-99-secret';
-process.env.KEETA_WEBHOOK_SECRET='test-keeta-secret';
 process.env.ALLOWED_ORIGIN='http://localhost:8787';
 const http=require('node:http');
-const {route,rememberWebhook,assertLoopbackHost,runtimeDatabaseConnectionString}=require('../server');
+const {route,assertLoopbackHost,runtimeDatabaseConnectionString}=require('../server');
 const {createSyncHttpHandler}=require('../backend/domain/sync-http');
 const {createIdentityHttpHandler}=require('../backend/identity/http');
 
@@ -41,40 +38,21 @@ async function main(){
     assert.equal(preflight.status,204,'CORS preflight is handled before route-specific method checks');
     assert.equal(preflight.headers.get('access-control-allow-credentials'),'true');
     assert(preflight.headers.get('access-control-allow-headers').includes('X-CSRF-Token'));
-  const signed=(secret,body)=>crypto.createHmac('sha256',secret).update(body).digest('hex');
-  const keetaSig=(url,payload,secret='test-keeta-secret')=>{const params=Object.keys(payload).filter(k=>k!=='sig').sort().map(k=>`${k}=${payload[k]===null?'null':typeof payload[k]==='object'?JSON.stringify(payload[k]):String(payload[k])}`).join('&');return crypto.createHash('sha256').update(`${url}?${params}${secret}`,'utf8').digest('hex')};
   try{
-    assert.equal((await request('/api/99food/webhook',{method:'POST',headers:{'content-type':'application/json'},body:'{"id":"a"}'})).status,401,'unsigned 99Food webhook is rejected');
-    const body99='{"id":"evt-99","order":{"id":"order-1"}}';
-    const headers99={'content-type':'application/json','x-99food-signature':signed('test-99-secret',body99)};
-    assert.equal((await request('/api/99food/webhook',{method:'POST',headers:headers99,body:body99})).status,202,'signed event accepted');
-    const duplicate99=await request('/api/99food/webhook',{method:'POST',headers:headers99,body:body99});
-    assert.equal(duplicate99.status,200);assert.equal((await duplicate99.json()).duplicate,true,'replay deduplicated');
-    const keetaUrl=base+'/api/keeta/webhook';
-    const payloadKeeta={eventId:1001,appId:123456,messageId:'evt-k',shopId:77,message:'{}',timestamp:1700000000};
-    const bodyKeeta=JSON.stringify({...payloadKeeta,sig:keetaSig(keetaUrl,payloadKeeta)});
-    const headersKeeta={'content-type':'application/json'};
-    assert.equal((await request('/api/keeta/webhook',{method:'POST',headers:headersKeeta,body:bodyKeeta})).status,200,'sig field and numeric eventId accepted per Keeta contract');
-    const heartbeat=await request('/api/keeta/webhook',{method:'POST',headers:headersKeeta,body:''});
-    assert.equal(heartbeat.status,200,'empty heartbeat accepted');assert.equal((await heartbeat.json()).code,0);
-    const badKeeta={...payloadKeeta,sig:'0'.repeat(64)};
-    assert.equal((await request('/api/keeta/webhook',{method:'POST',headers:headersKeeta,body:JSON.stringify(badKeeta)})).status,401,'invalid Keeta payload signature rejected');
-    assert.equal((await request('/api/keeta/webhook',{method:'POST',headers:headersKeeta,body:'{' })).status,400,'invalid JSON rejected');
-    const malformedKeeta={messageId:'no-event-id',sig:'0'.repeat(64)};
-    assert.equal((await request('/api/keeta/webhook',{method:'POST',headers:headersKeeta,body:JSON.stringify(malformedKeeta)})).status,400,'structurally invalid payload rejected');
-    assert.equal((await request('/api/99food/webhook',{method:'POST',headers:{...headers99,'x-99food-signature':'bad'},body:body99})).status,401,'malformed signature is rejected safely');
-    assert.equal((await request('/api/keeta/webhook',{method:'POST',headers:{...headersKeeta,'content-type':'text/plain'},body:bodyKeeta})).status,415,'unsupported webhook media type rejected');
-    const oversized=await request('/api/keeta/webhook',{method:'POST',headers:headersKeeta,body:JSON.stringify({payload:'x'.repeat(1024*1024)})});
-    assert.equal(oversized.status,413,'oversized payload receives an HTTP 413 response');
     const forbidden=await request('/api/ifood/status',{headers:{origin:'https://attacker.example'}});
     assert.equal(forbidden.status,403);assert.equal(forbidden.headers.get('access-control-allow-origin'),null,'untrusted origins receive no CORS access');
     const sameOrigin=await request('/api/ifood/status',{headers:{origin:'http://localhost:8787'}});
-    assert.equal(sameOrigin.status,200,'configured same-origin panel requests continue to work');assert.equal(sameOrigin.headers.get('access-control-allow-origin'),'http://localhost:8787');
-    for(let i=0;i<10001;i++)rememberWebhook('fifo-test',`id-${i}`);
-    assert.equal(rememberWebhook('fifo-test','id-0'),true,'oldest id is evicted when the 10,000-entry FIFO limit is exceeded');
+    assert.equal(sameOrigin.status,503,'same-origin requests cannot call an unverified provider adapter');
+    assert.equal((await sameOrigin.json()).error.code,'PROVIDER_BLOCKED_EXTERNAL');
+    assert.equal(sameOrigin.headers.get('access-control-allow-origin'),'http://localhost:8787');
+    for (const [path,method] of [['/api/99food/orders','GET'],['/api/99food/webhook','POST'],['/api/keeta/events/poll','GET'],['/api/keeta/webhook','POST'],['/api/ifood/auth/exchange','POST']]) {
+      const response=await request(path,{method,headers:{Origin:'http://localhost:8787','Content-Type':'application/json'},...(method==='POST'?{body:'{}'}:{})});
+      assert.equal(response.status,503,`${path} stays fail-closed until provider protocol is verified`);
+      assert.equal((await response.json()).error.code,'PROVIDER_BLOCKED_EXTERNAL');
+    }
     assert.equal((await request('/health',{method:'DELETE'})).status,405,'unsupported method rejected');
     const internal=await request('/api/ifood/auth/refresh',{method:'POST'});
-    assert.equal(internal.status,500);assert.equal((await internal.json()).message,'Falha interna ao processar a integração.','internal details are hidden');
+    assert.equal(internal.status,503);assert.equal((await internal.json()).error.message,'A integração externa ainda não foi validada e habilitada.');
   } finally {await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
   const fakeSession=http.createServer(createSyncHttpHandler({allowedOrigin:'http://app.example',
     identityService:{async withAuthenticatedTenant(_token,operation){return operation({}, {session_id:'session'});},async verifyCsrf(){return true;}},
@@ -104,13 +82,6 @@ async function main(){
       body:JSON.stringify({email:'person@example.invalid',password:'synthetic-password',companyId:'company-id'})});
     assert.equal(blocked.status,403,'identity POST rejects an origin outside the configured allowlist');
   }finally{await new Promise((resolve,reject)=>fakeIdentity.close(e=>e?reject(e):resolve()));}
-  const savedSecret=process.env.KEETA_WEBHOOK_SECRET;
-  delete process.env.KEETA_WEBHOOK_SECRET;
-  delete require.cache[require.resolve('../server')];
-  const unconfiguredRoute=require('../server').route;
-  const unconfigured=http.createServer(unconfiguredRoute);
-  await new Promise(resolve=>unconfigured.listen(0,'127.0.0.1',resolve));
-  try{const response=await fetch(`http://127.0.0.1:${unconfigured.address().port}/api/keeta/webhook`,{method:'POST',headers:{'content-type':'application/json'},body:'{"eventId":1001,"messageId":"x","sig":"x"}'});assert.equal(response.status,503,'missing Keeta secret is reported as unconfigured')}finally{await new Promise((resolve,reject)=>unconfigured.close(e=>e?reject(e):resolve()));if(savedSecret!==undefined)process.env.KEETA_WEBHOOK_SECRET=savedSecret;delete require.cache[require.resolve('../server')];}
   console.log('server security tests: OK');
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
