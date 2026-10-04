@@ -377,9 +377,11 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
             !['ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','DELIVERED','FAILED','RETURNED'].includes(canonical.status)) {
           throw new SyncError('FORBIDDEN_FIELD', 'O Motoboy pode registrar somente estados derivados da execução.');
         }
+        const restaurantRedelivery = appKey === 'restaurante' && canonical.status === 'REDELIVERY' &&
+          ['DELIVERED','FAILED','RETURNED'].includes(old.payload.status);
         if (entityType === 'Delivery' && appKey === 'restaurante' && old.payload.status !== canonical.status &&
-            !['ASSIGNED','CANCELLED'].includes(canonical.status)) {
-          throw new SyncError('FORBIDDEN_FIELD', 'O Restaurante pode atribuir ou cancelar administrativamente; estados de execução pertencem ao Motoboy.');
+            !['ASSIGNED','CANCELLED'].includes(canonical.status) && !restaurantRedelivery) {
+          throw new SyncError('FORBIDDEN_FIELD', 'O Restaurante pode atribuir, cancelar ou solicitar reentrega após falha/retorno/conclusão; estados de execução pertencem ao Motoboy.');
         }
         if (entityType === 'Delivery' && appKey === 'motoboy' &&
             Object.keys(record).some(key => !DELIVERY_META_FIELDS.has(key) && !DELIVERY_MOTOBOY_FIELDS.has(key) &&
@@ -388,7 +390,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         }
         if (entityType === 'Delivery' && appKey === 'restaurante' &&
             Object.keys(record).some(key => !DELIVERY_META_FIELDS.has(key) && !DELIVERY_RESTAURANT_FIELDS.has(key) &&
-              !(key === 'status' && ['ASSIGNED','CANCELLED'].includes(record.status)) &&
+              !(key === 'status' && (['ASSIGNED','CANCELLED'].includes(record.status) || restaurantRedelivery)) &&
               stableJson(record[key]) !== stableJson(old.payload[key]))) {
           throw new SyncError('FORBIDDEN_FIELD', 'O Restaurante não pode sobrescrever campos de execução da entrega.');
         }
@@ -414,7 +416,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           for (const key of Object.keys(canonical)) {
             if (!allowedFields.has(key) && !DELIVERY_META_FIELDS.has(key)) canonical[key] = old.payload[key];
           }
-          if (appKey === 'restaurante' && old.payload.status !== canonical.status && !['ASSIGNED','CANCELLED'].includes(canonical.status)) {
+          if (appKey === 'restaurante' && old.payload.status !== canonical.status && !['ASSIGNED','CANCELLED'].includes(canonical.status) && !restaurantRedelivery) {
             canonical.status = old.payload.status;
           }
         }
@@ -448,6 +450,12 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
             relatedId ? relatedType : null, relatedId]);
           outcomes.updated += 1;
         }
+      }
+      if (entityType === 'Delivery' && appKey === 'restaurante' && canonical.status === 'REDELIVERY' && existing.rowCount) {
+        await client.query(`INSERT INTO rotamoto.audit_log
+          (id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
+          VALUES($1,$2,$3,'user','delivery.redelivery.requested','Delivery',$4,$5::jsonb)`,
+        [uuidV7(now.getTime()),companyId,userId,canonicalId,JSON.stringify({from:existing.rows[0].payload.status,to:'REDELIVERY'})]);
       }
       if(entityType==='Route'&&routeMembershipChange&&(routeMembershipChange.added.length||routeMembershipChange.removed.length)){
         await client.query(`INSERT INTO rotamoto.audit_log

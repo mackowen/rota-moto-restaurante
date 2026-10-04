@@ -27,8 +27,10 @@ assert.equal(packet.data.tombstones[0].id,'del-1');assert.equal(packet.data.tomb
 const appSource=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
 assert(appSource.includes('RotaMotoContract.timestampMs(raw.updatedAt)'));
 assert(appSource.includes('RotaMotoContract.assertTransition(previous,status)'));
-assert(appSource.includes("store:'deliveries'"));
+assert(appSource.includes('function cancelRestaurantDelivery(orderId)'));
 assert(appSource.includes('tombstones=(state.tombstones||[])'));
+assert(appSource.includes('O histórico será mantido.'));
+assert(!appSource.includes('function deleteOrder(orderId)'));
 
 // A tombstone in one packet must be compared with that packet's staged delivery,
 // not only with the stale in-memory projection from before the transaction.

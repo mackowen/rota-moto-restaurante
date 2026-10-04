@@ -350,9 +350,39 @@ async function main() {
       const acceptedExecutionEvent = executionResult.body.operationResults.find(result => result.entity === 'DeliveryEvent');
       assert.equal(acceptedExecutionEvent.status, 'accepted', JSON.stringify(executionResult.body.operationResults));
       assert.equal(acceptedExecutionEvent.canonicalVersion, 1);
-      const projectedDelivery = await client.query("SELECT payload->>'status' AS status,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2", [companyId, deliveryId]);
+      const projectedDelivery = await client.query("SELECT payload,payload->>'status' AS status,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2", [companyId, deliveryId]);
       assert.equal(projectedDelivery.rows[0].status, 'OUT_FOR_DELIVERY', 'execution event updates the canonical Delivery projection');
       assert.equal(Number(projectedDelivery.rows[0].version), 2);
+      const prematureRedelivery={...projectedDelivery.rows[0].payload,status:'REDELIVERY',version:3,baseVersion:2,
+        updatedAt:new Date(Date.now()+8500).toISOString()};
+      const prematurePacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],
+        deliveries:[prematureRedelivery],deliveryEvents:[],earnings:[],routes:[],proofs:[],locationUpdates:[]}};
+      const prematureResult=await call('/api/sync/push',{method:'POST',body:prematurePacket});
+      assert.equal(prematureResult.body.operationResults[0].status,'rejected');
+      assert.equal(prematureResult.body.operationResults[0].error.code,'FORBIDDEN_FIELD',
+        'Restaurant cannot request redelivery before a terminal delivery outcome');
+      const failedEvent={eventId:`evt_${crypto.randomUUID()}`,entity:'delivery',entityId:deliveryId,
+        type:'DELIVERY_FAILED',occurredAt:new Date(Date.now()+9000).toISOString()};
+      const failedPacket={...executionPacket,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...executionPacket.data,deliveryEvents:[failedEvent],earnings:[]}};
+      const failedResult=await call('/api/sync/push',{method:'POST',body:failedPacket});
+      assert.equal(failedResult.body.operationResults[0].status,'accepted',JSON.stringify(failedResult.body.operationResults));
+      const afterFailure=await client.query("SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
+      assert.equal(afterFailure.rows[0].payload.status,'FAILED');assert.equal(Number(afterFailure.rows[0].version),3);
+      const redeliveryRecord={...afterFailure.rows[0].payload,status:'REDELIVERY',version:4,baseVersion:3,
+        updatedAt:new Date(Date.now()+10000).toISOString()};
+      const redeliveryPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],
+        deliveries:[redeliveryRecord],deliveryEvents:[],earnings:[],routes:[],proofs:[],locationUpdates:[]}};
+      const redeliveryResult=await call('/api/sync/push',{method:'POST',body:redeliveryPacket});
+      assert.equal(redeliveryResult.body.operationResults[0].status,'accepted',JSON.stringify(redeliveryResult.body.operationResults));
+      const auditReadDenied=await client.query("SELECT has_table_privilege(current_user,'rotamoto.audit_log','SELECT') AS allowed");
+      assert.equal(auditReadDenied.rows[0].allowed,false,'runtime keeps audit_log append-only and non-readable');
+      const afterRedelivery=await client.query("SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
+      const reassignedRecord={...afterRedelivery.rows[0].payload,status:'ASSIGNED',version:5,baseVersion:4,
+        updatedAt:new Date(Date.now()+11000).toISOString()};
+      const reassignedPacket={...redeliveryPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...redeliveryPacket.data,deliveries:[reassignedRecord]}};
+      const reassignedResult=await call('/api/sync/push',{method:'POST',body:reassignedPacket});
+      assert.equal(reassignedResult.body.operationResults[0].status,'accepted',JSON.stringify(reassignedResult.body.operationResults));
       const riderSecondInstall = await registerDevice('motoboy', 'rider-second-device');
       assert.equal(riderSecondInstall.status, 200);
       const eventRetryPacket = { ...executionPacket, packetId: `pkt_${crypto.randomUUID()}`, deviceId: 'rider-second-device',
@@ -377,7 +407,7 @@ async function main() {
 
       const tombstonePacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, data: { ...packet.data, orders: [], deliveries: [],
         tombstones: [{ store: 'deliveries', id: 'delivery-local-1', deleted: true,
-          deletedAt: new Date(Date.now() + 3000).toISOString(), updatedAt: new Date(Date.now() + 3000).toISOString(), version: 3, baseVersion: 2 }] } };
+          deletedAt: new Date(Date.now() + 3000).toISOString(), updatedAt: new Date(Date.now() + 3000).toISOString(), version: 6, baseVersion: 5 }] } };
       const tombstoneResult = await call('/api/sync/push', { method: 'POST', body: tombstonePacket });
       assert.equal(tombstoneResult.status, 200, JSON.stringify(tombstoneResult.body));
       assert.equal(tombstoneResult.body.operationResults.find(result => result.operation === 'tombstones:0').status, 'accepted');
