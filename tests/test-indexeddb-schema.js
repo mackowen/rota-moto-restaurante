@@ -1,0 +1,32 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const expected=['meta','companies','orders','deliveries','bikes','routes','events','deliveryEvents','locations','proofs','earnings','outbox','inbox','tombstones','syncState','logs','profiles','users'];
+function fakeDatabase(existingNames=[]){
+  const stores=new Map();
+  const objectStoreNames={contains:name=>stores.has(name),[Symbol.iterator]:function*(){yield*stores.keys()}};
+  const create=(name,keyPath)=>{const indexes=new Map();const store={keyPath,indexes,indexNames:{contains:n=>indexes.has(n)},createIndex(n,k,options){if(indexes.has(n))throw new Error('duplicate index');indexes.set(n,{keyPath:k,unique:options.unique})},put(value){this.lastPut=value}};stores.set(name,store);return store};
+  const db={objectStoreNames,createObjectStore(name,opts){if(stores.has(name))throw new Error('duplicate store');return create(name,opts.keyPath)}};
+  for(const name of existingNames)create(name,name==='meta'?'key':'id');
+  const tx={objectStoreNames,objectStore:name=>{if(!stores.has(name))throw new Error(`missing store ${name}`);return stores.get(name)}};
+  return{db,tx,stores};
+}
+const window={};vm.runInNewContext(fs.readFileSync('indexeddb-schema.js','utf8'),{window,Error,Object,Number});
+const schema=window.RotaMotoStorageSchema;
+assert.deepEqual(Array.from(schema.stores),expected);
+assert.equal(schema.version,5);
+const fresh=fakeDatabase();schema.upgrade(fresh.db,fresh.tx,0,5);
+assert.deepEqual(Array.from(fresh.stores.keys()),expected);
+assert.equal(fresh.stores.get('meta').lastPut.key,'storageSchemaVersion');
+assert.equal(fresh.stores.get('meta').lastPut.value,5);
+assert.ok([...fresh.stores.values()].some(store=>store.indexes.size>0));
+const old=fakeDatabase(expected);
+old.stores.get('orders').legacyRecord={id:'keep',status:'AGUARDANDO'};
+schema.upgrade(old.db,old.tx,4,5);
+assert.deepEqual(old.stores.get('orders').legacyRecord,{id:'keep',status:'AGUARDANDO'});
+assert.equal(old.stores.get('meta').lastPut.key,'storageSchemaVersion');
+assert.equal(old.stores.get('meta').lastPut.value,5);
+assert.ok(old.stores.get('orders').indexNames.contains('bySyncState'));
+assert.throws(()=>schema.upgrade(old.db,old.tx,0,6),/inválida/);
+console.log('Restaurante IndexedDB schema migrations: OK');
