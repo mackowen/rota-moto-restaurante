@@ -40,7 +40,7 @@
     DeliveryEvent:Object.freeze({required:['eventId','entity','entityId','type','occurredAt','protocolVersion'],fields:Object.freeze({eventId:'id',entity:'text',entityId:'id',type:'text',occurredAt:'timestamp',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',companyId:'id',actor:'object',payload:'object',protocolVersion:'positive-integer',extensions:'extensions'})}),
     LocationPoint:Object.freeze({required:['id','deliveryId','latitude','longitude','recordedAt'],fields:Object.freeze({id:'id',deliveryId:'id',latitude:'latitude',longitude:'longitude',accuracyM:'nullable-number',recordedAt:'timestamp',eventId:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',extensions:'extensions'})}),
     DeliveryProof:Object.freeze({required:['id','deliveryId','createdAt','media'],fields:Object.freeze({id:'id',deliveryId:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',kind:'text',media:'media-ref',note:'text',extensions:'extensions'})}),
-    Earning:Object.freeze({required:['id','companyId','amountMinor','currency','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',deliveryId:'id',driverId:'id',amountMinor:'money-minor',currency:'currency',components:'money-components',rule:'object',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',extensions:'extensions'})})
+    Earning:Object.freeze({required:['id','companyId','amountMinor','currency','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',deliveryId:'id',driverId:'id',amountMinor:'money-minor',currency:'currency',components:'money-components',rule:'object',ruleVersion:'text',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',extensions:'extensions'})})
   });
   const SYNC_ACK = Object.freeze({ACCEPTED:'accepted',DUPLICATE:'duplicate',REJECTED:'rejected',CONFLICT:'conflict'});
   function timestampMs(value){
@@ -137,7 +137,7 @@
     longitude:v=>Number.isFinite(v)&&v>=-180&&v<=180,
     'object-or-text':v=>typeof v==='string'||!!v&&typeof v==='object'&&!Array.isArray(v),
     'id-array':v=>Array.isArray(v)&&v.length<=500&&v.every(x=>DOMAIN_TYPES.id(x)),
-    'money-components':v=>Array.isArray(v)&&v.length<=100&&v.every(x=>DOMAIN_TYPES.object(x)&&Number.isSafeInteger(x.amountMinor)),
+    'money-components':v=>Array.isArray(v)&&v.length<=100&&v.every(x=>DOMAIN_TYPES.object(x)&&DOMAIN_TYPES.text(x.code)&&Number.isSafeInteger(x.amountMinor)),
     'media-ref':v=>DOMAIN_TYPES.object(v)&&DOMAIN_TYPES.text(v.mimeType)&&['image/png','image/jpeg'].includes(v.mimeType)&&Number.isSafeInteger(v.sizeBytes)&&v.sizeBytes>=0&&v.sizeBytes<=8388608&&DOMAIN_TYPES.object(v.storageRef)&&DOMAIN_TYPES.id(v.storageRef.provider)&&DOMAIN_TYPES.text(v.storageRef.objectKey)&&v.storageRef.objectKey.trim().length<=512&&/^[a-f0-9]{64}$/iu.test(v.sha256||''),
     extensions:v=>DOMAIN_TYPES.object(v)
   };

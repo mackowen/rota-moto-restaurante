@@ -280,7 +280,8 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         if(Object.hasOwn(record,'amountMinor')&&(!Number.isSafeInteger(record.amountMinor)||Math.abs(record.amountMinor)>9000000000000000))invalid('Earning.amountMinor deve ser um inteiro seguro em unidade monetária mínima.');
         if(Object.hasOwn(record,'currency')&&(typeof record.currency!=='string'||!/^[A-Z]{3}$/u.test(record.currency)))invalid('Earning.currency inválida.');
         if(Object.hasOwn(record,'components')&&(!Array.isArray(record.components)||record.components.length>100||
-          record.components.some(item=>!item||typeof item.code!=='string'||!Number.isSafeInteger(item.amountMinor))))invalid('Earning.components inválido.');
+          record.components.some(item=>!item||typeof item.code!=='string'||!item.code.trim()||item.code.length>4000||!Number.isSafeInteger(item.amountMinor)||Math.abs(item.amountMinor)>9000000000000000)))invalid('Earning.components inválido.');
+        if(Object.hasOwn(record,'ruleVersion')&&(typeof record.ruleVersion!=='string'||record.ruleVersion.length>4000))invalid('Earning.ruleVersion inválida.');
       }
       if(entityType==='DeliveryProof'){
         const media=record.media;

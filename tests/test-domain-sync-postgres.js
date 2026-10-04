@@ -132,6 +132,7 @@ async function main() {
           drivers: [], routes: [], locationUpdates: [], deliveryEvents: [{ id: 'event-local-1', eventId: 'event-local-1',
             entity: 'order', entityId: 'order-local-1', type: 'ORDER_CREATED', occurredAt: baseTime, actor: { type: 'user' } }],
           proofs: [], earnings: [{ id: 'earning-local-1', deliveryId: 'delivery-local-1', amount: 12.5,
+            currency: 'BRL', components: [{code:'delivery_fee',amountMinor:1250}], ruleVersion: 'fees-v1',
             createdAt: baseTime, updatedAt: baseTime, version: 1 }], tombstones: [] } };
       const pushed = await call('/api/sync/push', { method: 'POST', body: packet });
       assert.equal(pushed.status, 200, JSON.stringify({ response: pushed.body, logs }));
@@ -158,9 +159,11 @@ async function main() {
       assert.equal(stored.rows[0].related_entity_type, 'Order');
       assert.equal(stored.rows[0].payload.orderId, orderId, 'references in payload use canonical IDs');
       assert.equal(stored.rows[0].payload.companyId, companyId, 'client tenant was overwritten by session tenant');
-      const storedEarning = await client.query("SELECT payload->>'amountMinor' AS amount_minor,payload->>'currency' AS currency,payload->>'deliveryId' AS delivery_id,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'", [companyId, earningId]);
+      const storedEarning = await client.query("SELECT payload->>'amountMinor' AS amount_minor,payload->>'currency' AS currency,payload->>'deliveryId' AS delivery_id,payload->>'ruleVersion' AS rule_version,payload->'components' AS components,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'", [companyId, earningId]);
       assert.equal(storedEarning.rows[0].amount_minor, '1250');
       assert.equal(storedEarning.rows[0].currency, 'BRL');
+      assert.equal(storedEarning.rows[0].rule_version, 'fees-v1');
+      assert.deepEqual(storedEarning.rows[0].components, [{code:'delivery_fee',amountMinor:1250}]);
       assert.equal(storedEarning.rows[0].delivery_id, deliveryId);
       assert.equal(storedEarning.rows[0].related_record_id, deliveryId);
       const riderInstall=await registerDevice('motoboy','moto-proof-test-device');
