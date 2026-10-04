@@ -9,5 +9,10 @@ function createSessionReadGuard() {
   });
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { createSessionReadGuard };
-else globalThis.RotaMotoSessionGuard = Object.freeze({ createSessionReadGuard });
+function sessionRestoreErrorMessage(error, hadAuthenticatedSession, message) {
+  if (error?.status === 401 && !hadAuthenticatedSession) return '';
+  return message(error);
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { createSessionReadGuard, sessionRestoreErrorMessage };
+else globalThis.RotaMotoSessionGuard = Object.freeze({ createSessionReadGuard, sessionRestoreErrorMessage });

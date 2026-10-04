@@ -148,6 +148,7 @@
   }
   async function restore() {
     const readVersion = sessionReadGuard.capture();
+    const hadAuthenticatedSession = Boolean(current);
     try {
       const session = await request('/identity/session');
       if (!sessionReadGuard.isCurrent(readVersion)) return current;
@@ -156,7 +157,9 @@
     } catch (error) {
       if (!sessionReadGuard.isCurrent(readVersion)) return current;
       csrf = null; current = null; showSession(null);
-      if (error.status === 401) $('[data-login-error]').textContent = message(error);
+      if (error.status === 401) {
+        $('[data-login-error]').textContent = window.RotaMotoSessionGuard.sessionRestoreErrorMessage(error, hadAuthenticatedSession, message);
+      }
       return null;
     }
   }
