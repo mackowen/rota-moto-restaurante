@@ -3,7 +3,8 @@ const assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process');
 process.env.ALLOWED_ORIGIN='http://localhost:8787';
 const http=require('node:http');
-const {route,assertLoopbackHost,runtimeDatabaseConnectionString}=require('../server');
+const {route,assertLoopbackHost,runtimeDatabaseConnectionString,CONFIG}=require('../server');
+const {hostAllowed}=require('../backend/runtime/config');
 const {createSyncHttpHandler}=require('../backend/domain/sync-http');
 const {createIdentityHttpHandler}=require('../backend/identity/http');
 
@@ -17,19 +18,31 @@ async function main(){
     'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto');
   assert.throws(()=>runtimeDatabaseConnectionString('postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto'),
     /DATABASE_URL deve apontar sem senha para rotamoto_app/);
-  assert.throws(()=>runtimeDatabaseConnectionString('postgresql://rotamoto_app@192.0.2.1:5432/rotamoto'),
-    /DATABASE_URL deve apontar sem senha para rotamoto_app/);
-  const exposedBoot=spawnSync(process.execPath,['server.js'],{cwd:require('node:path').join(__dirname,'..'),env:{...process.env,HOST:'0.0.0.0'},encoding:'utf8'});
+  assert.equal(runtimeDatabaseConnectionString('postgresql://rotamoto_app@db.internal:5432/rotamoto'),
+    'postgresql://rotamoto_app@db.internal:5432/rotamoto');
+  assert.equal(CONFIG.trustProxy,false,'forwarded headers are not trusted');
+  assert.equal(hostAllowed('attacker.example',CONFIG.allowedHosts,false),false,'unlisted Host is rejected before routing');
+  const exposedBoot=spawnSync(process.execPath,['server.js'],{cwd:require('node:path').join(__dirname,'..'),env:{...process.env,NODE_ENV:'development',HOST:'0.0.0.0'},encoding:'utf8'});
   assert.notEqual(exposedBoot.status,0,'server refuses to start on a public interface without user authentication');
-  assert.match(exposedBoot.stderr,/mantenha HOST em loopback/);
+  assert.match(exposedBoot.stderr,/http\.bootstrap_failed/u);
+  const productionBoot=spawnSync(process.execPath,['server.js'],{cwd:require('node:path').join(__dirname,'..'),env:{NODE_ENV:'production'},encoding:'utf8'});
+  assert.notEqual(productionBoot.status,0,'production server refuses to start without explicit configuration');
+  assert.match(productionBoot.stderr,/http\.bootstrap_failed/u);
+  assert.doesNotMatch(productionBoot.stderr,/server\.js:\d+|Error:/u,'bootstrap logs do not expose paths or stack traces');
   const server=http.createServer(route);
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const base=`http://127.0.0.1:${server.address().port}`;
     const request=(path,options={})=>fetch(base+path,options);
+    const invalidHost=await new Promise((resolve,reject)=>{const outgoing=http.request({hostname:'127.0.0.1',port:server.address().port,path:'/health/live',headers:{Host:'attacker.example'}},response=>{response.resume();resolve(response.statusCode)});outgoing.on('error',reject);outgoing.end()});
+    assert.equal(invalidHost,421,'server rejects requests with an unlisted Host header');
     const live=await request('/health/live');
     assert.equal(live.status,200);
     assert.equal((await live.json()).status,'live');
     assert.match(live.headers.get('x-request-id'),/^[0-9a-f-]{36}$/iu);
+    assert.equal(live.headers.get('x-content-type-options'),'nosniff');
+    assert.equal(live.headers.get('x-frame-options'),'DENY');
+    assert.equal(live.headers.get('content-security-policy'),"default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+    assert.equal(live.headers.get('strict-transport-security'),null,'development does not assert TLS');
     const ready=await request('/health/ready');
     assert.equal(ready.status,200,'readiness confirms the runtime PostgreSQL connection and schema');
     assert.equal((await ready.json()).dependencies.postgres,'ready');

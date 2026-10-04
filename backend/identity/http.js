@@ -211,7 +211,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
     try {
       if (req.method === 'POST') assertSameOrigin(req, allowedOrigin);
       const category = rateCategory(path);
-      const limiter = rateLimiter.consume(`${category}:${req.socket.remoteAddress || 'unknown'}:${path}`, category);
+      const limiter = rateLimiter.consume(`${category}:${req.clientIp || req.socket.remoteAddress || 'unknown'}:${path}`, category);
       if (!limiter.allowed) {
         status = 429;
         send(res, status, { error: { code: 'RATE_LIMITED', message: 'Limite de tentativas excedido.' } }, { 'Retry-After': String(limiter.retryAfter) });

@@ -98,15 +98,26 @@ the prepared administrative script, backup gate, manual credential setup,
 postflight queries, and rollback limits.
 
 `DATABASE_URL` is reserved for the application/runtime role `rotamoto_app` and
-the official loopback database. The server refuses a migrator or remote host
-URL and checks `current_user` before listening. If unset, it uses the equivalent
-password-free official runtime URL for backward-compatible local startup.
+the `rotamoto` database. Development/test may use the documented password-free
+loopback default. Production requires explicit configuration, TLS
+`sslmode=verify-full`, a CA file and an external secret-provider module; it
+rejects loopback database hosts, secrets in the URL and
+`MIGRATOR_DATABASE_URL`. The listener remains loopback-only, checks Host, role
+and required schema objects before listening, and never runs migrations at
+startup.
 `MIGRATOR_DATABASE_URL` is required only by the migration CLI and PostgreSQL
 migration test harness and must authenticate as `rotamoto_migrator`. Neither URL
 contains a password; libpq/`pg` obtains credentials through the configured
 credential store. The migration runner verifies the URL role and connected
 `current_user` before acquiring its advisory lock. The HTTP server reads only
 `DATABASE_URL` and explicitly uses the runtime role.
+
+Runtime modes, trusted proxy IP handling, security headers, pool/time limits
+and signal-driven graceful shutdown are described in
+[`../../docs/operations/DEPLOY-ROLLBACK.md`](../../docs/operations/DEPLOY-ROLLBACK.md).
+The development Termux/PostgreSQL/nginx environment is not production. The
+HTTP process never trusts forwarded headers unless the direct proxy peer is
+allowlisted; production requires an exact `TRUSTED_PROXY_ADDRESSES` list.
 
 `npm run test:postgres` uses both URLs: schema install, migration ledger and
 fixture cleanup use the migrator connection; default-deny, cross-tenant and

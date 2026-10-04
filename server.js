@@ -7,6 +7,7 @@ const http=require('node:http');
 const crypto=require('node:crypto');
 const {URL}=require('node:url');
 const {Pool}=require('pg');
+const fs=require('node:fs');
 const {createIdentityService}=require('./backend/identity/service');
 const {createIdentityHttpHandler}=require('./backend/identity/http');
 const {createSyncService}=require('./backend/domain/sync-service');
@@ -18,21 +19,29 @@ const {createAdminRepository}=require('./backend/admin/repository');
 const {createAdminService}=require('./backend/admin/service');
 const {createAdminHttpHandler}=require('./backend/admin/http');
 const {PROVIDERS}=require('./backend/integrations/registry');
+const {loadRuntimeConfig,hostAllowed,resolveClientAddress}=require('./backend/runtime/config');
+const {loadSecretProvider}=require('./backend/runtime/secret-provider');
+const {gracefulShutdown}=require('./backend/runtime/lifecycle');
 
-const PORT=Number(process.env.PORT||8787);
-const HOST=process.env.HOST||'127.0.0.1';
-const ALLOWED_ORIGIN=process.env.ALLOWED_ORIGIN||'http://localhost:8787';
-const ALLOWED_ORIGINS=Object.freeze([...new Set([ALLOWED_ORIGIN,...String(process.env.ALLOWED_ORIGINS||'').split(',')].map(value=>{try{const parsed=new URL(value.trim());return ['http:','https:'].includes(parsed.protocol)&&parsed.origin===value.trim()?parsed.origin:null}catch(_){return null}}).filter(Boolean))]);
-function runtimeDatabaseConnectionString(value=process.env.DATABASE_URL){
-  const connectionString=value||'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto';
-  let parsed;
-  try{parsed=new URL(connectionString)}catch(_){throw new Error('DATABASE_URL de runtime inválida.')}
-  if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!=='rotamoto_app'||
-    parsed.password||parsed.hostname!=='127.0.0.1'||(parsed.port||'5432')!=='5432'||parsed.pathname!=='/rotamoto')
-    throw new Error('DATABASE_URL deve apontar sem senha para rotamoto_app em 127.0.0.1:5432/rotamoto.');
-  return connectionString;
+function bootstrapFailure(error){
+  if(require.main===module){process.stderr.write(`${JSON.stringify({event:'http.bootstrap_failed',code:/^ROTAMOTO_CONFIG_/u.test(error?.code||'')?error.code:'STARTUP_CONFIGURATION_INVALID'})}\n`);process.exit(1)}
+  throw error;
 }
-const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime'});
+let CONFIG;
+try{CONFIG=loadRuntimeConfig()}catch(error){bootstrapFailure(error)}
+const PORT=CONFIG.port;
+const HOST=CONFIG.host;
+const ALLOWED_ORIGINS=CONFIG.allowedOrigins;
+const databaseUrl=new URL(CONFIG.databaseUrl);
+let secretProvider=null,databaseTlsCa=null;
+try{if(CONFIG.production){secretProvider=loadSecretProvider(CONFIG.secretProviderModule);databaseTlsCa=fs.readFileSync(CONFIG.databaseTlsCaFile,'utf8')}}catch(error){bootstrapFailure(error)}
+function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
+  const parsed=new URL(value);
+  if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!=='rotamoto_app'||parsed.password||parsed.pathname!=='/rotamoto')
+    throw new Error('DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
+  return value;
+}
+const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),...(secretProvider?{password:()=>secretProvider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
 identityPool.on('error',error=>console.error(JSON.stringify({event:'postgres.pool.error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'DATABASE_ERROR'})));
 const identityService=createIdentityService({pool:identityPool});
 const requestLogger=entry=>console.info(JSON.stringify(entry));
@@ -45,16 +54,21 @@ const adminService=createAdminService({repository:createAdminRepository()});
 const adminHttp=createAdminHttpHandler({identityService,adminService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 
 
-function json(res,status,payload){const body=JSON.stringify(payload),origin=res.req?.headers.origin;const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin',...(res.req?.requestId?{'X-Request-ID':res.req.requestId}:{})};if(ALLOWED_ORIGINS.includes(origin)){headers['Access-Control-Allow-Origin']=origin;headers['Access-Control-Allow-Credentials']='true'}res.writeHead(status,headers);res.end(body)}
+function json(res,status,payload){const body=JSON.stringify(payload),origin=res.req?.headers.origin;const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'",'Vary':'Origin',...(CONFIG.production?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{}),...(res.req?.requestId?{'X-Request-ID':res.req.requestId}:{})};if(ALLOWED_ORIGINS.includes(origin)){headers['Access-Control-Allow-Origin']=origin;headers['Access-Control-Allow-Credentials']='true'}res.writeHead(status,headers);res.end(body)}
 function assertLoopbackHost(host=HOST){const value=String(host).toLowerCase().replace(/^\[|\]$/g,'');if(!['127.0.0.1','::1','localhost'].includes(value))throw new Error('O servidor de integrações não possui autenticação de usuário; mantenha HOST em loopback e exponha acesso remoto somente por um proxy autenticado que encaminhe para loopback.');return true}
-async function databaseReadiness(){
-  const client=await identityPool.connect();
+let shuttingDown=false;
+async function databaseReadiness(pool=identityPool){
+  const client=await pool.connect();
   try{
     await client.query('BEGIN');
     await client.query("SET LOCAL statement_timeout='1500ms'");
-    const result=await client.query("SELECT current_user AS role,to_regclass('rotamoto.domain_records') IS NOT NULL AS domain_ready");
+    const result=await client.query(`SELECT current_user AS role,
+      to_regclass('rotamoto.domain_records') IS NOT NULL AS domain_ready,
+      to_regclass('rotamoto.sync_installations') IS NOT NULL AS sync_installations_ready,
+      EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.sessions') AND attname='mfa_verified_at' AND NOT attisdropped) AS mfa_schema_ready,
+      EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.memberships') AND attname='driver_id' AND NOT attisdropped) AS membership_driver_ready`);
     await client.query('COMMIT');
-    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true;
+    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true;
   }catch(error){try{await client.query('ROLLBACK')}catch(_){}throw error}
   finally{client.release()}
 }
@@ -62,6 +76,10 @@ async function route(req,res){
   const startedAt=Date.now();
   req.requestId=crypto.randomUUID();
   res.req=req;
+  req.clientIp=resolveClientAddress(req,CONFIG);
+  if(!hostAllowed(req.headers.host,CONFIG.allowedHosts,CONFIG.production)){requestLogger({event:'http.rejected_host',requestId:req.requestId});return json(res,421,{error:{code:'HOST_INVALID',message:'Host não permitido.'},requestId:req.requestId});}
+  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  if(CONFIG.production)res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');
   if(ALLOWED_ORIGINS.includes(req.headers.origin)){res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin')}
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
@@ -72,6 +90,7 @@ async function route(req,res){
         'Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Max-Age':'600','Vary':'Origin','X-Request-ID':req.requestId});
       return res.end();
     }
+    if(shuttingDown&&u.pathname!=='/health/live')return json(res,503,{status:'shutting_down',requestId:req.requestId});
     if(await identityHttp(req,res))return;
     if(await adminHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
@@ -89,5 +108,26 @@ async function route(req,res){
   finally{try{requestLogger({requestId:req.requestId,method:req.method,path:u.pathname,status:res.statusCode||500,durationMs:Date.now()-startedAt,...(req.apiErrorCode?{errorCode:req.apiErrorCode}:{})})}catch(_) {}}
 }
 
-if(require.main===module){assertLoopbackHost();identityPool.query('SELECT current_user AS role').then(result=>{if(result.rows[0]?.role!=='rotamoto_app')throw new Error('A conexão runtime não autenticou como rotamoto_app.');http.createServer(route).listen(PORT,HOST,()=>console.log(`Rota Moto integration service listening on http://${HOST}:${PORT}`));}).catch(error=>{console.error(error.code?`PostgreSQL runtime indisponível (${error.code})`:error.message);process.exitCode=1;});}
-module.exports={route,assertLoopbackHost,runtimeDatabaseConnectionString,PROVIDERS};
+async function startServer({pool=identityPool,config=CONFIG,logger=entry=>console.info(JSON.stringify(entry))}={}){
+  assertLoopbackHost(config.host);
+  if(!await databaseReadiness(pool))throw new Error('Schema PostgreSQL incompatível com a versão do servidor.');
+  const server=http.createServer({maxHeaderSize:16*1024},route);
+  server.requestTimeout=config.requestTimeoutMs;server.headersTimeout=config.headersTimeoutMs;server.keepAliveTimeout=config.keepAliveTimeoutMs;server.maxHeadersCount=100;
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(config.port,config.host,resolve)});
+  logger({event:'http.started',host:config.host,port:config.port,environment:config.nodeEnv});
+  let closing;
+  const shutdown=signal=>{
+    if(closing)return closing;
+    shuttingDown=true;logger({event:'http.shutdown_started',signal});
+    closing=gracefulShutdown({server,pool,timeoutMs:config.shutdownTimeoutMs,onTimeout:()=>logger({event:'http.shutdown_timeout'})})
+      .then(()=>logger({event:'http.stopped'}),error=>{logger({event:'http.shutdown_error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'SHUTDOWN_ERROR'});process.exitCode=1})
+      .finally(()=>{process.removeListener('SIGTERM',onSigterm);process.removeListener('SIGINT',onSigint)});
+    return closing;
+  };
+  const onSigterm=()=>{void shutdown('SIGTERM')};const onSigint=()=>{void shutdown('SIGINT')};
+  process.once('SIGTERM',onSigterm);process.once('SIGINT',onSigint);
+  return{server,shutdown,removeSignalHandlers(){process.removeListener('SIGTERM',onSigterm);process.removeListener('SIGINT',onSigint)}};
+}
+
+if(require.main===module){startServer().catch(error=>{console.error(JSON.stringify({event:'http.start_failed',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'STARTUP_CONFIGURATION_OR_DATABASE'}));process.exitCode=1;identityPool.end().catch(()=>{});});}
+module.exports={route,assertLoopbackHost,runtimeDatabaseConnectionString,databaseReadiness,startServer,PROVIDERS,CONFIG};

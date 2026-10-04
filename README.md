@@ -1,23 +1,44 @@
-# Rota Moto — Painel Restaurante v5.50-ui-mobile-fix5
+# RotaMoto Restaurante
 
-Reorganização de pedidos e integrações:
-- Configurações → Pedidos e integrações define somente as origens habilitadas.
-- Manual permanece sempre ativo.
-- iFood, Keeta, 99 e outros provedores podem ser ativados/desativados.
-- Novo provedor pode ser cadastrado.
-- O menu Laboratório de integrações aparece quando existe provedor externo habilitado e o perfil possui a permissão correspondente.
-- Laboratório iFood abre em modal e mantém o fluxo local de simulação, JSON, eventos, ACK, deduplicação, fila e status.
-- Permissões separadas: configurar origens/integrações, visualizar laboratório e operar laboratório.
-- Ícones visuais próprios por provedor (iFood, Keeta, 99 e genérico).
+Aplicação Local-First do Restaurante e API interna de identidade, administração,
+consulta canônica e sync. O frontend continua operável localmente; o backend
+Node usa PostgreSQL como autoridade canônica quando a sessão e a rede estão
+disponíveis.
 
-## Integrações 99Food e Keeta
+## Integrações externas
 
-O Laboratório de Integrações possui fluxo local-first para 99Food e Keeta, com normalização, deduplicação, eventos locais e `outbox`. As credenciais e tokens não são armazenados no navegador.
+iFood, 99Food e Keeta **não estão conectados nem homologados**. Rotas externas
+legadas retornam `503 PROVIDER_BLOCKED_EXTERNAL`. A interface mantém somente a
+identificação local da origem e um laboratório sintético iFood isolado em
+memória; isso não cria pedido comercial, não comprova protocolo e não confirma
+ACK externo. Consulte [README-IFOOD.md](README-IFOOD.md) e
+[docs/API-v1.md](docs/API-v1.md).
 
-- 99Food: adaptador servidor configurável (`99food-service.js`) para sandbox/certificação e endpoints de pedidos; URLs/caminhos devem ser preenchidos conforme as credenciais e o contrato disponibilizados à aplicação no portal de desenvolvedores.
-- Keeta: adaptador Open Delivery (`keeta-service.js`) com OAuth, assinatura HMAC-SHA256/Base64 no servidor, polling, ACK, consulta e ações de pedido.
-- O navegador chama somente `/api/99food/*` e `/api/keeta/*`.
+## Desenvolvimento local
 
-## Limite de exposição do serviço
+Use Node 26.4.0 para reproduzir a validação deste checkout (`.node-version`). O
+`engines.node` registra o piso 18; isso não certifica uma versão/host de
+produção. Instale dependências a partir do lockfile e configure `DATABASE_URL`
+sem senha, para `rotamoto_app` em `rotamoto`; a credencial local deve vir do
+credential store aprovado. O HTTP escuta somente em loopback. Migrations são
+CLI separada e usam `MIGRATOR_DATABASE_URL`/`rotamoto_migrator`; nunca execute
+migrations no startup HTTP.
 
-O serviço de integrações ainda não autentica usuários nem associa chamadas a uma empresa. Por isso, ele só inicia em loopback (`127.0.0.1`, `::1` ou `localhost`); CORS não é autenticação. Para acesso remoto, use um proxy reverso que autentique usuários e encaminhe ao listener local. Não exponha a porta do Node diretamente na rede.
+```sh
+npm ci
+npm test
+```
+
+## Operação
+
+O Termux/PostgreSQL/nginx local é desenvolvimento/homologação, **não produção**.
+Produção exige configuração explícita, HTTPS/proxy revisado, TLS PostgreSQL,
+provider externo de secrets, backup/restore ensaiado, operadores e monitoramento.
+O startup `NODE_ENV=production` falha fechado sem esses pré-requisitos. Não
+exponha diretamente a porta do Node nem use `.env.example` como configuração de
+produção.
+
+Runbooks versionados: [Deploy/rollback](docs/operations/DEPLOY-ROLLBACK.md),
+[Backup/restore](docs/operations/BACKUP-RESTORE.md),
+[Retenção](docs/operations/RETENTION.md) e o [exemplo nginx](docs/operations/nginx-api.conf.example),
+que não é aplicado automaticamente.

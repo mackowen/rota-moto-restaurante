@@ -32,7 +32,7 @@ function createDomainQueryHttpHandler({ identityService, queryService, rateLimit
         res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Recurso não encontrado.' }, requestId }));
         return true;
       }
-      const rate = rateLimiter.consume(`${req.socket.remoteAddress || 'unknown'}:${url.pathname}`);
+      const rate = rateLimiter.consume(`${req.clientIp || req.socket.remoteAddress || 'unknown'}:${url.pathname}`);
       if (!rate.allowed) throw Object.assign(new Error('Limite de solicitações excedido.'), { code: 'RATE_LIMITED' });
       const rawValues = Object.create(null);
       for (const [key, value] of url.searchParams) {

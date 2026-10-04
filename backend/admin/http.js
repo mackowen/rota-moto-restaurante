@@ -68,7 +68,7 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
       if (!config) throw error('NOT_FOUND');
       if (config.id && !UUID.test(config.id)) throw error('INVALID_INPUT');
       if (req.method !== config.method) { status = 405; send(res, status, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' }, requestId }, { Allow: config.method }); return true; }
-      const rate = rateLimiter.consume(`${req.socket.remoteAddress || 'unknown'}:${url.pathname}`);
+      const rate = rateLimiter.consume(`${req.clientIp || req.socket.remoteAddress || 'unknown'}:${url.pathname}`);
       if (!rate.allowed) { status = 429; send(res, status, { error: { code: 'RATE_LIMITED', message: 'Limite de solicitações excedido.' }, requestId }, { 'Retry-After': String(rate.retryAfter) }); return true; }
       const query = Object.create(null);
       for (const [key, value] of url.searchParams) { if (Object.hasOwn(query, key)) throw error('INVALID_INPUT'); query[key] = value; }

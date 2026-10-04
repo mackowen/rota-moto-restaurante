@@ -53,7 +53,7 @@ Para `motoboy`, instalação, push, pull e leituras de domínio exigem Driver re
 
 ## Consulta do domínio
 
-Base: `GET /api/domain/{collection}` ou `GET /api/domain/{collection}/{canonicalId}`. Cookie de sessão obrigatório; sem CSRF por ser somente leitura; rate limit por IP/endpoint. Query aceita somente filtros declarados abaixo, `limit` (1–100, padrão 50), `cursor` e, para lista, `includeDeleted=true|false`.
+Base: `GET /api/domain/{collection}` ou `GET /api/domain/{collection}/{canonicalId}`. Cookie de sessão obrigatório; sem CSRF por ser somente leitura; rate limit por IP/endpoint (peer do socket, ou IP encaminhado apenas de peer proxy explicitamente confiável). Query aceita somente filtros declarados abaixo, `limit` (1–100, padrão 50), `cursor` e, para lista, `includeDeleted=true|false`.
 
 | Collection | Permissão | Filtros |
 |---|---|---|

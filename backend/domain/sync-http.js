@@ -91,7 +91,7 @@ function createSyncHttpHandler({ identityService, syncService, rateLimiter = cre
         return true;
       }
       if (req.method === 'POST') assertSameOrigin(req, allowedOrigin);
-      const rate = rateLimiter.consume(`${req.socket.remoteAddress || 'unknown'}:${url.pathname}`);
+      const rate = rateLimiter.consume(`${req.clientIp || req.socket.remoteAddress || 'unknown'}:${url.pathname}`);
       if (!rate.allowed) {
         status = 429;
         res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': String(rate.retryAfter), 'X-Request-ID': requestId });
