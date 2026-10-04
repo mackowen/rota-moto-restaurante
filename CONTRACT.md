@@ -48,6 +48,10 @@ Dados sincronizáveis usam tombstone (`deletedAt`) em vez de remoção física i
 - `Driver`: cadastro/identidade e vínculo administrativo são controlados pelo Restaurante/servidor; o Motoboy não sincroniza alterações de cadastro. Dados próprios da execução do motorista permanecem eventos/dados logísticos.
 - Preferências, ajustes e projeções de tela (incluindo `races`) são locais e não viram entidades canônicas sem definição explícita no contrato.
 
+## Fatos de execução e projeção de Delivery
+
+O Motoboy emite `DELIVERY_ACCEPTED`, `DELIVERY_PICKED_UP`, `DELIVERY_STARTED`, `DELIVERY_ARRIVED`, `DELIVERY_COMPLETED`, `DELIVERY_FAILED` e `DELIVERY_RETURNED`. O servidor valida cada transição contra o estado canônico e atualiza a projeção de Delivery na mesma transação do fato. `acceptedAt`, `pickedUpAt`, `arrivedAt` e `completedAt` registram o instante de cada fato; `DELIVERY_STARTED` só preenche `pickedUpAt` como compatibilidade para execuções legadas sem evento de coleta. Repetir o mesmo eventId/fato é idempotente.
+
 ## Revisões e ACK de operações
 - `source.app` é metadado declarativo e nunca autentica nem autoriza um aplicativo. A API vincula uma instalação a tenant, usuário autenticado e chave de aplicativo em registro server-side; cada push/pull precisa usar essa instalação.
 - O envelope v1 permanece compatível. A resposta de push inclui `operationResults`, um resultado por operação, com `status` (`accepted`, `duplicate`, `rejected` ou `conflict`), `entity`, `localId`, `canonicalId` quando conhecido, `canonicalVersion` quando conhecido e `error.code` estável quando não aceita. HTTP 200 confirma apenas o processamento do pacote; não implica aceite de todas as operações.

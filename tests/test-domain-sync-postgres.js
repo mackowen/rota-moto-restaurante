@@ -340,6 +340,25 @@ async function main() {
       assert.equal(invalidMotoResult.body.operationResults[0].error.code, 'INVALID_TRANSITION');
       assert.equal(invalidMotoResult.body.operationResults[0].canonicalVersion, undefined, 'a rejected first event has no canonical revision');
 
+      const pushExecutionEvent = async (type, offset) => {
+        const executionEvent = { eventId: `evt_${crypto.randomUUID()}`, entity: 'delivery', entityId: deliveryId,
+          type, occurredAt: new Date(Date.now() + offset).toISOString(), actor: { type: 'driver', id: 'spoofed-driver' } };
+        const result = await call('/api/sync/push', { method: 'POST', body: { ...riderPacket,
+          packetId: `pkt_${crypto.randomUUID()}`, data: { ...riderPacket.data, deliveries: [], deliveryEvents: [executionEvent] } } });
+        assert.equal(result.status, 200);
+        assert.equal(result.body.operationResults[0].status, 'accepted', JSON.stringify(result.body.operationResults));
+        return result;
+      };
+      await pushExecutionEvent('DELIVERY_ACCEPTED', 6500);
+      let acceptedProjection = await client.query("SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2", [companyId, deliveryId]);
+      assert.equal(acceptedProjection.rows[0].payload.status, 'ACCEPTED');
+      assert.ok(acceptedProjection.rows[0].payload.acceptedAt);
+      assert.equal(Number(acceptedProjection.rows[0].version), 2);
+      await pushExecutionEvent('DELIVERY_PICKED_UP', 7000);
+      let pickedProjection = await client.query("SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2", [companyId, deliveryId]);
+      assert.equal(pickedProjection.rows[0].payload.status, 'PICKED_UP');
+      assert.ok(pickedProjection.rows[0].payload.pickedUpAt);
+      assert.equal(Number(pickedProjection.rows[0].version), 3);
       const startEvent = { eventId: `evt_${crypto.randomUUID()}`, entity: 'delivery', entityId: deliveryId,
         type: 'DELIVERY_STARTED', occurredAt: new Date(Date.now() + 8000).toISOString(), actor: { type: 'driver', id: 'spoofed-driver' } };
       const executionPacket = { ...riderPacket, packetId: `pkt_${crypto.randomUUID()}`,
@@ -352,8 +371,8 @@ async function main() {
       assert.equal(acceptedExecutionEvent.canonicalVersion, 1);
       const projectedDelivery = await client.query("SELECT payload,payload->>'status' AS status,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2", [companyId, deliveryId]);
       assert.equal(projectedDelivery.rows[0].status, 'OUT_FOR_DELIVERY', 'execution event updates the canonical Delivery projection');
-      assert.equal(Number(projectedDelivery.rows[0].version), 2);
-      const prematureRedelivery={...projectedDelivery.rows[0].payload,status:'REDELIVERY',version:3,baseVersion:2,
+      assert.equal(Number(projectedDelivery.rows[0].version), 4);
+      const prematureRedelivery={...projectedDelivery.rows[0].payload,status:'REDELIVERY',version:5,baseVersion:4,
         updatedAt:new Date(Date.now()+8500).toISOString()};
       const prematurePacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],
         deliveries:[prematureRedelivery],deliveryEvents:[],earnings:[],routes:[],proofs:[],locationUpdates:[]}};
@@ -368,8 +387,8 @@ async function main() {
       const failedResult=await call('/api/sync/push',{method:'POST',body:failedPacket});
       assert.equal(failedResult.body.operationResults[0].status,'accepted',JSON.stringify(failedResult.body.operationResults));
       const afterFailure=await client.query("SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
-      assert.equal(afterFailure.rows[0].payload.status,'FAILED');assert.equal(Number(afterFailure.rows[0].version),3);
-      const redeliveryRecord={...afterFailure.rows[0].payload,status:'REDELIVERY',version:4,baseVersion:3,
+      assert.equal(afterFailure.rows[0].payload.status,'FAILED');assert.equal(Number(afterFailure.rows[0].version),5);
+      const redeliveryRecord={...afterFailure.rows[0].payload,status:'REDELIVERY',version:6,baseVersion:5,
         updatedAt:new Date(Date.now()+10000).toISOString()};
       const redeliveryPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],
         deliveries:[redeliveryRecord],deliveryEvents:[],earnings:[],routes:[],proofs:[],locationUpdates:[]}};
@@ -378,7 +397,7 @@ async function main() {
       const auditReadDenied=await client.query("SELECT has_table_privilege(current_user,'rotamoto.audit_log','SELECT') AS allowed");
       assert.equal(auditReadDenied.rows[0].allowed,false,'runtime keeps audit_log append-only and non-readable');
       const afterRedelivery=await client.query("SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
-      const reassignedRecord={...afterRedelivery.rows[0].payload,status:'ASSIGNED',version:5,baseVersion:4,
+      const reassignedRecord={...afterRedelivery.rows[0].payload,status:'ASSIGNED',version:7,baseVersion:6,
         updatedAt:new Date(Date.now()+11000).toISOString()};
       const reassignedPacket={...redeliveryPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...redeliveryPacket.data,deliveries:[reassignedRecord]}};
       const reassignedResult=await call('/api/sync/push',{method:'POST',body:reassignedPacket});
@@ -396,15 +415,15 @@ async function main() {
       const returnResult=await call('/api/sync/push',{method:'POST',body:returnPacket});
       assert.equal(returnResult.body.operationResults[0].status,'accepted',JSON.stringify(returnResult.body.operationResults));
       const afterReturn=await client.query("SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
-      assert.equal(afterReturn.rows[0].payload.status,'RETURNED');assert.equal(Number(afterReturn.rows[0].version),7);
-      const returnedRedelivery={...afterReturn.rows[0].payload,status:'REDELIVERY',version:8,baseVersion:7,
+      assert.equal(afterReturn.rows[0].payload.status,'RETURNED');assert.equal(Number(afterReturn.rows[0].version),9);
+      const returnedRedelivery={...afterReturn.rows[0].payload,status:'REDELIVERY',version:10,baseVersion:9,
         updatedAt:new Date(Date.now()+14000).toISOString()};
       const returnedRedeliveryPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],
         deliveries:[returnedRedelivery],deliveryEvents:[],earnings:[],routes:[],proofs:[],locationUpdates:[]}};
       const returnedRedeliveryResult=await call('/api/sync/push',{method:'POST',body:returnedRedeliveryPacket});
       assert.equal(returnedRedeliveryResult.body.operationResults[0].status,'accepted',JSON.stringify(returnedRedeliveryResult.body.operationResults));
       const afterReturnedRedelivery=await client.query("SELECT payload FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
-      const afterReturnedAssignment={...afterReturnedRedelivery.rows[0].payload,status:'ASSIGNED',version:9,baseVersion:8,
+      const afterReturnedAssignment={...afterReturnedRedelivery.rows[0].payload,status:'ASSIGNED',version:11,baseVersion:10,
         updatedAt:new Date(Date.now()+15000).toISOString()};
       const returnedAssignmentPacket={...returnedRedeliveryPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...returnedRedeliveryPacket.data,deliveries:[afterReturnedAssignment]}};
       const returnedAssignment=await call('/api/sync/push',{method:'POST',body:returnedAssignmentPacket});
@@ -433,7 +452,7 @@ async function main() {
 
       const tombstonePacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, data: { ...packet.data, orders: [], deliveries: [],
         tombstones: [{ store: 'deliveries', id: 'delivery-local-1', deleted: true,
-          deletedAt: new Date(Date.now() + 3000).toISOString(), updatedAt: new Date(Date.now() + 3000).toISOString(), version: 10, baseVersion: 9 }] } };
+          deletedAt: new Date(Date.now() + 3000).toISOString(), updatedAt: new Date(Date.now() + 3000).toISOString(), version: 12, baseVersion: 11 }] } };
       const tombstoneResult = await call('/api/sync/push', { method: 'POST', body: tombstonePacket });
       assert.equal(tombstoneResult.status, 200, JSON.stringify(tombstoneResult.body));
       assert.equal(tombstoneResult.body.operationResults.find(result => result.operation === 'tombstones:0').status, 'accepted');

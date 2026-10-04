@@ -21,6 +21,14 @@
     DELIVERED:['REDELIVERY'],
     CANCELLED:[], FAILED:['REDELIVERY'], RETURNED:['REDELIVERY'], REDELIVERY:['ASSIGNED','CANCELLED']
   });
+  // Additive v1 execution facts. The server derives Delivery status from these
+  // immutable event types; administrative cancellation/re-delivery stay owned
+  // by the Restaurante and are never emitted by the Motoboy.
+  const EXECUTION_EVENT_STATUS = Object.freeze({
+    DELIVERY_ACCEPTED:'ACCEPTED', DELIVERY_PICKED_UP:'PICKED_UP',
+    DELIVERY_STARTED:'OUT_FOR_DELIVERY', DELIVERY_ARRIVED:'ARRIVED',
+    DELIVERY_COMPLETED:'DELIVERED', DELIVERY_FAILED:'FAILED', DELIVERY_RETURNED:'RETURNED'
+  });
   const REST_TO_CANONICAL = Object.freeze({
     AGUARDANDO:'CREATED', ATRIBUIDA:'ASSIGNED', EM_ROTA:'OUT_FOR_DELIVERY', CHEGOU:'ARRIVED',
     FINALIZADA:'DELIVERED', CANCELADA:'CANCELLED'
@@ -161,5 +169,5 @@
     }
     return{valid:errors.length===0,errors};
   }
-  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,WRITE_AUTHORITY,SYNC_ACK,ENTITY_SCHEMAS,validateEntity,validateRouteMembership,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,event,packet,normalizeDeliveryStatus,now,id});
+  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,EXECUTION_EVENT_STATUS,WRITE_AUTHORITY,SYNC_ACK,ENTITY_SCHEMAS,validateEntity,validateRouteMembership,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,event,packet,normalizeDeliveryStatus,now,id});
 })();

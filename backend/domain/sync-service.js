@@ -464,7 +464,8 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         [uuidV7(now.getTime()),companyId,userId,canonicalId,JSON.stringify(routeMembershipChange)]);
       }
       if (entityType === 'DeliveryEvent' && String(canonical.entity || '').toLowerCase() === 'delivery' && !existing.rowCount) {
-        const executionStatus = ({ DELIVERY_STARTED: 'OUT_FOR_DELIVERY', DELIVERY_ARRIVED: 'ARRIVED',
+        const executionStatus = ({ DELIVERY_ACCEPTED: 'ACCEPTED', DELIVERY_PICKED_UP: 'PICKED_UP',
+          DELIVERY_STARTED: 'OUT_FOR_DELIVERY', DELIVERY_ARRIVED: 'ARRIVED',
           DELIVERY_COMPLETED: 'DELIVERED', DELIVERY_FAILED: 'FAILED', DELIVERY_RETURNED: 'RETURNED' })[canonical.type];
         if (!executionStatus) throw new SyncError('FORBIDDEN_EVENT', 'Evento de execução não reconhecido ou não permitido.');
         const currentDelivery = await client.query(`SELECT payload,version,created_at,deleted_at FROM rotamoto.domain_records
@@ -479,7 +480,9 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           const projectedVersion = Number(currentDelivery.rows[0].version) + 1;
           const projected = { ...currentDelivery.rows[0].payload, status: executionStatus,
             updatedAt: projectedAt, version: projectedVersion };
-          if (executionStatus === 'OUT_FOR_DELIVERY') projected.pickedUpAt = canonical.occurredAt || projectedAt;
+          if (executionStatus === 'ACCEPTED') projected.acceptedAt = canonical.occurredAt || projectedAt;
+          if (executionStatus === 'PICKED_UP') projected.pickedUpAt = canonical.occurredAt || projectedAt;
+          if (executionStatus === 'OUT_FOR_DELIVERY') projected.pickedUpAt = projected.pickedUpAt || canonical.occurredAt || projectedAt;
           if (executionStatus === 'ARRIVED') projected.arrivedAt = canonical.occurredAt || projectedAt;
           if (executionStatus === 'DELIVERED') projected.completedAt = canonical.occurredAt || projectedAt;
           await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5
