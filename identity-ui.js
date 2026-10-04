@@ -4,6 +4,7 @@
   let csrf = null;
   let current = null;
   let offlineMode = false;
+  const sessionReadGuard = window.RotaMotoSessionGuard.createSessionReadGuard();
   let working = false;
   let driverRows = [];
   let driverCursor = null;
@@ -115,9 +116,12 @@
     $('[data-login]').hidden = Boolean(session); $('[data-authenticated]').hidden = !session;
     $('[data-offline]').hidden = Boolean(session); $('[data-recovery]').hidden = Boolean(session);
     $('[data-invitation]').hidden = Boolean(session);
-    $('[data-invite]').hidden = !session?.permissions?.includes('members.invite');
-    $('[data-members]').hidden = !session?.permissions?.includes('members.read');
-    $('[data-members-note]').hidden = Boolean(session?.permissions?.includes('members.read'));
+    const inviteForm = $('[data-invite]');
+    const membersList = $('[data-members]');
+    const membersNote = $('[data-members-note]');
+    if (inviteForm) inviteForm.hidden = !session?.permissions?.includes('members.invite');
+    if (membersList) membersList.hidden = !session?.permissions?.includes('members.read');
+    if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
     const appRoot = document.querySelector('#app');
     if (appRoot) { appRoot.inert = !session && !offlineMode; appRoot.setAttribute('aria-hidden', String(!session && !offlineMode)); }
     host.dataset.gated = String(!session && !offlineMode);
@@ -135,6 +139,7 @@
   }
   function expireSession() {
     if (!current) return;
+    sessionReadGuard.invalidate();
     csrf = null; current = null; offlineMode = false;
     Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {});
     showSession(null); setOpen(true);
@@ -142,8 +147,18 @@
     setStatus('Sessão expirada. Entre novamente.');
   }
   async function restore() {
-    try { const session = await request('/identity/session'); if (typeof session.csrfToken !== 'string') throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' }); csrf = session.csrfToken; showSession(session); return session; }
-    catch (error) { csrf = null; current = null; showSession(null); if (error.status === 401) $('[data-login-error]').textContent = message(error); return null; }
+    const readVersion = sessionReadGuard.capture();
+    try {
+      const session = await request('/identity/session');
+      if (!sessionReadGuard.isCurrent(readVersion)) return current;
+      if (typeof session.csrfToken !== 'string') throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
+      csrf = session.csrfToken; showSession(session); return session;
+    } catch (error) {
+      if (!sessionReadGuard.isCurrent(readVersion)) return current;
+      csrf = null; current = null; showSession(null);
+      if (error.status === 401) $('[data-login-error]').textContent = message(error);
+      return null;
+    }
   }
   function hintedCompany() { try { return localStorage.getItem('rotaMoto.activeCompanyHint') || ''; } catch (_) { return ''; } }
   $('[data-login] [name=companyId]').value = hintedCompany();
@@ -151,6 +166,7 @@
   $('[data-close]').addEventListener('click', () => { if (current || offlineMode) setOpen(false); });
   $('[data-login]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
+    sessionReadGuard.invalidate();
     working = true; setBusy(form, true); $('[data-login-error]').textContent = ''; setStatus('Autenticando…');
     const data = new FormData(form); const password = data.get('password');
     try {
@@ -164,7 +180,7 @@
     } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } $('[data-login-error]').textContent = message(error); setStatus('Não foi possível autenticar'); }
     finally { working = false; setBusy(form, false); }
   });
-  $('[data-offline]').addEventListener('click', () => { offlineMode = true; trigger.textContent = 'Conta · modo local'; const appRoot = document.querySelector('#app'); if (appRoot) { appRoot.inert = false; appRoot.setAttribute('aria-hidden', 'false'); } host.dataset.gated = 'false'; setStatus('Modo local sem identidade do servidor'); setOpen(false); });
+  $('[data-offline]').addEventListener('click', () => { sessionReadGuard.invalidate(); offlineMode = true; trigger.textContent = 'Conta · modo local'; const appRoot = document.querySelector('#app'); if (appRoot) { appRoot.inert = false; appRoot.setAttribute('aria-hidden', 'false'); } host.dataset.gated = 'false'; setStatus('Modo local sem identidade do servidor'); setOpen(false); });
   $('[data-switch]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
     working = true; setBusy(form, true); $('[data-switch-error]').textContent = '';
@@ -174,6 +190,7 @@
   });
   $('[data-logout]').addEventListener('click', async () => {
     if (working) return; working = true;
+    sessionReadGuard.invalidate();
     try { await request('/identity/logout', { method: 'POST', body: '{}' }); csrf = null; current = null; await window.RotaMotoSync?.clearSession?.().catch(() => {}); showSession(null); setOpen(true); }
     catch (error) { $('[data-account-error]').textContent = message(error); }
     finally { working = false; }
