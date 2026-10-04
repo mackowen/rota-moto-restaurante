@@ -1,0 +1,35 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const uiPath = path.join(__dirname, '..', 'identity-ui.js');
+const htmlPath = path.join(__dirname, '..', 'index.html');
+const source = fs.readFileSync(uiPath, 'utf8');
+const html = fs.readFileSync(htmlPath, 'utf8');
+const styles = fs.readFileSync(path.join(__dirname, '..', 'identity-ui.css'), 'utf8');
+
+assert.match(source, /autocomplete="current-password"/u);
+assert.match(source, /autocomplete="one-time-code"/u);
+assert.match(source, /credentials: 'include'/u, 'identity uses the protected cookie session');
+assert.match(source, /X-CSRF-Token/u);
+assert.match(source, /\/identity\/session/u);
+assert.match(source, /\/identity\/recovery\/consume/u);
+assert.match(source, /\/identity\/membership-invitations\/accept/u);
+assert.match(source, /\/admin\/memberships/u);
+assert.match(source, /\/admin\/roles/u);
+assert.match(source, /\/admin\/invitations/u);
+assert.match(source, /members\.invite/u, 'invitation controls are gated by the effective permission');
+assert.match(source, /canReadMembers/u, 'membership data is fetched only with its read permission');
+assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed');
+assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');
+assert.match(source, /function expireSession/u, 'an HTTP 401 also clears the authenticated UI state');
+assert.match(source, /clearSession/u, 'logout clears in-memory sync credentials');
+assert.match(source, /somente com dados locais/iu, 'offline mode is explicitly distinct from authenticated access');
+assert.doesNotMatch(source, /localStorage\.(?:setItem|getItem)\(['"](?:session|csrf|password|token)/iu);
+assert.match(html, /identity-ui\.css/u);
+assert.match(html, /identity-ui\.js/u);
+assert.equal(fs.existsSync(path.join(__dirname, '..', 'identity-ui.css')), true);
+assert.match(styles, /#rmIdentityRoot \[hidden\]\s*\{\s*display:\s*none\s*!important/u,
+  'auth form and permission-gated controls honor the hidden state despite component display rules');
+console.log('identity UI and secure session client contract: OK');
