@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION=5;
+  const VERSION=6;
   const stores=[['meta','key'],['companies','id'],['orders','id'],['deliveries','id'],['bikes','id'],['routes','id'],['events','id'],['deliveryEvents','id'],['locations','id'],['proofs','id'],['earnings','id'],['outbox','id'],['inbox','id'],['tombstones','id'],['syncState','id'],['logs','id'],['profiles','id'],['users','id']];
   const migrations={
     1:({db})=>{for(const[name,keyPath]of stores)if(!db.objectStoreNames.contains(name))db.createObjectStore(name,{keyPath})},
@@ -23,6 +23,16 @@
         const store=transaction.objectStore(name);
         for(const[indexName,keyPath]of indexes)if(!store.indexNames.contains(indexName))store.createIndex(indexName,keyPath,{unique:false});
       }
+    },
+    6: ({transaction}) => {
+      const replace=(storeName,obsolete,indexes)=>{
+        const store=transaction.objectStore(storeName);
+        for(const name of obsolete)if(store.indexNames.contains(name))store.deleteIndex(name);
+        for(const [name,keyPath] of indexes)if(!store.indexNames.contains(name))store.createIndex(name,keyPath,{unique:false});
+      };
+      replace('events',['byCreatedAt'],[['byOccurredAt','at']]);
+      replace('deliveryEvents',['byDeliveryId','byCreatedAt'],[['byEntityId','entityId'],['byOccurredAt','occurredAt']]);
+      replace('logs',['byCreatedAt'],[['byOccurredAt','at']]);
     }
   };
   function upgrade(db,transaction,oldVersion,newVersion){
