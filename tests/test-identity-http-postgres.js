@@ -115,7 +115,11 @@ async function main() {
     assert.equal(session.status, 200);
     assert.equal(session.body.activeCompanyId, companyId, 'tenant context comes from validated session');
     assert.equal(session.body.email, email);
+    assert.notEqual(session.body.csrfToken, login.body.csrfToken, 'session bootstrap rotates CSRF for reload-safe in-memory use');
     assert.equal(JSON.stringify(session.body).includes('password_phc'), false);
+    const csrfRotated = await call('/api/identity/tenant', { method: 'POST', body: { companyId }, cookie: sessionCookie, csrf: login.body.csrfToken });
+    assert.equal(csrfRotated.status, 403);
+    assert.equal(csrfRotated.body.error.code, 'CSRF_INVALID');
     const wrongMethod = await call('/api/identity/session', { method: 'POST', body: {} });
     assert.equal(wrongMethod.status, 405);
     assert.equal(wrongMethod.headers.get('allow'), 'GET');
@@ -126,17 +130,17 @@ async function main() {
     const csrfInvalid = await call('/api/identity/tenant', { method: 'POST', body: { companyId }, cookie: sessionCookie, csrf: 'invalid' });
     assert.equal(csrfInvalid.status, 403);
     const crossTenant = await call('/api/identity/tenant', { method: 'POST', body: { companyId: crypto.randomUUID() },
-      cookie: sessionCookie, csrf: login.body.csrfToken });
+      cookie: sessionCookie, csrf: session.body.csrfToken });
     assert.equal(crossTenant.status, 403);
     assert.equal(crossTenant.body.error.code, 'FORBIDDEN');
 
     const forbiddenOrigin = await call('/api/identity/logout', { method: 'POST', cookie: sessionCookie,
-      csrf: login.body.csrfToken, origin: 'https://attacker.invalid' });
+      csrf: session.body.csrfToken, origin: 'https://attacker.invalid' });
     assert.equal(forbiddenOrigin.status, 403);
     assert.equal(forbiddenOrigin.body.error.code, 'ORIGIN_INVALID');
     const logoutMissingCsrf = await call('/api/identity/logout', { method: 'POST', cookie: sessionCookie });
     assert.equal(logoutMissingCsrf.status, 403);
-    const logout = await call('/api/identity/logout', { method: 'POST', cookie: sessionCookie, csrf: login.body.csrfToken });
+    const logout = await call('/api/identity/logout', { method: 'POST', cookie: sessionCookie, csrf: session.body.csrfToken });
     assert.equal(logout.status, 204);
     assert.match(logout.headers.get('set-cookie'), /Max-Age=0/u);
     assert.equal((await call('/api/identity/session', { cookie: sessionCookie })).status, 401, 'logout revokes session');

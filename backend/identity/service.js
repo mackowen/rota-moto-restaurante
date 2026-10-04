@@ -439,6 +439,15 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
     return result.rowCount === 1;
   }
 
+  async function renewCsrfToken(client, sessionId) {
+    const csrfToken = crypto.randomBytes(32).toString('base64url');
+    const result = await client.query(`UPDATE rotamoto.sessions SET csrf_digest=$2
+      WHERE id=$1 AND revoked_at IS NULL AND idle_expires_at>now() AND absolute_expires_at>now()
+      RETURNING id`, [sessionId, digestText(csrfToken)]);
+    if (!result.rowCount) throw new IdentityError('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
+    return csrfToken;
+  }
+
   async function switchActiveCompany(sessionToken, companyId) {
     const selectedCompanyId = validateUuid(companyId);
     const digest = tokenDigest(sessionToken);
@@ -494,7 +503,7 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
   }
 
   return Object.freeze({ provisionInitialOwner, consumeOwnerInvitation, requestPasswordRecovery,
-    consumePasswordRecovery, authenticate, resolveSession, verifyCsrf, switchActiveCompany, revokeSession, withAuthenticatedTenant });
+    consumePasswordRecovery, authenticate, resolveSession, verifyCsrf, renewCsrfToken, switchActiveCompany, revokeSession, withAuthenticatedTenant });
 }
 
 module.exports = { createIdentityService, IdentityError, normalizeEmail, tokenDigest, uuidV7: id,
