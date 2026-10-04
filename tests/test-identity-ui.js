@@ -30,6 +30,7 @@ assert.match(source, /app\.inert = open \|\| gated/u, 'opening the account dialo
 assert.match(appSource, /let modalReturnFocus=null/u, 'operational dialogs remember their invoking control');
 assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog=/u, 'operational dialogs trap keyboard focus and handle Escape');
 assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
+assert.match(appSource, /Escopo dos ajustes[\s\S]{0,260}não alteram a empresa ou as permissões/u, 'settings explain that local controls do not mutate server identity');
 assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed');
 assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');
 assert.match(source, /function expireSession/u, 'an HTTP 401 also clears the authenticated UI state');
