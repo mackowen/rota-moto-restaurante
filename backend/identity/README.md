@@ -1,6 +1,6 @@
 # Backend identity services
 
-These modules are internal services. They are not mounted as HTTP routes and do not enable public signup. The existing integration server remains loopback-only.
+These identity modules are mounted behind the loopback-only integration server. They do not enable public signup; privileged owner provisioning still requires a deployment-controlled operator adapter.
 
 ## Provisioning boundary
 
@@ -23,14 +23,27 @@ Session tokens and CSRF tokens are random 256-bit values; only SHA-256 digests a
 
 `identity_tokens` and `provisioning_requests` are global lookup metadata so a one-time token/idempotency digest can locate its tenant before the transaction installs tenant RLS context. No raw token, email delivery payload or secret is stored there. Tenant writes, memberships, roles, role permissions, audit events and the remaining tenant tables continue to use forced RLS. The internal services must not expose these lookup tables through an API.
 
+## Account and membership lifecycle
+
+- A `User` is global. Password recovery resets the credential and revokes all sessions; `disabled_at` blocks login globally. There is no public signup or user deletion.
+- A `Membership` is tenant-scoped and moves `invited -> active` only through a single-use invitation; `active -> suspended|revoked`; a verified suspended account may return to `active`. Revoked associations are terminal and retained for audit/history.
+- A `Role` belongs to one company. The `owner` role is reserved and immutable. Other system templates are also immutable. Role deletion is not exposed. A manager can grant only permission keys already present in their effective role. Their own membership and currently assigned role cannot be edited from that session.
+- `Permission` keys come from the versioned server catalog. Browser checks only decide which controls to show; the API rechecks permission in the authenticated tenant transaction and RLS remains forced.
+- Administrative permission changes, invites, membership status/role changes and invitation acceptance append a sanitized audit record. Actor and company IDs are derived from the server session.
+- The last owner is protected using a per-company transaction lock. A valid owner must have an active membership, enabled account, verified email, credential and a session policy that permits MFA.
+
+## MFA boundary
+
+`mfa-provider.js` defines a fail-closed provider interface. Its verifier receives only `{userId,code}` and must retrieve any protected factor through an approved secret manager; it must not log the code or secret. Login checks both `credentials.mfa_required` and the selected membership's administrative permissions. Successful verification is recorded as `sessions.mfa_verified_at`; the authenticated API also rechecks that marker before privileged operations and before switching into a privileged tenant. No production verifier, enrollment route, KMS/secret manager, or recovery-factor flow is configured, so privileged login remains unavailable until those components are supplied. Tests use a fake verifier only inside rollback-scoped integration fixtures.
+
 ## Remaining deployment work
 
-No email domain/provider, administrative ownership proof mechanism, HTTPS origin, MFA secret manager, HTTP authentication routes, API rate limiter, or production CSRF middleware is configured here. Those pieces must be supplied and verified before mounting these services or enabling remote access. The owner MFA flag intentionally remains required until a real MFA enrollment/verification flow can protect its secret with an approved KMS/secret manager.
+Email delivery and the privileged operator adapter remain unconfigured and fail closed. This keeps owner provisioning, membership invites and password recovery unavailable for delivery until a real provider is configured. HTTPS/domain, production CORS origin allowlist, MFA enrollment/provider and secret manager remain deployment dependencies. No secret, session token, CSRF value, invitation token or recovery token is written to browser storage or logs.
 
 
 ## HTTP identity API
 
-`http.js` mounts a loopback-only HTTP adapter around the existing identity service. It exposes `POST /api/identity/login`, `POST /api/identity/logout`, `GET /api/identity/session`, `POST /api/identity/tenant`, `POST /api/identity/recovery`, `POST /api/identity/recovery/consume`, `POST /api/identity/invitations/accept`, and the protected `POST /api/admin/tenants/provision`. There is no public signup.
+`http.js` mounts a loopback-only HTTP adapter around the identity service. It exposes login/logout/session/tenant selection, recovery, owner invitation acceptance, membership invitation acceptance, protected membership invitation, and owner provisioning. `admin/http.js` exposes company/membership/role/permission/integration reads, constrained role creation/update, and constrained membership role/status updates. See [`../../docs/API-v1.md`](../../docs/API-v1.md) for the exact methods, permissions, payloads and responses. There is no public signup.
 
 State-changing authenticated requests require same-origin `Origin` when present and the session CSRF token in `X-CSRF-Token`. The browser session remains an opaque `__Host-rotamoto_session` Secure, HttpOnly, SameSite=Lax cookie; JSON responses never return the raw session token, password hash, or recovery/invitation token. Tenant context and permission decisions come from the validated session and PostgreSQL membership/role tables; client `companyId` is only a requested membership selection. The HTTP adapter caps JSON bodies at 16 KiB, rejects unknown fields, rate-limits by socket IP and endpoint, ignores forwarded IP headers, returns normalized errors, and logs only request ID/method/path/status/duration.
 

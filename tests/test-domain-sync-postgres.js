@@ -76,8 +76,8 @@ async function main() {
       VALUES($1,$2,'sync.push',1),($1,$2,'sync.pull',1),($1,$2,'orders.read',1),
         ($1,$2,'company.manage',1),($1,$2,'members.read',1),($1,$2,'integrations.manage',1)`, [companyId, roleId]);
     await client.query("INSERT INTO rotamoto.memberships(id,company_id,user_id,role_id,status,activated_at) VALUES($1,$2,$3,$4,'active',now())", [membershipId, companyId, userId, roleId]);
-    await client.query(`INSERT INTO rotamoto.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at)
-      VALUES($1,$2,$3,$4,$5,now(),now(),now()+interval '30 minutes',now()+interval '12 hours')`,
+    await client.query(`INSERT INTO rotamoto.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at,mfa_verified_at)
+      VALUES($1,$2,$3,$4,$5,now(),now(),now()+interval '30 minutes',now()+interval '12 hours',now())`,
     [sessionId, userId, companyId, tokenDigest(sessionToken), tokenDigest(csrfToken)]);
     await client.query('INSERT INTO rotamoto.users(id,email) VALUES($1,$2)', [readOnlyUserId, `domain-sync-readonly-${readOnlyUserId}@example.invalid`]);
     await client.query("INSERT INTO rotamoto.roles(id,company_id,role_key,display_name) VALUES($1,$2,'qa-no-sync','Synthetic no-sync role')", [readOnlyRoleId, companyId]);

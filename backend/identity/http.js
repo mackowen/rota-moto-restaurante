@@ -20,6 +20,9 @@ const ROUTE_METHODS = Object.freeze({
   '/api/identity/recovery': 'POST',
   '/api/identity/recovery/consume': 'POST',
   '/api/identity/invitations/accept': 'POST',
+  '/api/identity/membership-invitations/accept': 'POST',
+  '/api/identity/membership-invitations/accept-authenticated': 'POST',
+  '/api/admin/invitations': 'POST',
   '/api/admin/tenants/provision': 'POST'
 });
 
@@ -27,9 +30,11 @@ function problemStatus(code) {
   if (['INVALID_INPUT', 'INVALID_TOKEN', 'INVALID_CREDENTIALS'].includes(code)) return code === 'INVALID_CREDENTIALS' || code === 'INVALID_TOKEN' ? 401 : 400;
   if (code === 'UNAUTHENTICATED') return 401;
   if (['FORBIDDEN', 'PROVISIONER_UNAUTHORIZED', 'MFA_REQUIRED', 'CSRF_INVALID', 'ORIGIN_INVALID'].includes(code)) return 403;
-  if (code === 'PROVISIONER_NOT_CONFIGURED' || code === 'EMAIL_PROVIDER_NOT_CONFIGURED') return 503;
+  if (['PROVISIONER_NOT_CONFIGURED', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE'].includes(code)) return 503;
+  if (code === 'AUTHENTICATION_REQUIRED') return 401;
   if (code === 'IDEMPOTENCY_CONFLICT') return 409;
   if (['CONFLICT', 'REVISION_CONFLICT'].includes(code)) return 409;
+  if (['INVALID_STATE_TRANSITION', 'LAST_OWNER_REQUIRED'].includes(code)) return 409;
   if (['NOT_FOUND', 'TENANT_NOT_FOUND'].includes(code)) return 404;
   if (code === 'RATE_LIMITED') return 429;
   if (code === 'PAYLOAD_TOO_LARGE') return 413;
@@ -130,7 +135,8 @@ function createRateLimiter({ clock = Date.now, policies = RATE_POLICIES, maxKeys
 function rateCategory(path) {
   if (path === '/api/identity/login') return 'login';
   if (path.startsWith('/api/identity/recovery')) return 'recovery';
-  if (path.startsWith('/api/identity/invitations')) return 'invitation';
+  if (path.startsWith('/api/identity/invitations') || path.startsWith('/api/identity/membership-invitations')) return 'invitation';
+  if (path === '/api/admin/invitations') return 'invitation';
   if (path === '/api/admin/tenants/provision') return 'provision';
   return 'default';
 }
@@ -142,7 +148,8 @@ function assertSameOrigin(req, allowedOrigin) {
   try { parsed = new URL(origin); } catch (_) { throw fail('ORIGIN_INVALID', 'Origem não permitida.'); }
   const host = String(req.headers.host || '').toLowerCase();
   const protocol = req.socket.encrypted ? 'https:' : 'http:';
-  if (parsed.origin !== `${protocol}//${host}`.toLowerCase() && parsed.origin !== allowedOrigin) {
+  const allowList = Array.isArray(allowedOrigin) ? allowedOrigin : [allowedOrigin];
+  if (parsed.origin !== `${protocol}//${host}`.toLowerCase() && !allowList.includes(parsed.origin)) {
     throw fail('ORIGIN_INVALID', 'Origem não permitida.');
   }
 }
@@ -159,7 +166,10 @@ function publicError(error) {
     PROVISIONER_UNAUTHORIZED: 'Provisionamento administrativo não autorizado.',
     PROVISIONER_NOT_CONFIGURED: 'Provisionamento administrativo indisponível.',
     EMAIL_PROVIDER_NOT_CONFIGURED: 'Entrega de email indisponível.',
+    EMAIL_DELIVERY_FAILED: 'Entrega do convite indisponível.',
+    AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar o convite.',
     MFA_REQUIRED: 'A autenticação multifator desta conta ainda não está configurada.',
+    MFA_PROVIDER_UNAVAILABLE: 'Verificação multifator indisponível.',
     IDEMPOTENCY_CONFLICT: 'Chave idempotente já utilizada para outra solicitação.',
     CONFLICT: 'Conflito com o estado atual do recurso.',
     REVISION_CONFLICT: 'O recurso foi atualizado por outra operação.',
@@ -194,7 +204,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
   return async function identityHttpHandler(req, res) {
     const path = new URL(req.url, 'http://127.0.0.1').pathname;
-    if (!path.startsWith('/api/identity/') && path !== '/api/admin/tenants/provision') return false;
+    if (!path.startsWith('/api/identity/') && !['/api/admin/tenants/provision', '/api/admin/invitations'].includes(path)) return false;
     const id = requestId(req);
     const startedAt = Date.now();
     let status = 500;
@@ -216,8 +226,9 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
       if (path === '/api/identity/login' && req.method === 'POST') {
         const body = await readJson(req);
-        exactKeys(body, ['email', 'password', 'companyId']);
-        const session = await identityService.authenticate(body.email, body.password, body.companyId);
+        exactKeys(body, ['email', 'password', 'companyId', 'mfaCode']);
+        if (body.mfaCode !== undefined && (typeof body.mfaCode !== 'string' || body.mfaCode.length < 6 || body.mfaCode.length > 128 || /[\u0000-\u001f\u007f]/u.test(body.mfaCode))) throw fail('INVALID_INPUT', 'Código MFA inválido.');
+        const session = await identityService.authenticate(body.email, body.password, body.companyId, body.mfaCode);
         status = 200;
         send(res, status, { userId: session.userId, companyId: session.companyId, csrfToken: session.csrfToken }, {
           'Set-Cookie': `${COOKIE_NAME}=${session.sessionToken}; Path=/; Max-Age=${session.maxAgeSeconds}; Secure; HttpOnly; SameSite=Lax`
@@ -236,7 +247,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           if (!user.rowCount) throw fail('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
           const csrfToken = await identityService.renewCsrfToken(client, value.session_id);
           return { userId: value.user_id, email: user.rows[0].email, emailVerified: user.rows[0].email_verified,
-            activeCompanyId: value.company_id, permissions: permissions.rows.map(row => row.permission_key), csrfToken };
+            activeCompanyId: value.company_id, activeRoleId: value.role_id, permissions: permissions.rows.map(row => row.permission_key),
+            mfaVerified: Boolean(value.mfa_verified_at), csrfToken };
         });
         status = 200;
         send(res, status, principal);
@@ -255,7 +267,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         const body = await readJson(req);
         exactKeys(body, ['companyId']);
         if (typeof body.companyId !== 'string') throw fail('INVALID_INPUT', 'Empresa inválida.');
-        const selected = await requireSessionMutation(req, 'company.manage', async (_client, _principal, sessionToken) =>
+        const selected = await requireSessionMutation(req, undefined, async (_client, _principal, sessionToken) =>
           identityService.switchActiveCompany(sessionToken, body.companyId));
         status = 200;
         send(res, status, { activeCompanyId: selected.companyId });
@@ -289,6 +301,38 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         const accepted = await identityService.consumeOwnerInvitation(body);
         status = 200;
         send(res, status, accepted);
+        return true;
+      }
+
+      if (path === '/api/identity/membership-invitations/accept' && req.method === 'POST') {
+        const body = await readJson(req);
+        exactKeys(body, ['token', 'password']);
+        if (typeof body.token !== 'string') throw fail('INVALID_INPUT', 'Token inválido.');
+        validateNewPassword(body.password);
+        const accepted = await identityService.consumeMembershipInvitation(body);
+        status = 200;
+        send(res, status, accepted);
+        return true;
+      }
+
+      if (path === '/api/identity/membership-invitations/accept-authenticated' && req.method === 'POST') {
+        const body = await readJson(req);
+        exactKeys(body, ['token']);
+        if (typeof body.token !== 'string') throw fail('INVALID_INPUT', 'Token inválido.');
+        const accepted = await requireSessionMutation(req, undefined, async (_client, _principal, sessionToken) =>
+          identityService.acceptExistingMembershipInvitation(sessionToken, body.token));
+        status = 200;
+        send(res, status, accepted);
+        return true;
+      }
+
+      if (path === '/api/admin/invitations' && req.method === 'POST') {
+        const body = await readJson(req);
+        exactKeys(body, ['email', 'roleId']);
+        if (typeof body.email !== 'string' || typeof body.roleId !== 'string') throw fail('INVALID_INPUT', 'Convite inválido.');
+        const invited = await identityService.inviteMembershipWithSession(parseCookie(req), req.headers['x-csrf-token'], body);
+        status = 202;
+        send(res, status, invited);
         return true;
       }
 

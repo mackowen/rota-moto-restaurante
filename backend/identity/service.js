@@ -8,6 +8,7 @@ const OWNER_PERMISSIONS = Object.freeze([
   'company.manage', 'members.invite', 'members.read', 'orders.read', 'orders.manage', 'integrations.manage',
   'sync.pull', 'sync.push'
 ]);
+const MFA_PERMISSIONS = Object.freeze(['company.manage', 'members.invite', 'integrations.manage']);
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 const SESSION_ABSOLUTE_MS = 12 * 60 * 60 * 1000;
 const INVITATION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -116,7 +117,7 @@ function validateProvisioningInput(input) {
   return { companyName, email, idempotencyKey };
 }
 
-function createIdentityService({ pool, authorizeProvisioner, emailProvider, clock = () => new Date() }) {
+function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaProvider, clock = () => new Date() }) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('Pool PostgreSQL obrigatório.');
   let dummyPasswordHash;
   const dummyVerify = async password => {
@@ -262,6 +263,151 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
     } finally { client.release(); }
   }
 
+  async function inviteMembership(client, principal, { email: emailValue, roleId: roleIdValue }) {
+    const email = normalizeEmail(emailValue);
+    const roleId = validateUuid(roleIdValue);
+    const role = await client.query(`SELECT r.role_key,coalesce(array_agg(rp.permission_key) FILTER (WHERE rp.permission_key IS NOT NULL),'{}') AS permissions
+      FROM rotamoto.roles r LEFT JOIN rotamoto.role_permissions rp ON rp.company_id=r.company_id AND rp.role_id=r.id AND rp.catalog_version=1
+      WHERE r.company_id=$1 AND r.id=$2 GROUP BY r.id`, [principal.company_id, roleId]);
+    if (!role.rowCount) throw new IdentityError('NOT_FOUND', 'Perfil não encontrado.');
+    const actor = await client.query(`SELECT permission_key FROM rotamoto.role_permissions
+      WHERE company_id=$1 AND role_id=$2 AND catalog_version=1`, [principal.company_id, principal.role_id]);
+    const actorKeys = new Set(actor.rows.map(row => row.permission_key));
+    if (role.rows[0].permissions.some(key => !actorKeys.has(key))) throw new IdentityError('FORBIDDEN', 'Não é permitido conceder permissões acima do nível do solicitante.');
+    const found = await client.query(`SELECT id::text,disabled_at FROM rotamoto.users WHERE lower(email)=$1`, [email]);
+    if (found.rowCount && found.rows[0].disabled_at) throw new IdentityError('CONFLICT', 'A conta não pode receber novo vínculo.');
+    const userId = found.rows[0]?.id || id(clock().getTime());
+    if (!found.rowCount) await client.query(`INSERT INTO rotamoto.users(id,email) VALUES ($1,$2)`, [userId, email]);
+    const existing = await client.query(`SELECT id::text,status FROM rotamoto.memberships WHERE company_id=$1 AND user_id=$2 FOR UPDATE`,
+      [principal.company_id, userId]);
+    if (existing.rowCount && existing.rows[0].status !== 'invited') throw new IdentityError('CONFLICT', 'Já existe uma associação para esta conta.');
+    const membershipId = existing.rows[0]?.id || id(clock().getTime());
+    if (existing.rowCount) await client.query(`UPDATE rotamoto.memberships SET role_id=$3,invited_by_user_id=$4,updated_at=now()
+      WHERE company_id=$1 AND id=$2`, [principal.company_id, membershipId, roleId, principal.user_id]);
+    else await client.query(`INSERT INTO rotamoto.memberships(id,company_id,user_id,role_id,status,invited_by_user_id)
+      VALUES ($1,$2,$3,$4,'invited',$5)`, [membershipId, principal.company_id, userId, roleId, principal.user_id]);
+    await client.query(`UPDATE rotamoto.identity_tokens SET consumed_at=now() WHERE company_id=$1 AND user_id=$2
+      AND purpose='membership_invitation' AND consumed_at IS NULL`, [principal.company_id, userId]);
+    const invitation = newToken();
+    const expiresAt = new Date(clock().getTime() + INVITATION_TTL_MS);
+    const company = await client.query(`SELECT name FROM rotamoto.companies WHERE id=$1`, [principal.company_id]);
+    const tokenId = id(clock().getTime());
+    await client.query(`INSERT INTO rotamoto.identity_tokens(id,company_id,user_id,purpose,token_digest,expires_at)
+      VALUES ($1,$2,$3,'membership_invitation',$4,$5)`, [tokenId, principal.company_id, userId,
+      invitation.digest, expiresAt]);
+    await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
+      action: 'membership.invitation.created', resourceType: 'membership', resourceId: membershipId,
+      details: { roleId, existingUser: Boolean(found.rowCount) } });
+    return { membershipId, companyId: principal.company_id, actorUserId: principal.user_id, tokenId,
+      message: { kind: 'membership_invitation', to: email, token: invitation.token,
+        companyId: principal.company_id, companyName: company.rows[0]?.name || '', expiresAt } };
+  }
+
+  async function inviteMembershipWithSession(sessionToken, csrfToken, input) {
+    const email = normalizeEmail(input?.email);
+    const roleId = validateUuid(input?.roleId);
+    const lockKey = `membership_invitation:${email}`;
+    const client = await pool.connect();
+    let lockHeld = false; let provider;
+    try {
+      await client.query(`SELECT pg_advisory_lock(hashtextextended($1,0))`, [lockKey]); lockHeld = true;
+      const prepared = await transaction(client, async () => {
+        const principal = await resolveSession(client, sessionToken);
+        if (!principal) throw new IdentityError('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
+        await setTenant(client, principal.company_id);
+        if (!await verifyCsrf(client, principal.session_id, csrfToken)) throw new IdentityError('CSRF_INVALID', 'Validação CSRF inválida.');
+        const allowed = await client.query(`SELECT 1 FROM rotamoto.role_permissions WHERE company_id=$1
+          AND role_id=$2 AND permission_key='members.invite' AND catalog_version=1`, [principal.company_id, principal.role_id]);
+        if (!allowed.rowCount) throw new IdentityError('FORBIDDEN', 'Operação não autorizada.');
+        if (!principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'O envio de convites exige MFA verificado.');
+        provider = requireEmailProvider(emailProvider);
+        return inviteMembership(client, principal, { ...input, email, roleId });
+      });
+      try { await provider.send(prepared.message); }
+      catch (_) {
+        await transaction(client, async () => {
+          await setTenant(client, prepared.companyId);
+          await client.query(`UPDATE rotamoto.identity_tokens SET consumed_at=now() WHERE id=$1 AND consumed_at IS NULL`, [prepared.tokenId]);
+          await audit(client, { companyId: prepared.companyId, actorUserId: prepared.actorUserId, actorKind: 'user',
+            action: 'membership.invitation.delivery_failed', resourceType: 'membership', resourceId: prepared.membershipId });
+        });
+        throw new IdentityError('EMAIL_DELIVERY_FAILED', 'Entrega do convite indisponível.');
+      }
+      await transaction(client, async () => {
+        await setTenant(client, prepared.companyId);
+        await audit(client, { companyId: prepared.companyId, actorUserId: prepared.actorUserId, actorKind: 'user',
+          action: 'membership.invitation.sent', resourceType: 'membership', resourceId: prepared.membershipId });
+      });
+      return { membershipId: prepared.membershipId, delivery: 'sent' };
+    } finally {
+      if (lockHeld) await client.query(`SELECT pg_advisory_unlock(hashtextextended($1,0))`, [lockKey]).catch(() => {});
+      client.release();
+    }
+  }
+
+  async function consumeMembershipInvitation({ token, password }) {
+    const digest = tokenDigest(token);
+    const client = await pool.connect();
+    try {
+      return await transaction(client, async () => {
+        const found = await client.query(`SELECT id::text,company_id::text,user_id::text FROM rotamoto.identity_tokens
+          WHERE token_digest=$1 AND purpose='membership_invitation' AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`, [digest]);
+        if (!found.rowCount) throw new IdentityError('INVALID_TOKEN', 'Convite inválido ou expirado.');
+        const row = found.rows[0]; await setTenant(client, row.company_id);
+        const member = await client.query(`SELECT m.status,u.disabled_at,c.user_id IS NOT NULL AS has_credential,m.role_id::text
+          FROM rotamoto.memberships m JOIN rotamoto.users u ON u.id=m.user_id
+          LEFT JOIN rotamoto.credentials c ON c.user_id=u.id
+          WHERE m.company_id=$1 AND m.user_id=$2 AND m.status='invited' FOR UPDATE OF m`, [row.company_id, row.user_id]);
+        if (!member.rowCount || member.rows[0].disabled_at) throw new IdentityError('INVALID_TOKEN', 'Convite inválido ou expirado.');
+        if (member.rows[0].has_credential) throw new IdentityError('AUTHENTICATION_REQUIRED', 'Entre na conta existente para aceitar o convite.');
+        const roleMfa = await client.query(`SELECT EXISTS (SELECT 1 FROM rotamoto.role_permissions
+          WHERE company_id=$1 AND role_id=$2 AND catalog_version=1 AND permission_key=ANY($3::text[])) AS required`,
+        [row.company_id, member.rows[0].role_id, [...MFA_PERMISSIONS]]);
+        const passwordHash = await hashPassword(password);
+        await client.query(`INSERT INTO rotamoto.credentials(user_id,password_phc,mfa_required) VALUES ($1,$2,$3)`,
+          [row.user_id, passwordHash, roleMfa.rows[0].required]);
+        await client.query(`UPDATE rotamoto.users SET email_verified_at=now(),updated_at=now() WHERE id=$1`, [row.user_id]);
+        await client.query(`UPDATE rotamoto.memberships SET status='active',activated_at=now(),updated_at=now()
+          WHERE company_id=$1 AND user_id=$2`, [row.company_id, row.user_id]);
+        await client.query(`UPDATE rotamoto.identity_tokens SET consumed_at=now() WHERE id=$1`, [row.id]);
+        await audit(client, { companyId: row.company_id, actorUserId: row.user_id, actorKind: 'user',
+          action: 'membership.invitation.accepted', resourceType: 'membership', resourceId: row.user_id });
+        return { userId: row.user_id, companyId: row.company_id };
+      });
+    } finally { client.release(); }
+  }
+
+  async function acceptExistingMembershipInvitation(sessionToken, token) {
+    const digest = tokenDigest(token);
+    const client = await pool.connect();
+    try {
+      return await transaction(client, async () => {
+        const session = await resolveSession(client, sessionToken);
+        if (!session) throw new IdentityError('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
+        const invitation = await client.query(`SELECT id::text,company_id::text,user_id::text FROM rotamoto.identity_tokens
+          WHERE token_digest=$1 AND purpose='membership_invitation' AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`, [digest]);
+        if (!invitation.rowCount || invitation.rows[0].user_id !== session.user_id) throw new IdentityError('INVALID_TOKEN', 'Convite inválido ou expirado.');
+        const row = invitation.rows[0]; await setTenant(client, row.company_id);
+        const membership = await client.query(`SELECT m.id::text,m.role_id::text FROM rotamoto.memberships m
+          WHERE m.company_id=$1 AND m.user_id=$2 AND m.status='invited' FOR UPDATE`, [row.company_id, row.user_id]);
+        if (!membership.rowCount) throw new IdentityError('INVALID_TOKEN', 'Convite inválido ou expirado.');
+        const roleMfa = await client.query(`SELECT EXISTS (SELECT 1 FROM rotamoto.role_permissions
+          WHERE company_id=$1 AND role_id=$2 AND catalog_version=1 AND permission_key=ANY($3::text[])) AS required`,
+        [row.company_id, membership.rows[0].role_id, [...MFA_PERMISSIONS]]);
+        await client.query(`UPDATE rotamoto.memberships SET status='active',activated_at=now(),updated_at=now()
+          WHERE company_id=$1 AND user_id=$2`, [row.company_id, row.user_id]);
+        if (roleMfa.rows[0].required) {
+          await client.query(`UPDATE rotamoto.credentials SET mfa_required=true,updated_at=now() WHERE user_id=$1`, [row.user_id]);
+          await client.query(`UPDATE rotamoto.sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, [row.user_id]);
+        }
+        await client.query(`UPDATE rotamoto.identity_tokens SET consumed_at=now() WHERE id=$1`, [row.id]);
+        await audit(client, { companyId: row.company_id, actorUserId: row.user_id, actorKind: 'user',
+          action: 'membership.invitation.accepted', resourceType: 'membership', resourceId: membership.rows[0].id });
+        return { membershipId: membership.rows[0].id, companyId: row.company_id };
+      });
+    } finally { client.release(); }
+  }
+
   async function requestPasswordRecovery(value) {
     const email = normalizeEmail(value);
     const provider = requireEmailProvider(emailProvider);
@@ -353,7 +499,7 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
     } finally { client.release(); }
   }
 
-  async function authenticate(emailValue, password, requestedCompanyId) {
+  async function authenticate(emailValue, password, requestedCompanyId, mfaCode) {
     const email = normalizeEmail(emailValue);
     if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > 1024) {
       throw new IdentityError('INVALID_CREDENTIALS', 'Email ou senha inválidos.');
@@ -379,14 +525,24 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
         const reset = await client.query(`UPDATE rotamoto.credentials SET failed_attempts=0,locked_until=NULL,updated_at=now()
           WHERE user_id=$1 AND (locked_until IS NULL OR locked_until<=now()) RETURNING mfa_required`, [credential.user_id]);
         if (!reset.rowCount) return { error: 'INVALID_CREDENTIALS' };
-        if (reset.rows[0].mfa_required) return { error: 'MFA_REQUIRED' };
         const companyId = validateUuid(requestedCompanyId);
         await setTenant(client, companyId);
         const membership = await client.query(`SELECT m.company_id::text,m.role_id::text FROM rotamoto.memberships m
           JOIN rotamoto.companies c ON c.id=m.company_id WHERE m.user_id=$1 AND m.company_id=$2
           AND m.status='active' AND c.status='active'`, [credential.user_id, companyId]);
         if (!membership.rowCount) return { error: 'INVALID_CREDENTIALS' };
-        return createSession(client, credential.user_id, membership.rows[0].company_id);
+        const sensitive = await client.query(`SELECT EXISTS (SELECT 1 FROM rotamoto.role_permissions
+          WHERE company_id=$1 AND role_id=$2 AND catalog_version=1 AND permission_key=ANY($3::text[])) AS required`,
+        [companyId, membership.rows[0].role_id, MFA_PERMISSIONS]);
+        const mfaRequired = reset.rows[0].mfa_required || sensitive.rows[0].required;
+        let mfaVerified = false;
+        if (mfaRequired) {
+          if (!mfaProvider || typeof mfaProvider.verify !== 'function' || typeof mfaCode !== 'string' || !mfaCode) return { error: 'MFA_REQUIRED' };
+          try { mfaVerified = await mfaProvider.verify({ userId: credential.user_id, code: mfaCode }) === true; }
+          catch (_) { throw new IdentityError('MFA_PROVIDER_UNAVAILABLE', 'Verificação multifator indisponível.'); }
+          if (!mfaVerified) return { error: 'MFA_REQUIRED' };
+        }
+        return createSession(client, credential.user_id, membership.rows[0].company_id, mfaVerified);
       });
       if (result?.error) {
         const messages = { INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'A autenticação multifator desta conta ainda não está configurada.' };
@@ -396,17 +552,17 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
     } finally { client.release(); }
   }
 
-  async function createSession(client, userId, companyId) {
+  async function createSession(client, userId, companyId, mfaVerified = false) {
     const sessionToken = crypto.randomBytes(32).toString('base64url');
     const csrfToken = crypto.randomBytes(32).toString('base64url');
     const now = clock();
     const sessionId = id();
     const inserted = await client.query(`INSERT INTO rotamoto.sessions
-      (id,user_id,active_company_id,token_digest,csrf_digest,idle_expires_at,absolute_expires_at)
-      SELECT $1,$2,$3,$4,$5,$6,$7 WHERE EXISTS (
+      (id,user_id,active_company_id,token_digest,csrf_digest,idle_expires_at,absolute_expires_at,mfa_verified_at)
+      SELECT $1,$2,$3,$4,$5,$6,$7,CASE WHEN $8 THEN $9::timestamptz ELSE NULL END WHERE EXISTS (
         SELECT 1 FROM rotamoto.memberships WHERE company_id=$3 AND user_id=$2 AND status='active'
       ) RETURNING id::text`, [sessionId, userId, companyId, digestText(sessionToken), digestText(csrfToken),
-      new Date(now.getTime() + SESSION_IDLE_MS), new Date(now.getTime() + SESSION_ABSOLUTE_MS)]);
+      new Date(now.getTime() + SESSION_IDLE_MS), new Date(now.getTime() + SESSION_ABSOLUTE_MS), mfaVerified, now]);
     if (!inserted.rowCount) throw new IdentityError('INVALID_CREDENTIALS', 'Email ou senha inválidos.');
     return { sessionId, sessionToken, csrfToken, companyId, userId,
       cookie: `__Host-rotamoto_session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Lax`,
@@ -427,7 +583,7 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
       WHERE s.token_digest=$1 AND s.user_id=u.id AND s.active_company_id=m.company_id AND m.user_id=s.user_id
         AND m.company_id=c.id AND s.revoked_at IS NULL AND s.idle_expires_at>$2 AND s.absolute_expires_at>$2
         AND u.disabled_at IS NULL AND m.status='active' AND c.status='active'
-      RETURNING s.id::text AS session_id,s.user_id::text,s.active_company_id::text AS company_id,m.role_id::text`, [digest, now]);
+      RETURNING s.id::text AS session_id,s.user_id::text,s.active_company_id::text AS company_id,m.role_id::text,s.mfa_verified_at`, [digest, now]);
     return result.rowCount ? { ...result.rows[0], authenticated: true } : null;
   }
 
@@ -454,16 +610,20 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
     const client = await pool.connect();
     try {
       return await transaction(client, async () => {
-        const session = await client.query(`SELECT id::text,user_id::text FROM rotamoto.sessions
+        const session = await client.query(`SELECT id::text,user_id::text,mfa_verified_at FROM rotamoto.sessions
           WHERE token_digest=$1 AND revoked_at IS NULL AND idle_expires_at>now() AND absolute_expires_at>now()
           FOR UPDATE`, [digest]);
         if (!session.rowCount) throw new IdentityError('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
         const { id: sessionId, user_id: userId } = session.rows[0];
         await setTenant(client, selectedCompanyId);
-        const membership = await client.query(`SELECT 1 FROM rotamoto.memberships m
+        const membership = await client.query(`SELECT m.role_id::text FROM rotamoto.memberships m
           JOIN rotamoto.companies c ON c.id=m.company_id WHERE m.company_id=$1 AND m.user_id=$2
           AND m.status='active' AND c.status='active'`, [selectedCompanyId, userId]);
         if (!membership.rowCount) throw new IdentityError('FORBIDDEN', 'Empresa sem associação ativa.');
+        const requiresMfa = await client.query(`SELECT EXISTS (SELECT 1 FROM rotamoto.role_permissions
+          WHERE company_id=$1 AND role_id=$2 AND catalog_version=1 AND permission_key=ANY($3::text[])) AS required`,
+        [selectedCompanyId, membership.rows[0].role_id, MFA_PERMISSIONS]);
+        if (requiresMfa.rows[0].required && !session.rows[0].mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'A empresa exige sessão com MFA verificado.');
         await client.query(`UPDATE rotamoto.sessions SET active_company_id=$2,last_seen_at=now() WHERE id=$1`,
           [sessionId, selectedCompanyId]);
         return { companyId: selectedCompanyId };
@@ -496,13 +656,15 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, cloc
             WHERE rp.company_id=$1 AND rp.role_id=$2 AND rp.permission_key=$3 AND rp.catalog_version=1`,
           [principal.company_id, principal.role_id, permission]);
           if (!allowed.rowCount) throw new IdentityError('FORBIDDEN', 'Operação não autorizada.');
+          if (MFA_PERMISSIONS.includes(permission) && !principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Esta operação exige MFA verificado.');
         }
         return operation(client, principal);
       });
     } finally { client.release(); }
   }
 
-  return Object.freeze({ provisionInitialOwner, consumeOwnerInvitation, requestPasswordRecovery,
+  return Object.freeze({ provisionInitialOwner, consumeOwnerInvitation, inviteMembershipWithSession, consumeMembershipInvitation,
+    acceptExistingMembershipInvitation, requestPasswordRecovery,
     consumePasswordRecovery, authenticate, resolveSession, verifyCsrf, renewCsrfToken, switchActiveCompany, revokeSession, withAuthenticatedTenant });
 }
 

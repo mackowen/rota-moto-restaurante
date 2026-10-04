@@ -12,7 +12,7 @@ function createEmailDeliveryProvider(send) {
   return Object.freeze({
     async send(message) {
       if (!message || typeof message.to !== 'string' || typeof message.token !== 'string' ||
-          !['owner_invitation', 'email_verification', 'password_recovery'].includes(message.kind)) {
+          !['owner_invitation', 'membership_invitation', 'email_verification', 'password_recovery'].includes(message.kind)) {
         throw new TypeError('Mensagem de identidade inválida.');
       }
       const result = await send(Object.freeze({ ...message }));

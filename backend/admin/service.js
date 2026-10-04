@@ -21,6 +21,12 @@ function createAdminService({ repository }) {
       return repository.memberships(client, principal.company_id, { limit: limitValue(query.limit), cursor: query.cursor || null });
     },
     roles: (client, principal) => repository.roles(client, principal.company_id),
+    permissions: client => repository.permissions(client),
+    createRole(client, principal, input) { return repository.createRole(client, principal, input); },
+    updateRole(client, principal, roleId, input) { return repository.updateRole(client, principal, roleId, input); },
+    updateMembership(client, principal, membershipId, input) {
+      return repository.updateMembership(client, principal, membershipId, input);
+    },
     integrations: (client, principal) => repository.integrations(client, principal.company_id)
   });
 }

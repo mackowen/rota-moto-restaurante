@@ -6,6 +6,7 @@ const { Client } = require('pg');
 const { createIdentityService } = require('../backend/identity/service');
 const { createEmailDeliveryProvider } = require('../backend/identity/email-provider');
 const { verifyPassword } = require('../backend/identity/passwords');
+const { createMfaProvider } = require('../backend/identity/mfa-provider');
 
 function savepointPool(client, onQuery = () => {}) {
   let nextSavepoint = 0;
@@ -53,6 +54,7 @@ async function main() {
   const delivered = [];
   const auditEntries = [];
   const provider = createEmailDeliveryProvider(async message => { delivered.push(message); return { accepted: true }; });
+  const mfaProvider = createMfaProvider(async ({ code }) => code === '654321');
   const pool = savepointPool(client, (sql, values = []) => {
     if (/INSERT\s+INTO\s+rotamoto\.audit_log/iu.test(sql)) {
       auditEntries.push({ action: values[4], details: values[7] });
@@ -61,7 +63,7 @@ async function main() {
   const service = createIdentityService({
     pool,
     authorizeProvisioner: async () => ({ actorRef: 'test:transactional-synthetic' }),
-    emailProvider: provider
+    emailProvider: provider, mfaProvider
   });
 
   try {
@@ -158,12 +160,13 @@ async function main() {
     await expectCode(service.authenticate(email, 'wrong synthetic password', provisioned.companyId), 'INVALID_CREDENTIALS');
     const failed = await client.query(`SELECT failed_attempts FROM rotamoto.credentials WHERE user_id=$1`, [provisioned.userId]);
     assert.equal(failed.rows[0].failed_attempts, 1, 'failed password attempts persist atomically');
-    const session = await service.authenticate(email, password, provisioned.companyId);
+    const session = await service.authenticate(email, password, provisioned.companyId, '654321');
     assert.match(session.cookie, /^__Host-rotamoto_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; Secure; SameSite=Lax$/u);
     assert.equal(session.maxAgeSeconds, 12 * 60 * 60);
-    const storedSession = await client.query(`SELECT token_digest,csrf_digest FROM rotamoto.sessions WHERE id=$1`, [session.sessionId]);
+    const storedSession = await client.query(`SELECT token_digest,csrf_digest,mfa_verified_at FROM rotamoto.sessions WHERE id=$1`, [session.sessionId]);
     assert.notEqual(Buffer.from(storedSession.rows[0].token_digest).toString('base64url'), session.sessionToken);
     assert.notEqual(Buffer.from(storedSession.rows[0].csrf_digest).toString('base64url'), session.csrfToken);
+    assert(storedSession.rows[0].mfa_verified_at, 'administrative session records completed MFA verification');
 
     const authorized = await service.withAuthenticatedTenant(session.sessionToken, async (db, principal) => {
       const companies = await db.query('SELECT id::text FROM rotamoto.companies');
@@ -183,16 +186,16 @@ async function main() {
     await client.query('ROLLBACK TO SAVEPOINT csrf_check');
     await client.query('RELEASE SAVEPOINT csrf_check');
 
-    const logoutSession = await service.authenticate(email, password, provisioned.companyId);
+    const logoutSession = await service.authenticate(email, password, provisioned.companyId, '654321');
     assert.equal(await service.revokeSession(logoutSession.sessionToken), true);
     assert.equal(await service.revokeSession(logoutSession.sessionToken), false);
     await expectCode(service.withAuthenticatedTenant(logoutSession.sessionToken, async () => true), 'UNAUTHENTICATED');
 
-    const idleExpiredSession = await service.authenticate(email, password, provisioned.companyId);
+    const idleExpiredSession = await service.authenticate(email, password, provisioned.companyId, '654321');
     await client.query(`UPDATE rotamoto.sessions SET created_at=now()-interval '2 seconds',last_seen_at=now()-interval '2 seconds',
       idle_expires_at=now()-interval '1 second' WHERE id=$1`, [idleExpiredSession.sessionId]);
     await expectCode(service.withAuthenticatedTenant(idleExpiredSession.sessionToken, async () => true), 'UNAUTHENTICATED');
-    const absoluteExpiredSession = await service.authenticate(email, password, provisioned.companyId);
+    const absoluteExpiredSession = await service.authenticate(email, password, provisioned.companyId, '654321');
     await client.query(`UPDATE rotamoto.sessions SET created_at=now()-interval '24 hours',last_seen_at=now()-interval '24 hours',
       idle_expires_at=now()-interval '5 seconds',absolute_expires_at=now()-interval '1 second' WHERE id=$1`, [absoluteExpiredSession.sessionId]);
     await expectCode(service.withAuthenticatedTenant(absoluteExpiredSession.sessionToken, async () => true), 'UNAUTHENTICATED');

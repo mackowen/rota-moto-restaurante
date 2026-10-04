@@ -33,7 +33,8 @@ function assertSameOrigin(req, allowedOrigin) {
   let parsed;
   try { parsed = new URL(origin); } catch (_) { throw new SyncError('ORIGIN_INVALID', 'Origem inválida.'); }
   const protocol = req.socket.encrypted ? 'https:' : 'http:';
-  if (parsed.origin.toLowerCase() !== `${protocol}//${String(req.headers.host || '').toLowerCase()}` && parsed.origin !== allowedOrigin) {
+  const allowList = Array.isArray(allowedOrigin) ? allowedOrigin : [allowedOrigin];
+  if (parsed.origin.toLowerCase() !== `${protocol}//${String(req.headers.host || '').toLowerCase()}` && !allowList.includes(parsed.origin)) {
     throw new SyncError('ORIGIN_INVALID', 'Origem não permitida.');
   }
 }
