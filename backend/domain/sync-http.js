@@ -27,13 +27,13 @@ function sessionCookie(req) {
   return /^[A-Za-z0-9_-]{43}$/u.test(token) ? token : null;
 }
 
-function assertSameOrigin(req) {
+function assertSameOrigin(req, allowedOrigin) {
   const origin = req.headers.origin;
   if (!origin) return;
   let parsed;
   try { parsed = new URL(origin); } catch (_) { throw new SyncError('ORIGIN_INVALID', 'Origem inválida.'); }
   const protocol = req.socket.encrypted ? 'https:' : 'http:';
-  if (parsed.origin.toLowerCase() !== `${protocol}//${String(req.headers.host || '').toLowerCase()}`) {
+  if (parsed.origin.toLowerCase() !== `${protocol}//${String(req.headers.host || '').toLowerCase()}` && parsed.origin !== allowedOrigin) {
     throw new SyncError('ORIGIN_INVALID', 'Origem não permitida.');
   }
 }
@@ -65,7 +65,7 @@ async function jsonBody(req) {
   return body;
 }
 
-function createSyncHttpHandler({ identityService, syncService, rateLimiter = createRateLimiter(), logger = () => {} }) {
+function createSyncHttpHandler({ identityService, syncService, rateLimiter = createRateLimiter(), logger = () => {}, allowedOrigin }) {
   if (!identityService || !syncService) throw new TypeError('Serviços de identidade e sync obrigatórios.');
 
   return async function syncHttpHandler(req, res) {
@@ -89,7 +89,7 @@ function createSyncHttpHandler({ identityService, syncService, rateLimiter = cre
         res.end(payload);
         return true;
       }
-      if (req.method === 'POST') assertSameOrigin(req);
+      if (req.method === 'POST') assertSameOrigin(req, allowedOrigin);
       const rate = rateLimiter.consume(`${req.socket.remoteAddress || 'unknown'}:${url.pathname}`);
       if (!rate.allowed) {
         status = 429;

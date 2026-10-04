@@ -48,9 +48,9 @@ const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),
 identityPool.on('error',error=>console.error(JSON.stringify({event:'postgres.pool.error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'DATABASE_ERROR'})));
 const identityService=createIdentityService({pool:identityPool});
 const requestLogger=entry=>console.info(JSON.stringify(entry));
-const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{}});
+const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGIN});
 const syncService=createSyncService();
-const syncHttp=createSyncHttpHandler({identityService,syncService,logger:()=>{}});
+const syncHttp=createSyncHttpHandler({identityService,syncService,logger:()=>{},allowedOrigin:ALLOWED_ORIGIN});
 const domainQueryService=createDomainQueryService({repository:createDomainQueryRepository()});
 const domainQueryHttp=createDomainQueryHttpHandler({identityService,queryService:domainQueryService,logger:()=>{}});
 const adminService=createAdminService({repository:createAdminRepository()});
@@ -64,7 +64,7 @@ const state={
   orders:new Map()
 };
 
-function json(res,status,payload){const body=JSON.stringify(payload);const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin',...(res.req?.requestId?{'X-Request-ID':res.req.requestId}:{})};if(res.req?.headers.origin===ALLOWED_ORIGIN)headers['Access-Control-Allow-Origin']=ALLOWED_ORIGIN;res.writeHead(status,headers);res.end(body)}
+function json(res,status,payload){const body=JSON.stringify(payload);const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin',...(res.req?.requestId?{'X-Request-ID':res.req.requestId}:{})};if(res.req?.headers.origin===ALLOWED_ORIGIN){headers['Access-Control-Allow-Origin']=ALLOWED_ORIGIN;headers['Access-Control-Allow-Credentials']='true'}res.writeHead(status,headers);res.end(body)}
 function assertLoopbackHost(host=HOST){const value=String(host).toLowerCase().replace(/^\[|\]$/g,'');if(!['127.0.0.1','::1','localhost'].includes(value))throw new Error('O servidor de integrações não possui autenticação de usuário; mantenha HOST em loopback e exponha acesso remoto somente por um proxy autenticado que encaminhe para loopback.');return true}
 function readRawBody(req){return new Promise((resolve,reject)=>{let chunks=[],size=0,settled=false;req.on('data',c=>{if(settled)return;size+=c.length;if(size>1024*1024){settled=true;const err=new Error('Payload too large');err.status=413;reject(err);req.resume();return}chunks.push(c)});req.on('end',()=>{if(settled)return;settled=true;resolve(Buffer.concat(chunks).toString('utf8'))});req.on('error',err=>{if(!settled){settled=true;reject(err)}})})}
 async function readBody(req){if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']||'')){const err=new Error('Content-Type application/json obrigatório.');err.status=415;throw err}const raw=await readRawBody(req);if(!raw){const err=new Error('JSON obrigatório.');err.status=400;throw err}try{const body=JSON.parse(raw);if(!body||typeof body!=='object'||Array.isArray(body)){const err=new Error('Objeto JSON obrigatório.');err.status=400;throw err}return body}catch(e){if(e.status)throw e;const err=new Error('JSON inválido.');err.status=400;throw err}}
@@ -147,13 +147,20 @@ async function route(req,res){
   const startedAt=Date.now();
   req.requestId=crypto.randomUUID();
   res.req=req;
+  if(req.headers.origin===ALLOWED_ORIGIN){res.setHeader('Access-Control-Allow-Origin',ALLOWED_ORIGIN);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin')}
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`);
   try{
+    if(req.method==='OPTIONS'){
+      if(req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:{code:'ORIGIN_INVALID',message:'Origem não permitida.'},requestId:req.requestId});
+      res.writeHead(204,{'Access-Control-Allow-Origin':ALLOWED_ORIGIN,'Access-Control-Allow-Credentials':'true',
+        'Access-Control-Allow-Headers':'Content-Type, X-CSRF-Token, X-99Food-Signature, X-Signature, X-Keeta-Signature',
+        'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Max-Age':'600','Vary':'Origin','X-Request-ID':req.requestId});
+      return res.end();
+    }
     if(await identityHttp(req,res))return;
     if(await adminHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
     if(await syncHttp(req,res))return;
-    if(req.method==='OPTIONS'){if(req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});res.writeHead(204,{'Access-Control-Allow-Origin':ALLOWED_ORIGIN,'Access-Control-Allow-Headers':'Content-Type, X-CSRF-Token, X-99Food-Signature, X-Signature, X-Keeta-Signature','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Vary':'Origin','X-Request-ID':req.requestId});return res.end()}
     if(!['GET','POST'].includes(req.method))return json(res,405,{error:'METHOD_NOT_ALLOWED',message:'Método não permitido.'});
     if(req.headers.origin&&req.headers.origin!==ALLOWED_ORIGIN)return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
     if(req.method==='GET'&&['/health','/health/live'].includes(u.pathname))return json(res,200,{ok:true,status:'live',service:'rotamoto-api',time:new Date().toISOString(),requestId:req.requestId});

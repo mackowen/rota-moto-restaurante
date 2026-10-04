@@ -9,6 +9,7 @@ Este documento descreve a API local do backend do Restaurante. O servidor deve p
 - Códigos usados: `INVALID_INPUT` (400), `UNAUTHENTICATED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `METHOD_NOT_ALLOWED` (405), `CONFLICT`/`REVISION_CONFLICT` (409), `PAYLOAD_TOO_LARGE` (413), `UNSUPPORTED_MEDIA_TYPE` (415), `RATE_LIMITED` (429), `DEPENDENCY_UNAVAILABLE` (503), `INTERNAL_ERROR` (500). O ACK do sync tem códigos de rejeição/conflito por operação, independentemente do status HTTP do pacote.
 - Erros internos não retornam SQL, stack, path, token ou secret. Logs usam request ID, método, path, status, duração e código sanitizado.
 - Mutação de sessão exige CSRF e validação de origem conforme a rota. Cookies de sessão são `__Host-rotamoto_session`, `Secure`, `HttpOnly` e `SameSite=Lax`.
+- Para frontend em outra origem, configure `ALLOWED_ORIGIN` com a origem exata; preflight é respondido antes dos handlers, envia credenciais e permite `X-CSRF-Token`. POST continua validando a origem configurada e CSRF.
 - Leituras administrativas são paginadas quando podem crescer. Cursores são opacos/keyset; IDs são UUID canônicos.
 - Escritas do domínio passam pelo protocolo Local-First `POST /api/sync/push`; esta API não introduz CRUD paralelo.
 

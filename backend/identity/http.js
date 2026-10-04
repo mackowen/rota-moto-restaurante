@@ -135,14 +135,16 @@ function rateCategory(path) {
   return 'default';
 }
 
-function assertSameOrigin(req) {
+function assertSameOrigin(req, allowedOrigin) {
   const origin = req.headers.origin;
   if (!origin) return;
   let parsed;
   try { parsed = new URL(origin); } catch (_) { throw fail('ORIGIN_INVALID', 'Origem não permitida.'); }
   const host = String(req.headers.host || '').toLowerCase();
   const protocol = req.socket.encrypted ? 'https:' : 'http:';
-  if (parsed.origin !== `${protocol}//${host}`.toLowerCase()) throw fail('ORIGIN_INVALID', 'Origem não permitida.');
+  if (parsed.origin !== `${protocol}//${host}`.toLowerCase() && parsed.origin !== allowedOrigin) {
+    throw fail('ORIGIN_INVALID', 'Origem não permitida.');
+  }
 }
 
 function publicError(error) {
@@ -174,13 +176,14 @@ function publicError(error) {
     message: messages[code] || 'Falha interna ao processar a solicitação.' } } };
 }
 
-function createIdentityHttpHandler({ identityService, rateLimiter = createRateLimiter(), logger = () => {}, requestId = req => req.requestId || crypto.randomUUID() }) {
+function createIdentityHttpHandler({ identityService, rateLimiter = createRateLimiter(), logger = () => {},
+  requestId = req => req.requestId || crypto.randomUUID(), allowedOrigin }) {
   if (!identityService) throw new TypeError('Serviço de identidade obrigatório.');
 
   async function requireSessionMutation(req, permissionKey, operation) {
     const sessionToken = parseCookie(req);
     if (!sessionToken) throw fail('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
-    assertSameOrigin(req);
+    assertSameOrigin(req, allowedOrigin);
     const csrf = req.headers['x-csrf-token'];
     if (typeof csrf !== 'string') throw fail('CSRF_INVALID', 'Validação CSRF inválida.');
     return identityService.withAuthenticatedTenant(sessionToken, async (client, principal) => {
@@ -196,7 +199,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
     const startedAt = Date.now();
     let status = 500;
     try {
-      if (req.method === 'POST') assertSameOrigin(req);
+      if (req.method === 'POST') assertSameOrigin(req, allowedOrigin);
       const category = rateCategory(path);
       const limiter = rateLimiter.consume(`${category}:${req.socket.remoteAddress || 'unknown'}:${path}`, category);
       if (!limiter.allowed) {

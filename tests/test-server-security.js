@@ -7,6 +7,8 @@ process.env.KEETA_WEBHOOK_SECRET='test-keeta-secret';
 process.env.ALLOWED_ORIGIN='http://localhost:8787';
 const http=require('node:http');
 const {route,rememberWebhook,assertLoopbackHost,runtimeDatabaseConnectionString}=require('../server');
+const {createSyncHttpHandler}=require('../backend/domain/sync-http');
+const {createIdentityHttpHandler}=require('../backend/identity/http');
 
 async function main(){
   assert.equal(assertLoopbackHost('127.0.0.1'),true);
@@ -34,6 +36,11 @@ async function main(){
     const ready=await request('/health/ready');
     assert.equal(ready.status,200,'readiness confirms the runtime PostgreSQL connection and schema');
     assert.equal((await ready.json()).dependencies.postgres,'ready');
+    const preflight=await request('/api/sync/push',{method:'OPTIONS',headers:{Origin:'http://localhost:8787',
+      'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type,x-csrf-token'}});
+    assert.equal(preflight.status,204,'CORS preflight is handled before route-specific method checks');
+    assert.equal(preflight.headers.get('access-control-allow-credentials'),'true');
+    assert(preflight.headers.get('access-control-allow-headers').includes('X-CSRF-Token'));
   const signed=(secret,body)=>crypto.createHmac('sha256',secret).update(body).digest('hex');
   const keetaSig=(url,payload,secret='test-keeta-secret')=>{const params=Object.keys(payload).filter(k=>k!=='sig').sort().map(k=>`${k}=${payload[k]===null?'null':typeof payload[k]==='object'?JSON.stringify(payload[k]):String(payload[k])}`).join('&');return crypto.createHash('sha256').update(`${url}?${params}${secret}`,'utf8').digest('hex')};
   try{
@@ -69,6 +76,34 @@ async function main(){
     const internal=await request('/api/ifood/auth/refresh',{method:'POST'});
     assert.equal(internal.status,500);assert.equal((await internal.json()).message,'Falha interna ao processar a integração.','internal details are hidden');
   } finally {await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
+  const fakeSession=http.createServer(createSyncHttpHandler({allowedOrigin:'http://app.example',
+    identityService:{async withAuthenticatedTenant(_token,operation){return operation({}, {session_id:'session'});},async verifyCsrf(){return true;}},
+    syncService:{async push(){return {accepted:1};}}}));
+  await new Promise(resolve=>fakeSession.listen(0,'127.0.0.1',resolve));
+  try{
+    const target=`http://127.0.0.1:${fakeSession.address().port}/api/sync/push`;
+    const allowed=await fetch(target,{method:'POST',headers:{Origin:'http://app.example',Host:`127.0.0.1:${fakeSession.address().port}`,
+      Cookie:'__Host-rotamoto_session='+'a'.repeat(43),'X-CSRF-Token':'synthetic-csrf','Content-Type':'application/json'},body:'{}'});
+    assert.equal(allowed.status,200,'configured frontend origin passes sync origin and CSRF checks');
+    const blocked=await fetch(target,{method:'POST',headers:{Origin:'http://attacker.example',Host:`127.0.0.1:${fakeSession.address().port}`,
+      Cookie:'__Host-rotamoto_session='+'a'.repeat(43),'X-CSRF-Token':'synthetic-csrf','Content-Type':'application/json'},body:'{}'});
+    assert.equal(blocked.status,403,'unconfigured frontend origin is still rejected');
+  }finally{await new Promise((resolve,reject)=>fakeSession.close(e=>e?reject(e):resolve()));}
+  const fakeIdentity=http.createServer(createIdentityHttpHandler({allowedOrigin:'http://app.example',identityService:{
+    async authenticate(){return {userId:'user-id',companyId:'company-id',csrfToken:'synthetic-csrf',sessionToken:'s'.repeat(43),maxAgeSeconds:1800};}
+  }}));
+  await new Promise(resolve=>fakeIdentity.listen(0,'127.0.0.1',resolve));
+  try{
+    const response=await fetch(`http://127.0.0.1:${fakeIdentity.address().port}/api/identity/login`,{method:'POST',
+      headers:{Origin:'http://app.example',Host:`127.0.0.1:${fakeIdentity.address().port}`,'Content-Type':'application/json'},
+      body:JSON.stringify({email:'person@example.invalid',password:'synthetic-password',companyId:'company-id'})});
+    assert.equal(response.status,200,'identity POST accepts exactly the configured frontend origin');
+    assert.match(response.headers.get('set-cookie'),/HttpOnly/u);
+    const blocked=await fetch(`http://127.0.0.1:${fakeIdentity.address().port}/api/identity/login`,{method:'POST',
+      headers:{Origin:'http://attacker.example','Content-Type':'application/json'},
+      body:JSON.stringify({email:'person@example.invalid',password:'synthetic-password',companyId:'company-id'})});
+    assert.equal(blocked.status,403,'identity POST rejects an origin outside the configured allowlist');
+  }finally{await new Promise((resolve,reject)=>fakeIdentity.close(e=>e?reject(e):resolve()));}
   const savedSecret=process.env.KEETA_WEBHOOK_SECRET;
   delete process.env.KEETA_WEBHOOK_SECRET;
   delete require.cache[require.resolve('../server')];
