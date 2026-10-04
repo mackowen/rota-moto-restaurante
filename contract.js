@@ -29,6 +29,8 @@
     open:'ASSIGNED', route:'OUT_FOR_DELIVERY', arrived:'ARRIVED', done:'DELIVERED',
     cancelled:'CANCELLED', issue:'FAILED'
   });
+  const WRITE_AUTHORITY = Object.freeze({Company:'server',Order:'restaurante',Earning:'restaurante',Route:'restaurante',Driver:'restaurante',Delivery:'shared',DeliveryEvent:'shared',LocationPoint:'motoboy',DeliveryProof:'motoboy'});
+  const SYNC_ACK = Object.freeze({ACCEPTED:'accepted',DUPLICATE:'duplicate',REJECTED:'rejected',CONFLICT:'conflict'});
   function timestampMs(value){
     if(typeof value==='number'&&Number.isFinite(value))return value;
     if(typeof value==='string'&&value.trim()&&Number.isFinite(Number(value)))return Number(value);
@@ -106,5 +108,5 @@
   function normalizeDeliveryStatus(value,source='restaurante'){
     return source==='motoboy' ? (BOY_TO_CANONICAL[value] || value) : (REST_TO_CANONICAL[value] || value);
   }
-  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,event,packet,normalizeDeliveryStatus,now,id});
+  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,WRITE_AUTHORITY,SYNC_ACK,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,event,packet,normalizeDeliveryStatus,now,id});
 })();

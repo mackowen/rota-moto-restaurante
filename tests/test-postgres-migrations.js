@@ -80,6 +80,10 @@ async function main() {
   assert.equal(syncPermissionMigration.id, '0007_sync_permissions');
   assert.match(syncPermissionMigration.up, /'sync\.push'/);
   assert.match(syncPermissionMigration.up, /'sync\.pull'/);
+  const syncInstallIdentityMigration = getMigrations()[7];
+  assert.equal(syncInstallIdentityMigration.id, '0008_sync_installation_identity');
+  assert.match(syncInstallIdentityMigration.up, /registered_by_user_id uuid REFERENCES rotamoto\.users/);
+  assert.match(syncInstallIdentityMigration.down, /rollback bloqueado/);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
   assert.match(migration.up, /CREATE TABLE rotamoto\.memberships/);
@@ -167,7 +171,7 @@ async function main() {
       assert.equal(cleanRls.rows[0].count, 12, 'fresh schema has all forced tenant RLS policies');
       const cleanForeignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c
         JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-      assert.equal(cleanForeignKeys.rows[0].count, 33, 'fresh schema installs all expected foreign keys');
+    assert.equal(cleanForeignKeys.rows[0].count, 34, 'fresh schema installs all expected foreign keys');
       await client.query('ROLLBACK');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});

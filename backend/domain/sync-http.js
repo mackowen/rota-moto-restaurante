@@ -9,10 +9,10 @@ const MAX_BODY_BYTES = 1024 * 1024;
 function statusFor(error) {
   if (error.code === 'INVALID_INPUT') return 400;
   if (error.code === 'UNAUTHENTICATED') return 401;
-  if (error.code === 'FORBIDDEN' || error.code === 'CSRF_INVALID' || error.code === 'ORIGIN_INVALID') return 403;
+  if (error.code === 'FORBIDDEN' || error.code === 'FORBIDDEN_FIELD' || error.code === 'INSTALLATION_FORBIDDEN' || error.code === 'CSRF_INVALID' || error.code === 'ORIGIN_INVALID') return 403;
   if (error.code === 'RATE_LIMITED') return 429;
   if (error.code === 'PAYLOAD_TOO_LARGE') return 413;
-  if (['SYNC_CONFLICT', 'INVALID_TRANSITION', 'UNRESOLVED_REFERENCE', 'IMMUTABLE_EVENT'].includes(error.code)) return 409;
+  if (['SYNC_CONFLICT', 'REVISION_CONFLICT', 'INSTALLATION_REQUIRED', 'INSTALLATION_AMBIGUOUS', 'INVALID_TRANSITION', 'UNRESOLVED_REFERENCE', 'IMMUTABLE_EVENT'].includes(error.code)) return 409;
   return 500;
 }
 
@@ -67,14 +67,15 @@ function createSyncHttpHandler({ identityService, syncService, rateLimiter = cre
 
   return async function syncHttpHandler(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
-    if (!['/api/sync/push', '/api/sync/pull'].includes(url.pathname)) return false;
+    const isInstallation = /^\/api\/sync\/installations\/(restaurante|motoboy)$/u.test(url.pathname);
+    if (!['/api/sync/push', '/api/sync/pull'].includes(url.pathname) && !isInstallation) return false;
     const requestId = crypto.randomUUID();
     const startedAt = Date.now();
     let status = 500;
     let errorCode;
     let errorTable;
     try {
-      const expectedMethod = url.pathname.endsWith('/push') ? 'POST' : 'GET';
+      const expectedMethod = url.pathname.endsWith('/pull') ? 'GET' : 'POST';
       if (req.method !== expectedMethod) {
         status = 405;
         res.writeHead(status, { Allow: expectedMethod, 'Cache-Control': 'no-store' });
@@ -92,7 +93,16 @@ function createSyncHttpHandler({ identityService, syncService, rateLimiter = cre
       const token = sessionCookie(req);
       if (!token) throw new SyncError('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
       let result;
-      if (expectedMethod === 'POST') {
+      if (isInstallation) {
+        const csrf = req.headers['x-csrf-token'];
+        if (typeof csrf !== 'string') throw new SyncError('CSRF_INVALID', 'Validação CSRF inválida.');
+        const appKey = url.pathname.endsWith('/restaurante') ? 'restaurante' : 'motoboy';
+        result = await identityService.withAuthenticatedTenant(token, async (client, principal) => {
+          if (!await identityService.verifyCsrf(client, principal.session_id, csrf)) throw new SyncError('CSRF_INVALID', 'Validação CSRF inválida.');
+          const body = await jsonBody(req);
+          return syncService.registerInstallation(client, principal, appKey, body.deviceId);
+        }, 'sync.push');
+      } else if (expectedMethod === 'POST') {
         const csrf = req.headers['x-csrf-token'];
         if (typeof csrf !== 'string') throw new SyncError('CSRF_INVALID', 'Validação CSRF inválida.');
         result = await identityService.withAuthenticatedTenant(token, async (client, principal) => {

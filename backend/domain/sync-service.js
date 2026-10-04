@@ -3,8 +3,7 @@
 const crypto = require('node:crypto');
 const { uuidV7 } = require('../identity/service');
 
-const APP_KEYS = Object.freeze({ 'RotaMoto Restaurante': 'restaurante', Restaurante: 'restaurante', RotaMoto: 'motoboy' });
-const WRITE_OWNERS = Object.freeze({ Order: 'restaurante', Route: 'restaurante', Earning: 'restaurante',
+const WRITE_OWNERS = Object.freeze({ Order: 'restaurante', Route: 'restaurante', Driver: 'restaurante', Earning: 'restaurante',
   LocationPoint: 'motoboy', DeliveryProof: 'motoboy' });
 const ENTITY_ARRAYS = Object.freeze([
   ['orders', 'Order'], ['drivers', 'Driver'], ['deliveries', 'Delivery'], ['routes', 'Route'],
@@ -19,6 +18,26 @@ const TRANSITIONS = Object.freeze({
   ARRIVED: ['DELIVERED', 'CANCELLED', 'FAILED', 'RETURNED'], DELIVERED: ['REDELIVERY'],
   CANCELLED: [], FAILED: ['REDELIVERY'], RETURNED: ['REDELIVERY'], REDELIVERY: ['ASSIGNED', 'CANCELLED']
 });
+const DELIVERY_RESTAURANT_FIELDS = new Set(['driverId','priority','assignedAt','estimatedDistanceM','status']);
+const DELIVERY_MOTOBOY_FIELDS = new Set(['status','acceptedAt','pickedUpAt','arrivedAt','completedAt','actualDistanceM']);
+const DELIVERY_META_FIELDS = new Set(['id','companyId','orderId','createdAt','updatedAt','version','baseVersion','sync','deleted','deletedAt']);
+
+function operationAuthorityError(appKey, entityType, record) {
+  if (entityType === 'Company') return new SyncError('FORBIDDEN', 'Company é provisionada pelo serviço de identidade.');
+  if (entityType === 'Delivery' && appKey === 'motoboy') {
+    return new SyncError('FORBIDDEN', 'O Motoboy registra fatos de execução por DeliveryEvent; Delivery é projetada pelo servidor.');
+  }
+  const owner = WRITE_OWNERS[entityType];
+  if (owner && owner !== appKey) return new SyncError('FORBIDDEN', `${entityType} não pode ser alterada por este aplicativo.`);
+  if (entityType === 'DeliveryEvent') {
+    const target = String(record?.entity || '').toLowerCase();
+    if (!['order','delivery'].includes(target)) return new SyncError('FORBIDDEN_EVENT', 'DeliveryEvent deve referenciar Order ou Delivery.');
+    if ((target === 'order' && appKey !== 'restaurante') || (target === 'delivery' && appKey !== 'motoboy')) {
+      return new SyncError('FORBIDDEN', 'O aplicativo não é proprietário deste tipo de evento.');
+    }
+  }
+  return null;
+}
 
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
@@ -56,9 +75,6 @@ function validatePacket(packet) {
       packet.protocolVersion !== 1 || packet.schemaVersion !== 1) invalid('Envelope de sincronização inválido ou incompatível.');
   const id = packetUuid(packet.packetId);
   const deviceId = boundedText(packet.deviceId, 'deviceId', 128);
-  const sourceApp = packet.source?.app;
-  if (typeof sourceApp !== 'string' || !Object.hasOwn(APP_KEYS, sourceApp)) invalid('Aplicativo de origem incompatível com o contrato compartilhado.');
-  const appKey = APP_KEYS[sourceApp];
   if (packet.source?.deviceId && packet.source.deviceId !== deviceId) invalid('deviceId divergente no envelope.');
   const data = packet.data;
   if (!data || typeof data !== 'object' || Array.isArray(data)) invalid('data do pacote inválido.');
@@ -94,16 +110,33 @@ function validatePacket(packet) {
   total += data.races?.length || 0;
   total += data.settings ? 1 : 0;
   if (total > 500) invalid('O pacote excede 500 operações.');
-  return { packetId: id, deviceId, appKey, data, events: packet.events || [] };
+  return { packetId: id, deviceId, data, events: packet.events || [] };
 }
 
 function createSyncService({ clock = () => new Date() } = {}) {
-  async function ensureInstallation(client, companyId, appKey, deviceId) {
+  async function registerInstallation(client, principal, appKey, deviceId) {
+    if (!['restaurante', 'motoboy'].includes(appKey)) invalid('Aplicativo de instalação inválido.');
+    const localDeviceId = boundedText(deviceId, 'deviceId', 128);
     const result = await client.query(`INSERT INTO rotamoto.sync_installations
-      (id,company_id,app_key,local_device_id) VALUES($1,$2,$3,$4)
-      ON CONFLICT(company_id,app_key,local_device_id) DO UPDATE SET last_seen_at=greatest(rotamoto.sync_installations.last_seen_at,now())
-      RETURNING id::text`, [uuidV7(clock().getTime()), companyId, appKey, deviceId]);
-    return result.rows[0].id;
+      (id,company_id,app_key,local_device_id,registered_by_user_id) VALUES($1,$2,$3,$4,$5)
+      ON CONFLICT(company_id,app_key,local_device_id) DO UPDATE
+        SET last_seen_at=greatest(rotamoto.sync_installations.last_seen_at,now())
+        WHERE rotamoto.sync_installations.registered_by_user_id=$5
+      RETURNING id::text,app_key,local_device_id`,
+    [uuidV7(clock().getTime()), principal.company_id, appKey, localDeviceId, principal.user_id]);
+    if (!result.rowCount) throw new SyncError('INSTALLATION_FORBIDDEN', 'A instalação já está vinculada a outra identidade.');
+    return { installationId: result.rows[0].id, appKey: result.rows[0].app_key, deviceId: result.rows[0].local_device_id };
+  }
+
+  async function findInstallation(client, principal, deviceId, appKey = null) {
+    const result = await client.query(`SELECT id::text,app_key FROM rotamoto.sync_installations
+      WHERE company_id=$1 AND registered_by_user_id=$2 AND local_device_id=$3
+        AND ($4::text IS NULL OR app_key=$4) FOR UPDATE`,
+    [principal.company_id, principal.user_id, boundedText(deviceId, 'deviceId', 128), appKey]);
+    if (!result.rowCount) throw new SyncError('INSTALLATION_REQUIRED', 'Registre este dispositivo na sessão antes de sincronizar.');
+    if (result.rowCount > 1) throw new SyncError('INSTALLATION_AMBIGUOUS', 'deviceId está vinculado a mais de um aplicativo.');
+    await client.query('UPDATE rotamoto.sync_installations SET last_seen_at=greatest(last_seen_at,now()) WHERE company_id=$1 AND id=$2', [principal.company_id, result.rows[0].id]);
+    return result.rows[0];
   }
 
   async function resolveLocal(client, companyId, appKey, installationId, entityType, localId, { create = false } = {}) {
@@ -138,7 +171,13 @@ function createSyncService({ clock = () => new Date() } = {}) {
     const result = await client.query(`SELECT DISTINCT canonical_id::text FROM rotamoto.local_id_maps
       WHERE company_id=$1 AND entity_type=$2 AND local_id=$3 ORDER BY canonical_id`, [companyId, entityType, localId.trim()]);
     if (result.rowCount > 1) throw new SyncError('SYNC_CONFLICT', `Referência ambígua para ${entityType}; reconciliação explícita necessária.`);
-    return result.rows[0]?.canonical_id || null;
+    if (result.rows[0]?.canonical_id) return result.rows[0].canonical_id;
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(localId.trim())) {
+      const canonical = await client.query(`SELECT record_id::text FROM rotamoto.domain_records
+        WHERE company_id=$1 AND entity_type=$2 AND record_id=$3`, [companyId, entityType, localId.trim()]);
+      return canonical.rows[0]?.record_id || null;
+    }
+    return null;
   }
 
   function metadata(record, entityType, now) {
@@ -155,43 +194,56 @@ function createSyncService({ clock = () => new Date() } = {}) {
     const companyId = principal?.company_id;
     const userId = principal?.user_id;
     if (typeof companyId !== 'string' || typeof userId !== 'string') throw new SyncError('UNAUTHENTICATED', 'Sessão inválida.');
-    const { packetId, deviceId, appKey, data, events } = validated;
+    const { packetId, deviceId, data, events } = validated;
+    const installation = await findInstallation(client, principal, deviceId);
+    const appKey = installation.app_key;
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 402117))', [`${companyId}:${packetId}`]);
     const prior = await client.query(`SELECT payload_digest,result FROM rotamoto.sync_inbox
       WHERE company_id=$1 AND packet_id=$2`, [companyId, packetId]);
     if (prior.rowCount) {
       const digest = packetDigest(packet);
       if (!Buffer.from(prior.rows[0].payload_digest).equals(digest)) throw new SyncError('SYNC_CONFLICT', 'packetId já foi usado para outro conteúdo.');
-      return { ...prior.rows[0].result, duplicate: true };
+      return { ...prior.rows[0].result, duplicate: true,
+        operationResults: (prior.rows[0].result.operationResults || []).map(result =>
+          result.status === 'accepted' ? { ...result, status: 'duplicate' } : result) };
     }
-    const installationId = await ensureInstallation(client, companyId, appKey, deviceId);
+    const installationId = installation.id;
     const pending = [];
     const aliases = [];
+    const operationResults = [];
     const outcomes = { received: 0, updated: 0, ignored: 0, deleted: 0 };
     const seen = new Set();
     const now = clock();
 
-    const incoming = ENTITY_ARRAYS.flatMap(([key, type]) => (data[key] || []).map(record => ({ record, entityType: type })));
-    incoming.push(...events.map(record => ({ record, entityType: 'DeliveryEvent' })));
+    const incoming = ENTITY_ARRAYS.flatMap(([key, type]) => (data[key] || []).map((record, index) => ({ record, entityType: type, operationIndex: `${key}:${index}` })));
+    incoming.push(...events.map((record, index) => ({ record, entityType: 'DeliveryEvent', operationIndex: `events:${index}` })));
     for (const item of incoming) {
       const { record, entityType } = item;
-      if (entityType === 'Company') throw new SyncError('FORBIDDEN', 'Company é provisionada pelo serviço de identidade.');
-      const owner = WRITE_OWNERS[entityType];
-      if (owner && owner !== appKey) throw new SyncError('FORBIDDEN', `${entityType} não pode ser alterada por este aplicativo.`);
-      if (entityType === 'DeliveryEvent') {
-        const target = String(record?.entity || '').toLowerCase();
-        if ((target === 'order' && appKey !== 'restaurante') || (target === 'delivery' && appKey !== 'motoboy')) {
-          throw new SyncError('FORBIDDEN', 'O aplicativo não é proprietário deste tipo de evento.');
-        }
+      const localId = record && typeof record === 'object' ? (entityType === 'DeliveryEvent' ? (record.eventId || record.id) : record.id) : null;
+      const authorityError = operationAuthorityError(appKey, entityType, record);
+      if (authorityError) {
+        operationResults.push({ operation: item.operationIndex, entity: entityType, localId: localId || null,
+          status: 'rejected', error: { code: authorityError.code } });
+        continue;
       }
+      await client.query('SAVEPOINT sync_operation');
+      const pendingBefore = pending.length;
+      const aliasesBefore = aliases.length;
+      const resultBefore = operationResults.length;
+      const countsBefore = { ...outcomes };
+      let seenKey = null;
+      let ackCanonicalId = null;
+      let ackVersion = null;
+      try {
       if (!record || typeof record !== 'object' || Array.isArray(record)) invalid(`${entityType} inválido.`);
-      const localId = entityType === 'DeliveryEvent' ? (record.eventId || record.id) : record.id;
-      const resolved = await resolveLocal(client, companyId, appKey, installationId, entityType, localId, { create: true });
+      const operationLocalId = boundedText(localId, `${entityType}.id`);
+      const resolved = await resolveLocal(client, companyId, appKey, installationId, entityType, operationLocalId, { create: true });
       let canonicalId = resolved.canonicalId;
       const meta = metadata(record, entityType, now);
       let canonical = { ...record, id: canonicalId, companyId,
         ...(entityType === 'DeliveryEvent' ? { eventId: canonicalId } : {}),
         createdAt: meta.createdAt.toISOString(), updatedAt: meta.updatedAt.toISOString(), version: meta.version };
+      if (entityType === 'DeliveryEvent') canonical.actor = { type: 'user', id: userId };
       if (canonical.deletedAt !== undefined && canonical.deletedAt !== null) canonical.deletedAt = timestamp(canonical.deletedAt, now, `${entityType}.deletedAt`).toISOString();
       if (entityType === 'Delivery' && !Object.hasOwn(TRANSITIONS, canonical.status)) invalid('Delivery.status inválido.');
       let relatedType = null;
@@ -226,57 +278,99 @@ function createSyncService({ clock = () => new Date() } = {}) {
           resolved.canonicalExists = true;
         }
       }
-      if (seen.has(`${entityType}:${canonicalId}`)) invalid(`O pacote repete ${entityType} ${localId}.`);
-      seen.add(`${entityType}:${canonicalId}`);
+      if (seen.has(`${entityType}:${canonicalId}`)) invalid(`O pacote repete ${entityType} ${operationLocalId}.`);
+      seenKey = `${entityType}:${canonicalId}`;
+      seen.add(seenKey);
       const existing = await client.query(`SELECT entity_type,payload,version,created_at,updated_at,deleted_at,
         related_entity_type,related_record_id::text
         FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 FOR UPDATE`, [companyId, canonicalId]);
       if (existing.rowCount && existing.rows[0].entity_type !== entityType) throw new SyncError('SYNC_CONFLICT', 'ID canônico já pertence a outro tipo de entidade.');
+      if (existing.rowCount) {
+        ackCanonicalId = canonicalId;
+        ackVersion = Number(existing.rows[0].version);
+      }
       if (existing.rowCount && entityType === 'DeliveryEvent') {
         const oldPayload = existing.rows[0].payload;
         if (stableJson(oldPayload) !== stableJson(canonical)) throw new SyncError('SYNC_CONFLICT', 'eventId já foi usado para outro fato.');
         if (resolved.created) await addAlias(client, companyId, appKey, installationId, entityType, resolved.localId, canonicalId);
         aliases.push({ entity: entityType, localId: resolved.localId, canonicalId });
+        operationResults.push({ operation: item.operationIndex, entity: entityType, localId: resolved.localId,
+          canonicalId, canonicalVersion: Number(existing.rows[0].version), status: 'duplicate' });
         continue;
       }
       let changed = !existing.rowCount;
+      let canonicalVersion = 1;
+      canonical.version = 1;
       if (existing.rowCount) {
         const old = existing.rows[0];
-        const oldTime = new Date(old.updated_at).getTime();
-        const newTime = meta.updatedAt.getTime();
-        if (newTime < oldTime || (newTime === oldTime && meta.version < Number(old.version))) {
-          outcomes.ignored += 1;
-          if (resolved.created) await addAlias(client, companyId, appKey, installationId, entityType, resolved.localId, canonicalId);
-          aliases.push({ entity: entityType, localId: resolved.localId, canonicalId });
-          continue;
+        canonicalVersion = Number(old.version);
+        if (entityType === 'Delivery' && appKey === 'motoboy' && canonical.status === 'CANCELLED') {
+          throw new SyncError('FORBIDDEN_FIELD', 'Cancelamento administrativo de Delivery pertence ao Restaurante.');
         }
-        if (newTime === oldTime && meta.version === Number(old.version)) {
-          if (stableJson(old.payload) !== stableJson(canonical)) throw new SyncError('SYNC_CONFLICT', 'A mesma revisão contém conteúdo diferente.');
-          if (resolved.created) await addAlias(client, companyId, appKey, installationId, entityType, resolved.localId, canonicalId);
-          aliases.push({ entity: entityType, localId: resolved.localId, canonicalId });
-          continue;
+        if (entityType === 'Delivery' && appKey === 'motoboy' &&
+            !['ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','DELIVERED','FAILED','RETURNED'].includes(canonical.status)) {
+          throw new SyncError('FORBIDDEN_FIELD', 'O Motoboy pode registrar somente estados derivados da execução.');
+        }
+        if (entityType === 'Delivery' && appKey === 'restaurante' && old.payload.status !== canonical.status &&
+            !['ASSIGNED','CANCELLED'].includes(canonical.status)) {
+          throw new SyncError('FORBIDDEN_FIELD', 'O Restaurante pode atribuir ou cancelar administrativamente; estados de execução pertencem ao Motoboy.');
+        }
+        if (entityType === 'Delivery' && appKey === 'motoboy' &&
+            Object.keys(record).some(key => !DELIVERY_META_FIELDS.has(key) && !DELIVERY_MOTOBOY_FIELDS.has(key) &&
+              stableJson(record[key]) !== stableJson(old.payload[key]))) {
+          throw new SyncError('FORBIDDEN_FIELD', 'O Motoboy não pode sobrescrever campos comerciais ou de planejamento da entrega.');
+        }
+        if (entityType === 'Delivery' && appKey === 'restaurante' &&
+            Object.keys(record).some(key => !DELIVERY_META_FIELDS.has(key) && !DELIVERY_RESTAURANT_FIELDS.has(key) &&
+              !(key === 'status' && ['ASSIGNED','CANCELLED'].includes(record.status)) &&
+              stableJson(record[key]) !== stableJson(old.payload[key]))) {
+          throw new SyncError('FORBIDDEN_FIELD', 'O Restaurante não pode sobrescrever campos de execução da entrega.');
         }
         if (entityType === 'Delivery' && old.payload.status !== canonical.status &&
             !TRANSITIONS[old.payload.status]?.includes(canonical.status)) {
           throw new SyncError('INVALID_TRANSITION', `Transição de entrega inválida: ${old.payload.status} → ${canonical.status}.`);
         }
+        if (entityType === 'Delivery' && appKey === 'motoboy' && canonical.status === 'CANCELLED') {
+          throw new SyncError('FORBIDDEN_FIELD', 'Cancelamento administrativo de Delivery pertence ao Restaurante.');
+        }
         if (old.deleted_at) throw new SyncError('SYNC_CONFLICT', 'Registro tombstonado não pode ser reativado sem operação explícita.');
+        const baseVersion = record.baseVersion ?? record.sync?.canonicalVersion;
+        if (!Number.isSafeInteger(baseVersion) || baseVersion !== Number(old.version)) {
+          throw new SyncError('REVISION_CONFLICT', 'A revisão local não corresponde à revisão canônica atual.');
+        }
+        canonicalVersion = Number(old.version) + 1;
         // v1 sends complete records today, but merging absent fields prevents a
         // partial device projection from erasing fields owned by another client.
         canonical = { ...old.payload, ...canonical,
-          id: canonicalId, companyId, createdAt: new Date(old.created_at).toISOString() };
+          id: canonicalId, companyId, createdAt: new Date(old.created_at).toISOString(), version: canonicalVersion };
+        if (entityType === 'Delivery') {
+          const allowedFields = appKey === 'restaurante' ? DELIVERY_RESTAURANT_FIELDS : DELIVERY_MOTOBOY_FIELDS;
+          for (const key of Object.keys(canonical)) {
+            if (!allowedFields.has(key) && !DELIVERY_META_FIELDS.has(key)) canonical[key] = old.payload[key];
+          }
+          if (appKey === 'restaurante' && old.payload.status !== canonical.status && !['ASSIGNED','CANCELLED'].includes(canonical.status)) {
+            canonical.status = old.payload.status;
+          }
+        }
+        canonical.updatedAt = now.toISOString();
         if (!relatedId && old.related_record_id) {
           relatedType = old.related_entity_type;
           relatedId = old.related_record_id;
         }
         changed = true;
       }
+      if (entityType === 'Delivery' && !existing.rowCount && appKey !== 'restaurante') {
+        throw new SyncError('FORBIDDEN', 'Somente o Restaurante pode criar Delivery canônica.');
+      }
+      if (entityType === 'Delivery' && !existing.rowCount && !['CREATED','ASSIGNED'].includes(canonical.status)) {
+        throw new SyncError('FORBIDDEN_FIELD', 'Uma Delivery nova deve começar em CREATED ou ASSIGNED.');
+      }
       if (!existing.rowCount) {
         await client.query(`INSERT INTO rotamoto.domain_records
           (company_id,record_id,entity_type,source_app,source_installation_id,source_event_id,related_entity_type,related_record_id,payload,version,created_at,updated_at,deleted_at)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13)`,
         [companyId, canonicalId, entityType, appKey, installationId, entityType === 'DeliveryEvent' ? localId : null,
-          relatedId ? relatedType : null, relatedId, JSON.stringify(canonical), meta.version, meta.createdAt, meta.updatedAt, canonical.deletedAt || null]);
+          relatedId ? relatedType : null, relatedId, JSON.stringify(canonical), canonicalVersion, meta.createdAt, meta.updatedAt, canonical.deletedAt || null]);
         await addAlias(client, companyId, appKey, installationId, entityType, resolved.localId, canonicalId);
         outcomes.received += 1;
       } else {
@@ -284,13 +378,56 @@ function createSyncService({ clock = () => new Date() } = {}) {
         if (changed) {
           await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5,deleted_at=$6,
             related_entity_type=$7,related_record_id=$8 WHERE company_id=$1 AND record_id=$2`,
-          [companyId, canonicalId, JSON.stringify(canonical), meta.version, meta.updatedAt, canonical.deletedAt || null,
+          [companyId, canonicalId, JSON.stringify(canonical), canonicalVersion, canonical.updatedAt, canonical.deletedAt || null,
             relatedId ? relatedType : null, relatedId]);
           outcomes.updated += 1;
         }
       }
+      if (entityType === 'DeliveryEvent' && String(canonical.entity || '').toLowerCase() === 'delivery' && !existing.rowCount) {
+        const executionStatus = ({ DELIVERY_STARTED: 'OUT_FOR_DELIVERY', DELIVERY_ARRIVED: 'ARRIVED',
+          DELIVERY_COMPLETED: 'DELIVERED', DELIVERY_FAILED: 'FAILED' })[canonical.type];
+        if (!executionStatus) throw new SyncError('FORBIDDEN_EVENT', 'Evento de execução não reconhecido ou não permitido.');
+        const currentDelivery = await client.query(`SELECT payload,version,created_at,deleted_at FROM rotamoto.domain_records
+          WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' FOR UPDATE`, [companyId, relatedId]);
+        if (!currentDelivery.rowCount || currentDelivery.rows[0].deleted_at) throw new SyncError('UNRESOLVED_REFERENCE', 'Delivery canônica inexistente ou encerrada.');
+        const oldStatus = currentDelivery.rows[0].payload.status;
+        if (oldStatus !== executionStatus && !TRANSITIONS[oldStatus]?.includes(executionStatus)) {
+          throw new SyncError('INVALID_TRANSITION', `Transição de entrega inválida: ${oldStatus} → ${executionStatus}.`);
+        }
+        if (oldStatus !== executionStatus) {
+          const projectedAt = now.toISOString();
+          const projectedVersion = Number(currentDelivery.rows[0].version) + 1;
+          const projected = { ...currentDelivery.rows[0].payload, status: executionStatus,
+            updatedAt: projectedAt, version: projectedVersion };
+          if (executionStatus === 'OUT_FOR_DELIVERY') projected.pickedUpAt = canonical.occurredAt || projectedAt;
+          if (executionStatus === 'ARRIVED') projected.arrivedAt = canonical.occurredAt || projectedAt;
+          if (executionStatus === 'DELIVERED') projected.completedAt = canonical.occurredAt || projectedAt;
+          await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5
+            WHERE company_id=$1 AND record_id=$2`, [companyId, relatedId, JSON.stringify(projected), projectedVersion, projectedAt]);
+          pending.push({ entityType: 'Delivery', canonicalId: relatedId, canonical: projected,
+            meta: { createdAt: new Date(currentDelivery.rows[0].created_at), updatedAt: new Date(projectedAt), version: projectedVersion },
+            changed: true, relatedType: 'Order', relatedId: null });
+        }
+      }
       pending.push({ entityType, canonicalId, canonical, meta, changed, relatedType, relatedId });
       aliases.push({ entity: entityType, localId: resolved.localId, canonicalId });
+      operationResults.push({ operation: item.operationIndex, entity: entityType, localId: resolved.localId,
+        canonicalId, canonicalVersion, status: existing.rowCount ? 'accepted' : 'accepted' });
+      } catch (error) {
+        if (/^(08|57P)/u.test(String(error?.code || ''))) throw error;
+        await client.query('ROLLBACK TO SAVEPOINT sync_operation');
+        pending.length = pendingBefore;
+        aliases.length = aliasesBefore;
+        operationResults.length = resultBefore;
+        Object.assign(outcomes, countsBefore);
+        if (seenKey) seen.delete(seenKey);
+        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','INVALID_TRANSITION','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT']);
+        operationResults.push({ operation: item.operationIndex, entity: entityType, localId: localId || null,
+          ...(ackCanonicalId ? { canonicalId: ackCanonicalId } : {}), ...(ackVersion ? { canonicalVersion: ackVersion } : {}),
+          status: conflictCodes.has(error.code) ? 'conflict' : 'rejected', error: { code: error.code || 'OPERATION_REJECTED' } });
+      } finally {
+        await client.query('RELEASE SAVEPOINT sync_operation');
+      }
     }
 
     for (const item of pending) {
@@ -304,47 +441,74 @@ function createSyncService({ clock = () => new Date() } = {}) {
         VALUES($1,$2,$3,$4,$5::jsonb)`, [companyId, eventId, appKey, installationId, JSON.stringify(outboxEvent)]);
     }
 
-    for (const tombstone of data.tombstones || []) {
-      if (!tombstone || typeof tombstone !== 'object' || Array.isArray(tombstone)) invalid('Tombstone inválido.');
-      if (typeof tombstone.store !== 'string' || !Object.hasOwn(TOMBSTONE_TYPES, tombstone.store)) invalid('Tipo de tombstone não suportado pelo contrato v1.');
-      const entityType = TOMBSTONE_TYPES[tombstone.store];
-      if (entityType === 'DeliveryEvent') throw new SyncError('IMMUTABLE_EVENT', 'Eventos são fatos e não aceitam tombstone.');
-      const localId = boundedText(tombstone.id, 'Tombstone.id');
-      let resolved = await resolveLocal(client, companyId, appKey, installationId, entityType, localId);
-      if (!resolved) {
-        const canonicalId = await resolveReferencedAlias(client, companyId, entityType, localId);
-        if (!canonicalId) throw new SyncError('UNRESOLVED_REFERENCE', 'Tombstone sem mapeamento canônico.');
-        resolved = { localId, canonicalId };
+    for (const [index, tombstone] of (data.tombstones || []).entries()) {
+      await client.query('SAVEPOINT sync_tombstone');
+      const resultBefore = operationResults.length;
+      let entityType = null;
+      let localId = null;
+      let canonicalId = null;
+      let canonicalVersion = null;
+      try {
+        if (!tombstone || typeof tombstone !== 'object' || Array.isArray(tombstone)) invalid('Tombstone inválido.');
+        if (typeof tombstone.store !== 'string' || !Object.hasOwn(TOMBSTONE_TYPES, tombstone.store)) invalid('Tipo de tombstone não suportado pelo contrato v1.');
+        entityType = TOMBSTONE_TYPES[tombstone.store];
+        localId = boundedText(tombstone.id, 'Tombstone.id');
+        if (entityType === 'DeliveryEvent') throw new SyncError('IMMUTABLE_EVENT', 'Eventos são fatos e não aceitam tombstone.');
+        const ownerError = operationAuthorityError(appKey, entityType, tombstone);
+        if (ownerError || (entityType === 'Delivery' && appKey !== 'restaurante')) {
+          throw ownerError || new SyncError('FORBIDDEN', 'Somente o Restaurante pode cancelar administrativamente uma Delivery.');
+        }
+        let resolved = await resolveLocal(client, companyId, appKey, installationId, entityType, localId);
+        if (!resolved) {
+          const referenced = await resolveReferencedAlias(client, companyId, entityType, localId);
+          if (!referenced) throw new SyncError('UNRESOLVED_REFERENCE', 'Tombstone sem mapeamento canônico.');
+          resolved = { localId, canonicalId: referenced };
+        }
+        canonicalId = resolved.canonicalId;
+        const existing = await client.query(`SELECT entity_type,payload,version,created_at,updated_at,deleted_at FROM rotamoto.domain_records
+          WHERE company_id=$1 AND record_id=$2 FOR UPDATE`, [companyId, canonicalId]);
+        if (!existing.rowCount) throw new SyncError('UNRESOLVED_REFERENCE', 'Tombstone aponta para registro inexistente.');
+        if (existing.rows[0].entity_type !== entityType) throw new SyncError('SYNC_CONFLICT', 'Tombstone tem tipo diferente do registro canônico.');
+        canonicalVersion = Number(existing.rows[0].version);
+        if (existing.rows[0].deleted_at) {
+          operationResults.push({ operation: `tombstones:${index}`, entity: entityType, localId, canonicalId, canonicalVersion, status: 'duplicate' });
+          continue;
+        }
+        const baseVersion = tombstone.baseVersion ?? tombstone.sync?.canonicalVersion;
+        if (!Number.isSafeInteger(baseVersion) || baseVersion !== canonicalVersion) {
+          throw new SyncError('REVISION_CONFLICT', 'Tombstone baseado em revisão canônica obsoleta.');
+        }
+        canonicalVersion += 1;
+        const deletedAt = now;
+        const updatedAt = now;
+        const payload = { ...existing.rows[0].payload, deleted: true, deletedAt: deletedAt.toISOString(),
+          updatedAt: updatedAt.toISOString(), version: canonicalVersion, id: canonicalId, companyId };
+        await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5,deleted_at=$6
+          WHERE company_id=$1 AND record_id=$2`, [companyId, canonicalId, JSON.stringify(payload), canonicalVersion, updatedAt, deletedAt]);
+        const eventId = uuidV7(now.getTime());
+        const outboxEvent = { eventId, type: 'CANONICAL_RECORD_TOMBSTONED', entity: entityType,
+          entityId: canonicalId, occurredAt: now.toISOString(), actor: { type: 'user', id: userId },
+          payload: { id: canonicalId, deletedAt: deletedAt.toISOString(), updatedAt: updatedAt.toISOString(), version: canonicalVersion }, protocolVersion: 1 };
+        await client.query(`INSERT INTO rotamoto.sync_outbox(company_id,event_id,app_key,installation_id,payload)
+          VALUES($1,$2,$3,$4,$5::jsonb)`, [companyId, eventId, appKey, installationId, JSON.stringify(outboxEvent)]);
+        outcomes.deleted += 1;
+        aliases.push({ entity: entityType, localId, canonicalId });
+        operationResults.push({ operation: `tombstones:${index}`, entity: entityType, localId, canonicalId, canonicalVersion, status: 'accepted' });
+      } catch (error) {
+        if (/^(08|57P)/u.test(String(error?.code || ''))) throw error;
+        await client.query('ROLLBACK TO SAVEPOINT sync_tombstone');
+        operationResults.length = resultBefore;
+        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT']);
+        operationResults.push({ operation: `tombstones:${index}`, ...(entityType ? { entity: entityType } : {}), localId,
+          ...(canonicalId ? { canonicalId } : {}), ...(canonicalVersion ? { canonicalVersion } : {}),
+          status: conflictCodes.has(error.code) ? 'conflict' : 'rejected', error: { code: error.code || 'OPERATION_REJECTED' } });
+      } finally {
+        await client.query('RELEASE SAVEPOINT sync_tombstone');
       }
-      const existing = await client.query(`SELECT entity_type,payload,version,created_at,updated_at,deleted_at FROM rotamoto.domain_records
-        WHERE company_id=$1 AND record_id=$2 FOR UPDATE`, [companyId, resolved.canonicalId]);
-      if (!existing.rowCount) throw new SyncError('UNRESOLVED_REFERENCE', 'Tombstone aponta para registro inexistente.');
-      if (existing.rows[0].entity_type !== entityType) throw new SyncError('SYNC_CONFLICT', 'Tombstone tem tipo diferente do registro canônico.');
-      const deletedAt = timestamp(tombstone.deletedAt || tombstone.updatedAt, now, 'Tombstone.deletedAt');
-      const updatedAt = timestamp(tombstone.updatedAt || tombstone.deletedAt, deletedAt, 'Tombstone.updatedAt');
-      if (deletedAt < new Date(existing.rows[0].created_at) || updatedAt < deletedAt) invalid('Tombstone possui timestamps inconsistentes.');
-      const version = tombstone.version ?? Number(existing.rows[0].version) + 1;
-      if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) invalid('Tombstone.version inválida.');
-      const oldUpdatedAt = new Date(existing.rows[0].updated_at);
-      if (updatedAt < oldUpdatedAt || (updatedAt.getTime() === oldUpdatedAt.getTime() && version <= Number(existing.rows[0].version))) {
-        outcomes.ignored += 1; continue;
-      }
-      const payload = { ...existing.rows[0].payload, deleted: true, deletedAt: deletedAt.toISOString(),
-        updatedAt: updatedAt.toISOString(), version, id: resolved.canonicalId, companyId };
-      await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5,deleted_at=$6
-        WHERE company_id=$1 AND record_id=$2`, [companyId, resolved.canonicalId, JSON.stringify(payload), version, updatedAt, deletedAt]);
-      const eventId = uuidV7(now.getTime());
-      const outboxEvent = { eventId, type: 'CANONICAL_RECORD_TOMBSTONED', entity: entityType,
-        entityId: resolved.canonicalId, occurredAt: now.toISOString(), actor: { type: 'user', id: userId },
-        payload: { id: resolved.canonicalId, deletedAt: deletedAt.toISOString(), updatedAt: updatedAt.toISOString(), version }, protocolVersion: 1 };
-      await client.query(`INSERT INTO rotamoto.sync_outbox(company_id,event_id,app_key,installation_id,payload)
-        VALUES($1,$2,$3,$4,$5::jsonb)`, [companyId, eventId, appKey, installationId, JSON.stringify(outboxEvent)]);
-      outcomes.deleted += 1;
-      aliases.push({ entity: entityType, localId, canonicalId: resolved.canonicalId });
     }
 
     const digest = packetDigest(packet);
-    const result = { ...outcomes, duplicate: false, packetId: packet.packetId, companyId, aliases };
+    const result = { ...outcomes, duplicate: false, packetId: packet.packetId, companyId, aliases, operationResults };
     await client.query(`INSERT INTO rotamoto.sync_inbox(company_id,packet_id,app_key,installation_id,payload_digest,result)
       VALUES($1,$2,$3,$4,$5,$6::jsonb)`, [companyId, packetId, appKey, installationId, digest, JSON.stringify(result)]);
     await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
@@ -356,6 +520,7 @@ function createSyncService({ clock = () => new Date() } = {}) {
   function encodeCursor(row) { return Buffer.from(`${row.created_at_cursor}\n${row.event_id}`).toString('base64url'); }
   async function pull(client, principal, { cursor = null, limit = 100, deviceId } = {}) {
     const responseDeviceId = boundedText(deviceId, 'deviceId', 128);
+    const installation = await findInstallation(client, principal, responseDeviceId);
     const size = Number(limit);
     if (!Number.isSafeInteger(size) || size < 1 || size > 100) invalid('limit deve estar entre 1 e 100.');
     let afterAt = new Date(0).toISOString();
@@ -384,7 +549,7 @@ function createSyncService({ clock = () => new Date() } = {}) {
       nextCursor: rows.length ? encodeCursor(rows.at(-1)) : cursor, hasMore };
   }
 
-  return Object.freeze({ push, pull });
+  return Object.freeze({ registerInstallation, push, pull });
 }
 
-module.exports = { SyncError, createSyncService, validatePacket, APP_KEYS, ENTITY_ARRAYS, TRANSITIONS, WRITE_OWNERS };
+module.exports = { SyncError, createSyncService, validatePacket, ENTITY_ARRAYS, TRANSITIONS, WRITE_OWNERS };

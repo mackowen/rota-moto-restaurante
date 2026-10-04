@@ -1,29 +1,39 @@
 'use strict';
-const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const source=fs.readFileSync(require('path').join(__dirname,'..','contract.js'),'utf8');
-const ctx={crypto:{randomUUID:()=> '00000000-0000-4000-8000-000000000001'},globalThis:null};ctx.globalThis=ctx;vm.runInNewContext(source,ctx);
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const root=path.join(__dirname,'..');
+const contractSource=fs.readFileSync(path.join(root,'contract.js'),'utf8');
+const appSource=fs.readFileSync(path.join(root,'app.js'),'utf8');
+const ctx={crypto:{randomUUID:()=> '00000000-0000-4000-8000-000000000001'},globalThis:null};ctx.globalThis=ctx;vm.runInNewContext(contractSource,ctx);
 const C=ctx.RotaMotoContract;
-assert.equal(C.PROTOCOL_VERSION,1); assert.equal(C.SCHEMA_VERSION,1);
-assert(C.canTransition('CREATED','ASSIGNED')); assert(C.canTransition('ARRIVED','DELIVERED')); assert(!C.canTransition('DELIVERED','ARRIVED'));
+assert.equal(C.PROTOCOL_VERSION,1);assert.equal(C.SCHEMA_VERSION,1);
+assert(C.canTransition('CREATED','ASSIGNED'));assert(C.canTransition('ARRIVED','DELIVERED'));assert(!C.canTransition('DELIVERED','ARRIVED'));
 assert.equal(C.normalizeDeliveryStatus('EM_ROTA','restaurante'),'OUT_FOR_DELIVERY');
 assert.equal(C.normalizeDeliveryStatus('route','motoboy'),'OUT_FOR_DELIVERY');
+assert.equal(C.WRITE_AUTHORITY.Order,'restaurante');assert.equal(C.WRITE_AUTHORITY.Earning,'restaurante');
+assert.equal(C.WRITE_AUTHORITY.Delivery,'shared');assert.equal(C.WRITE_AUTHORITY.DeliveryEvent,'shared');
+assert.deepEqual({...C.SYNC_ACK},{ACCEPTED:'accepted',DUPLICATE:'duplicate',REJECTED:'rejected',CONFLICT:'conflict'});
 const d=C.deliveryFromOrder({id:'ord_1',deliveryId:'del_1',companyId:'c1',status:'ATRIBUIDA',bikeId:'drv_1',createdAt:'2026-09-24T20:00:00.000Z',updatedAt:'2026-09-24T20:01:00.000Z'},'c1');
 assert.deepEqual({id:d.id,orderId:d.orderId,driverId:d.driverId,status:d.status},{id:'del_1',orderId:'ord_1',driverId:'drv_1',status:'ASSIGNED'});
 const packet=C.packet({companyId:'c1',deviceId:'dev_rest',app:'RotaMoto Restaurante',deliveries:[d]});
-assert.equal(packet.protocol,'rotamoto-sync'); assert.equal(packet.companyId,'c1'); assert.equal(packet.data.deliveries.length,1); assert(packet.packetId);
-// Simulate Motoboy import + export + Restaurante merge, including duplicate packet and stale update.
-const moto={}; moto.deliveries=new Map(); let inbox=new Set();
-function importRestaurant(p){if(inbox.has(p.packetId))return {duplicate:true}; for(const raw of p.data.deliveries){const cur=moto.deliveries.get(raw.id); if(cur && new Date(cur.updatedAt)>new Date(raw.updatedAt)) continue; moto.deliveries.set(raw.id,{...raw});} inbox.add(p.packetId); return {duplicate:false};}
-assert.equal(importRestaurant(packet).duplicate,false); assert.equal(importRestaurant(packet).duplicate,true); assert.equal(moto.deliveries.get('del_1').status,'ASSIGNED');
-const executed={...moto.deliveries.get('del_1'),status:'DELIVERED',updatedAt:'2026-09-24T21:00:00.000Z',version:2};
-const event=C.event('DELIVERY_COMPLETED','delivery','del_1',{completedAt:executed.updatedAt},{type:'driver',id:'drv_1'});
-const back=C.packet({companyId:'c1',deviceId:'dev_boy',app:'RotaMoto',deliveries:[executed],deliveryEvents:[event]});
-const restaurant=new Map([['del_1',d]]); const events=new Set();
-for(const raw of back.data.deliveries){const cur=restaurant.get(raw.id); if(!cur||new Date(raw.updatedAt)>=new Date(cur.updatedAt)) restaurant.set(raw.id,{...cur,...raw});}
-for(const ev of back.data.deliveryEvents)events.add(ev.eventId);
-for(const ev of back.data.deliveryEvents)events.add(ev.eventId);
-assert.equal(restaurant.get('del_1').status,'DELIVERED'); assert.equal(events.size,1);
-const stale={...executed,status:'ARRIVED',updatedAt:'2026-09-24T20:30:00.000Z',version:1};
-if(new Date(stale.updatedAt)>=new Date(restaurant.get('del_1').updatedAt)) restaurant.set(stale.id,stale);
-assert.equal(restaurant.get('del_1').status,'DELIVERED');
-console.log('sync contract integration tests: OK');
+assert.equal(packet.protocol,'rotamoto-sync');assert.equal(packet.companyId,'c1');assert.equal(packet.data.deliveries.length,1);assert(packet.packetId);
+assert.match(appSource,/loginToServer:loginToSyncServer/);assert.match(appSource,/syncWithServer/);
+assert.match(appSource,/sync-packet:/);assert.match(appSource,/operationResults/);
+assert.match(appSource,/canonical:\$\{event\.entity\}:\$\{event\.entityId\}/);
+assert.match(appSource,/\['inbox','syncState'\]/);
+assert.match(appSource,/X-CSRF-Token/);
+if(appSource.includes("function recordDeliveryEvent(type,r,payload={}")){
+  const builder=appSource.slice(appSource.indexOf('async function buildSyncPacket'),appSource.indexOf('function downloadSyncPacket'));
+  assert.match(builder,/deliveries:\[\]/,'Motoboy must not write canonical Delivery directly');
+  assert.match(builder,/earnings:\[\]/,'Motoboy must not publish authoritative Earning');
+  assert(!builder.includes('packet.data.races=')&&!builder.includes('packet.data.settings='),'local projections are excluded from canonical sync');
+}else{
+  assert.match(appSource,/canonicalEarningFromOrder\(order,companyId\)/,'Restaurant calculates canonical Earning from its existing rule');
+  const builder=appSource.slice(appSource.indexOf('async function buildRestaurantSyncPacket'),appSource.indexOf('function downloadSyncPacket'));
+  assert(!builder.includes('packet.data.settings='),'local settings are excluded from canonical sync');
+}
+const syncTransport=appSource.slice(appSource.indexOf('async function syncWithServer'),appSource.indexOf('async function persistSyncAck'));
+assert(syncTransport.indexOf('const ack=await send')<syncTransport.indexOf('persistSyncAck(packet,ack.operationResults)'),
+  'local ACK state is written only after a successful HTTP response');
+assert(syncTransport.includes('sync-packet:')&&syncTransport.includes('status:\'pending\''),
+  'packet retry is retained in IndexedDB outbox until a response is received');
+console.log('sync contract and client transport tests: OK');

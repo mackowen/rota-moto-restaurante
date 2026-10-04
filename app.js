@@ -33,6 +33,12 @@ function canonicalizeRestaurantData(){
  state.deliveries=state.orders.map(o=>({...RotaMotoContract.deliveryFromOrder(o,companyId),...(byId.get(o.deliveryId)||{}),id:o.deliveryId,orderId:o.id,companyId:o.companyId,driverId:o.bikeId||o.driverId||byId.get(o.deliveryId)?.driverId||null,status:o.canonicalStatus,updatedAt:o.updatedAt,version:Math.max(Number(byId.get(o.deliveryId)?.version||0),Number(o.version||1))}));
  state.settings.global={...state.settings.global,schemaVersion:1,sync:{...state.settings.global.sync,protocolVersion:1,schemaVersion:1,transport:'local-first',mode:'local-first',deviceId:state.settings.global.sync?.deviceId||RotaMotoContract.id('panel')}};
 }
+function canonicalEarningFromOrder(order,companyId){
+ const amount=motoboyEarningsForDelivery(order,state.settings);
+ if(!order?.deliveryId||!Number.isFinite(amount))return null;
+ return {id:order.earningId||`earning:${order.id}`,companyId:order.companyId||companyId,deliveryId:order.deliveryId,
+  amount,createdAt:order.createdAt||order.updatedAt||Date.now(),updatedAt:order.updatedAt||Date.now(),version:Number(order.version||order.sync?.version||1)};
+}
 
 const dateFmt=t=>{const l=state?.settings?.language||'pt-BR';return new Date(t).toLocaleString(l==='en'?'en-US':l==='es'?'es-ES':'pt-BR',{dateStyle:'short',timeStyle:'short'});};
 const dayFmt=t=>{const l=state?.settings?.language||'pt-BR';return new Date(t).toLocaleDateString(l==='en'?'en-US':l==='es'?'es-ES':'pt-BR');};
@@ -178,13 +184,16 @@ async function buildRestaurantSyncPacket(){
  try{
   const companyId=state.settings.global?.companyId||'company_local';
   const deviceId=state.settings.global?.sync?.deviceId||uid('panel');
+  const syncRows=await getAll('syncState');const syncMap=new Map(syncRows.map(row=>[row.id,row]));
   const deliveries=[];
   for(const order of state.orders||[]){
    const saved=(state.deliveries||[]).find(d=>d.orderId===order.id||d.id===order.deliveryId);
    if(!order.deliveryId){order.deliveryId=saved?.id||RotaMotoContract.id('del');await put('orders',order)}
    const canonical=RotaMotoContract.normalizeDeliveryStatus(order.status,'restaurante');
    const generated=RotaMotoContract.deliveryFromOrder(order,companyId);
-   const delivery={...generated,...(saved||{}),id:order.deliveryId,orderId:order.id,companyId:order.companyId||companyId,status:canonical,updatedAt:order.updatedAt||saved?.updatedAt,version:Math.max(Number(order.version||0),Number(order.sync?.version||0),Number(saved?.version||0),1)};
+   const planningStatus=['CREATED','ASSIGNED','CANCELLED'].includes(canonical)?canonical:(['CREATED','ASSIGNED','CANCELLED'].includes(saved?.status)?saved.status:'ASSIGNED');
+   const delivery={...generated,...(saved||{}),id:order.deliveryId,orderId:order.id,companyId:order.companyId||companyId,status:planningStatus,updatedAt:order.updatedAt||saved?.updatedAt,version:Math.max(Number(order.version||0),Number(order.sync?.version||0),Number(saved?.version||0),1)};
+   for(const field of ['acceptedAt','pickedUpAt','arrivedAt','completedAt','actualDistanceM'])delete delivery[field];
    if(!delivery.deleted&&['ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY','CANCELLED'].includes(delivery.status))deliveries.push(delivery);
   }
   const drivers=(state.bikes||[]).filter(b=>b&&!b.deleted).map(b=>({...b,driverId:b.driverId||b.id}));
@@ -196,15 +205,46 @@ async function buildRestaurantSyncPacket(){
    normalized.coords=coords;orders.push(normalized);
   }
   const tombstones=(state.tombstones||[]).filter(t=>t&&!t.deletedSent&&t.store==='deliveries'&&t.companyId===companyId);
-  const packet=RotaMotoContract.packet({companyId,deviceId,app:'RotaMoto Restaurante',events:[],orders,deliveries,drivers,routes,locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones});
-  packet.data.settings={restaurant:state.settings.restaurant||'',restaurantPhone:state.settings.phone||'',delivery:{...state.settings.delivery}};
+  const earnings=(state.orders||[]).map(order=>canonicalEarningFromOrder(order,companyId)).filter(Boolean);
+  const packet=RotaMotoContract.packet({companyId,deviceId,app:'RotaMoto Restaurante',events:[],
+   orders:orders.filter(record=>needsSyncOperation(syncMap,'Order',record)).map(record=>withCanonicalBase(syncMap,'Order',record)),
+   deliveries:deliveries.filter(record=>needsSyncOperation(syncMap,'Delivery',record)).map(record=>withCanonicalBase(syncMap,'Delivery',record)),
+   drivers:drivers.filter(record=>needsSyncOperation(syncMap,'Driver',record)).map(record=>withCanonicalBase(syncMap,'Driver',record)),
+   routes:routes.filter(record=>needsSyncOperation(syncMap,'Route',record)).map(record=>withCanonicalBase(syncMap,'Route',record)),
+   locationUpdates:[],deliveryEvents:[],proofs:[],earnings:earnings.filter(record=>needsSyncOperation(syncMap,'Earning',record)).map(record=>withCanonicalBase(syncMap,'Earning',record)),
+   tombstones:tombstones.filter(record=>needsSyncOperation(syncMap,'Delivery',record)).map(record=>withCanonicalBase(syncMap,'Delivery',record))});
   await setMeta('lastOutboundPacket',{packetId:packet.packetId,createdAt:packet.createdAt,deliveryIds:deliveries.map(d=>d.id)});
   return packet;
  }catch(e){console.warn('Falha ao montar pacote Restaurante',e);throw new Error('Não foi possível montar o pacote de entregas para o Rota Moto.');}
 }
+let syncCsrfToken=null;
+function stableSyncValue(value){if(Array.isArray(value))return `[${value.map(stableSyncValue).join(',')}]`;if(value&&typeof value==='object')return `{${Object.keys(value).filter(key=>key!=='sync'&&key!=='baseVersion').sort().map(key=>`${JSON.stringify(key)}:${stableSyncValue(value[key])}`).join(',')}}`;return JSON.stringify(value)}
+function syncOperationKey(type,record){return `operation:${type}:${record.eventId||record.id}`}
+function needsSyncOperation(syncMap,type,record){const saved=syncMap.get(syncOperationKey(type,record));return !saved||!['accepted','duplicate'].includes(saved.status)||saved.fingerprint!==stableSyncValue(record)}
+function withCanonicalBase(syncMap,type,record){const saved=syncMap.get(syncOperationKey(type,record));return saved?.canonicalVersion?{...record,baseVersion:saved.canonicalVersion}:record}
+function multiStoreTransaction(stores,mode,operation){return new Promise((resolve,reject)=>{const transaction=db.transaction(stores,mode);let result;try{result=operation(transaction)}catch(error){transaction.abort();reject(error);return}transaction.oncomplete=()=>resolve(result);transaction.onerror=()=>reject(transaction.error||new Error('Falha na transação local.'));transaction.onabort=()=>reject(transaction.error||new Error('Transação local abortada.'))})}
+async function loginToSyncServer({email,password,companyId=null,apiBase='/api',fetchImpl=fetch}={}){if(typeof email!=='string'||typeof password!=='string'||!password)throw new Error('Credenciais de sessão obrigatórias.');const root=new URL(`${String(apiBase).replace(/\/$/u,'')}/`,location.href),path=`${root.pathname.replace(/\/$/u,'')}/identity/login`,response=await fetchImpl(path,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,...(companyId?{companyId}:{})})});let result={};try{result=await response.json()}catch(_){}if(!response.ok)throw new Error(result.error?.code||'LOGIN_FAILED');syncCsrfToken=result.csrfToken;return {userId:result.userId,companyId:result.companyId}}
+async function syncWithServer({apiBase='/api',csrfToken=syncCsrfToken,fetchImpl=fetch}={}){
+ if(typeof csrfToken!=='string'||!csrfToken)throw new Error('Sessão autenticada e token CSRF em memória são necessários para sincronizar.');
+ const root=new URL(`${String(apiBase).replace(/\/$/u,'')}/`,location.href),base=`${root.pathname.replace(/\/$/u,'')}/sync`,deviceId=state.settings.global.sync.deviceId;
+ const send=async(url,options={})=>{const response=await fetchImpl(url,{credentials:'include',...options});let body={};try{body=await response.json()}catch(_){}if(!response.ok)throw new Error(body.error?.code||'SYNC_HTTP_ERROR');return body};
+ await send(`${base}/installations/restaurante`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({deviceId})});
+ const queueId=`sync-packet:${deviceId}`;let packet=await req('outbox','readonly',s=>new Promise((resolve,reject)=>{const q=s.get(queueId);q.onsuccess=()=>resolve(q.result?.packet||null);q.onerror=()=>reject(q.error)}));
+ if(!packet){packet=await buildRestaurantSyncPacket();await put('outbox',{id:queueId,type:'sync.packet',status:'pending',packet,createdAt:Date.now()})}
+ const ack=await send(`${base}/push`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify(packet)});
+ if(!Array.isArray(ack.operationResults))throw new Error('SYNC_ACK_INVALID');await persistSyncAck(packet,ack.operationResults);await del('outbox',queueId);
+ let cursor=await req('syncState','readonly',s=>new Promise((resolve,reject)=>{const q=s.get('pull:cursor');q.onsuccess=()=>resolve(q.result?.value||null);q.onerror=()=>reject(q.error)}));
+ let pulled=0,hasMore=true,pages=0;while(hasMore&&pages++<100){const query=new URLSearchParams({deviceId,limit:'100'});if(cursor)query.set('cursor',cursor);const page=await send(`${base}/pull?${query}`);await multiStoreTransaction(['inbox','syncState'],'readwrite',stores=>{const inbox=stores.objectStore('inbox'),sync=stores.objectStore('syncState');for(const event of page.events||[]){inbox.put({id:`server:${event.eventId}`,event,status:'canonical-cached',receivedAt:Date.now()});const cacheId=`canonical:${event.entity}:${event.entityId}`,request=sync.get(cacheId);request.onsuccess=()=>{const prior=request.result,version=Number(event.payload?.version||0);if(!prior||version>Number(prior.canonicalVersion||0)){const payload=event.type==='CANONICAL_RECORD_TOMBSTONED'?{...(prior?.payload||{}),...event.payload,deleted:true}:event.payload;sync.put({id:cacheId,entity:event.entity,canonicalId:event.entityId,canonicalVersion:version,payload,updatedAt:Date.now()})}}}if(page.nextCursor)sync.put({id:'pull:cursor',value:page.nextCursor})});pulled+=(page.events||[]).length;cursor=page.nextCursor||cursor;hasMore=!!page.hasMore}
+ return {packetId:packet.packetId,operationResults:ack.operationResults,pulled,cursor,hasMore};
+}
+async function persistSyncAck(packet,results){
+ const records=new Map();for(const [key,type] of [['orders','Order'],['deliveries','Delivery'],['drivers','Driver'],['routes','Route'],['earnings','Earning']])for(const record of packet.data[key]||[])records.set(`${type}:${record.id}`,record);
+ for(const tombstone of packet.data.tombstones||[])records.set(`Delivery:${tombstone.id}`,tombstone);
+ await multiStoreTransaction(['syncState'], 'readwrite',stores=>{for(const result of results){const row=records.get(`${result.entity}:${result.localId}`),accepted=['accepted','duplicate'].includes(result.status);stores.objectStore('syncState').put({id:syncOperationKey(result.entity,{id:result.localId}),entity:result.entity,localId:result.localId,status:result.status,error:result.error||null,canonicalId:result.canonicalId||null,canonicalVersion:result.canonicalVersion||null,fingerprint:accepted&&row?stableSyncValue(row):null,updatedAt:Date.now()})}})
+}
 function downloadSyncPacket(packet){const blob=new Blob([JSON.stringify(packet,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`rotamoto-restaurante-sync-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 async function exportRestaurantSyncPacket(){const p=await buildRestaurantSyncPacket();downloadSyncPacket(p);toast(`Pacote criado com ${p.data.deliveries.length} entrega(s).`,'success');return p}
-window.RotaMotoSync={version:1,protocolVersion:1,validate:validateMotoboyPacket,receive:receiveMotoboyData,buildPacket:buildRestaurantSyncPacket,exportPacket:exportRestaurantSyncPacket,description:'Sincronização local-first bidirecional entre Restaurante e Rota Moto.'};
+window.RotaMotoSync={version:1,protocolVersion:1,validate:validateMotoboyPacket,receive:receiveMotoboyData,buildPacket:buildRestaurantSyncPacket,exportPacket:exportRestaurantSyncPacket,setSession:csrfToken=>{syncCsrfToken=typeof csrfToken==='string'?csrfToken:null},loginToServer:loginToSyncServer,syncWithServer,description:'Sincronização local-first bidirecional entre Restaurante e Rota Moto.'};
 
 function defaultProfile(){return {id:'profile_admin',companyId:state.settings.global?.companyId||'company_local',name:'Administrador',description:'Acesso completo ao painel.',permissions:Object.fromEntries(ACTIONS.map(x=>[x,true])),modules:Object.fromEntries(MODULES.map(x=>[x[0],true])),createdAt:Date.now(),updatedAt:Date.now(),sync:{state:'local',version:1}}}
 async function bootstrap(){db=await openDB();for(const n of STORES.slice(1)){state[n]=await getAll(n)};const settings=await getMeta('settings');if(settings)state.settings={...state.settings,...settings};state.settings.global={...state.settings.global,...(settings?.global||{})};state.settings.ifood={provider:'ifood',enabled:false,status:'not_configured',environment:'production',backendUrl:'/api/ifood',clientId:'',redirectUri:'',merchantId:null,merchantName:null,oauth:{status:'not_started',authorizedAt:null,lastRefreshAt:null,state:null},sync:{mode:'polling',intervalSeconds:30,lastPollAt:null,lastSuccessAt:null,pendingEvents:0},events:{enabled:true,autoAck:true,saveBeforeAck:true,deduplicate:true},orderActions:{confirm:true,startPreparation:true,readyToPickup:true,dispatch:true,cancel:true},mapping:{externalId:'id',displayId:'displayId',customer:'customer.name',phone:'customer.phone',address:'delivery.deliveryAddress.formattedAddress',notes:'customer.observations',items:'items',payments:'payments',deliveryFee:'total.deliveryFee'},queue:[],processedEventIds:[],lastError:null,pendingEvents:0,...(state.settings.ifood||{})};

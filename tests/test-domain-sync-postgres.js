@@ -45,7 +45,7 @@ async function main() {
   await migrator.connect();
   await client.connect();
   try {
-    const migration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0006_global_event_idempotency'");
+    const migration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0008_sync_installation_identity'");
     assert.equal(migration.rowCount, 1, 'canonical schema migration is applied by the migrator');
     assert.equal((await client.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_app');
     await client.query('BEGIN');
@@ -61,6 +61,7 @@ async function main() {
     const readOnlyMembershipId = crypto.randomUUID();
     const readOnlySessionId = crypto.randomUUID();
     const readOnlyToken = crypto.randomBytes(32).toString('base64url');
+    const readOnlyCsrf = crypto.randomBytes(32).toString('base64url');
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
     await client.query("INSERT INTO rotamoto.companies(id,name,status) VALUES($1,'Synthetic domain sync','active')", [companyId]);
     await client.query('INSERT INTO rotamoto.users(id,email) VALUES($1,$2)', [userId, `domain-sync-${userId}@example.invalid`]);
@@ -75,7 +76,7 @@ async function main() {
     await client.query("INSERT INTO rotamoto.memberships(id,company_id,user_id,role_id,status,activated_at) VALUES($1,$2,$3,$4,'active',now())", [readOnlyMembershipId, companyId, readOnlyUserId, readOnlyRoleId]);
     await client.query(`INSERT INTO rotamoto.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at)
       VALUES($1,$2,$3,$4,$5,now(),now(),now()+interval '30 minutes',now()+interval '12 hours')`,
-    [readOnlySessionId, readOnlyUserId, companyId, tokenDigest(readOnlyToken), tokenDigest(crypto.randomBytes(32).toString('base64url'))]);
+    [readOnlySessionId, readOnlyUserId, companyId, tokenDigest(readOnlyToken), tokenDigest(readOnlyCsrf)]);
 
     const identityService = createIdentityService({ pool: savepointPool(client) });
     const syncService = createSyncService();
@@ -93,6 +94,9 @@ async function main() {
       const text = await response.text();
       return { status: response.status, body: text ? JSON.parse(text) : null };
     };
+    const registerDevice = async (appKey, deviceId) => call(`/api/sync/installations/${appKey}`, {
+      method: 'POST', body: { deviceId }
+    });
     try {
       const badCsrf = await call('/api/sync/push', { method: 'POST', csrf: 'invalid', body: {} });
       assert.equal(badCsrf.status, 403);
@@ -100,32 +104,51 @@ async function main() {
       const invalidPacket = await call('/api/sync/push', { method: 'POST', body: { protocol: 'wrong' } });
       assert.equal(invalidPacket.status, 400);
       assert.equal(invalidPacket.body.error.code, 'INVALID_INPUT');
+      const restaurantInstall = await registerDevice('restaurante', 'restaurant-test-device');
+      assert.equal(restaurantInstall.status, 200, JSON.stringify(restaurantInstall.body));
+      assert.equal(restaurantInstall.body.appKey, 'restaurante');
+      const repeatInstall = await registerDevice('restaurante', 'restaurant-test-device');
+      assert.equal(repeatInstall.body.installationId, restaurantInstall.body.installationId, 'installation registration is idempotent for its owning user');
       const missingDeviceId = await call('/api/sync/pull');
       assert.equal(missingDeviceId.status, 400);
       const deniedPull = await call('/api/sync/pull?deviceId=unauthorized-device', { cookie: `${COOKIE_NAME}=${readOnlyToken}` });
       assert.equal(deniedPull.status, 403);
       assert.equal(deniedPull.body.error.code, 'FORBIDDEN');
+      await client.query("INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version) VALUES($1,$2,'sync.pull',1),($1,$2,'sync.push',1)", [companyId, readOnlyRoleId]);
+      const crossInstallPull = await call('/api/sync/pull?deviceId=restaurant-test-device', { cookie: `${COOKIE_NAME}=${readOnlyToken}` });
+      assert.equal(crossInstallPull.status, 409);
+      assert.equal(crossInstallPull.body.error.code, 'INSTALLATION_REQUIRED', 'another tenant member cannot use a registered installation');
+      const crossInstallRegister = await call('/api/sync/installations/restaurante', { method: 'POST', csrf: readOnlyCsrf,
+        body: { deviceId: 'restaurant-test-device' }, cookie: `${COOKIE_NAME}=${readOnlyToken}` });
+      assert.equal(crossInstallRegister.status, 403);
+      assert.equal(crossInstallRegister.body.error.code, 'INSTALLATION_FORBIDDEN');
       const baseTime = new Date(Date.now() - 5000).toISOString();
       const packet = { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1,
         packetId: `pkt_${crypto.randomUUID()}`, deviceId: 'restaurant-test-device', companyId: crypto.randomUUID(),
         source: { app: 'RotaMoto Restaurante', deviceId: 'restaurant-test-device' }, createdAt: baseTime,
         data: { orders: [{ id: 'order-local-1', createdAt: baseTime, updatedAt: baseTime, version: 1, status: 'CREATED', customer: 'Sintético' }],
-          deliveries: [{ id: 'delivery-local-1', orderId: 'order-local-1', status: 'CREATED', operationNote: 'preserve me',
+          deliveries: [{ id: 'delivery-local-1', orderId: 'order-local-1', status: 'ASSIGNED', operationNote: 'preserve me',
             createdAt: baseTime, updatedAt: baseTime, version: 1 }],
           drivers: [], routes: [], locationUpdates: [], deliveryEvents: [{ id: 'event-local-1', eventId: 'event-local-1',
             entity: 'order', entityId: 'order-local-1', type: 'ORDER_CREATED', occurredAt: baseTime, actor: { type: 'user' } }],
-          proofs: [], earnings: [], tombstones: [] } };
+          proofs: [], earnings: [{ id: 'earning-local-1', deliveryId: 'delivery-local-1', amount: 12.5,
+            createdAt: baseTime, updatedAt: baseTime, version: 1 }], tombstones: [] } };
       const pushed = await call('/api/sync/push', { method: 'POST', body: packet });
       assert.equal(pushed.status, 200, JSON.stringify({ response: pushed.body, logs }));
       assert.equal(pushed.body.companyId, companyId, 'tenant comes from the authenticated session, not packet.companyId');
-      assert.equal(pushed.body.received, 3);
+      assert.equal(pushed.body.received, 4);
+      assert.equal(pushed.body.operationResults.length, 4, 'ACK identifies each operation');
+      assert(pushed.body.operationResults.every(result => result.status === 'accepted' && result.canonicalId && result.canonicalVersion === 1));
       const duplicate = await call('/api/sync/push', { method: 'POST', body: packet });
       assert.equal(duplicate.status, 200);
       assert.equal(duplicate.body.duplicate, true);
+      assert(duplicate.body.operationResults.every(result => result.status === 'duplicate'));
       const orderId = pushed.body.aliases.find(alias => alias.entity === 'Order').canonicalId;
       const deliveryId = pushed.body.aliases.find(alias => alias.entity === 'Delivery').canonicalId;
+      const earningId = pushed.body.aliases.find(alias => alias.entity === 'Earning').canonicalId;
       assert.match(orderId, /^[0-9a-f-]{36}$/iu);
       assert.match(deliveryId, /^[0-9a-f-]{36}$/iu);
+      assert.match(earningId, /^[0-9a-f-]{36}$/iu);
       assert.notEqual(orderId, 'order-local-1');
       const stored = await client.query(`SELECT d.payload,d.related_record_id::text,d.related_entity_type,o.payload AS order_payload
         FROM rotamoto.domain_records d JOIN rotamoto.domain_records o ON o.company_id=d.company_id AND o.record_id=d.related_record_id
@@ -135,6 +158,10 @@ async function main() {
       assert.equal(stored.rows[0].related_entity_type, 'Order');
       assert.equal(stored.rows[0].payload.orderId, orderId, 'references in payload use canonical IDs');
       assert.equal(stored.rows[0].payload.companyId, companyId, 'client tenant was overwritten by session tenant');
+      const storedEarning = await client.query("SELECT payload->>'amount' AS amount,payload->>'deliveryId' AS delivery_id,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'", [companyId, earningId]);
+      assert.equal(storedEarning.rows[0].amount, '12.5');
+      assert.equal(storedEarning.rows[0].delivery_id, deliveryId);
+      assert.equal(storedEarning.rows[0].related_record_id, deliveryId);
       const secretPacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`,
         data: { ...packet.data, orders: [{ ...packet.data.orders[0], accessToken: 'synthetic-secret-marker' }], deliveries: [] } };
       const secretRejected = await call('/api/sync/push', { method: 'POST', body: secretPacket });
@@ -164,27 +191,34 @@ async function main() {
       const finalPage = await call(`/api/sync/pull?limit=1&deviceId=restaurant-test-device&cursor=${encodeURIComponent(next.body.nextCursor)}`);
       assert.equal(finalPage.status, 200);
       assert.equal(finalPage.body.events.length, 1);
-      assert.equal(finalPage.body.hasMore, false);
-      assert.equal(new Set([pull.body.events[0].eventId, next.body.events[0].eventId, finalPage.body.events[0].eventId]).size, 3,
+      assert.equal(finalPage.body.hasMore, true);
+      const lastPage = await call(`/api/sync/pull?limit=1&deviceId=restaurant-test-device&cursor=${encodeURIComponent(finalPage.body.nextCursor)}`);
+      assert.equal(lastPage.status, 200);
+      assert.equal(lastPage.body.events.length, 1);
+      assert.equal(lastPage.body.hasMore, false);
+      assert.equal(new Set([pull.body.events[0].eventId, next.body.events[0].eventId, finalPage.body.events[0].eventId, lastPage.body.events[0].eventId]).size, 4,
         'microsecond keyset cursor returns every outbox event exactly once');
 
       const riderTime = new Date(Date.now() + 2000).toISOString();
+      const motoInstall = await registerDevice('motoboy', 'rider-test-device');
+      assert.equal(motoInstall.status, 200);
       const riderPacket = { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1,
         packetId: `pkt_${crypto.randomUUID()}`, deviceId: 'rider-test-device', companyId: crypto.randomUUID(),
         source: { app: 'RotaMoto', deviceId: 'rider-test-device' }, createdAt: riderTime,
-        data: { orders: [], deliveries: [{ id: 'delivery-rider-local', orderId: 'order-local-1', status: 'ASSIGNED',
-          createdAt: baseTime, updatedAt: riderTime, version: 2 }], drivers: [], routes: [], locationUpdates: [],
+        data: { orders: [], deliveries: [{ id: 'delivery-rider-local', orderId: 'order-local-1', status: 'ASSIGNED', driverId: 'forged-driver',
+          createdAt: baseTime, updatedAt: riderTime, version: 2, baseVersion: 1 }], drivers: [], routes: [], locationUpdates: [],
           deliveryEvents: [], proofs: [], earnings: [], tombstones: [], races: [], settings: { driverId: 'synthetic' } } };
       const riderPush = await call('/api/sync/push', { method: 'POST', body: riderPacket });
       assert.equal(riderPush.status, 200, JSON.stringify(riderPush.body));
-      assert.equal(riderPush.body.aliases.find(alias => alias.entity === 'Delivery').canonicalId, deliveryId,
-        'another app installation resolves Delivery through its canonical Order relation');
+      assert.equal(riderPush.body.operationResults[0].status, 'rejected', 'Motoboy cannot overwrite the planned driver assignment');
       const mergedDelivery = await client.query("SELECT payload->>'status' AS status,payload->>'operationNote' AS operation_note FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",
         [companyId, deliveryId]);
       assert.equal(mergedDelivery.rows[0].status, 'ASSIGNED');
       assert.equal(mergedDelivery.rows[0].operation_note, 'preserve me', 'partial cross-app revision preserves absent fields');
 
       const eventId = event.rows[0].record_id;
+      const secondInstall = await registerDevice('restaurante', 'restaurant-second-device');
+      assert.equal(secondInstall.status, 200);
       const eventRetry = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, deviceId: 'restaurant-second-device',
         source: { app: 'RotaMoto Restaurante', deviceId: 'restaurant-second-device' },
         data: { orders: [], deliveries: [], drivers: [], routes: [], locationUpdates: [],
@@ -193,6 +227,7 @@ async function main() {
       const eventRetryResult = await call('/api/sync/push', { method: 'POST', body: eventRetry });
       assert.equal(eventRetryResult.status, 200, JSON.stringify(eventRetryResult.body));
       assert.equal(eventRetryResult.body.aliases[0].canonicalId, eventId, 'eventId deduplicates across installations');
+      assert.equal(eventRetryResult.body.operationResults[0].status, 'duplicate');
 
       const invalidTransition = structuredClone(packet);
       invalidTransition.packetId = `pkt_${crypto.randomUUID()}`;
@@ -200,27 +235,62 @@ async function main() {
       invalidTransition.data.deliveries[0] = { ...invalidTransition.data.deliveries[0], status: 'DELIVERED', version: 2,
         updatedAt: new Date(Date.now() + 5000).toISOString() };
       const transitionResult = await call('/api/sync/push', { method: 'POST', body: invalidTransition });
-      assert.equal(transitionResult.status, 409);
-      assert.equal(transitionResult.body.error.code, 'INVALID_TRANSITION');
+      assert.equal(transitionResult.status, 200);
+      assert.equal(transitionResult.body.operationResults[0].status, 'rejected');
+      assert.equal(transitionResult.body.operationResults[0].error.code, 'FORBIDDEN_FIELD');
       const unchanged = await client.query('SELECT payload->>\'status\' AS status FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2', [companyId, deliveryId]);
-      assert.equal(unchanged.rows[0].status, 'ASSIGNED', 'failed packet rolled back domain changes');
+      assert.equal(unchanged.rows[0].status, 'ASSIGNED', 'restaurant cannot rewrite execution state');
+
+      const invalidMotoTransition = { ...riderPacket, packetId: `pkt_${crypto.randomUUID()}`,
+        data: { ...riderPacket.data, deliveries: [], deliveryEvents: [{ eventId: `evt_${crypto.randomUUID()}`, entity: 'delivery',
+          entityId: deliveryId, type: 'DELIVERY_COMPLETED', occurredAt: new Date(Date.now() + 7000).toISOString() }] } };
+      const invalidMotoResult = await call('/api/sync/push', { method: 'POST', body: invalidMotoTransition });
+      assert.equal(invalidMotoResult.status, 200);
+      assert.equal(invalidMotoResult.body.operationResults[0].status, 'conflict');
+      assert.equal(invalidMotoResult.body.operationResults[0].error.code, 'INVALID_TRANSITION');
+      assert.equal(invalidMotoResult.body.operationResults[0].canonicalVersion, undefined, 'a rejected first event has no canonical revision');
+
+      const startEvent = { eventId: `evt_${crypto.randomUUID()}`, entity: 'delivery', entityId: deliveryId,
+        type: 'DELIVERY_STARTED', occurredAt: new Date(Date.now() + 8000).toISOString(), actor: { type: 'driver', id: 'spoofed-driver' } };
+      const executionPacket = { ...riderPacket, packetId: `pkt_${crypto.randomUUID()}`,
+        data: { ...riderPacket.data, deliveries: [], deliveryEvents: [startEvent], earnings: [{ id: 'moto-earning-event', deliveryId, amount: 999 }] } };
+      const executionResult = await call('/api/sync/push', { method: 'POST', body: executionPacket });
+      assert.equal(executionResult.status, 200);
+      assert.equal(executionResult.body.operationResults.find(result => result.entity === 'Earning').status, 'rejected');
+      const acceptedExecutionEvent = executionResult.body.operationResults.find(result => result.entity === 'DeliveryEvent');
+      assert.equal(acceptedExecutionEvent.status, 'accepted', JSON.stringify(executionResult.body.operationResults));
+      assert.equal(acceptedExecutionEvent.canonicalVersion, 1);
+      const projectedDelivery = await client.query("SELECT payload->>'status' AS status,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2", [companyId, deliveryId]);
+      assert.equal(projectedDelivery.rows[0].status, 'OUT_FOR_DELIVERY', 'execution event updates the canonical Delivery projection');
+      assert.equal(Number(projectedDelivery.rows[0].version), 2);
+      const riderSecondInstall = await registerDevice('motoboy', 'rider-second-device');
+      assert.equal(riderSecondInstall.status, 200);
+      const eventRetryPacket = { ...executionPacket, packetId: `pkt_${crypto.randomUUID()}`, deviceId: 'rider-second-device',
+        source: { app: 'RotaMoto Restaurante', deviceId: 'rider-second-device' }, data: { ...executionPacket.data, earnings: [] } };
+      const eventDuplicate = await call('/api/sync/push', { method: 'POST', body: eventRetryPacket });
+      assert.equal(eventDuplicate.body.operationResults[0].status, 'duplicate', 'eventId is idempotent across app installations');
 
       const changedRetry = structuredClone(packet);
       changedRetry.data.orders[0].customer = 'conteúdo divergente';
       const idempotencyConflict = await call('/api/sync/push', { method: 'POST', body: changedRetry });
       assert.equal(idempotencyConflict.status, 409, 'packetId reuse with different content is rejected');
 
-      const wrongOwnerPacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, source: { app: 'RotaMoto', deviceId: 'rider-device' },
-        deviceId: 'rider-device', data: { ...packet.data, deliveries: [], deliveryEvents: [], orders: [{ id: 'foreign-order',
-          createdAt: baseTime, updatedAt: baseTime, version: 1 }] } };
+      const wrongOwnerPacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, source: { app: 'RotaMoto Restaurante', deviceId: 'rider-test-device' },
+        deviceId: 'rider-test-device', data: { ...packet.data, deliveries: [], deliveryEvents: [], orders: [{ id: 'foreign-order',
+          createdAt: baseTime, updatedAt: baseTime, version: 1 }], earnings: [{ id: 'moto-earning', deliveryId: 'delivery-local-1', amount: 99 }] } };
       const wrongOwner = await call('/api/sync/push', { method: 'POST', body: wrongOwnerPacket });
-      assert.equal(wrongOwner.status, 403, 'Motoboy cannot write Restaurant-owned orders');
+      assert.equal(wrongOwner.status, 200, 'operation ownership failures return explicit per-operation ACK');
+      assert.equal(wrongOwner.body.operationResults[0].status, 'rejected', 'source.app spoofing does not authorize Restaurant writes');
+      assert.equal(wrongOwner.body.operationResults[0].error.code, 'FORBIDDEN');
+      assert.equal(wrongOwner.body.operationResults[1].entity, 'Earning');
+      assert.equal(wrongOwner.body.operationResults[1].status, 'rejected', 'Motoboy cannot publish canonical Earning');
 
       const tombstonePacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, data: { ...packet.data, orders: [], deliveries: [],
         tombstones: [{ store: 'deliveries', id: 'delivery-local-1', deleted: true,
-          deletedAt: new Date(Date.now() + 3000).toISOString(), updatedAt: new Date(Date.now() + 3000).toISOString(), version: 2 }] } };
+          deletedAt: new Date(Date.now() + 3000).toISOString(), updatedAt: new Date(Date.now() + 3000).toISOString(), version: 3, baseVersion: 2 }] } };
       const tombstoneResult = await call('/api/sync/push', { method: 'POST', body: tombstonePacket });
       assert.equal(tombstoneResult.status, 200, JSON.stringify(tombstoneResult.body));
+      assert.equal(tombstoneResult.body.operationResults.find(result => result.operation === 'tombstones:0').status, 'accepted');
       const tombstoneState = await client.query('SELECT deleted_at,payload->>\'deleted\' AS deleted FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2', [companyId, deliveryId]);
       assert.equal(tombstoneState.rows[0].deleted, 'true');
       assert(tombstoneState.rows[0].deleted_at);
@@ -239,6 +309,8 @@ async function main() {
       assert.deepEqual(noDdl.rows[0], { delete_domain: false, update_mapping: false, insert_outbox: true });
       assert(logs.every(entry => !Object.hasOwn(entry, 'payload') && !Object.hasOwn(entry, 'companyId')),
         'sync logs contain request metadata only');
+      const rateLimitInstall = await registerDevice('restaurante', 'rate-limit-device');
+      assert.equal(rateLimitInstall.status, 200);
       const limitedServer = http.createServer(createSyncHttpHandler({ identityService, syncService,
         rateLimiter: createRateLimiter({ policies: { default: { limit: 1, windowMs: 60000 } } }) }));
       await new Promise(resolve => limitedServer.listen(0, '127.0.0.1', resolve));

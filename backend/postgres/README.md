@@ -31,8 +31,9 @@ The first migration enables row-level security with a default-deny tenant
 context on every tenant-owned table. Identity and session tables are global and
 must only be queried by trusted server code.
 
-Migrations `0005` and `0006` add the canonical domain/sync foundation without
-changing `0001`–`0004`. `domain_records` stores the existing v1 entity payload
+Migrations `0005`–`0008` add the canonical domain/sync foundation without
+changing `0001`–`0004`. `0008` binds each installation to its registering user.
+`domain_records` stores the existing v1 entity payload
 as JSONB while the database enforces canonical UUID, tenant, revision,
 relationship and Delivery status constraints. `companies` remains the canonical
 Company identity table. Installations namespace local aliases by tenant, app
@@ -41,28 +42,39 @@ RLS is enabled and forced on the new tables. Runtime receives only the DML
 needed by authenticated sync; it cannot delete canonical rows or mutate ID
 aliases.
 
-`POST /api/sync/push` and `GET /api/sync/pull` are loopback-only through the
-existing server. They require an authenticated session and the dedicated
-`sync.push` or `sync.pull` permission keys; push also checks CSRF. Tenant identity is taken from the session,
-never from packet `companyId`. Push is transactional with packet receipt,
-canonical writes, audit and outbox. Packet IDs are content-digest idempotent;
-event IDs are unique within a tenant across installations. DeliveryEvent rows
-are immutable, Delivery transitions follow `CONTRACT.md`, and tombstones are
-soft deletes. Pull uses a microsecond-precision keyset cursor.
+`POST /api/sync/installations/restaurante` and
+`POST /api/sync/installations/motoboy` register a device under the authenticated
+tenant and user. Registration route, permission, and session determine the
+stored `app_key`; subsequent push/pull resolve the installation server-side by
+that binding. `source.app` is ignored for authorization and remains descriptive
+metadata. This is an authenticated installation binding, not binary app
+attestation. Registration and push require CSRF and `sync.push`; pull requires
+`sync.pull` and a registered installation.
 
-The current v1 contract does not define per-field ownership or entity-specific
-payload schemas. The service preserves unknown contract payload fields, rejects
-known writes from the wrong application, and merges omitted fields when a newer
-Delivery projection arrives. Ambiguous order/delivery aliases fail with a
-conflict instead of automatic reconciliation. `races` and `settings` are
-accepted only because current clients include those local projections in the
-v1 envelope; they are not persisted as canonical entities. `source.app` is
-client-supplied protocol metadata, not an authentication claim; current
-membership permission `sync.push` is the authorization boundary. Before adding
-less-trusted roles, entity-specific permissions and field ownership must be
-defined. Client integration, conflict UX, explicit field-level Delivery
-ownership, and ack/worker behavior remain future work. A schema or semantic
-incompatibility requires a versioned contract change.
+Push preserves the v1 envelope and returns an `operationResults` entry for each
+domain operation. A packet-level HTTP 200 means processing completed; each
+entry separately reports `accepted`, `duplicate`, `rejected`, or `conflict`,
+local and canonical IDs/revision where known, and a stable error code. Savepoints
+allow independent operations in one packet to commit or reject independently.
+Packet IDs are digest-idempotent; event IDs are immutable and idempotent across
+installations. Revisions use `baseVersion`/`sync.canonicalVersion`; stale edits
+conflict instead of last-write-wins. Pull uses a microsecond keyset cursor.
+
+Ownership follows `CONTRACT.md`: Restaurant writes Order, Driver, Route, and
+Earning; Moto writes LocationPoint, DeliveryProof, and DeliveryEvent execution
+facts. The server projects allowed execution events onto Delivery state. Only
+Restaurant creates/plans/assigns/cancels Delivery; Moto cannot publish Delivery
+or canonical Earning. `races` and `settings` are local projections and are not
+persisted as canonical entities. Tombstones follow the owning application and
+share the operation ACK semantics.
+
+Both clients expose `RotaMotoSync.loginToServer` and `syncWithServer`. They keep
+session CSRF only in memory, retain packet retries in the existing local outbox,
+persist operation ACK/revision mappings in `syncState`, and transactionally stage
+pull snapshots/inbox plus cursor in IndexedDB. Network/API failure does not
+change local business records. Canonical pull snapshots are cached separately
+from local projections so unresolved local edits are preserved; applying those
+snapshots into each app's distinct UI model remains a later reconciliation step.
 
 Do not set the migrator URL in the HTTP server environment. `server.js` creates
 the API pool with `rotamoto_app`; the migration CLI is a separate process.
