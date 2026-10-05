@@ -9,6 +9,7 @@ const source = fs.readFileSync(uiPath, 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const html = fs.readFileSync(htmlPath, 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, '..', 'identity-ui.css'), 'utf8');
+assert.match(html, /identity-session-guard\.js[\s\S]*?app\.js/u, 'shared session/CSRF guard loads before the sync client');
 
 assert.match(source, /autocomplete="current-password"/u);
 assert.match(source, /autocomplete="one-time-code"/u);

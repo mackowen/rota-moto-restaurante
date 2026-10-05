@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { deriveCsrfToken } = require('./csrf');
 const { hashPassword, verifyPassword } = require('./passwords');
 const { requireEmailProvider } = require('./email-provider');
 
@@ -554,7 +555,7 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
 
   async function createSession(client, userId, companyId, mfaVerified = false) {
     const sessionToken = crypto.randomBytes(32).toString('base64url');
-    const csrfToken = crypto.randomBytes(32).toString('base64url');
+    const csrfToken = deriveCsrfToken(sessionToken);
     const now = clock();
     const sessionId = id();
     const inserted = await client.query(`INSERT INTO rotamoto.sessions
@@ -596,8 +597,9 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
     return result.rowCount === 1;
   }
 
-  async function renewCsrfToken(client, sessionId) {
-    const csrfToken = crypto.randomBytes(32).toString('base64url');
+  async function renewCsrfToken(client, sessionId, sessionToken) {
+    if (typeof sessionToken !== 'string' || !sessionToken) throw new IdentityError('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
+    const csrfToken = deriveCsrfToken(sessionToken);
     const result = await client.query(`UPDATE rotamoto.sessions SET csrf_digest=$2
       WHERE id=$1 AND revoked_at IS NULL AND idle_expires_at>now() AND absolute_expires_at>now()
       RETURNING id`, [sessionId, digestText(csrfToken)]);

@@ -3,9 +3,26 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { createSessionReadGuard, sessionRestoreErrorMessage } = require('../identity-session-guard');
+const { createSessionReadGuard, sessionRestoreErrorMessage, beginCsrfRefresh, withSessionRead, setCsrfToken, getCsrfToken, clearCsrfToken } = require('../identity-session-guard');
 
 async function run() {
+  setCsrfToken('fresh-session-proof');
+  assert.equal(getCsrfToken(), 'fresh-session-proof', 'identity and sync clients share the latest in-memory CSRF proof');
+  const olderRefresh = beginCsrfRefresh();
+  const newerRefresh = beginCsrfRefresh();
+  assert.equal(setCsrfToken('newer-proof', newerRefresh), true);
+  assert.equal(setCsrfToken('stale-proof', olderRefresh), false, 'late session responses cannot restore an obsolete CSRF proof');
+  assert.equal(getCsrfToken(), 'newer-proof');
+  clearCsrfToken();
+  assert.equal(getCsrfToken(), null, 'session expiry clears the shared CSRF proof');
+  let sessionReadCount = 0;
+  let releaseSharedSessionRead;
+  const pendingSharedRead = new Promise(resolve => { releaseSharedSessionRead = resolve; });
+  const readSession = () => withSessionRead(async () => { sessionReadCount += 1; return pendingSharedRead; });
+  const sessionReaders = [readSession(), readSession()];
+  releaseSharedSessionRead({ userId: 'e2e-user', csrfToken: 'one-shared-read' });
+  assert.deepEqual(await Promise.all(sessionReaders), [{ userId: 'e2e-user', csrfToken: 'one-shared-read' }, { userId: 'e2e-user', csrfToken: 'one-shared-read' }]);
+  assert.equal(sessionReadCount, 1, 'simultaneous identity and sync boot share one CSRF-rotating session read');
   const guard = createSessionReadGuard();
   let gated = true;
   let offlineMode = false;

@@ -38,21 +38,33 @@ function savepointPool(client) {
 
 function rateLimiter() {
   return createRateLimiter({ policies: { login: { limit: 50, windowMs: 60000 }, recovery: { limit: 50, windowMs: 60000 },
-    invitation: { limit: 50, windowMs: 60000 }, provision: { limit: 50, windowMs: 60000 }, default: { limit: 200, windowMs: 60000 } } });
+    invitation: { limit: 50, windowMs: 60000 }, provision: { limit: 50, windowMs: 60000 }, default: { limit: 1000, windowMs: 60000 } } });
 }
 
 async function start(handler) {
+  // Browser requests can arrive concurrently while sharing the lifecycle's
+  // single PostgreSQL connection. Serialize them so savepoints never overlap.
+  let pending = Promise.resolve();
   const server = http.createServer(async (req, res) => {
     req.clientIp = '127.0.0.1';
     req.requestId = crypto.randomUUID();
-    for (const route of handler) if (await route(req, res)) return;
-    res.writeHead(404).end();
+    const task = pending.then(async () => {
+      for (const route of handler) if (await route(req, res)) return;
+      if (!res.writableEnded) res.writeHead(404).end();
+    });
+    pending = task.catch(() => {});
+    task.catch(error => {
+      if (!res.headersSent) res.writeHead(500, { 'Cache-Control': 'no-store' });
+      if (!res.writableEnded) res.end();
+      // Keep the queue usable while surfacing the failure in the request log.
+      console.error(`E2E fixture request ${req.requestId} failed: ${error.message}`);
+    });
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   return { server, base: `http://127.0.0.1:${server.address().port}` };
 }
 
-async function runFixtureLifecycle({ env = process.env, exercise = async () => {} } = {}) {
+async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [] } = {}) {
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
   const { runtime, migrator } = clients;
   let connectedRuntime = false;
@@ -78,16 +90,19 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       emailProvider: createEmailDeliveryProvider(async message => { emails.push(message); return { accepted: true }; }),
       mfaProvider: createMfaProvider(async ({ code }) => code === mfaCode) });
     const limiter = rateLimiter();
-    const identityHttp = createIdentityHttpHandler({ identityService, logger: () => {}, rateLimiter: limiter });
+    const originConfig = allowedOrigins.length ? allowedOrigins : undefined;
+    const identityHttp = createIdentityHttpHandler({ identityService, logger: () => {}, rateLimiter: limiter,
+      allowedOrigin: originConfig });
     const adminHttp = createAdminHttpHandler({ identityService, adminService: createAdminService({ repository: createAdminRepository() }),
-      logger: () => {}, rateLimiter: limiter });
-    const syncHttp = createSyncHttpHandler({ identityService, syncService: createSyncService(), logger: () => {}, rateLimiter: limiter });
+      logger: () => {}, rateLimiter: limiter, allowedOrigin: originConfig });
+    const syncHttp = createSyncHttpHandler({ identityService, syncService: createSyncService(), logger: () => {}, rateLimiter: limiter,
+      allowedOrigin: originConfig });
     const queryHttp = createDomainQueryHttpHandler({ identityService,
       queryService: createDomainQueryService({ repository: createDomainQueryRepository() }), logger: () => {}, rateLimiter: limiter });
     host = await start([identityHttp, adminHttp, syncHttp, queryHttp]);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {} } = {}) => {
-      const response = await fetch(`${host.base}${path}`, { method, headers: { Origin: host.base,
+      const response = await fetch(`${host.base}${path}`, { method, headers: { Origin: allowedOrigins[0] || host.base,
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(cookie ? { Cookie: cookie } : {}),
         ...(csrf ? { 'X-CSRF-Token': csrf } : {}), ...headers },
       body: body === undefined ? undefined : JSON.stringify(body) });
@@ -166,8 +181,10 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(delivery.status, 200, JSON.stringify(delivery.body));
     assert.equal(delivery.body.record.orderId, orderId);
 
+    const authenticatedCall = (path, options = {}) => call(path, { ...options,
+      cookie: options.cookie || sessionCookie, csrf: options.csrf === undefined ? csrf : options.csrf });
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
-      driverId, orderId, deliveryId, runtime, call }));
+      driverId, orderId, deliveryId, email, password, mfaCode, apiOrigin: host.base, runtime, call, authenticatedCall }));
     return Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
       driverId, orderId, deliveryId, authenticated: true, mfaVerified: true });
   } finally {

@@ -62,7 +62,8 @@
   }
   async function request(path, options = {}, retried = false) {
     const method = options.method || 'GET';
-    const headers = { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(csrf && method !== 'GET' ? { 'X-CSRF-Token': csrf } : {}), ...(options.headers || {}) };
+    const activeCsrf = window.RotaMotoSessionGuard?.getCsrfToken() || csrf;
+    const headers = { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(activeCsrf && method !== 'GET' ? { 'X-CSRF-Token': activeCsrf } : {}), ...(options.headers || {}) };
     let response;
     try { response = await fetch(`${API}${path}`, { credentials: 'include', cache: 'no-store', ...options, headers }); }
     catch (_) { const error = new Error('NETWORK'); error.network = true; throw error; }
@@ -140,7 +141,7 @@
   function expireSession() {
     if (!current) return;
     sessionReadGuard.invalidate();
-    csrf = null; current = null; offlineMode = false;
+      csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; offlineMode = false;
     Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {});
     showSession(null); setOpen(true);
     $('[data-login-error]').textContent = 'Sua sessão expirou ou deixou de estar válida. Entre novamente.';
@@ -150,13 +151,15 @@
     const readVersion = sessionReadGuard.capture();
     const hadAuthenticatedSession = Boolean(current);
     try {
-      const session = await request('/identity/session');
+      const session = window.RotaMotoSessionGuard?.withSessionRead
+        ? await window.RotaMotoSessionGuard.withSessionRead(() => fetch(`${API}/identity/session`, { credentials: 'include', cache: 'no-store' }))
+        : await request('/identity/session');
       if (!sessionReadGuard.isCurrent(readVersion)) return current;
       if (typeof session.csrfToken !== 'string') throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
-      csrf = session.csrfToken; showSession(session); return session;
+      csrf = session.csrfToken; window.RotaMotoSessionGuard?.setCsrfToken(csrf); showSession(session); return session;
     } catch (error) {
       if (!sessionReadGuard.isCurrent(readVersion)) return current;
-      csrf = null; current = null; showSession(null);
+      csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; showSession(null);
       if (error.status === 401) {
         $('[data-login-error]').textContent = window.RotaMotoSessionGuard.sessionRestoreErrorMessage(error, hadAuthenticatedSession, message);
       }
@@ -175,7 +178,7 @@
     try {
       const body = { email: String(data.get('email')).trim(), password: String(password), ...(data.get('companyId') ? { companyId: String(data.get('companyId')).trim() } : {}), ...(data.get('mfaCode') ? { mfaCode: String(data.get('mfaCode')).trim() } : {}) };
       const result = await request('/identity/login', { method: 'POST', body: JSON.stringify(body) });
-      csrf = result.csrfToken; form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true;
+      csrf = result.csrfToken; window.RotaMotoSessionGuard?.setCsrfToken(csrf); form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true;
       const session = await restore();
       if (!session) throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
       await syncAfterAuthentication();

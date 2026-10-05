@@ -11,6 +11,10 @@
     const parsed = Date.parse(value || '');
     return new Date(Number.isFinite(parsed) ? parsed : Date.now()).toISOString();
   };
+  const canonicalBaseVersion = record => {
+    const version = Number(record?.sync?.canonicalVersion);
+    return Number.isSafeInteger(version) && version > 0 ? { baseVersion: version } : {};
+  };
 
   function safeSourceExtension(value, depth = 0) {
     if (depth > 5) return undefined;
@@ -35,6 +39,7 @@
       createdAt: timestamp(order.createdAt),
       updatedAt: timestamp(order.updatedAt || order.createdAt),
       version: Math.max(1, Number(order.version || 0), Number(order.sync?.version || 0)),
+      ...canonicalBaseVersion(order),
     };
     const fields = {
       number: order.number ?? order.num,
@@ -74,6 +79,7 @@
       createdAt: timestamp(driver.createdAt),
       updatedAt: timestamp(driver.updatedAt || driver.createdAt),
       version: Math.max(1, Number(driver.version || 0), Number(driver.sync?.version || 0)),
+      ...canonicalBaseVersion(driver),
     };
     for (const key of ['name', 'phone', 'email', 'status']) {
       if (typeof driver[key] === 'string' && driver[key].trim()) record[key] = driver[key].trim();
@@ -99,6 +105,7 @@
       createdAt: timestamp(delivery.createdAt || order.createdAt),
       updatedAt: timestamp(order.updatedAt || delivery.updatedAt || order.createdAt),
       version: Math.max(1, Number(delivery.version || 0), Number(order.version || 0), Number(order.sync?.version || 0)),
+      ...canonicalBaseVersion(delivery),
     };
     const driverId = order.bikeId || order.driverId || delivery.driverId;
     if (typeof driverId === 'string' && driverId) record.driverId = driverId;
@@ -117,6 +124,7 @@
       createdAt: timestamp(route.createdAt),
       updatedAt: timestamp(route.updatedAt || route.createdAt),
       version: Math.max(1, Number(route.version || 0), Number(route.sync?.version || 0)),
+      ...canonicalBaseVersion(route),
       deliveryIds: Array.isArray(route.deliveryIds) ? [...route.deliveryIds] : [],
       ...(Array.isArray(route.stops) ? { stops: route.stops } : {}),
       ...(route.origin && typeof route.origin === 'object' && !Array.isArray(route.origin) ? { origin: route.origin } : {}),

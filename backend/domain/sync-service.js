@@ -175,6 +175,12 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         WHERE company_id=$1 AND entity_type='DeliveryEvent' AND source_event_id=$2`, [companyId, local]);
       if (event.rowCount) return { localId: local, canonicalId: event.rows[0].record_id, created: true, canonicalExists: true };
     }
+    if (entityType !== 'DeliveryEvent' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(local)) {
+      const canonical = await client.query(`SELECT record_id::text FROM rotamoto.domain_records
+        WHERE company_id=$1 AND entity_type=$2 AND record_id=$3`, [companyId, entityType, local]);
+      if (canonical.rowCount) return { localId: local, canonicalId: canonical.rows[0].record_id, created: true, canonicalExists: true };
+    }
     if (!create) return null;
     return { localId: local, canonicalId: uuidV7(clock().getTime()), created: true };
   }
@@ -266,6 +272,8 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       let canonical = { ...record, id: canonicalId, companyId,
         ...(entityType === 'DeliveryEvent' ? { eventId: canonicalId } : {}),
         createdAt: meta.createdAt.toISOString(), updatedAt: meta.updatedAt.toISOString(), version: meta.version };
+      delete canonical.baseVersion;
+      delete canonical.sync;
       let routeMembershipChange = null;
       if(entityType==='Route'&&record.deliveryIds===undefined&&resolved.created)canonical.deliveryIds=[];
       if(entityType==='Route'&&record.deliveryIds!==undefined){

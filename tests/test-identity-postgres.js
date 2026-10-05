@@ -181,6 +181,12 @@ async function main() {
     await client.query('SAVEPOINT csrf_check');
     const principal = await service.resolveSession(client, session.sessionToken);
     assert.equal(principal.authenticated, true);
+    const refreshedCsrfTokens = await Promise.all([
+      service.renewCsrfToken(client, principal.session_id, session.sessionToken),
+      service.renewCsrfToken(client, principal.session_id, session.sessionToken)
+    ]);
+    assert.deepEqual(refreshedCsrfTokens, [session.csrfToken, session.csrfToken],
+      'concurrent session reads return one stable CSRF token instead of invalidating each other');
     assert.equal(await service.verifyCsrf(client, principal.session_id, session.csrfToken), true);
     assert.equal(await service.verifyCsrf(client, principal.session_id, 'invalid'), false);
     await client.query('ROLLBACK TO SAVEPOINT csrf_check');

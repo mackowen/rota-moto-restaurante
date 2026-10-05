@@ -245,7 +245,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           const user = await client.query(`SELECT email,email_verified_at IS NOT NULL AS email_verified
             FROM rotamoto.users WHERE id=$1 AND disabled_at IS NULL`, [value.user_id]);
           if (!user.rowCount) throw fail('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
-          const csrfToken = await identityService.renewCsrfToken(client, value.session_id);
+          const csrfToken = await identityService.renewCsrfToken(client, value.session_id, sessionToken);
           return { userId: value.user_id, email: user.rows[0].email, emailVerified: user.rows[0].email_verified,
             activeCompanyId: value.company_id, activeRoleId: value.role_id, driverId: value.driver_id || null,
             permissions: permissions.rows.map(row => row.permission_key),

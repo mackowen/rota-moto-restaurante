@@ -20,6 +20,7 @@ assert.match(appSource,/loginToServer:loginToSyncServer/);assert.match(appSource
 assert.match(appSource,/sync-packet:/);assert.match(appSource,/operationResults/);
 assert.match(appSource,/canonical:\$\{event\.entity\}:\$\{event\.entityId\}/);
 assert.match(appSource,/multiStoreTransaction\(\[\.\.\.localStores,'inbox','syncState'\]/);
+assert.match(appSource,/function multiStoreTransaction\(storeNames,mode,work\)/,'multi-store persistence helper used by sync is defined');
 assert.match(appSource,/X-CSRF-Token/);
 if(appSource.includes("function recordDeliveryEvent(type,r,payload={}")){
   const builder=appSource.slice(appSource.indexOf('async function buildSyncPacket'),appSource.indexOf('function downloadSyncPacket'));
@@ -30,6 +31,22 @@ if(appSource.includes("function recordDeliveryEvent(type,r,payload={}")){
   assert.match(appSource,/canonicalEarningFromOrder\(order,companyId\)/,'Restaurant calculates canonical Earning from its existing rule');
   const builder=appSource.slice(appSource.indexOf('async function buildRestaurantSyncPacket'),appSource.indexOf('function downloadSyncPacket'));
   assert(!builder.includes('packet.data.settings='),'local settings are excluded from canonical sync');
+  assert.match(builder,/filter\(driver=>driver\.sync\?\.state==='local'\|\|!driver\.sync\?\.canonicalId\)/,
+    'unchanged canonical Drivers pulled from the server are not re-created by another installation');
+  assert.match(appSource,/function isLocallyDirtyForSync\(record\)\{return record\?\.sync\?\.state==='local'\|\|!record\?\.sync\?\.canonicalId\}/,
+    'only locally changed or not-yet-canonical records can be uploaded');
+  assert.match(builder,/if\(orderChangedHere\)orders\.push/,
+    'unchanged canonical Orders pulled from another installation are not uploaded again');
+  assert.match(builder,/if\(!order\.deliveryId&&orderChangedHere\)\{order\.deliveryId=deliveryId;await put\('orders',order\)\}/,
+    'derived Delivery links on imported canonical Orders do not mark the Order dirty');
+  assert.match(builder,/deliveryFromOrder\(order\.deliveryId\?order:\{\.\.\.order,deliveryId\}/,
+    'packet construction can project a Delivery without mutating an imported Order');
+  assert.match(builder,/if\(\(orderChangedHere\|\|deliveryChangedHere\)/,
+    'Delivery uploads require an Order or Delivery changed in this installation');
+  assert.match(builder,/filter\(isLocallyDirtyForSync\)/,
+    'unchanged canonical Routes are not re-created by another installation');
+  assert.match(builder,/isLocallyDirtyForSync\(order\)/,
+    'Earning snapshots are not emitted from unchanged imported Orders');
 }
 const syncTransport=appSource.slice(appSource.indexOf('async function syncWithServer'),appSource.indexOf('async function persistSyncAck'));
 assert(syncTransport.indexOf('const ack=await send')<syncTransport.indexOf('persistSyncAck(queued.packet,ack.operationResults'),
