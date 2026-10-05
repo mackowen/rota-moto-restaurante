@@ -59,6 +59,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
   let transactionOpen = false;
   let host;
   let companyId;
+  let fixtureUserId;
+  let fixtureEmail;
   try {
     await runtime.connect(); connectedRuntime = true;
     await assertConnectedIdentity(runtime, { role: 'rotamoto_app' });
@@ -92,7 +94,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       const text = await response.text();
       return { status: response.status, body: text ? JSON.parse(text) : null, headers: response.headers };
     };
-    const email = `e2e-${crypto.randomUUID()}@example.invalid`;
+    const email = fixtureEmail = `e2e-${crypto.randomUUID()}@example.invalid`;
     const provisionInput = { companyName: 'E2E Fixture Tenant', email, idempotencyKey: `e2e-${crypto.randomUUID()}` };
     const denied = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionInput });
     assert.equal(denied.status, 403, 'fixture operator provider rejects missing marker');
@@ -106,6 +108,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
 
     const accepted = await call('/api/identity/invitations/accept', { method: 'POST', body: { token: emails[0].token, password } });
     assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+    fixtureUserId = accepted.body.userId;
     const invalidMfa = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId,
       mfaCode: String((Number(mfaCode) + 1) % 1000000).padStart(6, '0') } });
     assert.equal(invalidMfa.status, 403, 'invalid test MFA proof cannot create an authenticated fixture');
@@ -181,10 +184,22 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         await migrator.query("SELECT set_config('app.tenant_id',$1,true)", [companyId || '00000000-0000-7000-8000-000000000000']);
         const residual = await migrator.query(`SELECT
           (SELECT count(*) FROM rotamoto.companies WHERE id=$1) AS companies,
-          (SELECT count(*) FROM rotamoto.users WHERE id=(SELECT user_id FROM rotamoto.memberships WHERE company_id=$1 LIMIT 1)) AS users,
+          (SELECT count(*) FROM rotamoto.users WHERE id=$2 AND email=$3) AS users,
+          (SELECT count(*) FROM rotamoto.credentials WHERE user_id=$2) AS credentials,
+          (SELECT count(*) FROM rotamoto.memberships WHERE company_id=$1 AND user_id=$2) AS memberships,
+          (SELECT count(*) FROM rotamoto.roles WHERE company_id=$1) AS roles,
+          (SELECT count(*) FROM rotamoto.provisioning_requests WHERE company_id=$1) AS provisioning_requests,
+          (SELECT count(*) FROM rotamoto.identity_tokens WHERE company_id=$1) AS identity_tokens,
+          (SELECT count(*) FROM rotamoto.sessions WHERE user_id=$2) AS sessions,
           (SELECT count(*) FROM rotamoto.domain_records WHERE company_id=$1) AS domain_records,
-          (SELECT count(*) FROM rotamoto.sync_installations WHERE company_id=$1) AS installations`, [companyId || '00000000-0000-7000-8000-000000000000']);
-        if (companyId) assert.deepEqual(residual.rows[0], { companies: '0', users: '0', domain_records: '0', installations: '0' }, 'rollback teardown leaves no fixture residue');
+          (SELECT count(*) FROM rotamoto.sync_installations WHERE company_id=$1) AS installations,
+          (SELECT count(*) FROM rotamoto.local_id_maps WHERE company_id=$1) AS aliases,
+          (SELECT count(*) FROM rotamoto.sync_inbox WHERE company_id=$1) AS inbox,
+          (SELECT count(*) FROM rotamoto.sync_outbox WHERE company_id=$1) AS outbox,
+          (SELECT count(*) FROM rotamoto.audit_log WHERE company_id=$1) AS audit_rows`,
+        [companyId || '00000000-0000-7000-8000-000000000000', fixtureUserId || '00000000-0000-7000-8000-000000000000', fixtureEmail || 'e2e-fixture-absent@example.invalid']);
+        if (companyId) assert(Object.values(residual.rows[0]).every(value => value === '0'),
+          'rollback teardown leaves no fixture residue across identity, audit and sync tables');
       } finally { await migrator.query('ROLLBACK'); }
     } finally { await migrator.end(); }
   }
