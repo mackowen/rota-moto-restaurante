@@ -9,9 +9,13 @@ const {URL}=require('node:url');
 const {Pool}=require('pg');
 const fs=require('node:fs');
 const {createIdentityService}=require('./backend/identity/service');
+const {createNativeMfaProvider}=require('./backend/identity/native-mfa-provider');
 const {createSmtpMailProvider}=require('./backend/identity/smtp-mail-provider');
 const {createIdentityHttpHandler}=require('./backend/identity/http');
 const {createSyncService}=require('./backend/domain/sync-service');
+const {createMediaStorage}=require('./backend/domain/media-storage');
+const {createFilesystemObjectStore}=require('./backend/domain/filesystem-object-store');
+const {createProofMediaHttpHandler}=require('./backend/domain/proof-media-http');
 const {createSyncHttpHandler}=require('./backend/domain/sync-http');
 const {createDomainQueryRepository}=require('./backend/domain/query-repository');
 const {createDomainQueryService}=require('./backend/domain/query-service');
@@ -46,10 +50,18 @@ const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),
 identityPool.on('error',error=>console.error(JSON.stringify({event:'postgres.pool.error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'DATABASE_ERROR'})));
 let smtpProviderPromise=null;
 const emailProvider=CONFIG.smtp?.host?{async send(message){if(!smtpProviderPromise)smtpProviderPromise=(async()=>{const secrets=await secretProvider;if(!secrets)throw new Error('Secret provider indisponível.');const password=await secrets.get(CONFIG.smtp.passwordRef,{name:'smtp/password',scope:'installation'});return createSmtpMailProvider({...CONFIG.smtp,password})})();return (await smtpProviderPromise).send(message)}}:null;
-const identityService=createIdentityService({pool:identityPool,emailProvider});
+let nativeMfaPromise=null;
+const mfaProvider=secretProvider?{async verify(input){if(!nativeMfaPromise)nativeMfaPromise=(async()=>createNativeMfaProvider({secretProvider:await secretProvider}))();return (await nativeMfaPromise).verify(input)}}:null;
+const identityService=createIdentityService({pool:identityPool,emailProvider,mfaProvider,secretProvider});
 const requestLogger=entry=>console.info(JSON.stringify(entry));
 const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
-const syncService=createSyncService();
+let mediaProviderPromise=null;
+async function getMediaStorage(){if(!CONFIG.mediaDirectory)return createMediaStorage();if(!mediaProviderPromise)mediaProviderPromise=createFilesystemObjectStore({directory:CONFIG.mediaDirectory}).then(objectStore=>createMediaStorage({objectStore}));return mediaProviderPromise}
+const mediaStorage=Object.freeze({configured:()=>Boolean(CONFIG.mediaDirectory),status:()=>CONFIG.mediaDirectory?{configured:true,provider:'filesystem-v1'}:{configured:false,provider:null},
+  async storeProof(value){return(await getMediaStorage()).storeProof(value)},async validateReference(ref,metadata){return(await getMediaStorage()).validateReference(ref,metadata)},
+  async read(ref,metadata){return(await getMediaStorage()).read(ref,metadata)},async remove(ref){return(await getMediaStorage()).remove(ref)}});
+const proofMediaHttp=createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin:ALLOWED_ORIGINS});
+const syncService=createSyncService({mediaStorage});
 const syncHttp=createSyncHttpHandler({identityService,syncService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const domainQueryService=createDomainQueryService({repository:createDomainQueryRepository()});
 const domainQueryHttp=createDomainQueryHttpHandler({identityService,queryService:domainQueryService,logger:()=>{}});
@@ -96,6 +108,7 @@ async function route(req,res){
     if(shuttingDown&&u.pathname!=='/health/live')return json(res,503,{status:'shutting_down',requestId:req.requestId});
     if(await identityHttp(req,res))return;
     if(await adminHttp(req,res))return;
+    if(await proofMediaHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
     if(await syncHttp(req,res))return;
     if(req.headers.origin&&!ALLOWED_ORIGINS.includes(req.headers.origin))return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
@@ -113,6 +126,7 @@ async function route(req,res){
 
 async function startServer({pool=identityPool,config=CONFIG,logger=entry=>console.info(JSON.stringify(entry))}={}){
   assertLoopbackHost(config.host);
+  if(config.mediaDirectory)await getMediaStorage();
   if(!await databaseReadiness(pool))throw new Error('Schema PostgreSQL incompatível com a versão do servidor.');
   const server=http.createServer({maxHeaderSize:16*1024},route);
   server.requestTimeout=config.requestTimeoutMs;server.headersTimeout=config.headersTimeoutMs;server.keepAliveTimeout=config.keepAliveTimeoutMs;server.maxHeadersCount=100;

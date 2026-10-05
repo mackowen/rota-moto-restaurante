@@ -111,8 +111,8 @@ async function main() {
   assert.deepEqual(e2e.ledger,official.ledger,'migration ledger ownership/access differs');
   assert.deepEqual(e2e.applied.map(row=>({...row,checksum_sha256:row.checksum_sha256.trim()})),
     getMigrations().map(({id,checksum})=>({migration_id:id,checksum_sha256:checksum})),
-    'E2E ledger does not match local migrations 0001–0013');
-  assert.equal(e2e.applied.length,13,'E2E ledger must contain exactly migrations 0001–0013');
+    'E2E ledger does not match the local additive migration set');
+  assert.equal(e2e.applied.length,getMigrations().length,'E2E ledger must contain exactly the local migrations');
   assert.equal(e2e.database.app_connect,official.database.app_connect);
   assert.equal(e2e.database.app_create,official.database.app_create);
   assert.equal(e2e.database.app_temp,official.database.app_temp);
@@ -126,7 +126,7 @@ async function main() {
   assert.equal(e2e.membership.app_can_set_migrator,false,'runtime role can SET ROLE to migration role');
   assert(official.roles.every(role=>!role.rolsuper&&!role.rolcreatedb&&!role.rolcreaterole&&!role.rolreplication&&!role.rolbypassrls),
     'a protected role has an elevated attribute');
-  console.log('E2E security parity: PASS (effective runtime ACLs, PUBLIC ACLs, ownership, RLS/FORCE, policies, ledger; 13 checksums)');
+  console.log(`E2E security parity: PASS (effective runtime ACLs, PUBLIC ACLs, ownership, RLS/FORCE, policies, ledger; ${getMigrations().length} checksums)`);
 }
 
 if (require.main===module) main().catch(error=>{console.error(error.message);process.exitCode=1;});

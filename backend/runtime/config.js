@@ -109,8 +109,12 @@ function loadRuntimeConfig(env = process.env) {
     if (publicBase.protocol !== 'https:' || publicBase.username || publicBase.password || publicBase.search || publicBase.hash)
       throw new Error('PUBLIC_BASE_URL deve ser HTTPS sem credenciais, query ou fragmento.');
   }
+  const mediaDirectory = env.ROTAMOTO_MEDIA_DIRECTORY || null;
+  const backupDirectory = env.ROTAMOTO_BACKUP_DIRECTORY || null;
+  if ([mediaDirectory, backupDirectory].some(value => value && !path.isAbsolute(value)))
+    throw new Error('Paths de storage e backup devem ser absolutos.');
 
-  return Object.freeze({ nodeEnv, production, host, port, databaseUrl, allowedOrigins: origins, smtp,
+  return Object.freeze({ nodeEnv, production, host, port, databaseUrl, allowedOrigins: origins, smtp, mediaDirectory, backupDirectory,
     allowedHosts, trustedProxyAddresses, trustProxy: trustedProxyAddresses.length>0,
     databaseTlsCaFile:production?env.DATABASE_TLS_CA_FILE:null, requestTimeoutMs: 30_000, headersTimeoutMs: 10_000,
     keepAliveTimeoutMs: 5_000, shutdownTimeoutMs: 10_000,

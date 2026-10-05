@@ -34,7 +34,11 @@ function createMediaStorage({ objectStore = null, provider = null } = {}) {
     const result = await objectStore.get(reference, { contentType: metadata?.mimeType, sizeBytes: metadata?.sizeBytes, sha256: metadata?.sha256 });
     return result;
   }
-  return Object.freeze({ configured, status: () => configured() ? objectStore.status() : { configured: false, provider: null }, storeProof, validateReference, read });
+  async function remove(reference) {
+    if (!configured() || typeof objectStore.remove !== 'function') throw new Error('Storage local não suporta remoção segura.');
+    return objectStore.remove(reference);
+  }
+  return Object.freeze({ configured, status: () => configured() ? objectStore.status() : { configured: false, provider: null }, storeProof, validateReference, read, remove });
 }
 
 module.exports = { createMediaStorage, ALLOWED_TYPES };

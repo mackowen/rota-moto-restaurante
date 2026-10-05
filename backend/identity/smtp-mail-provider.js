@@ -11,8 +11,8 @@ function createSmtpMailProvider({ host, port, secure = false, requireTLS = true,
     auth: user ? { user, pass: password } : undefined, tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
     disableFileAccess: true, disableUrlAccess: true, connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 15000 });
   const send = async message => {
-    const link = new URL('/identity/complete', baseUrl);
-    link.searchParams.set('token', message.token);
+    const link = new URL(baseUrl);
+    link.hash = new URLSearchParams({ action: message.kind, token: message.token }).toString();
     const subjects = { owner_invitation: 'Convite para o RotaMoto', membership_invitation: 'Convite para o RotaMoto',
       email_verification: 'Confirme seu email no RotaMoto', password_recovery: 'Recuperação de acesso ao RotaMoto' };
     const result = await transport.sendMail({ from, to: message.to, subject: subjects[message.kind],

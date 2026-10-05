@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const MAX_PROOF_BYTES = 8 * 1024 * 1024;
 const CONTENT_TYPES = Object.freeze({ 'image/png': '.png', 'image/jpeg': '.jpg' });
 function storageError(code, message) { const error = new Error(message); error.code = code; return error; }

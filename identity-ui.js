@@ -4,6 +4,7 @@
   let csrf = null;
   let current = null;
   let offlineMode = false;
+  let invitationKind = 'membership_invitation';
   const sessionReadGuard = window.RotaMotoSessionGuard.createSessionReadGuard();
   let working = false;
   let driverRows = [];
@@ -27,11 +28,17 @@
       <div class="rm-identity-content">
         <form data-login novalidate><h2>Entrar</h2><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label>
           <label>Senha<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
-          <label data-mfa-label hidden>Código de verificação MFA<input name="mfaCode" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="128"></label>
+          <label data-mfa-label hidden>Código MFA ou de recuperação<input name="mfaCode" autocomplete="one-time-code" minlength="6" maxlength="128"></label>
           <label>Empresa (UUID)<input name="companyId" autocomplete="off" spellcheck="false" aria-describedby="companyHelp" required></label>
           <small id="companyHelp">Use o identificador recebido no convite. O servidor valida o vínculo da conta.</small>
           <button class="rm-primary" type="submit">Entrar</button><p data-login-error role="alert" aria-live="polite"></p></form>
         <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-company-name>Empresa ativa</span><span>ID: <code data-company-id></code></span></div>
+          <section data-mfa hidden><h3>Autenticação multifator</h3><p data-mfa-status role="status"></p>
+            <button type="button" data-mfa-start>Configurar autenticador</button>
+            <form data-mfa-confirm hidden><p>Adicione esta conta ao seu aplicativo autenticador. Digite o código atual para confirmar.</p><label>Chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar MFA</button><p data-mfa-error role="alert"></p></form>
+            <section data-recovery-codes hidden><h4>Códigos de recuperação</h4><p>Guarde-os fora deste navegador. Cada código só pode ser usado uma vez.</p><pre data-recovery-code-list></pre><button type="button" data-recovery-codes-dismiss>Ocultar códigos</button></section>
+            <button type="button" data-mfa-regenerate hidden>Gerar novos códigos de recuperação</button>
+          </section>
           <form data-accept-existing><label>Código de convite para sua conta<input name="token" required maxlength="43" autocomplete="off"></label><button type="submit">Aceitar convite</button><p role="status" data-existing-invitation-result></p></form>
           <form data-switch><label>Trocar empresa (UUID)<input name="companyId" autocomplete="off" spellcheck="false" required></label><button type="submit">Validar e trocar</button><p data-switch-error role="alert"></p></form>
           <button type="button" data-sync>Sincronizar agora</button><button type="button" data-logout class="rm-secondary">Sair</button><p data-account-error role="alert" aria-live="polite"></p>
@@ -133,7 +140,12 @@
       $('[data-user-email]').textContent = session.email;
       $('[data-company-id]').textContent = session.activeCompanyId;
       try { localStorage.setItem('rotaMoto.activeCompanyHint', session.activeCompanyId); } catch (_) {}
-      setStatus('Sessão ativa');
+      const mfaBox=$('[data-mfa]');mfaBox.hidden=!(session.mfaEnrollmentRequired||session.mfaConfigured);
+      $('[data-mfa-status]').textContent=session.mfaEnrollmentRequired?'Acesso limitado até confirmar o autenticador.':session.mfaConfigured?'MFA configurado. O segredo não pode ser consultado novamente.':'MFA não configurado.';
+      $('[data-mfa-start]').hidden=!session.mfaEnrollmentRequired&&session.mfaConfigured;
+      $('[data-mfa-regenerate]').hidden=!(session.mfaConfigured&&session.mfaVerified&&session.permissions?.includes('company.manage'));
+      $('[data-sync]').hidden=Boolean(session.mfaEnrollmentRequired);
+      setStatus(session.mfaEnrollmentRequired?'Sessão limitada · configure MFA':'Sessão ativa');
       $('[data-login-error]').textContent = '';
       if (!$('[data-admin]').hidden) loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
     } else setStatus(navigator.onLine === false ? 'Offline · somente modo local' : 'Sem sessão autenticada');
@@ -167,7 +179,13 @@
     }
   }
   function hintedCompany() { try { return localStorage.getItem('rotaMoto.activeCompanyHint') || ''; } catch (_) { return ''; } }
+  function applyMailAction(){let params;try{params=new URLSearchParams(location.hash.slice(1))}catch(_){return}const action=params.get('action'),token=params.get('token');if(!token||token.length>43)return;if(action==='password_recovery'){$('[data-recovery-consume] [name=token]').value=token;$('[data-recovery]').open=true;setOpen(true)}else if(['owner_invitation','membership_invitation'].includes(action)){invitationKind=action;$('[data-accept-invitation] [name=token]').value=token;$('[data-invitation]').open=true;setOpen(true)}if(action==='password_recovery'||['owner_invitation','membership_invitation'].includes(action))history.replaceState(null,'',location.pathname+location.search)}
+  applyMailAction();
   $('[data-login] [name=companyId]').value = hintedCompany();
+  $('[data-mfa-start]').addEventListener('click',async()=>{const button=$('[data-mfa-start]');button.disabled=true;$('[data-mfa-error]').textContent='';try{const result=await request('/identity/mfa/enrollment',{method:'POST',body:'{}'});$('[data-mfa-secret]').value=result.secret;$('[data-mfa-confirm]').hidden=false;$('[data-mfa-status]').textContent=`Escaneie ou insira a chave no autenticador. ${result.otpauthUri}`;$('[data-mfa-confirm] [name=code]').focus()}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{button.disabled=false}});
+  $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});$('[data-mfa-secret]').value='';$('[data-mfa-confirm]').hidden=true;$('[data-mfa-status]').textContent='MFA configurado. O segredo foi removido desta tela.';$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore()}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
+  $('[data-recovery-codes-dismiss]').addEventListener('click',()=>{$('[data-recovery-code-list]').textContent='';$('[data-recovery-codes]').hidden=true});
+  $('[data-mfa-regenerate]').addEventListener('click',async event=>{const button=event.currentTarget;if(working)return;working=true;button.disabled=true;try{const result=await request('/identity/mfa/recovery-codes',{method:'POST',body:'{}'});$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{working=false;button.disabled=false}});
   $('.rm-account-trigger').addEventListener('click', () => setOpen(panel.hidden));
   $('[data-close]').addEventListener('click', () => { if (current || offlineMode) setOpen(false); });
   $('[data-login]').addEventListener('submit', async event => {
@@ -181,8 +199,7 @@
       csrf = result.csrfToken; window.RotaMotoSessionGuard?.setCsrfToken(csrf); form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true;
       const session = await restore();
       if (!session) throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
-      await syncAfterAuthentication();
-      setOpen(false);
+      if(session.mfaEnrollmentRequired){setOpen(true);$('[data-mfa-start]').focus()}else{await syncAfterAuthentication();setOpen(false)}
     } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } $('[data-login-error]').textContent = message(error); setStatus('Não foi possível autenticar'); }
     finally { working = false; setBusy(form, false); }
   });
@@ -219,7 +236,7 @@
   $('[data-accept-invitation]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return;
     setBusy(form, true); const password = form.elements.password.value;
-    try { const result = await request('/identity/membership-invitations/accept', { method: 'POST', body: JSON.stringify({ token: form.elements.token.value.trim(), password }) });
+    try { const result = await request(invitationKind==='owner_invitation'?'/identity/invitations/accept':'/identity/membership-invitations/accept', { method: 'POST', body: JSON.stringify({ token: form.elements.token.value.trim(), password }) });
       form.reset(); try { localStorage.setItem('rotaMoto.activeCompanyHint', result.companyId); } catch (_) {} $('[data-invitation-result]').textContent = 'Convite aceito. Agora entre com seu email e senha.'; $('[data-login] [name=companyId]').value = result.companyId; }
     catch (error) { form.elements.password.value = ''; $('[data-invitation-result]').textContent = message(error); }
     finally { setBusy(form, false); }

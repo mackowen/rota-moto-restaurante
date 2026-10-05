@@ -14,6 +14,11 @@ function decodeBase32(value) {
   return Buffer.from(out);
 }
 function generateSecret() { return encodeBase32(crypto.randomBytes(20)); }
+function otpauthUri(secret, { issuer = 'RotaMoto', account } = {}) {
+  if (typeof account !== 'string' || !account || typeof issuer !== 'string' || !issuer) throw new TypeError('TOTP account/issuer required.');
+  const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
+  return `otpauth://totp/${label}?secret=${encodeURIComponent(secret)}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+}
 function codeAt(secret, counter, digits = 6) {
   const message = Buffer.alloc(8); message.writeBigUInt64BE(BigInt(counter));
   const digest = crypto.createHmac('sha1', decodeBase32(secret)).update(message).digest();
@@ -33,4 +38,4 @@ function verifyCode(secret, code, { now = Date.now(), lastCounter = -1, window =
 }
 function generateRecoveryCodes(count = 10) { return Object.freeze(Array.from({ length: count }, () => crypto.randomBytes(10).toString('hex').toUpperCase())); }
 function recoveryDigest(code) { return crypto.createHash('sha256').update(String(code).replace(/-/gu, '').toUpperCase()).digest(); }
-module.exports = { encodeBase32, decodeBase32, generateSecret, codeAt, verifyCode, generateRecoveryCodes, recoveryDigest };
+module.exports = { encodeBase32, decodeBase32, generateSecret, otpauthUri, codeAt, verifyCode, generateRecoveryCodes, recoveryDigest };

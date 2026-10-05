@@ -17,7 +17,9 @@ Em produção, configure exatamente um `ROTAMOTO_SECRET_PROVIDER_MODULE` externo
 
 SMTP é configurado somente pelo operador via `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD_REF`, `SMTP_FROM` e `PUBLIC_BASE_URL`. A senha vive no keystore com nome `smtp/password`, escopo `installation`. TLS de saída valida certificado e exige TLS quando não usa TLS imediato. Tenant admins não recebem nem podem definir estas opções. Se o SMTP não estiver configurado, convite e recovery falham fechados.
 
-O provider local de mídia usa `ROTAMOTO_MEDIA_DIRECTORY` (ainda requer wiring no startup/API), limita provas de imagem a 8 MiB, gera a chave no servidor, grava conteúdo fora do PostgreSQL e exige armazenamento dedicado sem symlink, pertencente ao serviço e sem permissões para grupo/outros. O banco deve guardar apenas referência e metadata hash; endpoint autenticado de upload/leitura precisa ser habilitado antes de considerar DeliveryProof operacional.
+O provider local de mídia usa `ROTAMOTO_MEDIA_DIRECTORY`, limita provas PNG/JPEG a 8 MiB, grava conteúdo fora do PostgreSQL e exige volume privado, ownership do serviço, sem symlink e permissões 0700/0600. `POST /api/domain/deliveries/{id}/proofs/media` exige sessão, CSRF, tenant e Driver atualmente atribuído; o Motoboy preserva assinatura local e tenta novamente o upload. O sync persiste referência, tamanho e SHA-256 no registro canônico. A leitura usa `GET /api/domain/deliveries/{id}/proofs/{proofId}/media` com autorização da sessão; o volume não deve ser publicado pelo nginx.
+
+MFA TOTP nativo usa o keystore de instalação. Enrollment retorna segredo apenas antes da confirmação; PostgreSQL guarda a referência opaca, o replay counter e somente digests dos recovery codes. Confirmação, login e códigos de recuperação são auditados, limitados e protegidos contra replay. A perda da master key ainda exige recuperação operacional; rotação automatizada não está implementada.
 
 Backup local grava stream em arquivo temporário, faz fsync e rename atômico, com arquivos 0600. Esta primitiva não agenda `pg_dump`, não define retenção, criptografia do conjunto, restore, nem cópia offsite. Essas rotinas ainda exigem runbook/validação operacional. Backups contêm PII, localização e provas: criptografar e limitar acesso antes de transportar ou reter.
 
@@ -33,10 +35,10 @@ Opções de negócio tenant-scoped permanecem sob RBAC e RLS. Paths, keystore, m
 - Tenant crossing: a key inclui tenant/delivery, mas a autorização do endpoint deve derivar tenant e Driver da sessão e conferir atribuição atual. O object store sozinho não autoriza requests.
 - Segredos: AEAD com escopo/name/ref autenticados; nunca listar/retornar valores; não logar conteúdo. Perda da master key perde acesso aos secrets. A rotação ainda não tem ferramenta transacional; reconfigure secrets sob janela operacional antes de trocar chave.
 - SMTP SSRF: host/porta são configuração local do operador; tenant não os controla. TLS valida certificado. Não habilitar configuração SMTP pela UI tenant.
-- MFA: TOTP RFC 6238 e digest de recovery codes estão implementados como primitives, mas enrollment, anti-replay persistente, rate limit/auditoria e ativação administrativa ainda não estão integrados; manter ações sensíveis fail-closed.
+- MFA: enrollment, anti-replay persistente, rate limit, auditoria e ativação nativa TOTP estão integrados. Manter sessão de enrollment limitada até confirmação.
 - Backup: snapshots incluem PII/GPS/provas; restringir filesystem/contas, criptografar cópias externas, documentar retenção e testar restore em ambiente descartável.
 - Logs: registrar status/códigos/request id, nunca token, senha, segredo, prova ou payload completo.
 
 ## Estado da implementação
 
-Keystore, adapter SMTP, store filesystem de provas, primitives TOTP e writer local de backup são implementações iniciais. Storage HTTP autenticado, metadata persistida no fluxo de upload, enrollment MFA completo, administração sanitizada, agendamento/restore de backup e provider remoto continuam pendentes; até então esses recursos não devem ser anunciados como operacionais.
+Keystore, SMTP via configuração do operador, DeliveryProof filesystem autenticado e MFA TOTP nativo já operam nos fluxos cobertos pelo harness local/E2E. Configuração administrativa sanitizada para instalação/tenant, rotação do keystore e o ciclo operacional de backup criptografado/pg_dump/restore/retention continuam pendentes. O writer filesystem de backup, isoladamente, não é backup PostgreSQL.

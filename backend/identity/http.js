@@ -10,12 +10,16 @@ const RATE_POLICIES = Object.freeze({
   recovery: { limit: 5, windowMs: 15 * 60 * 1000 },
   invitation: { limit: 10, windowMs: 15 * 60 * 1000 },
   provision: { limit: 5, windowMs: 15 * 60 * 1000 },
+  mfa: { limit: 8, windowMs: 15 * 60 * 1000 },
   default: { limit: 60, windowMs: 60 * 1000 }
 });
 const ROUTE_METHODS = Object.freeze({
   '/api/identity/login': 'POST',
   '/api/identity/logout': 'POST',
   '/api/identity/session': 'GET',
+  '/api/identity/mfa/enrollment': 'POST',
+  '/api/identity/mfa/enrollment/confirm': 'POST',
+  '/api/identity/mfa/recovery-codes': 'POST',
   '/api/identity/tenant': 'POST',
   '/api/identity/recovery': 'POST',
   '/api/identity/recovery/consume': 'POST',
@@ -34,6 +38,7 @@ function problemStatus(code) {
   if (code === 'AUTHENTICATION_REQUIRED') return 401;
   if (code === 'IDEMPOTENCY_CONFLICT') return 409;
   if (['CONFLICT', 'REVISION_CONFLICT'].includes(code)) return 409;
+  if (code === 'MFA_ENROLLMENT_EXPIRED') return 409;
   if (['INVALID_STATE_TRANSITION', 'LAST_OWNER_REQUIRED'].includes(code)) return 409;
   if (['NOT_FOUND', 'TENANT_NOT_FOUND'].includes(code)) return 404;
   if (code === 'RATE_LIMITED') return 429;
@@ -138,6 +143,7 @@ function rateCategory(path) {
   if (path.startsWith('/api/identity/invitations') || path.startsWith('/api/identity/membership-invitations')) return 'invitation';
   if (path === '/api/admin/invitations') return 'invitation';
   if (path === '/api/admin/tenants/provision') return 'provision';
+  if (path.startsWith('/api/identity/mfa/')) return 'mfa';
   return 'default';
 }
 
@@ -168,8 +174,9 @@ function publicError(error) {
     EMAIL_PROVIDER_NOT_CONFIGURED: 'Entrega de email indisponível.',
     EMAIL_DELIVERY_FAILED: 'Entrega do convite indisponível.',
     AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar o convite.',
-    MFA_REQUIRED: 'A autenticação multifator desta conta ainda não está configurada.',
+    MFA_REQUIRED: 'A autenticação multifator é obrigatória ou inválida.',
     MFA_PROVIDER_UNAVAILABLE: 'Verificação multifator indisponível.',
+    MFA_ENROLLMENT_EXPIRED: 'O enrollment MFA expirou; inicie novamente.',
     IDEMPOTENCY_CONFLICT: 'Chave idempotente já utilizada para outra solicitação.',
     CONFLICT: 'Conflito com o estado atual do recurso.',
     REVISION_CONFLICT: 'O recurso foi atualizado por outra operação.',
@@ -230,7 +237,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         if (body.mfaCode !== undefined && (typeof body.mfaCode !== 'string' || body.mfaCode.length < 6 || body.mfaCode.length > 128 || /[\u0000-\u001f\u007f]/u.test(body.mfaCode))) throw fail('INVALID_INPUT', 'Código MFA inválido.');
         const session = await identityService.authenticate(body.email, body.password, body.companyId, body.mfaCode);
         status = 200;
-        send(res, status, { userId: session.userId, companyId: session.companyId, csrfToken: session.csrfToken }, {
+        send(res, status, { userId: session.userId, companyId: session.companyId, csrfToken: session.csrfToken,
+          mfaEnrollmentRequired: Boolean(session.mfaEnrollmentRequired) }, {
           'Set-Cookie': `${COOKIE_NAME}=${session.sessionToken}; Path=/; Max-Age=${session.maxAgeSeconds}; Secure; HttpOnly; SameSite=Lax`
         });
         return true;
@@ -249,11 +257,31 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           return { userId: value.user_id, email: user.rows[0].email, emailVerified: user.rows[0].email_verified,
             activeCompanyId: value.company_id, activeRoleId: value.role_id, driverId: value.driver_id || null,
             permissions: permissions.rows.map(row => row.permission_key),
-            mfaVerified: Boolean(value.mfa_verified_at), csrfToken };
+            mfaVerified: Boolean(value.mfa_verified_at), mfaConfigured: Boolean(value.mfa_configured),
+            mfaEnrollmentRequired: Boolean(value.mfa_enrollment_required), csrfToken };
         });
         status = 200;
         send(res, status, principal);
         return true;
+      }
+
+      if (path === '/api/identity/mfa/enrollment' && req.method === 'POST') {
+        exactKeys(await readJson(req), []);
+        const result = await requireSessionMutation(req, 'identity.mfa.enroll', (_client, _principal, token) => identityService.startMfaEnrollment(token));
+        status = 200; send(res, status, result); return true;
+      }
+
+      if (path === '/api/identity/mfa/enrollment/confirm' && req.method === 'POST') {
+        const body = await readJson(req); exactKeys(body, ['code']);
+        if (typeof body.code !== 'string' || !/^\d{6}$/u.test(body.code)) throw fail('INVALID_INPUT', 'Código MFA inválido.');
+        const result = await requireSessionMutation(req, 'identity.mfa.enroll', (_client, _principal, token) => identityService.confirmMfaEnrollment(token, body.code));
+        status = 200; send(res, status, result); return true;
+      }
+
+      if (path === '/api/identity/mfa/recovery-codes' && req.method === 'POST') {
+        exactKeys(await readJson(req), []);
+        const result = await requireSessionMutation(req, 'company.manage', (_client, _principal, token) => identityService.regenerateMfaRecoveryCodes(token));
+        status = 200; send(res, status, result); return true;
       }
 
       if (path === '/api/identity/logout' && req.method === 'POST') {
