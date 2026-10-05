@@ -145,7 +145,10 @@ async function restoreEncryptedBackup({ directory, id, targetUrl, keyFile, pgRes
     await pipeline(Readable.from(decryptedStream(artifactPath, key, header)), require('node:fs').createWriteStream(temp, { flags: 'wx', mode: 0o600 }));
     const list = spawn(pgRestore, ['--list', temp], { stdio: ['ignore', 'ignore', 'ignore'] });
     await new Promise((resolve, reject) => list.once('close', code => code === 0 ? resolve() : reject(new Error('Dump inválido para restore.'))));
-    const restore = spawnStream(pgRestore, ['--no-password', '--no-owner', '--clean', '--if-exists', `--dbname=${targetUrl}`, temp]);
+    // Restores run as the disposable database owner, not as the source object
+    // owners. Do not replay source ACL/default-ACL commands (which can require
+    // membership in rotamoto_migrator); stop at the first SQL restore error.
+    const restore = spawnStream(pgRestore, ['--no-password', '--no-owner', '--no-acl', '--exit-on-error', '--clean', '--if-exists', `--dbname=${targetUrl}`, temp]);
     restore.stream.resume(); await restore.done;
     return Object.freeze({ restored: true, database: target.database, backupId: manifest.id });
   } finally { key.fill(0); await fs.unlink(temp).catch(() => {}); }
