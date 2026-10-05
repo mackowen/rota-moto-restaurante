@@ -1,7 +1,7 @@
 /*
  * RotaMoto local API: identity, domain sync and administrative read surfaces.
  *
- * Node 18+. This service is intentionally separate from the local-first browser app.
+ * Node 24.7+. This service is intentionally separate from the local-first browser app.
  */
 const http=require('node:http');
 const crypto=require('node:crypto');
@@ -9,6 +9,7 @@ const {URL}=require('node:url');
 const {Pool}=require('pg');
 const fs=require('node:fs');
 const {createIdentityService}=require('./backend/identity/service');
+const {createSmtpMailProvider}=require('./backend/identity/smtp-mail-provider');
 const {createIdentityHttpHandler}=require('./backend/identity/http');
 const {createSyncService}=require('./backend/domain/sync-service');
 const {createSyncHttpHandler}=require('./backend/domain/sync-http');
@@ -20,7 +21,7 @@ const {createAdminService}=require('./backend/admin/service');
 const {createAdminHttpHandler}=require('./backend/admin/http');
 const {PROVIDERS}=require('./backend/integrations/registry');
 const {loadRuntimeConfig,hostAllowed,resolveClientAddress}=require('./backend/runtime/config');
-const {loadSecretProvider}=require('./backend/runtime/secret-provider');
+const {loadSecretProvider,loadLocalSecretProvider}=require('./backend/runtime/secret-provider');
 const {gracefulShutdown}=require('./backend/runtime/lifecycle');
 
 function bootstrapFailure(error){
@@ -34,16 +35,18 @@ const HOST=CONFIG.host;
 const ALLOWED_ORIGINS=CONFIG.allowedOrigins;
 const databaseUrl=new URL(CONFIG.databaseUrl);
 let secretProvider=null,databaseTlsCa=null;
-try{if(CONFIG.production){secretProvider=loadSecretProvider(CONFIG.secretProviderModule);databaseTlsCa=fs.readFileSync(CONFIG.databaseTlsCaFile,'utf8')}}catch(error){bootstrapFailure(error)}
+try{if(CONFIG.production){secretProvider=CONFIG.secretProviderModule?loadSecretProvider(CONFIG.secretProviderModule):loadLocalSecretProvider({directory:CONFIG.secretStoreDirectory,masterKeyFile:CONFIG.secretMasterKeyFile});databaseTlsCa=fs.readFileSync(CONFIG.databaseTlsCaFile,'utf8')}}catch(error){bootstrapFailure(error)}
 function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
   const parsed=new URL(value);
   if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!=='rotamoto_app'||parsed.password||parsed.pathname!=='/rotamoto')
     throw new Error('DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
   return value;
 }
-const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),...(secretProvider?{password:()=>secretProvider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
+const identityPool=new Pool({connectionString:runtimeDatabaseConnectionString(),...(secretProvider?{password:async()=>{const provider=await secretProvider;return provider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
 identityPool.on('error',error=>console.error(JSON.stringify({event:'postgres.pool.error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'DATABASE_ERROR'})));
-const identityService=createIdentityService({pool:identityPool});
+let smtpProviderPromise=null;
+const emailProvider=CONFIG.smtp?.host?{async send(message){if(!smtpProviderPromise)smtpProviderPromise=(async()=>{const secrets=await secretProvider;if(!secrets)throw new Error('Secret provider indisponível.');const password=await secrets.get(CONFIG.smtp.passwordRef,{name:'smtp/password',scope:'installation'});return createSmtpMailProvider({...CONFIG.smtp,password})})();return (await smtpProviderPromise).send(message)}}:null;
+const identityService=createIdentityService({pool:identityPool,emailProvider});
 const requestLogger=entry=>console.info(JSON.stringify(entry));
 const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const syncService=createSyncService();

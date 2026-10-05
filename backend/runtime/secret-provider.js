@@ -17,6 +17,13 @@ function loadSecretProvider(modulePath) {
     throw new Error('Secret provider não implementa getDatabasePassword.');
   }
   return Object.freeze({
+    async get(ref, context) {
+      if (typeof provider.get !== 'function') throw new Error('Secret provider não implementa get(ref, context).');
+      const value = await provider.get(ref, Object.freeze({ ...context }));
+      if (typeof value !== 'string' || value.length < 1 || Buffer.byteLength(value, 'utf8') > 16384)
+        throw new Error('Secret provider retornou valor inválido.');
+      return value;
+    },
     async getDatabasePassword(context) {
       const password = await provider.getDatabasePassword(Object.freeze({ ...context }));
       if (typeof password !== 'string' || password.length < 1 || password.length > 4096) {
@@ -27,4 +34,16 @@ function loadSecretProvider(modulePath) {
   });
 }
 
-module.exports = { loadSecretProvider };
+function loadLocalSecretProvider({ directory, masterKeyFile }) {
+  const { createFileSecretProvider } = require('./file-secret-provider');
+  return createFileSecretProvider({ directory, masterKeyFile }).then(provider => Object.freeze({
+    ...provider,
+    async getDatabasePassword() {
+      const reference = process.env.ROTAMOTO_DATABASE_PASSWORD_REF;
+      if (typeof reference !== 'string' || !reference) throw new Error('ROTAMOTO_DATABASE_PASSWORD_REF obrigatório.');
+      return provider.get(reference, { name: 'database/rotamoto_app', scope: 'installation' });
+    }
+  }));
+}
+
+module.exports = { loadSecretProvider, loadLocalSecretProvider };

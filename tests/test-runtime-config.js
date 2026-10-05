@@ -25,6 +25,9 @@ assert.equal(hostAllowed('api.example.test',config.allowedHosts,true),true);
 assert.equal(hostAllowed('attacker.example',config.allowedHosts,true),false);
 assert.equal(resolveClientAddress({socket:{remoteAddress:'127.0.0.1'},headers:{'x-forwarded-for':'198.51.100.23'}},config),'198.51.100.23');
 assert.equal(resolveClientAddress({socket:{remoteAddress:'192.0.2.5'},headers:{'x-forwarded-for':'198.51.100.23'}},config),'192.0.2.5');
+const localSecrets=loadRuntimeConfig({...prod,ROTAMOTO_SECRET_PROVIDER_MODULE:'',ROTAMOTO_SECRET_STORE_DIRECTORY:'/var/lib/rotamoto/secrets',ROTAMOTO_SECRET_MASTER_KEY_FILE:'/etc/rotamoto/master.key',ROTAMOTO_DATABASE_PASSWORD_REF:'local-v1:00000000-0000-4000-8000-000000000000'});
+assert.equal(localSecrets.secretStoreDirectory,'/var/lib/rotamoto/secrets');
+assert.throws(()=>loadRuntimeConfig({...prod,ROTAMOTO_SECRET_PROVIDER_MODULE:'',ROTAMOTO_SECRET_STORE_DIRECTORY:'/var/lib/rotamoto/secrets'}),/keystore local completo/u);
 for(const override of [
   {DATABASE_URL:'postgresql://rotamoto_migrator@db.internal:5432/rotamoto'},
   {DATABASE_URL:'postgresql://rotamoto_app:plaintext@db.internal:5432/rotamoto'},

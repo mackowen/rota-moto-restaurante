@@ -83,17 +83,40 @@ function loadRuntimeConfig(env = process.env) {
   const trustedProxyAddresses=Object.freeze([...new Set(splitList(env.TRUSTED_PROXY_ADDRESSES))]);
   if(trustedProxyAddresses.some(address=>!isIP(address))||production&&!trustedProxyAddresses.length)
     throw new Error('TRUSTED_PROXY_ADDRESSES deve conter IPs exatos dos proxies confiáveis em produção.');
-  if (production && !env.ROTAMOTO_SECRET_PROVIDER_MODULE) {
-    throw new Error('Secret provider externo não configurado; startup de produção bloqueado.');
-  }
+  const secretProviderModule = env.ROTAMOTO_SECRET_PROVIDER_MODULE || null;
+  const secretStoreDirectory = env.ROTAMOTO_SECRET_STORE_DIRECTORY || null;
+  const secretMasterKeyFile = env.ROTAMOTO_SECRET_MASTER_KEY_FILE || null;
+  if (production && Boolean(secretProviderModule) === Boolean(secretStoreDirectory && secretMasterKeyFile))
+    throw new Error('Configure exatamente um secret provider externo ou o keystore local completo.');
+  if (Boolean(secretStoreDirectory) !== Boolean(secretMasterKeyFile) ||
+      [secretStoreDirectory, secretMasterKeyFile].some(value => value && !path.isAbsolute(value)))
+    throw new Error('Paths absolutos do keystore devem ser configurados em conjunto.');
+  if (production && secretStoreDirectory && !env.ROTAMOTO_DATABASE_PASSWORD_REF)
+    throw new Error('ROTAMOTO_DATABASE_PASSWORD_REF é obrigatória com keystore local.');
   if(production&&(!env.DATABASE_TLS_CA_FILE||!path.isAbsolute(env.DATABASE_TLS_CA_FILE)))
     throw new Error('DATABASE_TLS_CA_FILE absoluto é obrigatório em produção.');
 
-  return Object.freeze({ nodeEnv, production, host, port, databaseUrl, allowedOrigins: origins,
+  const smtp = Object.freeze({ host: env.SMTP_HOST || null, port: env.SMTP_PORT ? Number(env.SMTP_PORT) : 587,
+    secure: env.SMTP_SECURE === 'true', user: env.SMTP_USER || null, passwordRef: env.SMTP_PASSWORD_REF || null,
+    from: env.SMTP_FROM || null, baseUrl: env.PUBLIC_BASE_URL || null });
+  const smtpConfigured = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD_REF', 'SMTP_FROM', 'PUBLIC_BASE_URL'].some(key => Boolean(env[key]));
+  if (production && smtpConfigured &&
+      (!smtp.host || !smtp.passwordRef || !smtp.from || !smtp.baseUrl || !Number.isInteger(smtp.port) || smtp.port < 1 || smtp.port > 65535))
+    throw new Error('Configuração SMTP incompleta.');
+  if (production && smtpConfigured) {
+    let publicBase;
+    try { publicBase = new URL(smtp.baseUrl); } catch (_) { throw new Error('PUBLIC_BASE_URL inválida.'); }
+    if (publicBase.protocol !== 'https:' || publicBase.username || publicBase.password || publicBase.search || publicBase.hash)
+      throw new Error('PUBLIC_BASE_URL deve ser HTTPS sem credenciais, query ou fragmento.');
+  }
+
+  return Object.freeze({ nodeEnv, production, host, port, databaseUrl, allowedOrigins: origins, smtp,
     allowedHosts, trustedProxyAddresses, trustProxy: trustedProxyAddresses.length>0,
     databaseTlsCaFile:production?env.DATABASE_TLS_CA_FILE:null, requestTimeoutMs: 30_000, headersTimeoutMs: 10_000,
     keepAliveTimeoutMs: 5_000, shutdownTimeoutMs: 10_000,
-    secretProviderModule: production ? env.ROTAMOTO_SECRET_PROVIDER_MODULE : null });
+    secretProviderModule: production ? secretProviderModule : null,
+    secretStoreDirectory: production ? secretStoreDirectory : null,
+    secretMasterKeyFile: production ? secretMasterKeyFile : null });
 }
 
 function hostAllowed(header, allowedHosts, production = false) {
