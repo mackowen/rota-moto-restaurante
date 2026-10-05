@@ -51,6 +51,36 @@ creates nor drops databases, changes PostgreSQL roles, or provisions E2E
 fixtures. `--e2e` never enables `down`. The isolated database's eventual
 teardown remains a separate, explicitly authorized administrative operation.
 
+### Authenticated E2E fixture lifecycle
+
+`tests/e2e-support/fixture-lifecycle.js` is an integration-test-only harness;
+`server.js` does not import it and has no test provider switch. It requires
+`NODE_ENV=test` and two password-free URLs pinned to loopback and
+`rotamoto_e2e`: runtime as `rotamoto_app`, verifier as `rotamoto_migrator`.
+Both URLs are rejected before a PostgreSQL client is constructed if a host,
+port, database, role, query option or environment differs. The connected role
+and loopback address are checked again before the harness starts its transaction.
+The test-only client resolves its password from local pgpass in memory; for the
+cluster-scoped `rotamoto_app` role it can reuse the existing loopback entry
+keyed to `rotamoto` when no E2E-specific entry exists. It never writes
+credentials to disk or prints them.
+
+Provisioning, invitation acceptance, MFA-verified login, installation
+registration, canonical Driver/Order/Delivery sync and Membership↔Driver
+binding use the existing product services and HTTP handlers. Synthetic
+operator proof, email delivery, password, invitation token and MFA code exist
+only in the test process memory. Fixture requests run serially in a transaction
+opened by the restricted runtime role; service transaction boundaries are
+savepoints. Teardown rolls back that outer transaction and uses a read-only
+migrator check to assert there is no fixture residue. The harness provides no
+database INSERT/DELETE cleanup path and must never be run against `rotamoto`.
+
+Run `npm run test:e2e-guards` before `npm run test:e2e-lifecycle`. Run the
+read-only `npm run test:e2e-security` separately with the official and E2E
+migrator URLs set to perform the ACL/RLS equivalence gate. These checks validate
+fixture infrastructure only; they do not start Browser F9 or product browser
+automation.
+
 The first migration enables row-level security with a default-deny tenant
 context on every tenant-owned table. Identity and session tables are global and
 must only be queried by trusted server code.
