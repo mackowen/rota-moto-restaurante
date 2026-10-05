@@ -12,6 +12,7 @@ async function runProofMediaGc({ pool, objectStore, now = () => new Date(), grac
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['rotamoto:proof-media:snapshot:v1']);
       await client.query("SELECT set_config('app.tenant_id',$1,true)", [item.companyId]);
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`proof-media:${item.companyId}:${item.deliveryId}`]);
       const referenced = await client.query(`SELECT 1 FROM rotamoto.domain_records

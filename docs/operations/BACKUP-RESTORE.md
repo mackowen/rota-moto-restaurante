@@ -1,105 +1,130 @@
-# Backup e restore self-hosted
+# Backup e restore self-hosted coordenado
 
-O backup operacional usa `pg_dump` custom, cifra AES-256-GCM antes de gravar,
-cria manifesto com versão/database/timestamp/tamanho/checksum e HMAC, e guarda o
-par no filesystem privado configurado em `ROTAMOTO_BACKUP_DIRECTORY`. A chave
-AES fica em `ROTAMOTO_BACKUP_KEY_FILE`, fora do PostgreSQL e do diretório do
-artefato. Volume de mídia ainda precisa de snapshot independente; o campo
-`objectsIncluded` fica `false` até essa integração existir.
+`npm run backup:create` produz um conjunto versionado `rotamoto-recovery-set-v1`:
+PostgreSQL custom cifrado, blobs canônicos DeliveryProof cifrados individualmente e
+manifesto autenticado que relaciona os componentes, hashes, tamanhos e referências.
+Os blobs permanecem fora do PostgreSQL. O payload do manifesto é cifrado; nomes
+dos arquivos de mídia dentro do conjunto são índices opacos. Nenhum path local,
+segredo ou conteúdo de prova aparece no manifesto legível.
 
-## Pré-requisitos do operador
+Cada objeto usa AES-256-GCM; dump e arquivos usam SHA-256; o manifesto do conjunto
+usa HMAC com a chave de backup mantida fora do banco. Arquivos são privados
+(0600), diretórios 0700, publicação do manifesto ocorre por último e componentes
+incompletos falham na verificação. Limites atuais: 10.000 objetos, 8 MiB por
+objeto e 8 GiB por conjunto. Symlink, hardlink, traversal, arquivo inesperado,
+componente faltante/corrompido e versão desconhecida causam falha fechada.
 
-- Node da versão suportada e `pg_dump`/`pg_restore` compatíveis com a versão do
-  PostgreSQL.
-- `rotamoto_backup` é uma role administrativa separada, configurada pelo DBA
-  para leitura completa necessária ao dump sob `FORCE ROW LEVEL SECURITY`. Essa
-  role não pode ser runtime nem membro de `rotamoto_app`; ela deve ter acesso
-  restrito, credencial em pgpass do operador e `BYPASSRLS` somente nesse login de
-  backup. RLS/FORCE continuam habilitados e runtime permanece `NOBYPASSRLS`.
-- Restore usa outra role `rotamoto_restore`, com `BYPASSRLS` e ownership apenas
-  do database descartável provisionado pelo DBA. Ela não recebe `CREATEDB`, não
-  é runtime e não é owner/concedida no database `rotamoto`.
-- O provisionamento de role/grants é uma ação DBA fora do runtime e não foi
-  executado por esta campanha. Sem ela, backup PostgreSQL completo falha
-  claramente; não usar `rotamoto_migrator` para contornar RLS.
-- Chave de backup provisionada com 32 bytes, owner do serviço e modo `0600`.
-  `backup-key-init` cria a chave uma única vez com `O_EXCL`; copiar a chave para
-  cofre/offline seguro antes de depender dos backups.
+## Consistência banco + mídia
+
+Upload, confirmação canônica de DeliveryProof e GC compartilham um advisory lock
+transacional. O backup adquire o lock de sessão antes de consultar as referências,
+executa `pg_dump`, valida/copia os objetos referenciados e só então publica o
+manifesto autenticado. Novos uploads, confirmação de sync de provas e GC aguardam
+esse lock. Assim uma prova comprometida no dump tem o blob correspondente no
+conjunto; uploads ainda offline permanecem no cliente ou no upload intent e não
+são tratados como uma prova canônica concluída. A janela de pausa corresponde
+à duração do dump e da leitura/verificação das mídias; operação de negócio segue,
+mas esses passos de mídia podem aguardar. Não há alegação de transação distribuída
+entre PostgreSQL e filesystem.
+
+A proteção depende de todos os processos que gravam/limpam DeliveryProof usarem
+o lock compartilhado. Não altere manualmente blobs ou registros durante a janela.
+O backup inclui apenas blobs referenciados por DeliveryProof canônico; órfãos não
+são parte de uma recuperação válida.
+
+## Pré-requisitos
+
+- Node suportado e `pg_dump`/`pg_restore` compatíveis com PostgreSQL.
+- `rotamoto_backup` é role separada, com leitura completa sob FORCE ROW LEVEL SECURITY (FORCE RLS) e
+  BYPASSRLS somente para backup; nunca runtime/API. `rotamoto_restore` é isolada,
+  owner apenas do database descartável provisionado e sem acesso ao oficial.
+  Não se usa `rotamoto_migrator` como contorno.
+- `BACKUP_DATABASE_URL` aponta sem senha para `rotamoto_backup`; pgpass autentica.
+- `ROTAMOTO_BACKUP_KEY_FILE` tem 32 bytes, owner do operador e modo 0600, fora
+  do PostgreSQL. Preserve cópia offline protegida da chave e teste recuperação.
+- `ROTAMOTO_BACKUP_DIRECTORY` e `ROTAMOTO_MEDIA_DIRECTORY` são absolutos,
+  separados, privados e acessíveis ao operador.
 
 ```sh
 umask 077
-ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key \
-  node scripts/rotamoto-operator.js backup-key-init
-ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto \
-ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key \
+ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key node scripts/rotamoto-operator.js backup-key-init
 BACKUP_DATABASE_URL=postgresql://rotamoto_backup@db.internal:5432/rotamoto \
+ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key \
+ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto \
+ROTAMOTO_MEDIA_DIRECTORY=/var/lib/rotamoto/media \
 ROTAMOTO_BACKUP_RETENTION_DAYS=30 npm run backup:create
 ```
 
-`BACKUP_DATABASE_URL` não aceita senha embutida; pgpass autentica. O CLI não
-escreve a URL em logs. Em ambiente local de campanha a role `rotamoto_backup`
-não existe, então nenhum dump PostgreSQL de verdade foi executado.
-
-## Verificação, retenção e cópia offsite
+## Verificar e reter
 
 ```sh
 ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto \
 ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key \
-  npm run backup:verify -- <uuid-do-backup>
+  npm run backup:verify -- <uuid-do-conjunto>
 ```
 
-A verificação checa permissões/owner/hardlinks, checksum SHA-256, HMAC do
-manifesto e envelope AES-GCM quando a chave está disponível. Criação executa
-retenção depois de finalizar o manifesto: só remove arquivos/manifestos
-privados e expirados conforme `ROTAMOTO_BACKUP_RETENTION_DAYS`. Guarde uma cópia
-offsite cifrada do artefato e uma cópia separada da chave em locais/contas
-distintos; isso é uma opção de deployment, mas manter apenas no host não cobre
-perda física do host. Nunca sincronize artefato plaintext ou master key para
-bucket genérico.
+A verificação exige o dump, manifesto PostgreSQL, diretório de mídia e manifesto
+do conjunto; confere HMAC, checksums, GCM, metadata e ausência de arquivos extras.
+Cada backup é publicado como um único diretório `<uuid>.set` por rename; manifesto
+e componentes só aparecem juntos no nome final. Retenção opera sob lock local,
+valida o conjunto e move atomicamente o diretório inteiro para quarentena antes
+de removê-lo; conjunto parcial/corrompido faz a operação falhar e permanece para
+diagnóstico. Operações concorrentes de backup são serializadas pelo
+advisory lock PostgreSQL. O operador mostra último sucesso/falha e código
+sanitizado; nunca expõe chave, credencial ou path no log de operação.
 
-## Restore em alvo descartável
+Instale um cron/timer sob o usuário dedicado do serviço; mantenha environment e
+pgpass privados e envie stdout/stderr ao journal com acesso restrito. Exemplo de
+entrada diária (horário, frequência, retenção e alertas são decisões do operador):
 
-Restore não é automático e recusa `rotamoto` e `rotamoto_e2e`. O alvo deve ser
-informado por URL explícita e seu nome deve ser `rotamoto_disposable_<nome>`.
-`--clean`
-substitui os objetos existentes nesse alvo. O pgpass deve autenticar
-`rotamoto_restore`, owner do database descartável alvo.
+```cron
+17 2 * * * cd /opt/rotamoto && BACKUP_DATABASE_URL=postgresql://rotamoto_backup@127.0.0.1:5432/rotamoto ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto ROTAMOTO_MEDIA_DIRECTORY=/var/lib/rotamoto/media ROTAMOTO_BACKUP_RETENTION_DAYS=30 npm run backup:create
+```
+
+Uma cópia offsite cifrada é opcional, mas necessária para tolerar perda do host.
+Copie apenas conjuntos completos, preserve todos os componentes e manifesto e
+mantenha a chave em canal/cofre separado. Nunca sincronize plaintext ou chave
+para bucket genérico.
+
+## Restore coordenado
+
+Restore é explícito e somente aceita database `rotamoto_disposable_*`. O destino
+de mídia precisa estar ausente, nomeado `rotamoto-disposable-media-<UUID>`, dentro
+de um diretório temporário dedicado 0700, e separado do `ROTAMOTO_MEDIA_DIRECTORY`
+operacional. O comando não cria nem apaga database e não promove mídia para o
+volume de produção.
 
 ```sh
 ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto \
 ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key \
-  npm run backup:restore -- <uuid-do-backup> \
-  postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_disposable_rehearsal
+ROTAMOTO_MEDIA_DIRECTORY=/var/lib/rotamoto/media \
+  npm run backup:restore -- <uuid-do-conjunto> \
+  postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_disposable_rehearsal \
+  /tmp/rotamoto-disposable-media-parent-<UUID>/rotamoto-disposable-media-<UUID>
 ```
 
-O fluxo valida manifesto/checksum/HMAC/GCM, grava dump temporário com `0600`,
-confere `pg_restore --list` e só então inicia restore. Após restore, rode status
-de migration, valide owners/grants/RLS/FORCE/policies, readiness HTTP, operação
-canônica e contagens/invariantes sem exportar PII para logs. Recrie runtime e
-migrator por processo DBA aprovado antes de expor API. O comando não apaga nem
-cria databases e não contém opção de alvo `rotamoto`.
+O pipeline verifica o conjunto e prepara mídia em staging privado; restaura
+PostgreSQL pelo caminho aprovado (`--no-owner --no-acl --exit-on-error --clean
+--if-exists`); compara referências canônicas (tenant, Delivery, key, MIME, hash,
+tamanho) e promove a árvore somente após validação. Falha antes da promoção
+limpa staging. Se a etapa PostgreSQL já terminou e a validação/promoção de mídia
+falhar, o database descartável pode conter o restore; preserve o diagnóstico,
+não use o alvo operacional e refaça somente após reset DBA autorizado do
+ descartável. Nunca restaurar sobre `rotamoto` ou `rotamoto_e2e`.
 
-Esta campanha testou cifra, manifesto, hash, HMAC, descriptografia, listagem e
-guard de alvo com `pg_dump`/`pg_restore` de teste. O rehearsal real de
-PostgreSQL está bloqueado até o DBA provisionar a role e um alvo descartável
-isolado; não se restaurou em `rotamoto`, `rotamoto_e2e` nem outro database real.
+## RPO/RTO e recovery
 
-## RPO/RTO e recuperação
-
-Defina frequência de backup e retenção conforme o RPO aprovado. Meça o RTO em
-restore real incluindo provisionamento de PostgreSQL, restore, migrations,
-ownership/grants, validação de readiness e reconciliação dos Motoboys offline.
-O cliente mantém provas/outbox localmente durante desconexões, mas isso não
-substitui backup PostgreSQL nem garante retenção indefinida no dispositivo.
-Inclua no procedimento o volume de mídia e as chaves. Se a chave de backup for
-perdida, AES-GCM impede recuperação; se o keystore/master key for perdido,
-segredos TOTP/SMTP cifrados também ficam indisponíveis.
+Frequência/retention devem seguir o RPO que o operador aprovar; não há prazo
+legal presumido pelo produto. Meça RTO incluindo provisionamento, restore DB,
+validação de ledger/RLS/FORCE e mídias, readiness e reconciliação dos clientes
+offline. Perda da chave de backup torna os artefatos irrecuperáveis. O rehearsal
+real deve usar database e diretório descartáveis, comprovar contagens e validar
+integridade sem extrair conteúdo de negócio para logs.
 
 ## Backup Local-First
 
-O formato `rotamoto-local-backup` v1 é plaintext sensível e contém dados de
-negócio, PII, endereços, localização, provas/mídia local, inbox/outbox,
-tombstones e conflitos. Segredos de autenticação não fazem parte do arquivo.
-Guardar em local privado, controlar cópias e não importar sobre perfis ativos
-sem revisar o resumo; a importação existente faz merge aditivo e não sobrescreve
-linhas em colisão. Isso é diferente do dump PostgreSQL criptografado acima.
+O formato `rotamoto-local-backup` v1 é distinto e plaintext sensível, podendo
+conter PII, endereços, localização, provas, inbox/outbox e tombstones. Segredos de
+autenticação não fazem parte dele. Guardar cópias localmente de forma privada e
+revisar o resumo antes de importar; o merge existente não sobrescreve linhas em
+colisão.

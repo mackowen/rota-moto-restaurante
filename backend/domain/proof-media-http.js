@@ -41,6 +41,9 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
             if(!await identityService.verifyCsrf(client,principal.session_id,csrf))throw fail('CSRF_INVALID',403);
             if(!UUID.test(proofId||''))throw fail('INVALID_INPUT',400,'Identificador da prova inválido.');
             if(!principal.driver_id)throw fail('DRIVER_LINK_REQUIRED',403);
+            // Shared barrier with coordinated backups and garbage collection.
+            // Hold it in this transaction from before blob creation through intent commit.
+            await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['rotamoto:proof-media:snapshot:v1']);
             const delivery=await client.query(`SELECT payload->>'driverId' AS driver_id,deleted_at FROM rotamoto.domain_records
               WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Delivery'`,[principal.company_id,deliveryId]);
             if(!delivery.rowCount||delivery.rows[0].deleted_at||delivery.rows[0].driver_id!==principal.driver_id)throw fail('NOT_FOUND',404);

@@ -224,6 +224,10 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
     const installation = await findInstallation(client, principal, deviceId);
     const appKey = installation.app_key;
     requireDriverInstallation(installation, principal);
+    if ((data.proofs || []).length || (data.tombstones || []).some(item => TOMBSTONE_TYPES[item?.store] === 'DeliveryProof' || item?.entityType === 'DeliveryProof' || item?.type === 'DeliveryProof')) {
+      // Serialize canonical proof/intent changes with the backup and media GC barrier.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['rotamoto:proof-media:snapshot:v1']);
+    }
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 402117))', [`${companyId}:${packetId}`]);
     const prior = await client.query(`SELECT payload_digest,result FROM rotamoto.sync_inbox
       WHERE company_id=$1 AND packet_id=$2`, [companyId, packetId]);

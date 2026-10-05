@@ -19,3 +19,18 @@ efetiva exclusão após conferir referência/intent dentro de RLS tenant-scoped 
 advisory lock compartilhado pelo upload/sync. Limites e logs não incluem
 conteúdo, path, tenant ID, prova, token ou secret. Dados sintéticos de testes
 precisam ser revertidos/removidos no escopo do próprio teste.
+
+## Retenção de conjuntos de recovery
+
+`backup:create` serializa execuções pelo advisory lock de snapshot e faz retenção
+sob lock local do diretório. Só conjuntos autenticados, completos e expirados
+são removidos; o manifesto, dump PostgreSQL e árvore de mídia são tratados juntos.
+Uma falha deixa componentes incompletos para diagnóstico, nunca os considera
+backup válido. Defaults de 30 dias são conservadores de implementação, não
+requisitos legais; operador define frequência, prazo, alarme de falha/espaço,
+RPO/RTO e política offsite segundo sua operação.
+
+Use cron, systemd timer ou runit com usuário dedicado, pgpass 0600, environment
+privado e saída no journal restrito. `npm run operator` apresenta estado sanitizado
+e último sucesso/falha. Verifique diariamente o código de saída e alerte para
+falha, conjunto incompleto, disco próximo do limite ou idade do último sucesso.

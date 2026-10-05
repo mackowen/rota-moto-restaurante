@@ -57,7 +57,7 @@ function classifyPgDiagnostic(stderr) {
   if (/could not connect|connection .*failed|authentication failed|no password supplied/iu.test(firstError)) return 'PostgreSQL connection/authentication failure';
   return firstError ? 'PostgreSQL restore/backup error (details withheld)' : 'PostgreSQL process failed without a safe diagnostic';
 }
-async function createEncryptedBackup({ databaseUrl, keyFile, directory, retentionDays = 30, includeObjects = false, pgDump = 'pg_dump', pgRestore = 'pg_restore', now = new Date() }) {
+async function createEncryptedBackup({ databaseUrl, keyFile, directory, retentionDays = 30, includeObjects = false, pgDump = 'pg_dump', pgRestore = 'pg_restore', now = new Date(), prune = true }) {
   const target = parseSafeUrl(databaseUrl);
   if (!Number.isInteger(retentionDays) || retentionDays < 1 || retentionDays > 3650) throw new Error('Retenção inválida.');
   const key = await readKey(keyFile);
@@ -72,7 +72,7 @@ async function createEncryptedBackup({ databaseUrl, keyFile, directory, retentio
     const provider = await createFilesystemBackupProvider({ directory: absolute });
     written = await provider.write(Readable.from(encryptedStream(started.stream, key)));
     await started.done;
-    const plainTemp = path.join(require('node:os').tmpdir(), `rotamoto-backup-verify-${crypto.randomUUID()}.dump`);
+    const plainTemp = path.join(absolute, `.verify-${crypto.randomUUID()}.dump`);
     try {
       await pipeline(Readable.from(decryptedStream(path.join(absolute, `${written.id}.dump`), key,
         await readArtifactHeader(path.join(absolute, `${written.id}.dump`)))), require('node:fs').createWriteStream(plainTemp, { flags: 'wx', mode: 0o600 }));
@@ -88,7 +88,7 @@ async function createEncryptedBackup({ databaseUrl, keyFile, directory, retentio
     const directoryHandle = await fs.open(absolute, require('node:fs').constants.O_RDONLY);
     try { await directoryHandle.sync(); } finally { await directoryHandle.close(); }
     key.fill(0);
-    await pruneExpiredBackups({ directory: absolute, retentionDays, now });
+    if (prune) await pruneExpiredBackups({ directory: absolute, retentionDays, now });
     return manifest;
   } catch (error) {
     started.child.kill('SIGTERM'); key.fill(0);
@@ -173,4 +173,4 @@ async function restoreEncryptedBackup({ directory, id, targetUrl, keyFile, pgRes
   } finally { key.fill(0); await fs.unlink(temp).catch(() => {}); }
 }
 
-module.exports = { parseSafeUrl, createEncryptedBackup, verifyArtifact, restoreEncryptedBackup, encryptedStream, pruneExpiredBackups, classifyPgDiagnostic };
+module.exports = { parseSafeUrl, createEncryptedBackup, verifyArtifact, restoreEncryptedBackup, encryptedStream, pruneExpiredBackups, classifyPgDiagnostic, readKey };
