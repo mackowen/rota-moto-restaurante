@@ -40,6 +40,9 @@ async function main() {
   }
   const runtimeUrl = new URL(process.env.DATABASE_URL);
   const migratorUrl = new URL(process.env.MIGRATOR_DATABASE_URL);
+  if (runtimeUrl.pathname === '/rotamoto' || migratorUrl.pathname === '/rotamoto') {
+    throw new Error('Guard: esta suíte cria fixtures e não pode conectar ao database operacional rotamoto. Use o lifecycle E2E em rotamoto_e2e.');
+  }
   assert.equal(decodeURIComponent(runtimeUrl.username), 'rotamoto_app', 'runtime tests must use the restricted role');
   assert.equal(decodeURIComponent(migratorUrl.username), 'rotamoto_migrator', 'migration tests must use the migrator role');
   const configuredMigratorUrl = process.env.MIGRATOR_DATABASE_URL;

@@ -15,8 +15,10 @@ assert.deepEqual(resolveMigrationInvocation(['up', '--e2e'], env),
   { command: 'up', connectionString: qa });
 assert.deepEqual(resolveMigrationInvocation(['status'], env),
   { command: 'status', connectionString: official }, 'normal mode keeps the official target');
+assert.throws(() => resolveMigrationInvocation(['up'], env),
+  /Migrations mutáveis em NODE_ENV=test exigem --e2e/, 'tests cannot run mutable migrations against the official target');
 assert.throws(() => resolveMigrationInvocation(['up'], { ...env, MIGRATOR_DATABASE_URL: qa }),
-  /rotamoto\.$/, 'normal mode refuses the E2E database');
+  /Migrations mutáveis em NODE_ENV=test exigem --e2e/, 'normal mode refuses mutable migrations in test mode');
 assert.throws(() => resolveMigrationInvocation(['down', '--e2e'], env), /Uso:/,
   'E2E mode does not offer a destructive down command');
 

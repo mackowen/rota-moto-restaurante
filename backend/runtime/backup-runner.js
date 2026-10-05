@@ -32,11 +32,30 @@ async function* encryptedStream(source, key) {
   yield cipher.getAuthTag();
 }
 function spawnStream(command, args, { env = process.env } = {}) {
-  const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'ignore'] });
+  const child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
   child.on('error', () => {});
-  const done = new Promise((resolve, reject) => child.once('close', code => code === 0 ? resolve() : reject(new Error(`${path.basename(command)} falhou (${code ?? 'sinal'}).`))));
+  let stderr = '';
+  child.stderr.setEncoding('utf8').on('data', chunk => {
+    if (stderr.length < 8192) stderr += chunk.slice(0, 8192 - stderr.length);
+  });
+  const done = new Promise((resolve, reject) => child.once('close', code => {
+    if (code === 0) return resolve();
+    const error = new Error(`${path.basename(command)} falhou (${code ?? 'sinal'}).`);
+    error.code = 'PG_COMMAND_FAILED';
+    error.safeDiagnostic = classifyPgDiagnostic(stderr);
+    reject(error);
+  }));
   done.catch(() => {});
   return { stream: child.stdout, done, child };
+}
+function classifyPgDiagnostic(stderr) {
+  const firstError = String(stderr).split(/\r?\n/u).find(line => /\b(?:ERROR|FATAL):/iu.test(line) || /pg_restore: error:/iu.test(line)) || '';
+  if (/permission denied|must be member of role|must be owner of/iu.test(firstError)) return 'PostgreSQL authorization/ownership failure';
+  if (/extension .* (?:does not exist|is not available)|could not open extension control file/iu.test(firstError)) return 'PostgreSQL extension unavailable';
+  if (/already exists|duplicate key/iu.test(firstError)) return 'PostgreSQL duplicate object/data conflict';
+  if (/violates .*constraint|constraint .*failed/iu.test(firstError)) return 'PostgreSQL data constraint failure';
+  if (/could not connect|connection .*failed|authentication failed|no password supplied/iu.test(firstError)) return 'PostgreSQL connection/authentication failure';
+  return firstError ? 'PostgreSQL restore/backup error (details withheld)' : 'PostgreSQL process failed without a safe diagnostic';
 }
 async function createEncryptedBackup({ databaseUrl, keyFile, directory, retentionDays = 30, includeObjects = false, pgDump = 'pg_dump', pgRestore = 'pg_restore', now = new Date() }) {
   const target = parseSafeUrl(databaseUrl);
@@ -154,4 +173,4 @@ async function restoreEncryptedBackup({ directory, id, targetUrl, keyFile, pgRes
   } finally { key.fill(0); await fs.unlink(temp).catch(() => {}); }
 }
 
-module.exports = { parseSafeUrl, createEncryptedBackup, verifyArtifact, restoreEncryptedBackup, encryptedStream, pruneExpiredBackups };
+module.exports = { parseSafeUrl, createEncryptedBackup, verifyArtifact, restoreEncryptedBackup, encryptedStream, pruneExpiredBackups, classifyPgDiagnostic };

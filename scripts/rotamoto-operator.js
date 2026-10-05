@@ -112,4 +112,4 @@ const { createFilesystemBackupProvider } = require('../backend/runtime/backup-pr
     return;
   }
   throw new Error('Comando de operador inválido.');
-})().catch(error => { process.stderr.write(`${JSON.stringify({ event: 'operator.command.failed', code: /^[A-Z0-9_]{2,48}$/u.test(error.code || '') ? error.code : 'OPERATOR_CONFIGURATION_ERROR' })}\n`); process.exitCode = 1; });
+})().catch(error => { process.stderr.write(`${JSON.stringify({ event: 'operator.command.failed', code: /^[A-Z0-9_]{2,48}$/u.test(error.code || '') ? error.code : 'OPERATOR_CONFIGURATION_ERROR', ...(typeof error.safeDiagnostic === 'string' && /^[A-Za-z0-9 /()-]{1,96}$/u.test(error.safeDiagnostic) ? { diagnostic: error.safeDiagnostic } : {}) })}\n`); process.exitCode = 1; });

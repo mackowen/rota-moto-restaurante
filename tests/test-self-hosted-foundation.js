@@ -14,6 +14,7 @@ const { createFilesystemBackupProvider } = require('../backend/runtime/backup-pr
 const { rotateFileKeystore } = require('../backend/runtime/keystore-rotation');
 const { runProofMediaGc } = require('../backend/domain/proof-media-gc');
 const { createEncryptedBackup, verifyArtifact, restoreEncryptedBackup } = require('../backend/runtime/backup-runner');
+const { classifyPgDiagnostic } = require('../backend/runtime/backup-runner');
 const { appendOperatorAudit } = require('../backend/runtime/operator-audit');
 
 (async () => {
@@ -69,6 +70,8 @@ const { appendOperatorAudit } = require('../backend/runtime/operator-audit');
     await fs.writeFile(fakePgRestore,`#!${process.execPath}\nconst fs=require("node:fs");const a=process.argv.slice(2);if(a[0]==="--list"){process.exit(fs.readFileSync(a[1]).toString().startsWith("PGDMP")?0:2)}if(!a.includes("--no-acl")||!a.includes("--exit-on-error"))process.exit(4);if(!a.some(x=>x==="--dbname=postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_disposable_rehearsal"))process.exit(3);\n`,{mode:0o700});
     const artifact=await createEncryptedBackup({databaseUrl:'postgresql://rotamoto_backup@127.0.0.1:5432/rotamoto_e2e',keyFile:backupKey,directory:backups,pgDump:fakePgDump,pgRestore:fakePgRestore,now:new Date('2026-10-05T00:00:00.000Z')});
     const verified=await verifyArtifact({directory:backups,id:artifact.id,keyFile:backupKey});assert.equal(verified.manifest.sha256,artifact.sha256);
+    assert.equal(classifyPgDiagnostic('pg_restore: error: ERROR: permission denied to change default privileges'), 'PostgreSQL authorization/ownership failure');
+    assert.equal(classifyPgDiagnostic('ERROR: secret@example.invalid token=do-not-log'), 'PostgreSQL restore/backup error (details withheld)');
     assert.deepEqual(await restoreEncryptedBackup({directory:backups,id:artifact.id,targetUrl:'postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_disposable_rehearsal',keyFile:backupKey,pgRestore:fakePgRestore,tempDirectory:root}),{restored:true,database:'rotamoto_disposable_rehearsal',backupId:artifact.id});
     await assert.rejects(restoreEncryptedBackup({directory:backups,id:artifact.id,targetUrl:'postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto',keyFile:backupKey,pgRestore:fakePgRestore,tempDirectory:root}));
     await assert.rejects(restoreEncryptedBackup({directory:backups,id:artifact.id,targetUrl:'postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_e2e',keyFile:backupKey,pgRestore:fakePgRestore,tempDirectory:root}));

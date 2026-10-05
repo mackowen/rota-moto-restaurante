@@ -65,6 +65,9 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
       (e2e && command === 'down')) {
     throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e (up/status somente)]');
   }
+  if (env.NODE_ENV === 'test' && !e2e && command !== 'status') {
+    throw new Error('Migrations mutáveis em NODE_ENV=test exigem --e2e e rotamoto_e2e.');
+  }
   return { command, connectionString: e2e
     ? e2eMigrationConnectionString(env)
     : migrationConnectionString(env) };
