@@ -129,6 +129,46 @@ async function createFilesystemObjectStore({ directory } = {}) {
       await ensureSafeChild(root, file);
       await fsp.unlink(file);
     },
+    async listProofObjects({ olderThan = new Date(0), limit = 500 } = {}) {
+      if (!(olderThan instanceof Date) || !Number.isFinite(olderThan.getTime()) || !Number.isSafeInteger(limit) || limit < 1 || limit > 5000) {
+        throw storageError('STORAGE_GC_INPUT_INVALID', 'GC parameters invalid.');
+      }
+      const base = path.join(root, 'tenant');
+      try { await fsp.lstat(base); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+      const safeDir = async dir => {
+        const stat = await fsp.lstat(dir);
+        if (stat.isSymbolicLink() || !stat.isDirectory() || (typeof process.getuid === 'function' && stat.uid !== process.getuid()) || (stat.mode & 0o077)) return false;
+        return true;
+      };
+      if (!await safeDir(base)) throw storageError('STORAGE_GC_UNSAFE_ENTRY', 'Unsafe storage entry skipped.');
+      const result = [];
+      for (const tenant of await fsp.readdir(base, { withFileTypes: true })) {
+        if (!tenant.isDirectory() || !UUID.test(tenant.name)) continue;
+        const tenantPath = path.join(base, tenant.name); if (!await safeDir(tenantPath)) continue;
+        const deliveryRoot = path.join(tenantPath, 'delivery');
+        let deliveries; try { deliveries = await fsp.readdir(deliveryRoot, { withFileTypes: true }); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+        if (!await safeDir(deliveryRoot)) continue;
+        for (const delivery of deliveries) {
+          if (!delivery.isDirectory() || !UUID.test(delivery.name)) continue;
+          const proofRoot = path.join(deliveryRoot, delivery.name, 'proof');
+          if (!await safeDir(path.dirname(proofRoot))) continue;
+          let objects; try { objects = await fsp.readdir(proofRoot, { withFileTypes: true }); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+          if (!await safeDir(proofRoot)) continue;
+          for (const object of objects) {
+            if (!object.isFile() || !/^[0-9a-f-]{36}\.(?:png|jpg)$/u.test(object.name)) continue;
+            const objectKey = `tenant/${tenant.name}/delivery/${delivery.name}/proof/${object.name}`;
+            const reference = { provider: 'filesystem-v1', objectKey };
+            const file = objectPath(reference), stat = await fsp.lstat(file);
+            if (stat.isSymbolicLink() || (typeof process.getuid === 'function' && stat.uid !== process.getuid()) || (stat.mode & 0o077) || stat.nlink !== 1) continue;
+            if (stat.mtimeMs <= olderThan.getTime()) {
+              result.push(Object.freeze({ reference, companyId: tenant.name, deliveryId: delivery.name, modifiedAt: new Date(stat.mtimeMs), sizeBytes: stat.size }));
+              if (result.length >= limit) return result;
+            }
+          }
+        }
+      }
+      return result;
+    },
     status() { return Object.freeze({ configured: true, provider: 'filesystem-v1' }); }
   });
 }

@@ -31,7 +31,7 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
       const deliveryId=(up||get)[1].toLowerCase();if(!UUID.test(deliveryId))throw fail('NOT_FOUND',404);
       const method=up?'POST':'GET';if(req.method!==method){res.writeHead(405,{Allow:method,'Cache-Control':'no-store'});res.end();return true;}
       const rate=rateLimiter.consume(`${req.clientIp||req.socket.remoteAddress||'unknown'}:proof-media:${method}`,'default');if(!rate.allowed)throw fail('RATE_LIMITED',429,'Limite de solicitações excedido.');
-      if(up){sameOrigin(req,allowedOrigin);const type=String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase();if(!['image/png','image/jpeg'].includes(type))throw fail('UNSUPPORTED_MEDIA_TYPE',415);
+      if(up){sameOrigin(req,allowedOrigin);const proofId=url.searchParams.get('proofId');const type=String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase();if(!['image/png','image/jpeg'].includes(type))throw fail('UNSUPPORTED_MEDIA_TYPE',415);
         const length=Number(req.headers['content-length']);if(!Number.isSafeInteger(length)||length<1)throw fail('INVALID_INPUT',400);if(length>MAX_PROOF_BYTES){req.resume();throw fail('PAYLOAD_TOO_LARGE',413)}
         const token=cookie(req);if(!token)throw fail('UNAUTHENTICATED',401);
         const csrf=req.headers['x-csrf-token'];if(typeof csrf!=='string')throw fail('CSRF_INVALID',403);
@@ -39,12 +39,18 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
         try{
           stored=await identityService.withAuthenticatedTenant(token,async(client,principal)=>{
             if(!await identityService.verifyCsrf(client,principal.session_id,csrf))throw fail('CSRF_INVALID',403);
+            if(!UUID.test(proofId||''))throw fail('INVALID_INPUT',400,'Identificador da prova inválido.');
             if(!principal.driver_id)throw fail('DRIVER_LINK_REQUIRED',403);
             const delivery=await client.query(`SELECT payload->>'driverId' AS driver_id,deleted_at FROM rotamoto.domain_records
               WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Delivery'`,[principal.company_id,deliveryId]);
             if(!delivery.rowCount||delivery.rows[0].deleted_at||delivery.rows[0].driver_id!==principal.driver_id)throw fail('NOT_FOUND',404);
+            await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`proof-media:${principal.company_id}:${deliveryId}`]);
             const result=await mediaStorage.storeProof({companyId:principal.company_id,deliveryId,contentType:type,source:req});objectRef=result.storageRef;
-            if(result.sizeBytes!==length)throw fail('INVALID_INPUT',400,'Tamanho do upload divergente.');return result;
+            if(result.sizeBytes!==length)throw fail('INVALID_INPUT',400,'Tamanho do upload divergente.');
+            await client.query(`INSERT INTO rotamoto.proof_media_upload_intents(company_id,delivery_id,proof_id,object_key)
+              VALUES($1,$2::uuid,$3::uuid,$4) ON CONFLICT(company_id,proof_id) DO UPDATE SET
+              delivery_id=EXCLUDED.delivery_id,object_key=EXCLUDED.object_key,created_at=now()`,
+            [principal.company_id,deliveryId,proofId,result.storageRef.objectKey]);return result;
           },'sync.push');
         }catch(error){if(objectRef)await mediaStorage.remove?.(objectRef).catch(()=>{});throw error;}
         sendJson(res,201,{provider:stored.provider,storageRef:stored.storageRef,mimeType:stored.mimeType,sizeBytes:stored.sizeBytes,sha256:stored.sha256,requestId});return true;

@@ -8,8 +8,54 @@ reverse proxy com TLS e headers confiáveis
   → PostgreSQL com usuário runtime de privilégio mínimo
   → volume local privado para mídias
   → SMTP configurado pelo operador (opcional até habilitar convites/recovery)
-  → volume de backup local; cópia remota é política operacional futura
+  → volume local privado de backup cifrado; cópia offsite é opcional
 ```
+
+## Provisionamento on-premises/VPS
+
+Execute a API com usuário de sistema dedicado, sem shell interativo, e mantenha
+`HOST=127.0.0.1`; o nginx termina TLS e encaminha apenas para loopback. Configure
+firewall para expor somente 443/80 (redirecionado), nunca PostgreSQL nem os
+volumes. PostgreSQL deve aceitar conexões locais/API com TLS verificado quando
+remoto; use CA privada em arquivo somente leitura pelo serviço. Não encaminhe
+headers de proxy de peers fora da allowlist.
+
+Crie volumes separados, fora do checkout e do webroot: mídia e backup em
+diretórios `0700` próprios do serviço; arquivos de objeto, manifesto, dump e
+keystore em `0600`. Não monte mídia como conteúdo estático no nginx. Backup e
+keystore devem ter cópia protegida em host/offline diferente, com acesso de
+operadores restrito. Não use `chmod -R` em volume já existente sem revisar
+owners e symlinks.
+
+```sh
+ROTAMOTO_MEDIA_DIRECTORY=/var/lib/rotamoto/media
+ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto
+ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key
+ROTAMOTO_SECRET_STORE_DIRECTORY=/var/lib/rotamoto/keystore
+ROTAMOTO_SECRET_MASTER_KEY_FILE=/etc/rotamoto/master.key
+ROTAMOTO_DATABASE_PASSWORD_REF=local-v1:<referencia-opaca>
+ROTAMOTO_OPERATOR_AUDIT_LOG=/var/log/rotamoto/operator-audit.jsonl
+ROTAMOTO_OPERATOR_ACTOR_REF=operator:deployment-team
+PUBLIC_BASE_URL=https://rota.example.invalid
+```
+
+Use o mecanismo de configuração do serviço para instalar os parâmetros globais;
+arquivos de ambiente devem pertencer a root/operador, modo `0600`, e não devem
+conter senhas PostgreSQL. Paths e providers são globais à instalação. Não existe
+configuração operacional de instalação através das permissões do administrador
+tenant. Consulte `npm run operator` para status sanitizado; `secret-put` lê o
+secret por stdin e devolve somente a referência. `smtp-verify` confirma conexão
+TLS sem enviar mensagem. External secret providers são configurados pelo CLI
+próprio do provider, nunca por configuração tenant. Comandos que alteram
+keystore/backup exigem `ROTAMOTO_OPERATOR_ACTOR_REF` e arquivo JSONL privado de
+auditoria `0600`; provisionar o arquivo antes da primeira operação.
+
+Provisionamento de identidade/e-mail requer SMTP verificado e `PUBLIC_BASE_URL`
+HTTPS. Use `node scripts/rotamoto-operator.js smtp-verify`. Configure alertas de disco para
+mídia, keystore e backups; planeje RPO/RTO com base na frequência do job de
+backup, tempo medido de restore e janela de sincronização dos celulares. O
+produto não fixa um prazo legal de retenção de PII/GPS/provas: defina retenção
+com responsável operacional e legal antes de purgar mídia ou backups.
 
 ## Segredos e configuração da instalação
 
@@ -19,9 +65,13 @@ SMTP é configurado somente pelo operador via `SMTP_HOST`, `SMTP_PORT`, `SMTP_SE
 
 O provider local de mídia usa `ROTAMOTO_MEDIA_DIRECTORY`, limita provas PNG/JPEG a 8 MiB, grava conteúdo fora do PostgreSQL e exige volume privado, ownership do serviço, sem symlink e permissões 0700/0600. `POST /api/domain/deliveries/{id}/proofs/media` exige sessão, CSRF, tenant e Driver atualmente atribuído; o Motoboy preserva assinatura local e tenta novamente o upload. O sync persiste referência, tamanho e SHA-256 no registro canônico. A leitura usa `GET /api/domain/deliveries/{id}/proofs/{proofId}/media` com autorização da sessão; o volume não deve ser publicado pelo nginx.
 
-MFA TOTP nativo usa o keystore de instalação. Enrollment retorna segredo apenas antes da confirmação; PostgreSQL guarda a referência opaca, o replay counter e somente digests dos recovery codes. Confirmação, login e códigos de recuperação são auditados, limitados e protegidos contra replay. A perda da master key ainda exige recuperação operacional; rotação automatizada não está implementada.
+Upload cria intent tenant-scoped ligada ao ID local da prova e Delivery; o sync a consome na mesma transação da referência canônica. Isso protege resposta perdida, sync offline e corrida do coletor. Execute `npm run storage:gc` para dry-run ou `npm run storage:gc -- --apply` para remover candidatos; o grace period mínimo é 45 dias e pode aumentar via `ROTAMOTO_MEDIA_GC_GRACE_DAYS`. Intents não sincronizadas não expiram automaticamente para preservar provas offline; isso pode reter mídia de uploads abandonados.
 
-Backup local grava stream em arquivo temporário, faz fsync e rename atômico, com arquivos 0600. Esta primitiva não agenda `pg_dump`, não define retenção, criptografia do conjunto, restore, nem cópia offsite. Essas rotinas ainda exigem runbook/validação operacional. Backups contêm PII, localização e provas: criptografar e limitar acesso antes de transportar ou reter.
+MFA TOTP nativo usa o keystore de instalação. Enrollment retorna segredo apenas antes da confirmação; PostgreSQL guarda a referência opaca, o replay counter e somente digests dos recovery codes. Confirmação, login e códigos de recuperação são auditados, limitados e protegidos contra replay. A rotação é CLI server-side com manifesto de referências/contextos; parar a API, fazer backup offline do diretório/key, executar a troca, verificar status e só então reiniciar. Falha antes/durante a troca restaura a cópia anterior; após queda abrupta, use a cópia `*.rotation-backup-*` (master key e arquivos `.enc`) para restaurar ambos como par antes de iniciar a API. Nunca combine master key de uma geração com o diretório de outra.
+
+`npm run backup:create` executa `pg_dump` custom por role administrativo separado `rotamoto_backup`, cifra o stream com AES-256-GCM usando chave fora do PostgreSQL e grava artefato/manifesto com checksum e HMAC. `npm run backup:verify -- <id>` verifica manifesto, HMAC e checksum. Retenção em dias é controlada por `ROTAMOTO_BACKUP_RETENTION_DAYS`; só pares manifesto/dump expirados e privados são removidos. A chave é criada uma vez por `node scripts/rotamoto-operator.js backup-key-init`; guarde-a fora do host. Não execute backup com `rotamoto_app` nem altere RLS/FORCE. A role de backup/restore exige provisioning DBA controlado e não é criada pelo runtime. O ensaio real com credencial/role separada ainda deve ocorrer em alvo descartável; o teste automatizado valida o formato e os guards com executáveis PostgreSQL fake.
+
+`npm run backup:restore -- <id> <URL-alvo>` exige database com prefixo `rotamoto_disposable_` e recusa explicitamente `rotamoto`/`rotamoto_e2e`. O comando valida manifest/checksum/HMAC/tag GCM, grava dump temporário `0600`, exige `pg_restore --list` e somente então invoca restore destrutivo. Cópia de mídia no backup ainda não é implementada; preserve o volume de objetos por snapshot cifrado independente e correlacione manifesto antes de depender dessa capacidade.
 
 ## Configuração por empresa
 
@@ -41,4 +91,4 @@ Opções de negócio tenant-scoped permanecem sob RBAC e RLS. Paths, keystore, m
 
 ## Estado da implementação
 
-Keystore, SMTP via configuração do operador, DeliveryProof filesystem autenticado e MFA TOTP nativo já operam nos fluxos cobertos pelo harness local/E2E. Configuração administrativa sanitizada para instalação/tenant, rotação do keystore e o ciclo operacional de backup criptografado/pg_dump/restore/retention continuam pendentes. O writer filesystem de backup, isoladamente, não é backup PostgreSQL.
+Keystore, SMTP via configuração do operador, DeliveryProof filesystem autenticado e MFA TOTP nativo já operam nos fluxos cobertos pelo harness local/E2E. A superfície de operador é CLI local com status sanitizado e escrita de secret stdin; configuração de instalação permanece sob owner do serviço. Garbage collection é dry-run por padrão, com 45 dias mínimos e confirmação canônica + intent tenant-scoped. Restore real depende da role administrativa ainda não provisionada; backup de objetos e rehearsal PostgreSQL permanecem pendentes.

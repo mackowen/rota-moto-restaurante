@@ -20,6 +20,7 @@ const { createSyncService } = require('../../backend/domain/sync-service');
 const { createFilesystemObjectStore } = require('../../backend/domain/filesystem-object-store');
 const { createMediaStorage } = require('../../backend/domain/media-storage');
 const { createProofMediaHttpHandler } = require('../../backend/domain/proof-media-http');
+const { runProofMediaGc } = require('../../backend/domain/proof-media-gc');
 const { createDomainQueryHttpHandler } = require('../../backend/domain/query-http');
 const { createDomainQueryRepository } = require('../../backend/domain/query-repository');
 const { createDomainQueryService } = require('../../backend/domain/query-service');
@@ -236,7 +237,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       method: 'DELETE', cookie: sessionCookie, csrf
     });
     assert.equal(unbound.status, 200, JSON.stringify(unbound.body));
-    const staleAssignmentUpload = await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/media`, { method: 'POST',
+    const staleAssignmentUpload = await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/media?proofId=${crypto.randomUUID()}`, { method: 'POST',
       headers: { Origin: allowedOrigins[0] || host.base, Cookie: sessionCookie, 'X-CSRF-Token': csrf,
         'Content-Type': 'image/png', 'Content-Length': String(png.length) }, body: png });
     assert.equal(staleAssignmentUpload.status, 403, 'media upload checks the current server-side Driver association');
@@ -244,14 +245,16 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       method: 'PUT', cookie: sessionCookie, csrf, body: { driverId }
     });
     assert.equal(rebound.status, 200, JSON.stringify(rebound.body));
-    const uploaded = await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/media`, { method: 'POST',
+    const proofId = crypto.randomUUID();
+    const uploaded = await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/media?proofId=${proofId}`, { method: 'POST',
       headers: { Origin: allowedOrigins[0] || host.base, Cookie: sessionCookie, 'X-CSRF-Token': csrf,
         'Content-Type': 'image/png', 'Content-Length': String(png.length) }, body: png });
     const uploadedBody = await uploaded.json();
     assert.equal(uploaded.status, 201, JSON.stringify(uploadedBody));
     assert.equal(uploadedBody.storageRef.provider, 'filesystem-v1');
     assert.equal(uploadedBody.sizeBytes, png.length);
-    const proofId = crypto.randomUUID();
+    const pendingGc=await runProofMediaGc({pool,objectStore,now:()=>new Date(Date.now()+120_000),graceMs:60_000,dryRun:false,log:()=>{}});
+    assert.equal(pendingGc.skipped,1,'staged upload intent protects media if the response is lost or sync stays offline');
     const motoboyProofPush = await call('/api/sync/push', { method: 'POST', cookie: sessionCookie, csrf, body: {
       protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId: `pkt_${crypto.randomUUID()}`,
       deviceId: motoboyDevice, source: { deviceId: motoboyDevice }, createdAt: now,
@@ -266,6 +269,10 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const canonicalProof=await runtime.query("SELECT payload,related_entity_type,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,canonicalProofId]);
     assert.equal(canonicalProof.rowCount,1,'accepted proof has canonical PostgreSQL metadata');
     assert.equal(canonicalProof.rows[0].related_record_id,deliveryId);
+    const uploadIntent=await runtime.query('SELECT 1 FROM rotamoto.proof_media_upload_intents WHERE company_id=$1 AND proof_id=$2',[companyId,proofId]);
+    assert.equal(uploadIntent.rowCount,0,'sync consumes the staged upload intent atomically with canonical metadata');
+    const gcResult=await runProofMediaGc({pool,objectStore,now:()=>new Date(Date.now()+120_000),graceMs:60_000,dryRun:false,log:()=>{}});
+    assert.equal(gcResult.skipped,1,'GC confirms canonical reference and preserves synced media');
     const proofRead = await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/${canonicalProofId}/media`, {
       headers: { Origin: allowedOrigins[0] || host.base, Cookie: sessionCookie } });
     assert.equal(proofRead.status, 200, await proofRead.clone().text());

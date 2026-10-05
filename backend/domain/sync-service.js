@@ -333,7 +333,10 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
             typeof media.storageRef.objectKey!=='string'||!media.storageRef.objectKey.trim()||media.storageRef.objectKey.length>512||
             typeof media.sha256!=='string'||!/^[a-f0-9]{64}$/iu.test(media.sha256))
             invalid('DeliveryProof exige referência de armazenamento e digest SHA-256.');
-          const storageResult=await mediaStorage.validateReference(media.storageRef,{companyId,deliveryId:record.deliveryId,
+          const deliveryCanonicalId=await resolveReferencedAlias(client,companyId,'Delivery',record.deliveryId);
+          if(!deliveryCanonicalId)throw new SyncError('UNRESOLVED_REFERENCE','Delivery da prova ainda não possui ID canônico.');
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`proof-media:${companyId}:${deliveryCanonicalId}`]);
+          const storageResult=await mediaStorage.validateReference(media.storageRef,{companyId,deliveryId:deliveryCanonicalId,
             mimeType:media.mimeType,sizeBytes:media.sizeBytes,sha256:media.sha256});
           if(!storageResult.valid)throw new SyncError(storageResult.code||'MEDIA_STORAGE_UNAVAILABLE','Storage de prova não está configurado ou a referência não foi validada.');
         }
@@ -503,6 +506,11 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
             relatedId ? relatedType : null, relatedId]);
           outcomes.updated += 1;
         }
+      }
+      if (entityType === 'DeliveryProof' && canonical.media?.storageRef?.objectKey) {
+        await client.query(`DELETE FROM rotamoto.proof_media_upload_intents
+          WHERE company_id=$1 AND proof_id=$2::uuid AND object_key=$3`,
+        [companyId, resolved.localId, canonical.media.storageRef.objectKey]);
       }
       if (entityType === 'Delivery' && appKey === 'restaurante' && canonical.status === 'REDELIVERY' && existing.rowCount) {
         await client.query(`INSERT INTO rotamoto.audit_log

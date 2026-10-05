@@ -99,11 +99,11 @@ function loadRuntimeConfig(env = process.env) {
   const smtp = Object.freeze({ host: env.SMTP_HOST || null, port: env.SMTP_PORT ? Number(env.SMTP_PORT) : 587,
     secure: env.SMTP_SECURE === 'true', user: env.SMTP_USER || null, passwordRef: env.SMTP_PASSWORD_REF || null,
     from: env.SMTP_FROM || null, baseUrl: env.PUBLIC_BASE_URL || null });
-  const smtpConfigured = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASSWORD_REF', 'SMTP_FROM', 'PUBLIC_BASE_URL'].some(key => Boolean(env[key]));
+  const smtpConfigured = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD_REF', 'SMTP_FROM'].some(key => Boolean(env[key]));
   if (production && smtpConfigured &&
       (!smtp.host || !smtp.passwordRef || !smtp.from || !smtp.baseUrl || !Number.isInteger(smtp.port) || smtp.port < 1 || smtp.port > 65535))
     throw new Error('Configuração SMTP incompleta.');
-  if (production && smtpConfigured) {
+  if (production && (smtpConfigured || smtp.baseUrl)) {
     let publicBase;
     try { publicBase = new URL(smtp.baseUrl); } catch (_) { throw new Error('PUBLIC_BASE_URL inválida.'); }
     if (publicBase.protocol !== 'https:' || publicBase.username || publicBase.password || publicBase.search || publicBase.hash)

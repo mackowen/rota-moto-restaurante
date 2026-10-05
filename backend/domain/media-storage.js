@@ -21,6 +21,11 @@ function createMediaStorage({ objectStore = null, provider = null } = {}) {
       return { valid: valid === true, ...(valid === true ? {} : { code: 'MEDIA_REFERENCE_INVALID' }) };
     }
     if (!configured()) return { valid: false, code: 'MEDIA_STORAGE_UNAVAILABLE' };
+    if (objectStore.provider === 'filesystem-v1') {
+      const match = typeof reference?.objectKey === 'string' && /^tenant\/([0-9a-f-]{36})\/delivery\/([0-9a-f-]{36})\/proof\/[0-9a-f-]{36}\.(?:png|jpg)$/iu.exec(reference.objectKey);
+      if (!match || match[1].toLowerCase() !== String(metadata?.companyId || '').toLowerCase() ||
+          match[2].toLowerCase() !== String(metadata?.deliveryId || '').toLowerCase()) return { valid: false, code: 'MEDIA_REFERENCE_INVALID' };
+    }
     if (!reference || reference.provider !== objectStore.provider || !metadata || !ALLOWED_TYPES.has(metadata.mimeType) ||
         !Number.isSafeInteger(metadata.sizeBytes) || metadata.sizeBytes < 1 || metadata.sizeBytes > MAX_PROOF_BYTES ||
         typeof metadata.sha256 !== 'string' || !/^[a-f0-9]{64}$/iu.test(metadata.sha256)) return { valid: false, code: 'MEDIA_REFERENCE_INVALID' };

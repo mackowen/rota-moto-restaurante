@@ -126,6 +126,15 @@ async function main() {
   assert.equal(e2e.membership.app_can_set_migrator,false,'runtime role can SET ROLE to migration role');
   assert(official.roles.every(role=>!role.rolsuper&&!role.rolcreatedb&&!role.rolcreaterole&&!role.rolreplication&&!role.rolbypassrls),
     'a protected role has an elevated attribute');
+  for (const snapshot of [official,e2e]) {
+    const intent = snapshot.relations.find(row => row.relname === 'proof_media_upload_intents');
+    assert(intent, 'staged media intent table exists');
+    assert.equal(intent.owner, 'rotamoto_migrator');
+    assert.equal(intent.rls, true); assert.equal(intent.force_rls, true);
+    assert.deepEqual(intent.app_privileges, [true,true,true,true,false,false,false], 'runtime media intent grant is least privilege');
+    assert(snapshot.policies.some(policy => policy.tablename === 'proof_media_upload_intents' && policy.policyname === 'tenant_isolation' &&
+      policy.qual.includes('current_tenant_id') && policy.with_check.includes('current_tenant_id')), 'upload intents have tenant isolation policy');
+  }
   console.log(`E2E security parity: PASS (effective runtime ACLs, PUBLIC ACLs, ownership, RLS/FORCE, policies, ledger; ${getMigrations().length} checksums)`);
 }
 
