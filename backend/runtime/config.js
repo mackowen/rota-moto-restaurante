@@ -111,11 +111,17 @@ function loadRuntimeConfig(env = process.env) {
   }
   const mediaDirectory = env.ROTAMOTO_MEDIA_DIRECTORY || null;
   const backupDirectory = env.ROTAMOTO_BACKUP_DIRECTORY || null;
+  const deliveryQrKeyRef = env.ROTAMOTO_DELIVERY_QR_SIGNING_KEY_REF || null;
+  const deliveryQrKeyId = env.ROTAMOTO_DELIVERY_QR_KEY_ID || null;
+  if (Boolean(deliveryQrKeyRef) !== Boolean(deliveryQrKeyId) || deliveryQrKeyRef && (deliveryQrKeyRef.length > 512 || /[\r\n\u0000]/u.test(deliveryQrKeyRef)) ||
+      deliveryQrKeyId && !/^[A-Za-z0-9_-]{1,32}$/u.test(deliveryQrKeyId))
+    throw new Error('Configuração da chave de QR inválida ou incompleta.');
   if ([mediaDirectory, backupDirectory].some(value => value && !path.isAbsolute(value)))
     throw new Error('Paths de storage e backup devem ser absolutos.');
 
   return Object.freeze({ nodeEnv, production, host, port, databaseUrl, allowedOrigins: origins, smtp, mediaDirectory, backupDirectory,
     allowedHosts, trustedProxyAddresses, trustProxy: trustedProxyAddresses.length>0,
+    deliveryQrKeyRef, deliveryQrKeyId,
     databaseTlsCaFile:production?env.DATABASE_TLS_CA_FILE:null, requestTimeoutMs: 30_000, headersTimeoutMs: 10_000,
     keepAliveTimeoutMs: 5_000, shutdownTimeoutMs: 10_000,
     secretProviderModule: production ? secretProviderModule : null,

@@ -32,7 +32,7 @@ async function readBackupStatus(directory) {
 
 (async () => {
   const command = process.argv[2] || 'status';
-  const config = ['status', 'secret-put', 'smtp-verify'].includes(command) ? loadRuntimeConfig() : null;
+  const config = ['status', 'secret-put', 'smtp-verify', 'delivery-qr-key-init'].includes(command) ? loadRuntimeConfig() : null;
   if (command === 'status') {
     let secrets = { configured: false, provider: null, status: 'not_configured' };
     let storage = { configured: false, provider: null, status: 'not_configured' };
@@ -65,6 +65,7 @@ async function readBackupStatus(directory) {
         media: { configured: Boolean(config.mediaDirectory && storage.configured), status: config.mediaDirectory ? storage.status : 'not_configured' },
         retentionDays: Number(process.env.ROTAMOTO_BACKUP_RETENTION_DAYS || 30), schedule: { managedExternally: true, runner: 'backup-create' } },
       publicBaseUrl: config.smtp.baseUrl ? { configured: true, https: config.smtp.baseUrl.startsWith('https://') } : { configured: false },
+      deliveryQr: { configured: Boolean(config.deliveryQrKeyRef && config.deliveryQrKeyId), status: config.deliveryQrKeyRef && config.deliveryQrKeyId ? 'configured' : 'not_configured' },
       tenantSettings: { configurable: false, reason: 'Nenhuma preferência tenant-scoped está habilitada nesta superfície.' } } })}\n`);
     return;
   }
@@ -89,6 +90,20 @@ async function readBackupStatus(directory) {
     await mail.verify();
     await appendOperatorAudit('smtp.verify.completed', { host: config.smtp.host });
     process.stdout.write(`${JSON.stringify({ event: 'operator.smtp.verified', status: 'verified' })}\n`);
+    return;
+  }
+  if (command === 'delivery-qr-key-init') {
+    if (!config.secretStoreDirectory || !config.secretMasterKeyFile || config.secretProviderModule)
+      throw new Error('Inicialização requer keystore filesystem local configurado.');
+    const kid = crypto.randomBytes(9).toString('base64url');
+    const pair = crypto.generateKeyPairSync('ed25519');
+    const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    const publicKey = pair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64url');
+    const provider = await createFileSecretProvider({ directory: config.secretStoreDirectory, masterKeyFile: config.secretMasterKeyFile });
+    await appendOperatorAudit('delivery_qr.key_init.started', { kid });
+    const { secretRef } = await provider.put({ name: `delivery/qr-signing-key/${kid}`, scope: 'installation', value: privateKey });
+    await appendOperatorAudit('delivery_qr.key_init.completed', { kid, secretRef });
+    process.stdout.write(`${JSON.stringify({ event: 'operator.delivery_qr.key_initialized', kid, secretRef, algorithm: 'Ed25519', publicKeySpki: publicKey })}\n`);
     return;
   }
   if (command === 'backup-key-init') {

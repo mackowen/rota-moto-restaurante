@@ -21,6 +21,12 @@ const prod={NODE_ENV:'production',HOST:'127.0.0.1',PORT:'8787',
 const config=loadRuntimeConfig(prod);
 assert.equal(config.production,true);
 assert.equal(config.trustProxy,true);
+assert.equal(config.deliveryQrKeyRef,null);
+assert.equal(config.deliveryQrKeyId,null);
+const qrConfig=loadRuntimeConfig({...prod,ROTAMOTO_DELIVERY_QR_SIGNING_KEY_REF:'local-v1:00000000-0000-4000-8000-000000000000',ROTAMOTO_DELIVERY_QR_KEY_ID:'install-qr-key-01'});
+assert.equal(qrConfig.deliveryQrKeyId,'install-qr-key-01');
+assert.throws(()=>loadRuntimeConfig({...prod,ROTAMOTO_DELIVERY_QR_KEY_ID:'install-qr-key-01'}),/QR inválida/u);
+assert.throws(()=>loadRuntimeConfig({...prod,ROTAMOTO_DELIVERY_QR_SIGNING_KEY_REF:'ref\nleak',ROTAMOTO_DELIVERY_QR_KEY_ID:'install-qr-key-01'}),/QR inválida/u);
 assert.equal(hostAllowed('api.example.test',config.allowedHosts,true),true);
 assert.equal(hostAllowed('attacker.example',config.allowedHosts,true),false);
 assert.equal(resolveClientAddress({socket:{remoteAddress:'127.0.0.1'},headers:{'x-forwarded-for':'198.51.100.23'}},config),'198.51.100.23');

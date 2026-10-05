@@ -20,6 +20,8 @@ const {createSyncHttpHandler}=require('./backend/domain/sync-http');
 const {createDomainQueryRepository}=require('./backend/domain/query-repository');
 const {createDomainQueryService}=require('./backend/domain/query-service');
 const {createDomainQueryHttpHandler}=require('./backend/domain/query-http');
+const {createDeliveryQrService}=require('./backend/domain/delivery-qr');
+const {createDeliveryQrHttpHandler}=require('./backend/domain/delivery-qr-http');
 const {createAdminRepository}=require('./backend/admin/repository');
 const {createAdminService}=require('./backend/admin/service');
 const {createAdminHttpHandler}=require('./backend/admin/http');
@@ -65,6 +67,11 @@ const syncService=createSyncService({mediaStorage});
 const syncHttp=createSyncHttpHandler({identityService,syncService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const domainQueryService=createDomainQueryService({repository:createDomainQueryRepository()});
 const domainQueryHttp=createDomainQueryHttpHandler({identityService,queryService:domainQueryService,logger:()=>{}});
+const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQrService({
+  secretProvider:{get:(ref,context)=>Promise.resolve(secretProvider).then(provider=>provider.get(ref,context))},
+  keyRef:CONFIG.deliveryQrKeyRef,kid:CONFIG.deliveryQrKeyId
+}):null;
+const deliveryQrHttp=createDeliveryQrHttpHandler({identityService,queryService:domainQueryService,qrService:deliveryQrService,logger:()=>{}});
 const adminService=createAdminService({repository:createAdminRepository()});
 const adminHttp=createAdminHttpHandler({identityService,adminService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 
@@ -110,6 +117,7 @@ async function route(req,res){
     if(await adminHttp(req,res))return;
     if(await proofMediaHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
+    if(await deliveryQrHttp(req,res))return;
     if(await syncHttp(req,res))return;
     if(req.headers.origin&&!ALLOWED_ORIGINS.includes(req.headers.origin))return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
     if(/^\/api\/(?:ifood|99food|keeta)(?:\/|$)/iu.test(u.pathname))return json(res,503,{error:{code:'PROVIDER_BLOCKED_EXTERNAL',message:'A integração externa ainda não foi validada e habilitada.'},requestId:req.requestId});
