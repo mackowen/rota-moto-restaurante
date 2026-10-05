@@ -25,6 +25,7 @@ assert.match(retention,/decisão legal\/operacional/u);
 assert.match(retention,/grace mínimo 45d/u);
 assert.match(nginx,/proxy_pass http:\/\/127\.0\.0\.1:8787/u);
 assert.match(nginx,/listen 443 ssl/u);
+assert.match(nginx,/client_max_body_size 10m/u);
 assert.match(nginx,/proxy_set_header X-Forwarded-For \$remote_addr/u);
 assert.doesNotMatch(env,/IFOOD_CLIENT_SECRET|FOOD99_CLIENT_SECRET|KEETA_CLIENT_SECRET/u);
 assert.doesNotMatch(env,/^(?:MIGRATOR_DATABASE_URL|PGPASSWORD)=/mu);

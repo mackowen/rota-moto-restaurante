@@ -9,15 +9,16 @@ runbook não instala nem altera serviços, firewall, PostgreSQL ou nginx.
 - Domínio e certificado TLS geridos por operador; `nginx-api.conf.example` é
   somente exemplo e precisa revisão para domínio, cadeia de certificado,
   limites e política de HSTS.
-- Secret provider externo aprovado e fora do repositório. O módulo injetado
-  por `ROTAMOTO_SECRET_PROVIDER_MODULE` implementa
-  `getDatabasePassword({host,port,database,user})`; seu caminho deve ser
-  absoluto. O processo nunca recebe `MIGRATOR_DATABASE_URL`. O provider e a CA
-  não são simulados nesta árvore.
+- Keystore de instalação configurado fora do repositório: provider local em
+  arquivos privados ou módulo externo por `ROTAMOTO_SECRET_PROVIDER_MODULE`,
+  que implementa `getDatabasePassword({host,port,database,user})`; seu caminho
+  deve ser absoluto. O processo nunca recebe `MIGRATOR_DATABASE_URL`. A CA e
+  credenciais do deployment precisam ser provisionadas pelo operador.
 - PostgreSQL de produção, credenciais rotacionáveis, política de backup,
   operadores/on-call, RPO/RTO, retenção e canal de distribuição aprovados.
-- MFA e email continuam fail-closed enquanto seus providers operacionais não
-  existirem.
+- MFA TOTP nativo e transporte SMTP estão implementados; enrollment/convite/
+  recovery permanecem fail-closed até o operador configurar keystore, SMTP e
+  `PUBLIC_BASE_URL` válidos no deployment.
 
 ## Configuração de produção
 

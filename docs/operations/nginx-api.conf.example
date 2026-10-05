@@ -17,7 +17,8 @@ server {
     ssl_certificate_key /etc/ssl/rotamoto/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    client_max_body_size 1m;
+    # DeliveryProof aceita até 8 MiB; deixe margem para framing multipart.
+    client_max_body_size 10m;
     client_header_timeout 10s;
     client_body_timeout 15s;
     send_timeout 35s;
