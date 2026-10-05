@@ -8,8 +8,10 @@ const { resolveMigrationInvocation } = require('../backend/postgres/migrate');
 const runner = path.join(__dirname, '../backend/postgres/migrate.js');
 const official = 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto';
 const qa = 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e';
+const campaignSource = 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_disposable_0068_source';
 const env = { NODE_ENV: 'test', MIGRATOR_DATABASE_URL: official,
-  E2E_MIGRATOR_DATABASE_URL: qa };
+  E2E_MIGRATOR_DATABASE_URL: qa, ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068',
+  ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL: campaignSource };
 
 assert.deepEqual(resolveMigrationInvocation(['up', '--e2e'], env),
   { command: 'up', connectionString: qa });
@@ -21,6 +23,15 @@ assert.throws(() => resolveMigrationInvocation(['up'], { ...env, MIGRATOR_DATABA
   /Migrations mutáveis em NODE_ENV=test exigem --e2e/, 'normal mode refuses mutable migrations in test mode');
 assert.throws(() => resolveMigrationInvocation(['down', '--e2e'], env), /Uso:/,
   'E2E mode does not offer a destructive down command');
+assert.deepEqual(resolveMigrationInvocation(['up', '--campaign-0068-source'], env),
+  { command: 'up', connectionString: campaignSource }, 'campaign migration accepts only its explicit disposable source');
+assert.throws(() => resolveMigrationInvocation(['up', '--campaign-0068-source'], { ...env, ROTAMOTO_DISPOSABLE_CAMPAIGN: undefined }),
+  /campanha descartável exige/, 'campaign source requires test-only explicit guard');
+assert.throws(() => resolveMigrationInvocation(['up', '--campaign-0068-source'], { ...env,
+  ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL: campaignSource.replace('rotamoto_disposable_0068_source','rotamoto') }),
+  /aceita somente/, 'campaign source rejects official database');
+assert.throws(() => resolveMigrationInvocation(['down', '--campaign-0068-source'], env), /Uso:/,
+  'campaign migration has no destructive down command');
 
 const invalid = [
   ['official database', { E2E_MIGRATOR_DATABASE_URL: official }],

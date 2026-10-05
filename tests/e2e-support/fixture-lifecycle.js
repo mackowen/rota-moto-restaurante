@@ -72,8 +72,16 @@ async function start(handler) {
   return { server, base: `http://127.0.0.1:${server.address().port}` };
 }
 
-async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [] } = {}) {
+async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
+  persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory } = {}) {
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
+  const disposableCampaign = clients.migrator ? env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' : false;
+  if (persistDisposableFixture && (!disposableCampaign || env.NODE_ENV !== 'test' ||
+      requestedMediaDirectory !== path.resolve(requestedMediaDirectory || '') ||
+      path.dirname(requestedMediaDirectory) !== os.tmpdir() ||
+      !path.basename(requestedMediaDirectory).startsWith('rotamoto-disposable-source-media-'))) {
+    throw new Error('Fixture persistente aceita somente diretório temporário e origem descartável da campanha 0068.');
+  }
   const { runtime, migrator } = clients;
   let connectedRuntime = false;
   let transactionOpen = false;
@@ -82,9 +90,11 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
   let companyId;
   let fixtureUserId;
   let fixtureEmail;
+  let fixturePersisted = false;
   try {
     await runtime.connect(); connectedRuntime = true;
-    await assertConnectedIdentity(runtime, { role: 'rotamoto_app' });
+    const database = disposableCampaign ? 'rotamoto_disposable_0068_source' : 'rotamoto_e2e';
+    await assertConnectedIdentity(runtime, { role: 'rotamoto_app', database, env });
     await runtime.query('BEGIN'); transactionOpen = true;
     const pool = savepointPool(runtime);
     const emails = [];
@@ -105,7 +115,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const originConfig = allowedOrigins.length ? allowedOrigins : undefined;
     const identityHttp = createIdentityHttpHandler({ identityService, logger: () => {}, rateLimiter: limiter,
       allowedOrigin: originConfig });
-    mediaDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'rotamoto-e2e-media-'));
+    mediaDirectory = requestedMediaDirectory || await fs.mkdtemp(path.join(os.tmpdir(), 'rotamoto-e2e-media-'));
+    if (requestedMediaDirectory) await fs.mkdir(mediaDirectory, { recursive: false, mode: 0o700 });
     const objectStore = await createFilesystemObjectStore({ directory: mediaDirectory });
     const mediaStorage = createMediaStorage({ objectStore });
     const proofHttp = createProofMediaHttpHandler({ identityService, mediaStorage, allowedOrigin: originConfig,
@@ -293,18 +304,24 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const passwordRecoveryReplay = await call('/api/identity/recovery/consume', { method: 'POST',
       body: { token: emails[1].token, password: recoveredPassword } });
     assert.equal(passwordRecoveryReplay.status, 401, 'password recovery token is one-time');
+    if (persistDisposableFixture) {
+      await runtime.query('COMMIT'); transactionOpen = false; fixturePersisted = true;
+    }
     return Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
-      driverId, orderId, deliveryId, authenticated: true, mfaVerified: true });
+      driverId, orderId, deliveryId, authenticated: true, mfaVerified: true,
+      ...(fixturePersisted ? { mediaDirectory } : {}) });
   } finally {
     if (host) await new Promise(resolve => host.server.close(resolve));
     if (transactionOpen) {
       try { await runtime.query('ROLLBACK'); } catch (_) { /* retain original setup error */ }
     }
     if (connectedRuntime) await runtime.end();
-    if (mediaDirectory) await fs.rm(mediaDirectory, { recursive: true, force: true });
+    if (mediaDirectory && !fixturePersisted) await fs.rm(mediaDirectory, { recursive: true, force: true });
+    if (!fixturePersisted) {
     await migrator.connect();
     try {
-      await assertConnectedIdentity(migrator, { role: 'rotamoto_migrator' });
+      await assertConnectedIdentity(migrator, { role: 'rotamoto_migrator',
+        database: disposableCampaign ? 'rotamoto_disposable_0068_source' : 'rotamoto_e2e', env });
       await migrator.query('BEGIN READ ONLY');
       try {
         await migrator.query("SELECT set_config('app.tenant_id',$1,true)", [companyId || '00000000-0000-7000-8000-000000000000']);
@@ -328,6 +345,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
           'rollback teardown leaves no fixture residue across identity, audit and sync tables');
       } finally { await migrator.query('ROLLBACK'); }
     } finally { await migrator.end(); }
+    }
   }
 }
 

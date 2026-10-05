@@ -57,20 +57,35 @@ function e2eMigrationConnectionString(env = process.env) {
   return value;
 }
 
+function disposableCampaignMigrationConnectionString(env = process.env) {
+  if (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0068') {
+    throw new Error('Migrations da campanha descartável exigem NODE_ENV=test e ROTAMOTO_DISPOSABLE_CAMPAIGN=0068.');
+  }
+  const value = env.ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL;
+  let parsed;
+  try { parsed = new URL(value); } catch (_) { throw new Error('URL da campanha descartável inválida.'); }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || parsed.username !== 'rotamoto_migrator' ||
+      parsed.password || parsed.hostname !== '127.0.0.1' || parsed.port !== '5432' ||
+      parsed.pathname !== '/rotamoto_disposable_0068_source' || parsed.search || parsed.hash) {
+    throw new Error('Migration da campanha aceita somente rotamoto_disposable_0068_source em loopback.');
+  }
+  return value;
+}
+
 function resolveMigrationInvocation(args = process.argv.slice(2), env = process.env) {
   const command = args[0] || 'up';
   const e2e = args.length === 2 && args[1] === '--e2e';
+  const disposableCampaign = args.length === 2 && args[1] === '--campaign-0068-source';
   if (!['up', 'down', 'status'].includes(command) ||
-      (args.length > 1 && !e2e) || args.length > 2 ||
-      (e2e && command === 'down')) {
+      (args.length > 1 && !e2e && !disposableCampaign) || args.length > 2 ||
+      ((e2e || disposableCampaign) && command === 'down')) {
     throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e (up/status somente)]');
   }
-  if (env.NODE_ENV === 'test' && !e2e && command !== 'status') {
+  if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && command !== 'status') {
     throw new Error('Migrations mutáveis em NODE_ENV=test exigem --e2e e rotamoto_e2e.');
   }
-  return { command, connectionString: e2e
-    ? e2eMigrationConnectionString(env)
-    : migrationConnectionString(env) };
+  return { command, connectionString: disposableCampaign ? disposableCampaignMigrationConnectionString(env)
+    : e2e ? e2eMigrationConnectionString(env) : migrationConnectionString(env) };
 }
 
 async function ensureMetadata(client) {
@@ -191,4 +206,4 @@ if (require.main === module) main().catch(error => {
   process.exitCode = 1;
 });
 module.exports = { getMigrations, assertChecksums, withTransaction, migrationConnectionString,
-  e2eMigrationConnectionString, resolveMigrationInvocation };
+  e2eMigrationConnectionString, disposableCampaignMigrationConnectionString, resolveMigrationInvocation };

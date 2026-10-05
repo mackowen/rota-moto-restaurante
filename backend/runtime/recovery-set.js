@@ -16,6 +16,7 @@ const MAX_TOTAL_BYTES = 8 * 1024 * 1024 * 1024;
 const MAX_OBJECT_BYTES = 8 * 1024 * 1024;
 const KEY_RE = /^tenant\/([0-9a-f-]{36})\/delivery\/([0-9a-f-]{36})\/proof\/([0-9a-f-]{36})\.(png|jpg)$/iu;
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const CAMPAIGN_0068_SOURCE = 'rotamoto_disposable_0068_source';
 function bad(message, code = 'RECOVERY_SET_INVALID') { return Object.assign(new Error(message), { code }); }
 function digest(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 async function privateDirectory(directory, { create = false } = {}) {
@@ -126,8 +127,13 @@ function openSetManifest(envelope, key, id) {
   return value;
 }
 function safeId(id) { if (!ID_RE.test(id || '')) throw bad('Recovery set id is invalid.'); return id; }
+function assertRecoverySource(database, env = process.env) {
+  if (database === 'rotamoto') return database;
+  if (database === CAMPAIGN_0068_SOURCE && env.NODE_ENV === 'test' && env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068') return database;
+  throw bad('Recovery backup source is not authorized.');
+}
 async function createRecoverySet({ databaseUrl, keyFile, backupDirectory, mediaDirectory, retentionDays = 30, now = new Date(), pgDump, pgRestore, clientFactory }) {
-  if (parseSafeUrl(databaseUrl).database !== 'rotamoto') throw bad('Recovery backup source must be rotamoto.');
+  const sourceDatabase = assertRecoverySource(parseSafeUrl(databaseUrl).database);
   const root = await privateDirectory(backupDirectory, { create: true });
   const mediaRoot = await privateDirectory(mediaDirectory);
   if (root === mediaRoot || root.startsWith(`${mediaRoot}${path.sep}`) || mediaRoot.startsWith(`${root}${path.sep}`)) throw bad('Backup and media roots must be separate.');
@@ -154,7 +160,7 @@ async function createRecoverySet({ databaseUrl, keyFile, backupDirectory, mediaD
           entries.push({ ...ref, file, encryptedSizeBytes: encrypted.length, encryptedSha256: digest(encrypted) });
         }
         const unsigned = { version: 1, format: 'rotamoto-recovery-set-v1', id: dbManifest.id, createdAt: dbManifest.createdAt,
-          database: { name: 'rotamoto', id: dbManifest.id, sizeBytes: dbManifest.sizeBytes, sha256: dbManifest.sha256 },
+          database: { name: sourceDatabase, id: dbManifest.id, sizeBytes: dbManifest.sizeBytes, sha256: dbManifest.sha256 },
           media: { objectCount: entries.length, plaintextBytes: total, entries } };
         const payload = await encryptObject(Buffer.from(JSON.stringify(unsigned)), key, `recovery-set:${dbManifest.id}`);
         const set = { version: 1, format: unsigned.format, id: unsigned.id, createdAt: unsigned.createdAt,
@@ -184,8 +190,9 @@ async function verifyRecoverySet({ directory, id, keyFile }) {
   ]);
   try {
     const envelope = JSON.parse(setText), set = openSetManifest(envelope, key, id);
+    const sourceDatabase = assertRecoverySource(database.database);
     if (set.createdAt !== database.createdAt ||
-        set.database?.name !== 'rotamoto' || database.database !== 'rotamoto' || set.database?.id !== database.id ||
+        set.database?.name !== sourceDatabase || set.database?.id !== database.id ||
         set.database?.sha256 !== database.sha256 || set.database?.sizeBytes !== database.sizeBytes ||
         !Array.isArray(set.media?.entries) || set.media.objectCount !== set.media.entries.length || set.media.entries.length > MAX_OBJECTS) throw bad('Recovery set manifest is invalid or unauthenticated.');
     if (!Number.isFinite(Date.parse(set.createdAt)) || !Number.isSafeInteger(set.media.plaintextBytes) || set.media.plaintextBytes < 0 || set.media.plaintextBytes > MAX_TOTAL_BYTES) throw bad('Recovery set timestamp or size is invalid.');
@@ -308,4 +315,5 @@ async function pruneRecoverySets({ directory, retentionDays, now = new Date(), k
   } finally { await handle.close(); await fs.unlink(lock).catch(() => {}); }
 }
 
-module.exports = { createRecoverySet, verifyRecoverySet, restoreRecoverySet, pruneRecoverySets, canonicalReferences, withSnapshotLock };
+module.exports = { createRecoverySet, verifyRecoverySet, restoreRecoverySet, pruneRecoverySets, canonicalReferences, withSnapshotLock,
+  assertRecoverySource, CAMPAIGN_0068_SOURCE };

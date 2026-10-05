@@ -9,6 +9,7 @@ const sourceText = file => require('node:fs').readFileSync(path.join(__dirname, 
 const { Readable } = require('node:stream');
 const { createFilesystemObjectStore } = require('../backend/domain/filesystem-object-store');
 const { createRecoverySet, verifyRecoverySet, restoreRecoverySet, withSnapshotLock, pruneRecoverySets } = require('../backend/runtime/recovery-set');
+const { assertRecoverySource } = require('../backend/runtime/recovery-set');
 
 const uuid = () => crypto.randomUUID();
 async function copyTree(source, target) { await fs.cp(source, target, { recursive: true, preserveTimestamps: true }); }
@@ -16,6 +17,13 @@ async function makeExecutable(file, text) { await fs.writeFile(file, `#!${proces
 async function rejects(fn) { await assert.rejects(fn); }
 
 (async () => {
+  assert.equal(assertRecoverySource('rotamoto', { NODE_ENV: 'production' }), 'rotamoto');
+  assert.throws(() => assertRecoverySource('rotamoto_disposable_0068_source', { NODE_ENV: 'production', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068' }),
+    /not authorized/u, 'production never accepts the disposable campaign source');
+  assert.equal(assertRecoverySource('rotamoto_disposable_0068_source', { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068' }),
+    'rotamoto_disposable_0068_source');
+  assert.throws(() => assertRecoverySource('rotamoto_disposable_arbitrary', { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068' }),
+    /not authorized/u, 'campaign source cannot be widened to arbitrary databases');
   for (const file of ['backend/domain/proof-media-http.js', 'backend/domain/proof-media-gc.js', 'backend/domain/sync-service.js'])
     assert.match(sourceText(file), /rotamoto:proof-media:snapshot:v1/u, `${file} must use the shared snapshot barrier`);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rotamoto-recovery-test-'));
@@ -66,6 +74,24 @@ async function rejects(fn) { await assert.rejects(fn); }
 
   const traversal = { ...row, media: { ...row.media, storageRef: { provider: 'filesystem-v1', objectKey: '../../etc/passwd' } } };
   await assert.rejects(require('../backend/runtime/recovery-set').canonicalReferences({ async query() { return { rows: [traversal] }; } }));
+  const associationMutations = [
+    { ...row, company_id: uuid() },
+    { ...row, delivery_id: uuid() },
+    { ...row, media: { ...row.media, mimeType: 'text/plain' } },
+  ];
+  for (const invalid of associationMutations) {
+    await assert.rejects(require('../backend/runtime/recovery-set').canonicalReferences({
+      async query() { return { rows: [invalid] }; }
+    }), 'tenant, Delivery, MIME, size and digest mismatches fail closed');
+  }
+  for (const invalid of [
+    { ...row, media: { ...row.media, sizeBytes: png.length + 1 } },
+    { ...row, media: { ...row.media, sha256: '0'.repeat(64) } },
+  ]) {
+    await require('../backend/runtime/recovery-set').canonicalReferences({ async query() { return { rows: [invalid] }; } });
+    await assert.rejects(() => store.get(invalid.media.storageRef, { contentType: invalid.media.mimeType,
+      sizeBytes: invalid.media.sizeBytes, sha256: invalid.media.sha256 }), 'blob size/hash mismatch fails closed');
+  }
 
   const parent = path.join(os.tmpdir(), `rotamoto-disposable-media-parent-${uuid()}`); await fs.mkdir(parent, { mode: 0o700 });
   const mediaTarget = path.join(parent, `rotamoto-disposable-media-${uuid()}`), productionMedia = path.join(root, 'production-media');

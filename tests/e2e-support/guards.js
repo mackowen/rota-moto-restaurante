@@ -12,7 +12,7 @@ function storedLoopbackCredential(role, database) {
     // pgpass entries for the same role can authenticate that role to the
     // isolated database; never copy or print the secret.
     if (exact) return exact;
-    if (role === 'rotamoto_app' && database === 'rotamoto_e2e') return lookup('rotamoto');
+    if (role === 'rotamoto_app' && (database === 'rotamoto_e2e' || database === 'rotamoto_disposable_0068_source')) return lookup('rotamoto');
     return undefined;
   };
 }
@@ -32,6 +32,15 @@ function validateConnectionUrl(value, { database, role, nodeEnv }) {
 
 function resolveE2eTargets(env = process.env) {
   if (env.NODE_ENV !== 'test') throw new Error('O lifecycle de fixtures exige NODE_ENV=test.');
+  if (env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068') {
+    const database = 'rotamoto_disposable_0068_source';
+    return Object.freeze({
+      runtime: validateConnectionUrl(env.ROTAMOTO_DISPOSABLE_RUNTIME_DATABASE_URL,
+        { database, role: 'rotamoto_app', nodeEnv: env.NODE_ENV }),
+      migrator: validateConnectionUrl(env.ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL,
+        { database, role: 'rotamoto_migrator', nodeEnv: env.NODE_ENV }), database
+    });
+  }
   return Object.freeze({
     runtime: validateConnectionUrl(env.E2E_RUNTIME_DATABASE_URL,
       { database: 'rotamoto_e2e', role: 'rotamoto_app', nodeEnv: env.NODE_ENV }),
@@ -42,10 +51,11 @@ function resolveE2eTargets(env = process.env) {
 
 function createE2eClients(env = process.env, ClientType = Client) {
   const targets = resolveE2eTargets(env); // Both targets fail closed before either client is constructed.
+  const database = targets.database || 'rotamoto_e2e';
   const clientConfig = (value, role) => {
     const parsed = new URL(value);
     return { host: parsed.hostname, port: Number(parsed.port), database: parsed.pathname.slice(1), user: role,
-      password: storedLoopbackCredential(role, 'rotamoto_e2e'), connectionTimeoutMillis: 5000 };
+      password: storedLoopbackCredential(role, database), connectionTimeoutMillis: 5000 };
   };
   return Object.freeze({
     runtime: new ClientType({ ...clientConfig(targets.runtime, 'rotamoto_app'),
@@ -55,7 +65,7 @@ function createE2eClients(env = process.env, ClientType = Client) {
   });
 }
 
-async function assertConnectedIdentity(client, { database = 'rotamoto_e2e', role }) {
+async function assertConnectedIdentity(client, { database = 'rotamoto_e2e', role, env = process.env }) {
   const identity = (await client.query(`SELECT current_database() AS database,current_user AS role,
     inet_server_addr()::text AS server_address,
     r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolreplication,r.rolbypassrls
@@ -72,6 +82,10 @@ async function assertConnectedIdentity(client, { database = 'rotamoto_e2e', role
       has_database_privilege(current_user,current_database(),'CREATE') AS create,
       has_database_privilege(current_user,current_database(),'TEMPORARY') AS temporary`)).rows[0];
     if (!dbAcl.connect || dbAcl.create || dbAcl.temporary) throw new Error('Privilégios de database do runtime E2E divergem do perfil aprovado.');
+  }
+  if (database === 'rotamoto_disposable_0068_source' &&
+      (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0068')) {
+    throw new Error('Identidade de origem descartável exige guard explícito da campanha 0068.');
   }
   return identity;
 }
