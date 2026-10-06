@@ -46,13 +46,23 @@ Reconciliação está exposta na API como command, mas polling externo e projeç
 
 Admin pode editar nome, modo manual/API não ativado e configuração não secreta. A listagem informa `apiEnabled`, credencial configurada (derivada apenas do gate persistido), webhook e último teste sem retornar segredo ou `secret_ref`. A tela nunca recebe token/segredo.
 
-`rotamoto_app` não tem SELECT/UPDATE de `logistics_providers.secret_ref`. Não use role migrator em worker/runtime. O adapter recebe credenciais somente da camada de keystore. O fake provider está sob `tests/` e não é incluído no registry de produção nem no script operacional.
+`rotamoto_app` não tem SELECT/UPDATE de `logistics_providers.secret_ref` nem `external_accounts.secret_ref`. `external_accounts` oferece somente SELECT por coluna nos metadados exibidos no painel; `secret_ref` não está nessa projeção. Não use role migrator em worker/runtime. O adapter recebe credenciais somente da camada de keystore. O fake provider está sob `tests/` e não é incluído no registry de produção nem no script operacional.
 
 ## Analytics e retenção
 
 Analytics informa volume manual/própria/provider e contagens persistidas de quotes, seleção/expiração, dispatch confirmado/falho/desconhecido, cancelamentos desconhecidos, retries, reconciliação e revisão humana. Dispatch confirmado conta tentativa API vinculada confirmada; `202` não entra como confirmação. Os totais são acumulados por provider; não se calcula lucro/margem e não há conversão de moeda.
 
 Quotes, commands, eventos e snapshots têm retenção operacional; ainda não há cleanup automático. Remoção deve aguardar definição operacional e preservar trilha de auditoria/idempotência/reconciliação. A inbox guarda apenas schema normalizado e digest, não payload bruto/PII.
+
+## Inteligência econômica assistida v1
+
+O endpoint autenticado `GET /api/logistics/deliveries/:id/comparison` compara a frota própria, quotes externas API válidas e operações externas manuais aplicáveis. `GET/PUT /api/logistics/intelligence/settings` mantém por tenant o custo fixo por entrega, a taxa variável por quilômetro, a moeda e a política padrão. Alterações exigem `company.manage`, CSRF/origin, versão esperada e auditoria.
+
+A estimativa marginal da frota própria é `fixo configurado por entrega + ceil(taxa variável configurada × distância estimada em metros / 1000)`, arredondada para a próxima unidade monetária mínima. Ela só é conhecida quando o perfil inteiro está configurado e a distância existe para taxa variável positiva. Distância pode vir de `Delivery.estimatedDistanceM` ou do legado `Order.km`, identificada como estimada. Não inclui automaticamente combustível, manutenção, depreciação, salários, taxas, receita de `Order.value` ou `Earning`.
+
+A política `lowest_cost` recomenda somente se houver pelo menos duas alternativas elegíveis, todos os valores forem conhecidos e estiverem na mesma moeda; empate e moeda incompatível não selecionam vencedor. `earliest_eta` exige ETA explícito para todas as alternativas elegíveis. `prefer_internal` exige custo interno conhecido, mas não confirma capacidade. Quotes vencidas são excluídas e mostradas como inelegíveis. Toda recomendação inclui alternativas, diferenças conhecidas de custo/ETA, evidências e limitações; não executa dispatch. A decisão e confirmação de disponibilidade permanecem humanas.
+
+O relatório agrupa custos estimados e custos finais explicitamente reconciliados por modo (própria/externa), sem somar moedas, e mostra cobertura/denominador. `Earning` é exibido separadamente como repasse registrado, não como custo total ou comprovante de pagamento. A diferença entre cenários não é anunciada como economia gerada pelo produto: não há baseline contrafactual defensável.
 
 ## Pesquisa oficial consultada em 2026-10-06
 
@@ -65,10 +75,10 @@ Quotes, commands, eventos e snapshots têm retenção operacional; ainda não h�
 
 ## Classificação
 
-- **IMPLEMENTADO:** endpoints autenticados de integração, persistência canônica existente (0020–0022), criação de commands no outbox, registry iFood, worker separado com pool least-privilege, retry/unknown outcome, quote/dispatch/cancel/tracking/reconcile UI, métricas agregadas, audit seguro e proteção do claim em 0023.
+- **IMPLEMENTADO:** endpoints autenticados de integração, persistência canônica (0020–0022), criação de commands no outbox, registry iFood, worker separado com pool least-privilege, retry/unknown outcome, quote/dispatch/cancel/tracking/reconcile UI, métricas agregadas, audit seguro, proteção do claim em 0023, comparação econômica determinística assistida, analytics com cobertura e grants de `external_accounts.secret_ref` corrigidos em 0028.
 - **SIMULADO PARA TESTE:** adapter fake apenas em `tests/helpers`; registry e adapters são testados sem tráfego externo.
 - **BLOQUEADO POR CREDENCIAL/INFRA:** ativar worker requer roles `rotamoto_provider_worker`/`rotamoto_provider_resolver` e referências de senha/keystore ainda ausentes neste host.
 - **BLOQUEADO POR CONTRATO COMERCIAL:** elegibilidade, autorização merchant e homologação iFood.
 - **BLOQUEADO POR DOCUMENTAÇÃO:** logística 99Food e courier externo Keeta.
-- **OPEN:** ingress HMAC HTTP com resolução segura de tenant/provider; processamento assíncrono de eventos e proteção fora de ordem; provisionar roles dedicadas e executar fluxo interno de quote→dispatch→event→tracking→cancel/reconcile em PostgreSQL com Fake; Browser QA autenticado.
+- **OPEN:** ingress HMAC HTTP público com resolução segura de tenant/provider; provisionar roles dedicadas do worker e validar sua operação em ambiente isolado; preencher custos operacionais adicionais somente após política contábil/operacional confiável. Browser QA autenticado e fluxo Fake interno passaram na campanha 0088.
 - **NÃO SUPORTADO:** proof logístico iFood no fluxo documentado; transformar courier externo em Driver; misturar localização externa com Motoboy.
