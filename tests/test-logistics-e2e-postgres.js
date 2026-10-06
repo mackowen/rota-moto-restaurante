@@ -63,7 +63,7 @@ async function main() {
     try {
       for (const migration of getMigrations()) await client.query(migration.up.replace(/\brotamoto\b/gu, cleanSchema));
       const objects = await client.query(`SELECT count(*)::int AS tables FROM pg_tables WHERE schemaname=$1`, [cleanSchema]);
-      assert.equal(objects.rows[0].tables, 28, 'clean install includes all migration tables through 0020');
+      assert.equal(objects.rows[0].tables, 28, 'clean install includes all migration tables through 0026');
       const forced = await client.query(`SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
       assert.equal(forced.rows[0].count, 21, 'clean install FORCE-enables RLS on all tenant tables');
@@ -82,6 +82,23 @@ async function main() {
         FROM pg_class WHERE oid IN ('${cleanSchema}.provider_quotes'::regclass,'${cleanSchema}.provider_command_outbox'::regclass,
           '${cleanSchema}.provider_event_inbox'::regclass,'${cleanSchema}.provider_tracking_snapshots'::regclass)`);
       assert.deepEqual(providerTables.rows[0], { total: 4, forced: 4 }, 'all provider integration tables enforce tenant RLS');
+      const providerColumns = await client.query(`SELECT c.relname,a.attname FROM pg_class c
+        JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid
+        WHERE n.nspname=$1 AND c.relname=ANY($2::text[]) AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attname`,
+      [cleanSchema,['provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots']]);
+      const columns = new Map();
+      for (const row of providerColumns.rows) columns.set(row.relname,[...(columns.get(row.relname)||[]),row.attname]);
+      for (const [table, required] of Object.entries({
+        provider_quotes:['company_id','delivery_id','fulfillment_id','provider_id','external_quote_id','currency','amount_minor','eta_at','issued_at','expires_at','selected_at','provider_snapshot','version'],
+        provider_command_outbox:['company_id','provider_id','delivery_id','fulfillment_id','operation','idempotency_key','payload','status','attempts','next_attempt_at','lease_token','lease_until','last_error_class','correlation_id'],
+        provider_event_inbox:['company_id','provider_id','external_event_id','body_digest','normalized_event','status','received_at','processed_at'],
+        provider_tracking_snapshots:['company_id','fulfillment_id','delivery_id','provider_id','provenance','status','eta_at','provider_updated_at','last_event_id']
+      })) for (const column of required) assert.ok(columns.get(table)?.includes(column), `${table}.${column} is part of the durable provider contract`);
+      const providerPolicies = await client.query(`SELECT tablename,policyname FROM pg_policies WHERE schemaname=$1 AND tablename=ANY($2::text[])`,
+        [cleanSchema,['provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots']]);
+      assert.deepEqual(providerPolicies.rows.map(row=>`${row.tablename}:${row.policyname}`).sort(),
+        ['provider_command_outbox:tenant_isolation','provider_event_inbox:tenant_isolation','provider_quotes:tenant_isolation','provider_tracking_snapshots:tenant_isolation'],
+        'each provider persistence table has its tenant isolation policy');
     } finally { await client.query('ROLLBACK'); }
     assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [cleanSchema])).rowCount, 0,
       'clean-install schema sandbox was rolled back');
