@@ -76,7 +76,7 @@ const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQr
   keyRef:CONFIG.deliveryQrKeyRef,kid:CONFIG.deliveryQrKeyId
 }):null;
 const deliveryQrHttp=createDeliveryQrHttpHandler({identityService,queryService:domainQueryService,qrService:deliveryQrService,logger:()=>{}});
-const logisticsService=createLogisticsService();
+const logisticsService=createLogisticsService({assignDeliveryToRoute:syncService.assignDeliveryToRoute});
 const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const territorialAnalyticsHttp=createTerritorialAnalyticsHttpHandler({identityService,service:createTerritorialAnalyticsService(),logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const adminService=createAdminService({repository:createAdminRepository()});

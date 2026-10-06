@@ -26,18 +26,18 @@ async function main() {
       (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass`)).rows[0];
     assert.deepEqual(identity, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', bypass: false });
     const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations
-      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege')
+      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection')
       ORDER BY migration_id`);
     assert.deepEqual(migration.rows.map(row => row.migration_id), [
-      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege'
+      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection'
     ], 'E2E schema includes the tested logistics, geography and least-privilege migrations');
     const catalog = await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
       has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,
       has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='rotamoto' AND c.relname=ANY($1::text[]) ORDER BY c.relname`,
-    [['logistics_providers','delivery_fulfillments','dispatch_attempts']]);
-    assert.equal(catalog.rowCount, 3);
+      [['logistics_providers','delivery_fulfillments','dispatch_attempts','logistics_decisions']]);
+    assert.equal(catalog.rowCount, 4);
     for (const row of catalog.rows) {
       assert.equal(row.relrowsecurity, true); assert.equal(row.relforcerowsecurity, true);
       assert.equal(row.owner, 'rotamoto_migrator'); assert.equal(row.app_delete, false);
@@ -57,6 +57,17 @@ async function main() {
     assert.deepEqual(appPrivileges.rows[0], { provider_insert: true, provider_table_select: false, provider_id_select: true,
       provider_configuration_select: true, provider_secret_select: false, provider_class_update: false,
       provider_secret_update: false, fulfillment_insert: true, attempts_update: true });
+    const workerRole=await client.query(`SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='rotamoto_provider_worker') AS worker_exists`);
+    if(workerRole.rows[0].worker_exists){const decisionWorkerAcl=await client.query(`SELECT
+      has_table_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','SELECT') AS table_select,
+      has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','company_id','SELECT') AS tenant_select,
+      has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','execution_result','SELECT') AS result_select,
+      has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','snapshot','SELECT') AS snapshot_select,
+      has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','status','UPDATE') AS status_update,
+      has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','version','UPDATE') AS version_update,
+      has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','decided_by','UPDATE') AS actor_update`);
+      assert.deepEqual(decisionWorkerAcl.rows[0],{table_select:false,tenant_select:true,result_select:true,snapshot_select:false,status_update:true,
+        version_update:true,actor_update:false},'worker decision projection grants only fields needed for async state transitions');}
 
     const cleanSchema = `logistics_sandbox_${crypto.randomUUID().replaceAll('-', '')}`;
     await client.query('BEGIN');
@@ -73,6 +84,20 @@ async function main() {
       assert.equal(intelligencePolicy.rows[0].policyname, 'tenant_isolation');
       assert.match(intelligencePolicy.rows[0].qual, /current_tenant_id/u);
       assert.match(intelligencePolicy.rows[0].with_check, /current_tenant_id/u);
+      const decisionTable=await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
+        has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname='logistics_decisions'`,[cleanSchema]);
+      assert.deepEqual(decisionTable.rows[0],{relrowsecurity:true,relforcerowsecurity:true,owner:'rotamoto_migrator',app_select:true,app_delete:false},
+        'decision persistence uses forced tenant RLS and non-destructive runtime grants');
+      const decisionPolicy=await client.query(`SELECT policyname,qual,with_check FROM pg_policies WHERE schemaname=$1 AND tablename='logistics_decisions'`,[cleanSchema]);
+      assert.equal(decisionPolicy.rowCount,1);assert.equal(decisionPolicy.rows[0].policyname,'tenant_isolation');
+      assert.match(decisionPolicy.rows[0].qual,/current_tenant_id/u);assert.match(decisionPolicy.rows[0].with_check,/current_tenant_id/u);
+      const decisionConstraints=await client.query(`SELECT contype,pg_get_constraintdef(oid) AS definition FROM pg_constraint
+        WHERE conrelid=($1||'.logistics_decisions')::regclass`,[cleanSchema]);
+      assert.ok(decisionConstraints.rows.some(row=>row.contype==='f'&&/FOREIGN KEY \(company_id, delivery_id\)/u.test(row.definition)));
+      assert.ok(decisionConstraints.rows.some(row=>row.contype==='c'&&/status/u.test(row.definition)));
+      const decisionIndexes=await client.query(`SELECT indexdef FROM pg_indexes WHERE schemaname=$1 AND tablename='logistics_decisions'`,[cleanSchema]);
+      assert.ok(decisionIndexes.rows.some(row=>/UNIQUE.*\(company_id, execution_key\)/u.test(row.indexdef)));
       const intelligenceConstraints = await client.query(`SELECT conname,contype,pg_get_constraintdef(oid) AS definition
         FROM pg_constraint WHERE conrelid=($1||'.logistics_intelligence_settings')::regclass`, [cleanSchema]);
       assert.ok(intelligenceConstraints.rows.some(row => row.contype === 'f' && /FOREIGN KEY \(company_id, internal_provider_id\)/u.test(row.definition)),
@@ -156,6 +181,23 @@ async function main() {
       const migration0028 = getMigrations()[27];
       assert.equal(migration0028.id, '0028_external_account_secret_least_privilege');
       await client.query(migration0028.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const migration0029=getMigrations()[28];
+      assert.equal(migration0029.id,'0029_logistics_human_decisions');
+      await client.query(migration0029.up.replace(/\brotamoto\b/gu,upgradeSchema));
+      const migration0030=getMigrations()[29];
+      assert.equal(migration0030.id,'0030_logistics_decision_stale_approval');
+      await client.query(migration0030.up.replace(/\brotamoto\b/gu,upgradeSchema));
+      const decisionLifecycleConstraint=await client.query(`SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
+        WHERE conrelid=($1||'.logistics_decisions')::regclass AND conname='logistics_decisions_decision_actor_state_check'`,[upgradeSchema]);
+      assert.equal(decisionLifecycleConstraint.rowCount,1);
+      assert.match(decisionLifecycleConstraint.rows[0].definition,/status = 'stale'[\s\S]*decided_by IS NOT NULL/u,
+        'approved proposals can become stale while retaining operator provenance');
+      const migration0031=getMigrations()[30];
+      assert.equal(migration0031.id,'0031_logistics_decision_worker_projection');
+      await client.query(migration0031.up.replace(/\brotamoto\b/gu,upgradeSchema));
+      const decisionStatuses=await client.query(`SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
+        WHERE conrelid=($1||'.logistics_decisions')::regclass AND conname='logistics_decisions_status_check'`,[upgradeSchema]);
+      assert.match(decisionStatuses.rows[0].definition,/cancelled/u,'decision lifecycle can record provider cancellation confirmation');
       const after0020 = await client.query(`SELECT has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','SELECT') AS command_read,
         has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','DELETE') AS command_delete,
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_read,
@@ -260,6 +302,30 @@ async function main() {
       assert.equal(comparison.alternatives.find(item => item.mode === 'internal').cost.status, 'insufficient_data',
         'a configured variable cost with unknown distance is not silently treated as zero');
       assert.equal(comparison.recommendation.status, 'insufficient_data', 'no valid external quote means abstain');
+      const staleByFleet=await logistics.evaluateLogisticsDecision(client,principal,serviceDelivery,'lowest_cost');
+      const staleRoute=id();
+      await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=version+1,updated_at=now()
+        WHERE company_id=$1 AND record_id=$2`,[tenantA,driverA,JSON.stringify({id:driverA,companyId:tenantA,status:'AVAILABLE',capacity:{unit:'deliveries',limit:2}})]);
+      await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Route','restaurante',$3,$4::jsonb,1,now(),now())`,[tenantA,staleRoute,appInstall,JSON.stringify({id:staleRoute,companyId:tenantA,status:'PLANNED',deliveryIds:[]})]);
+      const staleResult=await logistics.approveLogisticsDecision(client,principal,staleByFleet.decision.id,{expectedVersion:1,
+        alternativeId:staleByFleet.decision.snapshot.alternatives.find(item=>item.eligible).id});
+      assert.equal(staleResult.stale,true,'capacity/route changes stale an unapproved recommendation');
+      assert.equal(staleResult.decision.status,'stale');
+      const recalculated=await logistics.recalculateLogisticsDecision(client,principal,staleByFleet.decision.id,{expectedVersion:2});
+      assert.equal(recalculated.decision.status,'proposed','recalculation creates a new immutable proposal');
+      const rejectedDecision=await logistics.rejectLogisticsDecision(client,principal,recalculated.decision.id,{expectedVersion:1});
+      assert.equal(rejectedDecision.decision.status,'rejected');
+      const staleAfterApproval=await logistics.evaluateLogisticsDecision(client,principal,serviceDelivery,'lowest_cost');
+      const approvedThenStale=await logistics.approveLogisticsDecision(client,principal,staleAfterApproval.decision.id,{expectedVersion:1,
+        alternativeId:staleAfterApproval.decision.snapshot.alternatives.find(item=>item.eligible).id});
+      assert.equal(approvedThenStale.decision.status,'approved');
+      await client.query(`UPDATE rotamoto.domain_records SET version=version+1,updated_at=now() WHERE company_id=$1 AND record_id=$2 AND entity_type='Driver'`,[tenantA,driverA]);
+      const staleExecution=await logistics.executeLogisticsDecision(client,principal,staleAfterApproval.decision.id,{expectedVersion:2,confirmExecution:true,
+        idempotencyKey:`stale-approved-${staleAfterApproval.decision.id}`,alternativeId:'deliberately-not-executed'});
+      assert.equal(staleExecution.stale,true,'state changes after approval prevent execution');
+      assert.equal(staleExecution.decision.status,'stale');
+      assert.equal(staleExecution.decision.decidedBy,actor,'stale approval keeps the approving actor for audit reconstruction');
       await assert.rejects(logistics.updateIntelligenceSettings(client, principal, { expectedVersion: 0,
         fixedCostPerDeliveryMinor: 500, variableCostPerKmMinor: 100, currency: 'BRL', defaultPolicy: 'lowest_cost' }),
       error => error.code === 'REVISION_CONFLICT', 'stale economic profile revision is rejected');
@@ -294,14 +360,44 @@ async function main() {
       assert.equal(await worker.runOnce(),true,'fake worker handles queued quote');
       const quoteCommandState = await client.query(`SELECT status,last_error_class FROM rotamoto.provider_command_outbox WHERE company_id=$1 AND command_id=$2`,[tenantA,quoteRequest.commandId]);
       assert.equal(quoteCommandState.rows[0]?.status,'succeeded',`fake quote command should complete (${quoteCommandState.rows[0]?.last_error_class || 'no error class'})`);
-      const availableQuotes = await logistics.listProviderQuotes(client,principal,serviceDelivery);
+      let availableQuotes = await logistics.listProviderQuotes(client,principal,serviceDelivery);
       assert.equal(availableQuotes.quotes.length,1);
       assert.equal(availableQuotes.quotes[0].amountMinor,1290);
-      const selectedQuote = await logistics.selectProviderQuote(client,principal,serviceDelivery,{ quoteId:availableQuotes.quotes[0].id,
-        fulfillmentId:id(),expectedQuoteVersion:availableQuotes.quotes[0].version,expectedRevision:external.fulfillment.revision });
-      assert.equal(selectedQuote.fulfillment.mode,'external');
-      const apiDispatch = await logistics.requestProviderDispatch(client,principal,serviceDelivery,{ quoteId:availableQuotes.quotes[0].id,idempotencyKey:`api-dispatch-${crypto.randomUUID()}` });
-      assert.equal(apiDispatch.status,'pending');
+      const staleByQuote=await logistics.evaluateLogisticsDecision(client,principal,serviceDelivery,'lowest_cost');
+      await providerIntegration.selectQuote(client,principal,availableQuotes.quotes[0].id,availableQuotes.quotes[0].version);
+      const staleQuoteResult=await logistics.approveLogisticsDecision(client,principal,staleByQuote.decision.id,{expectedVersion:1,
+        alternativeId:staleByQuote.decision.snapshot.alternatives.find(item=>item.eligible&&item.mode==='external_api').id});
+      assert.equal(staleQuoteResult.stale,true,'quote status/version changes stale an unapproved decision');
+      await client.query(`UPDATE rotamoto.provider_quotes SET status='available',selected_at=NULL,version=version+1,updated_at=now()
+        WHERE company_id=$1 AND quote_id=$2`,[tenantA,availableQuotes.quotes[0].id]);
+      availableQuotes=await logistics.listProviderQuotes(client,principal,serviceDelivery);
+      const proposed=await logistics.evaluateLogisticsDecision(client,principal,serviceDelivery,'lowest_cost');
+      assert.equal(proposed.decision.status,'proposed');
+      assert.ok(proposed.decision.snapshot.alternatives.some(item=>item.mode==='external_api'&&item.eligible),
+        'valid provider quote is preserved among decision alternatives');
+      const approved=await logistics.approveLogisticsDecision(client,principal,proposed.decision.id,{expectedVersion:1,
+        alternativeId:`quote:${availableQuotes.quotes[0].id}`});
+      assert.equal(approved.decision.status,'approved');
+      assert.equal(approved.decision.decidedBy,actor);
+      assert.equal(approved.decision.selectedAlternativeId,`quote:${availableQuotes.quotes[0].id}`,'human approval pins the exact alternative to execute');
+      assert.equal((await logistics.approveLogisticsDecision(client,principal,proposed.decision.id,{expectedVersion:1,
+        alternativeId:`quote:${availableQuotes.quotes[0].id}`})).duplicate,true,'repeated approval of the same alternative is idempotent');
+      await rejected(client,'decision_cannot_execute_unapproved_alternative',()=>logistics.executeLogisticsDecision(client,principal,proposed.decision.id,
+        {expectedVersion:2,confirmExecution:true,idempotencyKey:`wrong-alt-${proposed.decision.id}`,alternativeId:'internal:unapproved'}));
+      const decisionFulfillmentId=id();
+      const decisionExecution=await logistics.executeLogisticsDecision(client,principal,proposed.decision.id,{expectedVersion:2,confirmExecution:true,
+        idempotencyKey:`decision-${proposed.decision.id}`,alternativeId:`quote:${availableQuotes.quotes[0].id}`,quoteId:availableQuotes.quotes[0].id,
+        expectedQuoteVersion:availableQuotes.quotes[0].version,expectedFulfillmentRevision:external.fulfillment.revision,fulfillmentId:decisionFulfillmentId});
+      assert.equal(decisionExecution.decision.status,'execution_requested','external command remains pending after durable request');
+      assert.equal(decisionExecution.action.status,'pending','provider dispatch response is 202-like pending, not confirmation');
+      assert.equal((await logistics.executeLogisticsDecision(client,principal,proposed.decision.id,{expectedVersion:2,confirmExecution:true,
+        idempotencyKey:`decision-${proposed.decision.id}`,alternativeId:`quote:${availableQuotes.quotes[0].id}`,quoteId:availableQuotes.quotes[0].id,
+        expectedQuoteVersion:availableQuotes.quotes[0].version,expectedFulfillmentRevision:external.fulfillment.revision,fulfillmentId:decisionFulfillmentId})).duplicate,true,
+        'repeat execution with the same idempotency key does not create a second attempt');
+      await rejected(client,'decision_idempotency_payload_conflict',()=>logistics.executeLogisticsDecision(client,principal,proposed.decision.id,
+        {expectedVersion:2,confirmExecution:true,idempotencyKey:`decision-${proposed.decision.id}`,alternativeId:'different-alternative'}));
+      const apiDispatch=decisionExecution.action;
+      const selectedQuote={fulfillment:{id:(await client.query(`SELECT fulfillment_id FROM rotamoto.provider_quotes WHERE company_id=$1 AND quote_id=$2`,[tenantA,availableQuotes.quotes[0].id])).rows[0].fulfillment_id}};
       await worker.runOnce();
       const confirmedAttempt = await client.query(`SELECT status FROM rotamoto.dispatch_attempts WHERE company_id=$1 AND attempt_id=$2`,[tenantA,apiDispatch.attemptId]);
       assert.equal(confirmedAttempt.rows[0].status,'accepted','fake adapter confirmation updates its linked dispatch attempt');
@@ -318,6 +414,8 @@ async function main() {
       assert.equal(processedEvent.rows[0].status,'processed'); assert.ok(processedEvent.rows[0].processed_at);
       assert.equal((await logistics.getFulfillment(client,principal,serviceDelivery)).fulfillments.find(row=>row.id===selectedQuote.fulfillment.id).status,'accepted',
         'asynchronous event projection confirms only the matching tenant/provider external fulfillment');
+      assert.equal((await logistics.listLogisticsDecisions(client,principal,serviceDelivery)).decisions.find(item=>item.id===proposed.decision.id).status,'executed',
+        'decision history reflects confirmation only after the normalized provider event projected');
       await worker.runOnce();
       const tracking = await client.query(`SELECT status,eta_at,provenance FROM rotamoto.provider_tracking_snapshots WHERE company_id=$1 AND fulfillment_id=$2`,[tenantA,selectedQuote.fulfillment.id]);
       assert.equal(tracking.rows[0].status,'in_progress'); assert.equal(tracking.rows[0].provenance,'external_provider');

@@ -11,6 +11,7 @@ const { createProviderIntegrationService } = require('../../backend/logistics/pr
 const { createProviderWorker } = require('../../backend/logistics/provider-worker');
 const { createFakeLogisticsProvider } = require('../helpers/fake-logistics-provider');
 const { createFakeRouteDistanceProvider } = require('../helpers/fake-route-distance-provider');
+const { createSyncService } = require('../../backend/domain/sync-service');
 
 function createProviderBrowserRuntime({ pool, outcomes = ['pending', 'timeout', 'pending'] } = {}) {
   if (process.env.NODE_ENV !== 'test') throw new Error('Provider browser E2E runtime is available only in NODE_ENV=test.');
@@ -20,7 +21,8 @@ function createProviderBrowserRuntime({ pool, outcomes = ['pending', 'timeout', 
     ? { ...configuration, adapter: 'fake', providerCode: 'ifood', capabilities: ['quote','dispatch','cancel','tracking'] } : null;
   const providerIntegration = createProviderIntegrationService({ testProvider });
   const fakeRouteDistanceProvider=createFakeRouteDistanceProvider();
-  const logisticsService = createLogisticsService({ providerIntegration, testProvider, routeDistanceProvider:fakeRouteDistanceProvider });
+  const logisticsService = createLogisticsService({ providerIntegration, testProvider, routeDistanceProvider:fakeRouteDistanceProvider,
+    assignDeliveryToRoute:createSyncService().assignDeliveryToRoute });
   const fake = createFakeLogisticsProvider({ outcomes });
   const fakeAdapter = Object.freeze({
     async quote(context) { return { quote: await fake.quote(context) }; },

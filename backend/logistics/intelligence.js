@@ -204,11 +204,11 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     const targetGeo = await client.query(`SELECT provenance,accuracy_m FROM rotamoto.delivery_geo_snapshots
       WHERE company_id=$1 AND delivery_id=$2`,[companyId,deliveryId]);
     const routesResult = await client.query(`WITH active_routes AS (
-          SELECT r.record_id,r.payload,r.updated_at,count(*) OVER() AS total_routes
+          SELECT r.record_id,r.version,r.payload,r.updated_at,count(*) OVER() AS total_routes
           FROM rotamoto.domain_records r WHERE r.company_id=$1 AND r.entity_type='Route' AND r.deleted_at IS NULL
             AND upper(coalesce(r.payload->>'status',''))=ANY($2::text[])
           ORDER BY r.updated_at DESC,r.record_id LIMIT 100
-        ) SELECT r.record_id::text AS route_id,r.payload->>'status' AS status,
+        ) SELECT r.record_id::text AS route_id,r.version AS route_version,r.payload->>'status' AS status,
           CASE WHEN jsonb_typeof(r.payload->'deliveryIds')='array' THEN r.payload->'deliveryIds' ELSE '[]'::jsonb END AS delivery_ids,
           coalesce(r.total_routes,0)::int AS total_routes,
           coalesce(jsonb_agg(jsonb_build_object('deliveryId',members.value,'found',stop.record_id IS NOT NULL,
@@ -224,8 +224,8 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
         LEFT JOIN rotamoto.domain_records driver ON driver.company_id=stop.company_id AND driver.entity_type='Driver'
           AND driver.deleted_at IS NULL AND driver.record_id::text=stop.payload->>'driverId'
         LEFT JOIN rotamoto.delivery_geo_snapshots geo ON geo.company_id=stop.company_id AND geo.delivery_id=stop.record_id
-        GROUP BY r.record_id,r.payload,r.updated_at,r.total_routes ORDER BY r.updated_at DESC,r.record_id`,[companyId,[...ACTIVE_ROUTE_STATES]]);
-    const routes = routesResult.rows.map(row=>({ routeId:row.route_id,status:row.status,
+        GROUP BY r.record_id,r.version,r.payload,r.updated_at,r.total_routes ORDER BY r.updated_at DESC,r.record_id`,[companyId,[...ACTIVE_ROUTE_STATES]]);
+    const routes = routesResult.rows.map(row=>({ routeId:row.route_id,routeVersion:Number(row.route_version),status:row.status,
       deliveryIds:Array.isArray(row.delivery_ids)?row.delivery_ids.filter(id=>typeof id==='string'):[],
       stops:Array.isArray(row.stops)?row.stops:[] }));
     const target=targetGeo.rows[0];
@@ -245,6 +245,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     for(const candidate of routeAssessment.candidates||[]){
       const route=(routeAssessment.routes||[]).find(item=>item.routeId===candidate.routeId);
       const driver=fleetCapacity.byDriver.find(item=>item.driverId===candidate.driverId);
+      candidate.routeVersion=route?.routeVersion??null;
       candidate.capacity=driver?{status:driver.capacityStatus,limit:driver.capacityLimit,load:driver.assignedDeliveries,
         remainingSlots:driver.remainingSlots,availability:driver.availability,loadKnown:driver.loadKnown}: {status:'unknown',limit:null,load:null,remainingSlots:null,availability:'unknown'};
       candidate.order={source:'Route.deliveryIds',complete:Boolean(candidate.planComplete),plannedStops:candidate.plannedStops};

@@ -5,6 +5,7 @@ const { uuidV7 } = require('../identity/service');
 const D = require('./domain');
 const { createProviderIntegrationService, resolveTestProviderConfiguration } = require('./provider-integration');
 const { createLogisticsIntelligenceService } = require('./intelligence');
+const { createHumanDecisionService } = require('./human-decision');
 
 class LogisticsServiceError extends Error {
   constructor(code, message) { super(message); this.name = 'LogisticsServiceError'; this.code = code; }
@@ -30,7 +31,7 @@ function asFulfillment(row) {
 const FIELDS = `company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,external_reference,status,selected_at,
  selected_by,revision,eta_at,estimated_cost_minor,estimated_cost_currency,final_cost_minor,final_cost_currency,updated_at`;
 
-function createLogisticsService({ clock = () => new Date(), testProvider = null, providerIntegration = createProviderIntegrationService({ clock, testProvider }), routeDistanceProvider = null } = {}) {
+function createLogisticsService({ clock = () => new Date(), testProvider = null, providerIntegration = createProviderIntegrationService({ clock, testProvider }), routeDistanceProvider = null, assignDeliveryToRoute = null } = {}) {
   if (testProvider && (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function')) throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
   function providerProjection(row) {
     const provider = asProvider(row), test = resolveTestProviderConfiguration(testProvider, provider.companyId, provider.id);
@@ -168,7 +169,7 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
     const provider = providerResult.rows[0];
     if ((input.mode === 'internal' && provider.provider_class !== 'internal_fleet') || (input.mode === 'external' && provider.provider_class === 'internal_fleet')) fail('INVALID_INPUT', 'Modo incompatível com provider.');
     if (input.mode === 'internal') {
-      const driver = await client.query(`SELECT 1 FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Driver' AND deleted_at IS NULL`, [principal.company_id, input.driverId]);
+      const driver = await client.query(`SELECT 1 FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Driver' AND deleted_at IS NULL FOR UPDATE`, [principal.company_id, input.driverId]);
       if (!driver.rowCount) fail('INVALID_DRIVER', 'Motoboy não pertence a esta empresa ou está removido.');
     } else {
       const route = await client.query(`SELECT 1 FROM rotamoto.domain_records r WHERE r.company_id=$1 AND r.entity_type='Route' AND r.deleted_at IS NULL
@@ -424,8 +425,14 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
     return { commands: result.rows };
   }
   const intelligence = createLogisticsIntelligenceService({ clock, testProvider, ensureInternalProvider, routeDistanceProvider });
+  const humanDecisions = createHumanDecisionService({ clock,
+    compare: intelligence.compareLogisticsAlternatives, selectFulfillment, selectProviderQuote, requestProviderDispatch,
+    assignDeliveryToRoute });
   return Object.freeze({ ensureInternalProvider, listProviders, createProvider, updateProvider, getFulfillment, selectFulfillment, requestDispatch, updateFulfillment, analytics,
     requestProviderQuote, listProviderQuotes, selectProviderQuote, requestProviderDispatch, requestProviderCancel, requestProviderTracking,
-    requestProviderReconciliation, getProviderCommands, ...intelligence });
+    requestProviderReconciliation, getProviderCommands, ...intelligence,
+    evaluateLogisticsDecision: humanDecisions.evaluate, listLogisticsDecisions: humanDecisions.list,
+    approveLogisticsDecision: humanDecisions.approve, rejectLogisticsDecision: humanDecisions.reject,
+    recalculateLogisticsDecision: humanDecisions.recalculate, executeLogisticsDecision: humanDecisions.execute });
 }
 module.exports = { LogisticsServiceError, createLogisticsService };

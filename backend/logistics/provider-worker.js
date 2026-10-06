@@ -98,6 +98,17 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
     if (attemptStatus) await client.query(`UPDATE rotamoto.dispatch_attempts SET status=$3,responded_at=$4
       WHERE company_id=$1 AND attempt_id=(SELECT attempt_id FROM rotamoto.dispatch_attempts WHERE company_id=$1 AND fulfillment_id=$2
         ORDER BY attempt_number DESC LIMIT 1) AND status IN ('requested','accepted')`, [companyId,current.fulfillment_id,attemptStatus,occurredAt]);
+    const decisionStatus=({accepted:'executed',in_progress:'executed',arrived:'executed',completed:'executed',cancelled:'cancelled',failed:'failed'})[normalized.status];
+    if(decisionStatus){
+      const decisions=await client.query(`UPDATE rotamoto.logistics_decisions d SET status=$4,version=version+1,updated_at=now()
+        WHERE d.company_id=$1 AND d.delivery_id=$2 AND d.status IN ('execution_requested','unknown_outcome')
+          AND d.execution_result->>'commandId' IN (SELECT c.command_id::text FROM rotamoto.provider_command_outbox c
+            WHERE c.company_id=$1 AND c.delivery_id=$2 AND c.fulfillment_id=$3 AND c.provider_id=$5 AND c.operation='DISPATCH_REQUEST')
+        RETURNING d.decision_id,d.version`,[companyId,current.delivery_id,current.fulfillment_id,decisionStatus,event.provider_id]);
+      for(const decision of decisions.rows)await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
+        VALUES($1,$2,NULL,'worker',$3,'logistics_decision',$4,$5::jsonb)`,[randomUUID(),companyId,`logistics.decision.${decisionStatus}`,
+        decision.decision_id,JSON.stringify({deliveryId:current.delivery_id,providerId:event.provider_id,eventId:event.external_event_id,version:decision.version})]);
+    }
     await finishEvent('processed');
     return true;
   }
@@ -123,6 +134,16 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
         VALUES($1,$2,NULL,'worker',$3,'provider_command',$4,$5::jsonb)`, [randomUUID(),command.company_id,
         `logistics.provider.command_${status}`,command.command_id,JSON.stringify({ operation:command.operation,providerId:command.provider_id,
           correlationId:command.correlation_id,attempts:command.attempts,errorClass })]);
+      const decisionStatus=status==='rejected'?'failed':status==='unknown_outcome'||status==='needs_review'?'unknown_outcome':null;
+      if(decisionStatus&&command.operation==='DISPATCH_REQUEST'){
+        const decisions=await client.query(`UPDATE rotamoto.logistics_decisions SET status=$4,version=version+1,updated_at=now()
+          WHERE company_id=$1 AND delivery_id=$2 AND status='execution_requested' AND execution_result->>'commandId'=$3
+          RETURNING decision_id,version`,[command.company_id,command.delivery_id,String(command.command_id),decisionStatus]);
+        for(const decision of decisions.rows)await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
+          VALUES($1,$2,NULL,'worker',$3,'logistics_decision',$4,$5::jsonb)`,[randomUUID(),command.company_id,`logistics.decision.${decisionStatus}`,
+          decision.decision_id,JSON.stringify({deliveryId:command.delivery_id,providerId:command.provider_id,commandId:command.command_id,
+            errorClass,version:decision.version})]);
+      }
     });
   }
   async function runOnce() {

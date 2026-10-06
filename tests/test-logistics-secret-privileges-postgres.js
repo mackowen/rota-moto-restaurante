@@ -44,13 +44,25 @@ async function main() {
       has_column_privilege('rotamoto_app','rotamoto.external_accounts','secret_ref','SELECT') AS external_secret_select,
       has_column_privilege('rotamoto_app','rotamoto.external_accounts','secret_ref','UPDATE') AS external_secret_update,
       has_table_privilege('rotamoto_app','rotamoto.external_accounts','UPDATE') AS external_accounts_update,
-      has_function_privilege('rotamoto_app','rotamoto.claim_provider_command(uuid,uuid,integer)','EXECUTE') AS global_provider_claim`,
+      has_function_privilege('rotamoto_app','rotamoto.claim_provider_command(uuid,uuid,integer)','EXECUTE') AS global_provider_claim,
+      EXISTS(SELECT 1 FROM pg_roles WHERE rolname='rotamoto_provider_worker') AS worker_role_exists`,
     ['0019_logistics_provider_secret_least_privilege']);
-    assert.deepEqual(state.rows[0], { role: 'rotamoto_migrator', database: 'rotamoto_e2e', checksum: migration.checksum,
+    const {worker_role_exists:workerRoleExists,...privilegeState}=state.rows[0];
+    assert.deepEqual(privilegeState, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', checksum: migration.checksum,
       runtime_elevated: false,
       table_select: false, provider_id_select: true, configuration_select: true, secret_select: false, secret_update: false,
       external_accounts_table_select: false, external_display_select: true, external_secret_select: false, external_secret_update: false,
       external_accounts_update: false, global_provider_claim: false });
+    if(workerRoleExists){
+      const workerAcl=await admin.query(`SELECT has_table_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','SELECT') AS table_select,
+        has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','execution_result','SELECT') AS result_select,
+        has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','snapshot','SELECT') AS snapshot_select,
+        has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','status','UPDATE') AS status_update,
+        has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','version','UPDATE') AS version_update,
+        has_column_privilege('rotamoto_provider_worker','rotamoto.logistics_decisions','decided_by','UPDATE') AS actor_update`);
+      assert.deepEqual(workerAcl.rows[0],{table_select:false,result_select:true,snapshot_select:false,status_update:true,version_update:true,actor_update:false},
+        'worker can update only decision state fields and cannot read the sensitive comparison snapshot');
+    }
     const identity = psqlRuntime('SELECT current_user||\':\'||current_database()');
     assert.equal(identity.status, 0, 'psql -w authenticates runtime using the locally provisioned credential');
     assert.equal(identity.stdout.trim(), 'rotamoto_app:rotamoto_e2e');
@@ -68,7 +80,7 @@ async function main() {
     const deniedUpdate = psqlRuntime(`BEGIN; SET LOCAL app.tenant_id='${tenant}'; UPDATE rotamoto.logistics_providers SET secret_ref=NULL WHERE false; COMMIT;`);
     assert.notEqual(deniedUpdate.status, 0, 'runtime cannot update secret_ref');
     assert.match(deniedUpdate.stderr, /42501/u, 'secret_ref UPDATE fails specifically for insufficient privilege');
-    console.log('0019 E2E runtime least-privilege checks: PASS (operational projection allowed; secret_ref SELECT/UPDATE denied)');
+    console.log(`E2E least-privilege checks: PASS (runtime secret_ref denied; provider-worker decision ACL ${workerRoleExists?'verified':'NOT_TESTABLE: role not provisioned'})`);
   } finally {
     await admin.end();
   }

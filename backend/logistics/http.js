@@ -35,8 +35,8 @@ function statusFor(code) {
   if (['FORBIDDEN','CSRF_INVALID','MFA_REQUIRED'].includes(code)) return 403;
   if (code === 'RATE_LIMITED') return 429;
   if (['NOT_FOUND'].includes(code)) return 404;
-  if (['REVISION_CONFLICT','IDEMPOTENCY_CONFLICT','INVALID_STATE_TRANSITION','PROVIDER_UNAVAILABLE','INVALID_DRIVER',
-    'DELIVERY_IN_ACTIVE_ROUTE','INSTALLATION_REQUIRED','FULFILLMENT_RECONCILIATION_REQUIRED','PROVIDER_CODE_CONFLICT'].includes(code)) return 409;
+  if (['REVISION_CONFLICT','IDEMPOTENCY_CONFLICT','INVALID_STATE_TRANSITION','PROVIDER_UNAVAILABLE','INVALID_DRIVER','CAPACITY_UNKNOWN','INVALID_ROUTE',
+    'ROUTE_DELIVERY_ALREADY_ACTIVE','DELIVERY_IN_ACTIVE_ROUTE','INSTALLATION_REQUIRED','FULFILLMENT_RECONCILIATION_REQUIRED','PROVIDER_CODE_CONFLICT','RECONCILIATION_REQUIRED'].includes(code)) return 409;
   if (code === 'PAYLOAD_TOO_LARGE') return 413;
   return 500;
 }
@@ -67,7 +67,9 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         { re: /^\/api\/logistics\/analytics$/u, methods: ['GET'] },
         { re: /^\/api\/logistics\/intelligence\/settings$/u, methods: ['GET','PUT'] },
         { re: /^\/api\/logistics\/intelligence\/analytics$/u, methods: ['GET'] },
-        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/comparison$`, 'u'), methods: ['GET'] }
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/comparison$`, 'u'), methods: ['GET'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/decisions$`, 'u'), methods: ['GET','POST'] },
+        { re: new RegExp(`^/api/logistics/decisions/(${UUID})/(approve|reject|recalculate|execute)$`, 'u'), methods: ['POST'] }
       ];
       const route = routes.map(item => ({ ...item, match: item.re.exec(url.pathname) })).find(item => item.match);
       if (!route) { respond(404, { error: { code: 'NOT_FOUND', message: 'Recurso não encontrado.' } }); return true; }
@@ -77,7 +79,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
       const write = !['GET','HEAD'].includes(req.method);
       if (write) sameOrigin(req, allowedOrigin);
       const permission = ['/api/logistics/analytics','/api/logistics/intelligence/analytics'].includes(url.pathname) ||
-        /\/comparison$/u.test(url.pathname) || url.pathname === '/api/logistics/intelligence/settings' && req.method === 'GET'
+        /\/(comparison|decisions)$/u.test(url.pathname) || url.pathname === '/api/logistics/intelligence/settings' && req.method === 'GET'
         ? 'orders.read' : 'company.manage';
       const result = await identityService.withAuthenticatedTenant(token, async (client, principal) => {
         if (write) {
@@ -98,6 +100,12 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         if (path === '/api/logistics/intelligence/analytics') return logisticsService.logisticsEconomicAnalytics(client,principal);
         match = new RegExp(`^/api/logistics/deliveries/(${UUID})/comparison$`, 'u').exec(path);
         if (match) return logisticsService.compareLogisticsAlternatives(client,principal,match[1],url.searchParams.get('policy'));
+        match = new RegExp(`^/api/logistics/deliveries/(${UUID})/decisions$`, 'u').exec(path);
+        if (match) return req.method==='GET' ? logisticsService.listLogisticsDecisions(client,principal,match[1])
+          : logisticsService.evaluateLogisticsDecision(client,principal,match[1],body.policy);
+        match = new RegExp(`^/api/logistics/decisions/(${UUID})/(approve|reject|recalculate|execute)$`, 'u').exec(path);
+        if (match) return logisticsService[({approve:'approveLogisticsDecision',reject:'rejectLogisticsDecision',
+          recalculate:'recalculateLogisticsDecision',execute:'executeLogisticsDecision'})[match[2]]](client,principal,match[1],body);
         match = new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-quotes$`, 'u').exec(path);
         if (match) return req.method === 'GET' ? logisticsService.listProviderQuotes(client, principal, match[1])
           : logisticsService.requestProviderQuote(client, principal, match[1], body);
@@ -133,7 +141,8 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         REVISION_CONFLICT: 'O registro mudou. Atualize a tela e tente novamente.', INSTALLATION_REQUIRED: 'Sincronize o painel antes de alterar a alocação.',
         DELIVERY_IN_ACTIVE_ROUTE: 'Remova a entrega da rota da frota própria antes de selecionar um provider externo.',
         FULFILLMENT_RECONCILIATION_REQUIRED: 'Registre o encerramento do provider atual antes da reatribuição.',
-        PROVIDER_CODE_CONFLICT: 'Código de provider já cadastrado nesta empresa.' };
+        PROVIDER_CODE_CONFLICT: 'Código de provider já cadastrado nesta empresa.', CAPACITY_UNKNOWN: 'A capacidade atual não pôde ser confirmada. Recalcule antes de executar.',
+        INVALID_ROUTE: 'O plano de rota está incompleto ou mudou. Recalcule antes de executar.', ROUTE_DELIVERY_ALREADY_ACTIVE: 'A entrega já pertence a outra rota ativa.' };
       req.apiErrorCode = safeCode; respond(status, { error: { code: safeCode, message: status >= 500 ? 'Falha interna ao processar a operação logística.' : (messages[safeCode] || 'Operação não permitida.') } });
       return true;
     } finally { try { logger({ requestId, method: req.method, path: url.pathname, status, ...(errorCode ? { errorCode: status === 500 ? 'INTERNAL_ERROR' : errorCode } : {}) }); } catch (_) {} }

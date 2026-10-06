@@ -130,6 +130,70 @@ function validatePacket(packet) {
 }
 
 function createSyncService({ clock = () => new Date(), mediaStorage = createMediaStorage() } = {}) {
+  async function assignDeliveryToRoute(client, principal, input) {
+    const { routeId, deliveryId, driverId, position, expectedRouteVersion } = input || {};
+    if (![routeId,deliveryId,driverId].every(value=>typeof value==='string'&&UUID.test(value))||
+        !Number.isSafeInteger(position)||position<0||!Number.isSafeInteger(expectedRouteVersion)||expectedRouteVersion<1)
+      throw new SyncError('INVALID_INPUT','Route assignment input is invalid.');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 402119))',[principal.company_id+':active-route-membership']);
+    const routeResult=await client.query(`SELECT payload,version,updated_at FROM rotamoto.domain_records
+      WHERE company_id=$1 AND record_id=$2 AND entity_type='Route' AND deleted_at IS NULL FOR UPDATE`,[principal.company_id,routeId]);
+    if(!routeResult.rowCount)throw new SyncError('UNRESOLVED_REFERENCE','Route não encontrada neste tenant.');
+    const routeRow=routeResult.rows[0],route=routeRow.payload;
+    if(Number(routeRow.version)!==expectedRouteVersion)throw new SyncError('REVISION_CONFLICT','Route mudou desde a avaliação; recalcule a decisão.');
+    if(!['PLANNED','ACTIVE','IN_PROGRESS'].includes(String(route.status||'').toUpperCase())||!Array.isArray(route.deliveryIds)||
+        !route.deliveryIds.every(value=>typeof value==='string'&&UUID.test(value))||new Set(route.deliveryIds).size!==route.deliveryIds.length||position>route.deliveryIds.length)
+      throw new SyncError('INVALID_ROUTE','Route não possui plano ativo, completo e ordenado.');
+    if(route.deliveryIds.includes(deliveryId))return {duplicate:true,routeId,deliveryId,position:route.deliveryIds.indexOf(deliveryId),version:Number(routeRow.version)};
+    const deliveryResult=await client.query(`SELECT payload,version FROM rotamoto.domain_records
+      WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' AND deleted_at IS NULL FOR UPDATE`,[principal.company_id,deliveryId]);
+    if(!deliveryResult.rowCount||deliveryResult.rows[0].payload.driverId!==driverId)
+      throw new SyncError('INVALID_DRIVER','Delivery deve estar alocada ao Driver escolhido para a Route.');
+    const driverResult=await client.query(`SELECT payload->>'status' AS status,payload->'capacity' AS capacity
+      FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Driver' AND deleted_at IS NULL FOR UPDATE`,
+    [principal.company_id,driverId]);
+    const driverStatus=String(driverResult.rows[0]?.status||'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').trim().toUpperCase();
+    if(!driverResult.rowCount||!['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED'].includes(driverStatus))
+      throw new SyncError('INVALID_DRIVER','Driver não está operacionalmente ativo.');
+    const capacity=driverResult.rows[0].capacity;
+    if(capacity?.unit!=='deliveries'||!Number.isSafeInteger(capacity.limit)||capacity.limit<1||capacity.limit>500)
+      throw new SyncError('CAPACITY_UNKNOWN','Capacidade configurada do Driver não é conhecida.');
+    const load=await client.query(`SELECT count(*) FILTER(WHERE upper(coalesce(payload->>'status','')) IN
+        ('CREATED','ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY'))::int AS active_load,
+      count(*) FILTER(WHERE upper(coalesce(payload->>'status','')) NOT IN
+        ('CREATED','ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY','DELIVERED','CANCELLED','FAILED','RETURNED'))::int AS unknown_load
+      FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='Delivery' AND deleted_at IS NULL
+        AND payload->>'driverId'=$2`,[principal.company_id,driverId]);
+    if(load.rows[0].unknown_load!==0||load.rows[0].active_load>capacity.limit)
+      throw new SyncError('CAPACITY_UNKNOWN','Carga atual do Driver é desconhecida ou excede a capacidade configurada.');
+    const membership=await client.query(`SELECT r.record_id::text FROM rotamoto.domain_records r
+      WHERE r.company_id=$1 AND r.entity_type='Route' AND r.record_id<>$2 AND r.deleted_at IS NULL
+        AND upper(coalesce(r.payload->>'status',''))=ANY($3::text[]) AND jsonb_typeof(r.payload->'deliveryIds')='array'
+        AND r.payload->'deliveryIds' ? $4 LIMIT 1`,[principal.company_id,routeId,['PLANNED','ACTIVE','IN_PROGRESS'],deliveryId]);
+    if(membership.rowCount)throw new SyncError('ROUTE_DELIVERY_ALREADY_ACTIVE','Delivery já pertence a outra Route ativa.');
+    const stopRows=route.deliveryIds.length?await client.query(`SELECT count(*)::int AS total,
+      count(*) FILTER(WHERE payload->>'driverId'=$3 AND entity_type='Delivery' AND deleted_at IS NULL)::int AS same_driver
+      FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=ANY($2::uuid[])`,[principal.company_id,route.deliveryIds,driverId]):{rows:[{total:0,same_driver:0}]};
+    if(stopRows.rows[0].total!==route.deliveryIds.length||stopRows.rows[0].same_driver!==route.deliveryIds.length)
+      throw new SyncError('INVALID_ROUTE','As paradas atuais não formam uma Route completa para este Driver.');
+    const now=clock(),nextVersion=Number(routeRow.version)+1,deliveryIds=[...route.deliveryIds];
+    deliveryIds.splice(position,0,deliveryId);
+    const nextRoute={...route,deliveryIds,version:nextVersion,updatedAt:now.toISOString()};
+    const routeUpdated=await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5
+      WHERE company_id=$1 AND record_id=$2 AND version=$6 RETURNING record_id`,[principal.company_id,routeId,JSON.stringify(nextRoute),nextVersion,now,routeRow.version]);
+    if(!routeUpdated.rowCount)throw new SyncError('REVISION_CONFLICT','Route mudou durante a inserção.');
+    const installation=await client.query(`SELECT id FROM rotamoto.sync_installations WHERE company_id=$1 AND app_key='restaurante'
+      ORDER BY last_seen_at DESC LIMIT 1`,[principal.company_id]);
+    if(!installation.rowCount)throw new SyncError('INSTALLATION_REQUIRED','Sincronize o painel Restaurante antes de alterar a Route.');
+    const eventId=uuidV7(now.getTime()),event={eventId,type:'CANONICAL_RECORD_UPSERTED',entity:'Route',entityId:routeId,
+      occurredAt:now.toISOString(),actor:{type:'user',id:principal.user_id},payload:{...nextRoute,id:routeId,companyId:principal.company_id},protocolVersion:1};
+    await client.query(`INSERT INTO rotamoto.sync_outbox(company_id,event_id,app_key,installation_id,payload)
+      VALUES($1,$2,'restaurante',$3,$4::jsonb)`,[principal.company_id,eventId,installation.rows[0].id,JSON.stringify(event)]);
+    await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
+      VALUES($1,$2,$3,'user','route.delivery-membership.changed','Route',$4,$5::jsonb)`,
+    [uuidV7(now.getTime()),principal.company_id,principal.user_id,routeId,JSON.stringify({added:[deliveryId],removed:[],position,version:nextVersion,source:'approved_logistics_decision'})]);
+    return {duplicate:false,routeId,deliveryId,position,version:nextVersion};
+  }
   async function registerInstallation(client, principal, appKey, deviceId) {
     if (!['restaurante', 'motoboy'].includes(appKey)) invalid('Aplicativo de instalação inválido.');
     requireDriverInstallation({ app_key: appKey }, principal);
@@ -788,7 +852,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       nextCursor: rows.length ? encodeCursor(rows.at(-1)) : cursor, hasMore };
   }
 
-  return Object.freeze({ registerInstallation, push, pull });
+  return Object.freeze({ registerInstallation, push, pull, assignDeliveryToRoute });
 }
 
 module.exports = { SyncError, createSyncService, validatePacket, validateOrderMoneyRecord, ENTITY_ARRAYS, TRANSITIONS, WRITE_OWNERS };

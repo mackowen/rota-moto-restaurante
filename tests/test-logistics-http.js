@@ -14,7 +14,12 @@ async function main() {
     getIntelligenceSettings: async () => ({ settings: { configured: false, version: 0 }, policies: ['lowest_cost'] }),
     updateIntelligenceSettings: async (_client, scope, body) => { calls.push(['intelligence-update', scope.company_id, body]); return { settings: { version: 1 } }; },
     logisticsEconomicAnalytics: async () => ({ ownFleet: {}, external: {} }),
-    compareLogisticsAlternatives: async (_client, scope, id, policy) => ({ deliveryId: id, tenant: scope.company_id, policy, alternatives: [], recommendation: { status: 'insufficient_data' } })
+    compareLogisticsAlternatives: async (_client, scope, id, policy) => ({ deliveryId: id, tenant: scope.company_id, policy, alternatives: [], recommendation: { status: 'insufficient_data' } }),
+    listLogisticsDecisions: async (_client,scope,id)=>({decisions:[{id,tenant:scope.company_id}]}),
+    evaluateLogisticsDecision: async (_client,scope,id,policy)=>{calls.push(['decision-evaluate',scope.company_id,id,policy]);return {decision:{id,status:'proposed'}};},
+    approveLogisticsDecision: async (_client,scope,id,body)=>{calls.push(['decision-approve',scope.company_id,id,body]);return {decision:{id,status:'approved',alternativeId:body.alternativeId}};},
+    rejectLogisticsDecision: async()=>({decision:{status:'rejected'}}),recalculateLogisticsDecision:async()=>({decision:{status:'proposed'}}),
+    executeLogisticsDecision: async()=>({decision:{status:'execution_requested'}})
   };
   const identityService = {
     async withAuthenticatedTenant(token, operation, permission) { assert.equal(token, 'a'.repeat(43)); calls.push(['permission', permission]); return operation({}, principal); },
@@ -40,9 +45,15 @@ async function main() {
     const deliveryId = '00000000-0000-4000-8000-000000000001';
     const comparison = await fetch(`${base}/api/logistics/deliveries/${deliveryId}/comparison?policy=lowest_cost`, { headers });
     assert.equal(comparison.status, 200); assert.equal((await comparison.json()).deliveryId, deliveryId);
+    const decisions = await fetch(`${base}/api/logistics/deliveries/${deliveryId}/decisions`,{headers});
+    assert.equal(decisions.status,200);assert.equal((await decisions.json()).decisions[0].tenant,principal.company_id);
+    const propose=await fetch(`${base}/api/logistics/deliveries/${deliveryId}/decisions`,{method:'POST',headers:{...headers,'Content-Type':'application/json','X-CSRF-Token':'csrf-test'},body:JSON.stringify({policy:'lowest_cost'})});
+    assert.equal(propose.status,200);assert.equal((await propose.json()).decision.status,'proposed');
+    const approve=await fetch(`${base}/api/logistics/decisions/${deliveryId}/approve`,{method:'POST',headers:{...headers,'Content-Type':'application/json','X-CSRF-Token':'csrf-test'},body:JSON.stringify({expectedVersion:1,alternativeId:'fake:eligible'})});
+    assert.equal(approve.status,200);assert.equal((await approve.json()).decision.alternativeId,'fake:eligible');
     const update = await fetch(`${base}/api/logistics/intelligence/settings`, { method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json', 'X-CSRF-Token': 'csrf-test' }, body: JSON.stringify({ expectedVersion: 0 }) });
     assert.equal(update.status, 200);
-    assert.deepEqual(calls.filter(row => row[0] === 'permission').map(row => row[1]), ['company.manage','company.manage','orders.read','orders.read','orders.read','orders.read','company.manage']);
+    assert.deepEqual(calls.filter(row => row[0] === 'permission').map(row => row[1]), ['company.manage','company.manage','orders.read','orders.read','orders.read','orders.read','orders.read','orders.read','company.manage','company.manage']);
     assert.equal(calls.find(row => row[0] === 'create')[1].code, 'partner_1');
   } finally { await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   console.log('Logistics authenticated HTTP, CSRF, RBAC, analytics scope and sanitized errors: OK');

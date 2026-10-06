@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { createProviderWorker } = require('../backend/logistics/provider-worker');
 
 async function exercise(classification, operation = 'DISPATCH_REQUEST') {
-  const state = { finalStatus: null, errorClass: null, delay: null, committed: false, calls: 0, token: null };
+  const state = { finalStatus: null, errorClass: null, delay: null, committed: false, calls: 0, token: null, decisionProjectionUpdates:0 };
   const command = { company_id:'00000000-0000-4000-8000-000000000001',command_id:'00000000-0000-4000-8000-000000000002',
     provider_id:'00000000-0000-4000-8000-000000000003',delivery_id:'00000000-0000-4000-8000-000000000004',
     fulfillment_id:'00000000-0000-4000-8000-000000000005',operation,idempotency_key:'stable-key',payload:{deliveryId:'00000000-0000-4000-8000-000000000004'},attempts:1,
@@ -17,6 +17,10 @@ async function exercise(classification, operation = 'DISPATCH_REQUEST') {
     if (sql.includes('FROM rotamoto.provider_event_inbox')) return {rowCount:0,rows:[]};
     if (sql.includes('provider_command_outbox SET status=$4')) {
       assert.equal(params[2],state.token);state.finalStatus=params[3];state.delay=params[4];state.errorClass=params[5];return {rowCount:1,rows:[{command_id:command.command_id}]};
+    }
+    if (sql.includes('UPDATE rotamoto.logistics_decisions SET status=$4')) {
+      assert.equal(params[0],command.company_id);assert.equal(params[1],command.delivery_id);assert.equal(params[2],String(command.command_id));
+      state.decisionProjectionUpdates+=1;return {rowCount:0,rows:[]};
     }
     if (sql.includes('INSERT INTO rotamoto.audit_log')) return {rowCount:1,rows:[]};
     throw new Error(`unexpected query ${sql}`);
@@ -38,9 +42,11 @@ async function exercise(classification, operation = 'DISPATCH_REQUEST') {
   const unknown=await exercise('UNKNOWN_OUTCOME');
   assert.equal(unknown.finalStatus,'unknown_outcome');
   assert.equal(unknown.errorClass,'UNKNOWN_OUTCOME');
+  assert.equal(unknown.decisionProjectionUpdates,1,'ambiguous dispatch updates a matching decision to unknown_outcome inside the worker transaction');
   const rateLimit=await exercise('RATE_LIMIT','QUOTE_REQUEST');
   assert.equal(rateLimit.finalStatus,'queued');
   assert.equal(rateLimit.errorClass,'RATE_LIMIT');
   assert.equal(rateLimit.delay instanceof Date,true);
+  assert.equal(rateLimit.decisionProjectionUpdates,0,'transient quote retry does not alter an unrelated decision');
   process.stdout.write('Provider worker lease, ambiguous outcome and durable retry tests passed.\n');
 })().catch(error=>{process.stderr.write(`${error.stack}\n`);process.exitCode=1;});

@@ -175,6 +175,25 @@ async function main() {
   assert.match(externalAccountSecretMigration.up, /GRANT SELECT \([\s\S]*metadata,created_at,updated_at\s*\) ON TABLE rotamoto\.external_accounts TO rotamoto_app/u);
   assert.doesNotMatch(externalAccountSecretMigration.up, /secret_ref/u);
   assert.match(externalAccountSecretMigration.down, /rollback bloqueado/u);
+  const humanDecisionMigration=getMigrations()[28];
+  assert.equal(humanDecisionMigration.id,'0029_logistics_human_decisions');
+  assert.match(humanDecisionMigration.up,/CREATE TABLE rotamoto\.logistics_decisions/u);
+  assert.match(humanDecisionMigration.up,/FORCE ROW LEVEL SECURITY/u);
+  assert.match(humanDecisionMigration.up,/company_id=rotamoto\.current_tenant_id\(\)/u);
+  assert.match(humanDecisionMigration.up,/UNIQUE INDEX logistics_decisions_execution_idempotency/u);
+  assert.match(humanDecisionMigration.up,/GRANT SELECT,INSERT,UPDATE[^;]*rotamoto_app/u);
+  assert.doesNotMatch(humanDecisionMigration.up,/secret_ref|payload_raw|address|phone/iu);
+  const staleApprovalMigration=getMigrations()[29];
+  assert.equal(staleApprovalMigration.id,'0030_logistics_decision_stale_approval');
+  assert.match(staleApprovalMigration.up,/DROP CONSTRAINT logistics_decisions_check/u);
+  assert.match(staleApprovalMigration.up,/status='stale'[\s\S]*decided_by IS NOT NULL AND decided_at IS NOT NULL/u);
+  assert.match(staleApprovalMigration.down,/rollback bloqueado/u);
+  const decisionWorkerMigration=getMigrations()[30];
+  assert.equal(decisionWorkerMigration.id,'0031_logistics_decision_worker_projection');
+  assert.match(decisionWorkerMigration.up,/status IN[\s\S]*'cancelled'/u);
+  assert.match(decisionWorkerMigration.up,/GRANT SELECT \(company_id,decision_id,delivery_id,status,execution_result,version\)[\s\S]*rotamoto_provider_worker/u);
+  assert.match(decisionWorkerMigration.up,/GRANT UPDATE \(status,version,updated_at\)[\s\S]*rotamoto_provider_worker/u);
+  assert.match(decisionWorkerMigration.down,/rollback bloqueado/u);
   assert.match(geoSnapshotMigration.up, /ON DELETE RESTRICT/u);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
@@ -330,7 +349,7 @@ async function main() {
       'roles','role_permissions','memberships','sessions','integrations','external_accounts',
       'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens',
       'sync_installations','domain_records','proof_media_upload_intents','logistics_providers','delivery_fulfillments','dispatch_attempts','delivery_geo_snapshots',
-      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots','logistics_intelligence_settings'
+      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots','logistics_intelligence_settings','logistics_decisions'
     ]));
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -340,6 +359,8 @@ async function main() {
     const tenantTables = rls.rows.filter(row => row.relrowsecurity);
     assert(tenantTables.some(row=>row.relname==='logistics_intelligence_settings'&&row.relforcerowsecurity),
       'economic settings are included in forced tenant RLS');
+    assert(tenantTables.some(row=>row.relname==='logistics_decisions'&&row.relforcerowsecurity),
+      'human decisions are tenant scoped with forced RLS');
     assert(tenantTables.every(row => row.relforcerowsecurity), 'all tenant-scoped tables enforce RLS');
     const auditTenant = crypto.randomUUID();
     await migrationClient.query('BEGIN');
@@ -427,10 +448,12 @@ async function main() {
     [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);
     try {
       const appliedLedger = await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
-      if (appliedLedger.rows[0]?.migration_id === '0028_external_account_secret_least_privilege') {
+      if (['0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection'].includes(appliedLedger.rows[0]?.migration_id)) {
         assert.match(getMigrations().at(-1).down, /rollback bloqueado/u, 'provider integration data migrations explicitly block rollback');
+        const blockedDown = runMigrationSync('down');
+        assert.notEqual(blockedDown.status,0,'approved provider/decision persistence rollback stays blocked');
         const stillLatest = await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
-        assert.equal(stillLatest.rows[0].migration_id, '0028_external_account_secret_least_privilege', 'blocked rollback preserves approved schema');
+        assert.equal(stillLatest.rows[0].migration_id, appliedLedger.rows[0].migration_id, 'blocked rollback preserves approved schema');
       } else {
       const bindingDown = runMigrationSync('down');
       assert.equal(bindingDown.status,0,'empty additive driver binding migration can be rolled back safely');
