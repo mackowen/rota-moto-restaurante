@@ -13,15 +13,15 @@ const { createFakeLogisticsProvider } = require('../helpers/fake-logistics-provi
 const { createFakeRouteDistanceProvider } = require('../helpers/fake-route-distance-provider');
 const { createSyncService } = require('../../backend/domain/sync-service');
 
-function createProviderBrowserRuntime({ pool, outcomes = ['pending', 'timeout', 'pending'] } = {}) {
+function createProviderBrowserRuntime({ pool, outcomes = ['pending', 'timeout', 'pending'], routeDistanceProvider = null } = {}) {
   if (process.env.NODE_ENV !== 'test') throw new Error('Provider browser E2E runtime is available only in NODE_ENV=test.');
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('E2E runtime pool required.');
   let configuration = null;
   const testProvider = (companyId, providerId) => configuration?.companyId === companyId && configuration?.providerId === providerId
     ? { ...configuration, adapter: 'fake', providerCode: 'ifood', capabilities: ['quote','dispatch','cancel','tracking'] } : null;
   const providerIntegration = createProviderIntegrationService({ testProvider });
-  const fakeRouteDistanceProvider=createFakeRouteDistanceProvider();
-  const logisticsService = createLogisticsService({ providerIntegration, testProvider, routeDistanceProvider:fakeRouteDistanceProvider,
+  const fakeRouteDistanceProvider=routeDistanceProvider?null:createFakeRouteDistanceProvider();
+  const logisticsService = createLogisticsService({ providerIntegration, testProvider, routeDistanceProvider:routeDistanceProvider||fakeRouteDistanceProvider,
     assignDeliveryToRoute:createSyncService().assignDeliveryToRoute });
   const fake = createFakeLogisticsProvider({ outcomes });
   const fakeAdapter = Object.freeze({
@@ -66,6 +66,7 @@ function createProviderBrowserRuntime({ pool, outcomes = ['pending', 'timeout', 
     },
     configureRouteDistance(input){
       if(process.env.NODE_ENV!=='test'||!input||typeof input.companyId!=='string')throw new Error('Invalid E2E route-distance scope.');
+      if(!fakeRouteDistanceProvider)throw new Error('In-memory route distance fixture was not selected for this E2E runtime.');
       fakeRouteDistanceProvider.configure(input);
     },
     async ingestEvent(client, input) {

@@ -201,7 +201,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
   }
 
   async function loadRouteSnapshot(client, companyId, deliveryId, deliveryDriverId = null) {
-    const targetGeo = await client.query(`SELECT provenance,accuracy_m FROM rotamoto.delivery_geo_snapshots
+    const targetGeo = await client.query(`SELECT provenance,accuracy_m,latitude,longitude FROM rotamoto.delivery_geo_snapshots
       WHERE company_id=$1 AND delivery_id=$2`,[companyId,deliveryId]);
     const routesResult = await client.query(`WITH active_routes AS (
           SELECT r.record_id,r.version,r.payload,r.updated_at,count(*) OVER() AS total_routes
@@ -214,7 +214,8 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
           coalesce(jsonb_agg(jsonb_build_object('deliveryId',members.value,'found',stop.record_id IS NOT NULL,
             'driverId',stop.payload->>'driverId','status',stop.payload->>'status','driverStatus',driver.payload->>'status',
             'driverCapacity',driver.payload->'capacity','coordinatesKnown',
-            (geo.delivery_id IS NOT NULL AND geo.provenance IN ('manual','customer_destination')))
+            (geo.delivery_id IS NOT NULL AND geo.provenance IN ('manual','customer_destination')),
+            'coordinates',CASE WHEN geo.provenance IN ('manual','customer_destination') THEN jsonb_build_object('latitude',geo.latitude,'longitude',geo.longitude) ELSE NULL END)
             ORDER BY members.ordinality) FILTER(WHERE members.value IS NOT NULL),'[]'::jsonb) AS stops
         FROM active_routes r
         LEFT JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(r.payload->'deliveryIds')='array'
@@ -237,6 +238,12 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     if (!result.scanComplete) result.limitations=['A análise consultou as 100 Routes ativas mais recentes; há outras Routes no tenant.'];
     result.targetCoordinate={known:targetCoordinatesKnown,provenance:target?.provenance||null,accuracyM:target?.accuracy_m==null?null:Number(target.accuracy_m)};
     result.routes=routes;
+    const coordinatesByDeliveryId=Object.create(null);
+    if(targetCoordinatesKnown)coordinatesByDeliveryId[deliveryId]={latitude:Number(target.latitude),longitude:Number(target.longitude)};
+    for(const route of routes)for(const stop of route.stops||[])if(stop.found&&stop.coordinatesKnown&&stop.coordinates&&
+      Number.isFinite(stop.coordinates.latitude)&&Number.isFinite(stop.coordinates.longitude))coordinatesByDeliveryId[stop.deliveryId]=stop.coordinates;
+    for(const route of routes)for(const stop of route.stops||[])delete stop.coordinates;
+    Object.defineProperty(result,'coordinatesByDeliveryId',{value:coordinatesByDeliveryId,enumerable:false});
     return result;
   }
 
@@ -260,7 +267,8 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
         candidate.insertion={status:'unavailable',reason:'CAPACITY_FULL',routeDistance:{status:'unknown',distanceM:null,provenance:null},candidates:[],bestPosition:null};
         candidate.marginalCost={status:'insufficient_data',reason:'CAPACITY_FULL'};continue}
       const insertion=await calculateInsertionOptions({companyId,routeId:candidate.routeId,deliveryIds:route.deliveryIds,
-        newDeliveryId:deliveryId,capacity:{status:'known',remainingSlots:driver.remainingSlots},routeDistanceService});
+        newDeliveryId:deliveryId,capacity:{status:'known',remainingSlots:driver.remainingSlots},routeDistanceService,
+        coordinatesByDeliveryId:routeAssessment.coordinatesByDeliveryId});
       candidate.insertion=insertion;candidate.compatibility=insertion.status==='known'?'compatible':insertion.status==='unavailable'?'unknown':'unknown';
       candidate.incrementalDistanceM=insertion.incrementalDistanceM??null;
       candidate.distanceProvenance=insertion.provenance||insertion.routeDistance?.provenance||null;
@@ -271,7 +279,9 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       if(insertion.status==='known'){
         const marginal=estimateInternalCost(costModel,insertion.incrementalDistanceM);
         candidate.marginalCost=marginal.status==='known'?{...marginal,basis:'marginal_route_insertion',formula:'fixedCostPerDeliveryMinor + ceil(variableCostPerKmMinor × incrementalDistanceM / 1000)',
-          distanceProvenance:insertion.provenance,capacityEvidence:candidate.capacity,routeOrderSource:'Route.deliveryIds',limitations:['fixed cost remains charged per added delivery','distance provider provenance is required; no straight-line fallback']} : marginal;
+          distanceProvenance:insertion.provenance,capacityEvidence:candidate.capacity,routeOrderSource:'Route.deliveryIds',limitations:['fixed cost remains charged per added delivery',
+            'distance covers only the ordered destination points provided; no depot/current Driver position or return leg is modeled',
+            'distance provider provenance is required; no straight-line fallback']} : marginal;
       }else candidate.marginalCost={status:'insufficient_data',reason:insertion.reason||'ROUTE_DISTANCE_UNKNOWN'};
     }
     const bestKnown=(routeAssessment.candidates||[]).filter(item=>item.compatibility==='compatible'&&item.marginalCost?.status==='known')
@@ -427,6 +437,11 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     const payout = [...payoutByCurrency.entries()].map(([currency,amount]) => ({ currency,amountMinor:amount.toString(),
       meaning:'canonical Earning / driver payout record; not proof of payment or total operating cost' }));
     const recommendation = makeRecommendation(alternatives,policy);
+    const routeDistanceLimitation=routeAssessment.status==='insertion_calculated'?
+      'Road distance covers only the supplied ordered destination points; depot/current Driver position and return leg are not modeled':
+      routeAssessment.candidates?.some(candidate=>candidate.insertion?.status==='unavailable')?
+        'Road distance is unavailable for one or more candidate sequences; no straight-line fallback is used':
+        'Road distance could not be established for the observed route; straight-line coordinates are not used as road distance';
     const knownCosts = alternatives.filter(item=>item.eligible&&(item.decisionCost||item.cost).status==='known');
     const earliestEta = alternatives.filter(item=>item.eligible&&item.etaAt&&Number.isFinite(Date.parse(item.etaAt)))
       .sort((a,b)=>Date.parse(a.etaAt)-Date.parse(b.etaAt)||a.id.localeCompare(b.id))[0] || null;
@@ -447,7 +462,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       limitations: ['Order value/revenue is not logistics cost', 'Earning is a driver payout record and is shown separately',
           'quote and estimates are not realized charges', 'fixed and variable profile covers only the components explicitly configured',
           'driver records do not prove availability or spare capacity; the operator must confirm',
-          'Route has ordered Delivery IDs but no trusted road distance model; straight-line coordinates are not used as road distance',
+          routeDistanceLimitation,
           'the recommendation never dispatches'] } };
   }
 

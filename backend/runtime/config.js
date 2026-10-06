@@ -5,7 +5,7 @@ const { isIP } = require('node:net');
 const path = require('node:path');
 
 const DEVELOPMENT_DATABASE_URL = 'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto';
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', '[::1]', 'localhost']);
 
 function splitList(value) {
   return String(value || '').split(',').map(item => item.trim()).filter(Boolean);
@@ -119,9 +119,30 @@ function loadRuntimeConfig(env = process.env) {
   if ([mediaDirectory, backupDirectory].some(value => value && !path.isAbsolute(value)))
     throw new Error('Paths de storage e backup devem ser absolutos.');
 
+  const routeDistanceEnabled = env.ROUTEMOTO_ROUTE_DISTANCE_ENABLED === 'true';
+  let routeDistanceBaseUrl = null;
+  if (env.ROUTEMOTO_ROUTE_DISTANCE_URL) {
+    let routeUrl;
+    try { routeUrl = new URL(env.ROUTEMOTO_ROUTE_DISTANCE_URL); } catch (_) { throw new Error('ROUTEMOTO_ROUTE_DISTANCE_URL inválida.'); }
+    const local = LOOPBACK_HOSTS.has(routeUrl.hostname.toLowerCase());
+    if (!['http:', 'https:'].includes(routeUrl.protocol) || routeUrl.username || routeUrl.password || routeUrl.search || routeUrl.hash ||
+        routeUrl.pathname !== '/' || production && routeUrl.protocol !== 'https:' || routeUrl.protocol === 'http:' && !local)
+      throw new Error('ROUTEMOTO_ROUTE_DISTANCE_URL deve ser base HTTP(S) confiável, sem credenciais; HTTP somente em loopback e produção exige HTTPS.');
+    routeDistanceBaseUrl = routeUrl.toString().replace(/\/$/u, '');
+  }
+  const routeDistanceTimeoutMs = Number(env.ROUTEMOTO_ROUTE_DISTANCE_TIMEOUT_MS || 2500);
+  if (!Number.isInteger(routeDistanceTimeoutMs) || routeDistanceTimeoutMs < 100 || routeDistanceTimeoutMs > 10_000)
+    throw new Error('ROUTEMOTO_ROUTE_DISTANCE_TIMEOUT_MS deve estar entre 100 e 10000.');
+  const routeDistanceVersion = env.ROUTEMOTO_ROUTE_DISTANCE_VERSION || null;
+  if (routeDistanceVersion && !/^[A-Za-z0-9._-]{1,40}$/u.test(routeDistanceVersion))
+    throw new Error('ROUTEMOTO_ROUTE_DISTANCE_VERSION inválida.');
+  if (routeDistanceEnabled && !routeDistanceBaseUrl) throw new Error('Motor viário habilitado exige ROUTEMOTO_ROUTE_DISTANCE_URL.');
+  const routeDistance = Object.freeze({ enabled: routeDistanceEnabled, baseUrl: routeDistanceEnabled ? routeDistanceBaseUrl : null,
+    version: routeDistanceVersion, timeoutMs: routeDistanceTimeoutMs });
+
   return Object.freeze({ nodeEnv, production, host, port, databaseUrl, allowedOrigins: origins, smtp, mediaDirectory, backupDirectory,
     allowedHosts, trustedProxyAddresses, trustProxy: trustedProxyAddresses.length>0,
-    deliveryQrKeyRef, deliveryQrKeyId,
+    deliveryQrKeyRef, deliveryQrKeyId, routeDistance,
     databaseTlsCaFile:production?env.DATABASE_TLS_CA_FILE:null, requestTimeoutMs: 30_000, headersTimeoutMs: 10_000,
     keepAliveTimeoutMs: 5_000, shutdownTimeoutMs: 10_000,
     secretProviderModule: production ? secretProviderModule : null,

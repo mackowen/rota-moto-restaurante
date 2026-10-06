@@ -10,10 +10,12 @@ function routeDistanceResult(value, expectedProviderId) {
   }
   const provenance = value.provenance;
   const provenanceValid = provenance && typeof provenance === 'object' && !Array.isArray(provenance) &&
-    Object.keys(provenance).every(key=>['kind','providerId','version'].includes(key)) &&
+    Object.keys(provenance).every(key=>['kind','providerId','version','evaluatedAt','configuration'].includes(key)) &&
     PROVENANCE_KIND.has(provenance.kind) && typeof provenance.providerId === 'string' &&
     provenance.providerId.length > 0 && provenance.providerId.length <= 100 &&
     (provenance.version === undefined || typeof provenance.version === 'string' && provenance.version.length <= 40) &&
+    (provenance.evaluatedAt === undefined || typeof provenance.evaluatedAt === 'string' && !Number.isNaN(Date.parse(provenance.evaluatedAt))) &&
+    (provenance.configuration === undefined || typeof provenance.configuration === 'string' && provenance.configuration.length <= 64) &&
     (expectedProviderId === null || provenance.providerId === expectedProviderId);
   if (!provenanceValid) return { status:'unknown', distanceM:null, provenance:null, reason:'DISTANCE_PROVENANCE_INVALID' };
   if (value.status === 'known') {
@@ -43,7 +45,7 @@ function createRouteDistanceService({ provider = null } = {}) {
 }
 
 async function calculateInsertionOptions({ companyId, routeId, deliveryIds, newDeliveryId, capacity,
-  routeDistanceService }) {
+  routeDistanceService, coordinatesByDeliveryId = null }) {
   if (!routeDistanceService || typeof routeDistanceService.calculate !== 'function') throw new TypeError('Route distance service required.');
   if (!Array.isArray(deliveryIds) || deliveryIds.length > 500 || new Set(deliveryIds).size !== deliveryIds.length ||
       deliveryIds.some(id=>typeof id!=='string'||!id) || typeof newDeliveryId!=='string' || deliveryIds.includes(newDeliveryId))
@@ -52,17 +54,17 @@ async function calculateInsertionOptions({ companyId, routeId, deliveryIds, newD
     return { status:'unknown', reason:'CAPACITY_UNKNOWN', routeDistance:{status:'unknown',distanceM:null,provenance:null}, candidates:[] };
   if (capacity.remainingSlots <= 0)
     return { status:'unavailable', reason:'CAPACITY_FULL', routeDistance:{status:'unknown',distanceM:null,provenance:null}, candidates:[] };
-  const routeDistance = await routeDistanceService.calculate({ companyId, routeId, deliveryIds });
+  const routeDistance = await routeDistanceService.calculate({ companyId, routeId, deliveryIds, coordinatesByDeliveryId });
   if (routeDistance.status !== 'known')
     return { status:routeDistance.status, reason:routeDistance.reason||'ROUTE_DISTANCE_UNKNOWN', routeDistance, candidates:[] };
   const candidates=[];
   for (let position=0; position<=deliveryIds.length; position++) {
     const next=[...deliveryIds.slice(0,position),newDeliveryId,...deliveryIds.slice(position)];
-    const after=await routeDistanceService.calculate({ companyId, routeId, deliveryIds:next });
+    const after=await routeDistanceService.calculate({ companyId, routeId, deliveryIds:next, coordinatesByDeliveryId });
     let deltaM=null, status=after.status, reason=after.reason||null;
     if (after.status==='known') {
       const beforeSource=routeDistance.provenance,afterSource=after.provenance;
-      if(beforeSource.kind!==afterSource.kind||beforeSource.providerId!==afterSource.providerId||beforeSource.version!==afterSource.version){status='unknown';reason='DISTANCE_PROVENANCE_MISMATCH';}
+      if(beforeSource.kind!==afterSource.kind||beforeSource.providerId!==afterSource.providerId||beforeSource.version!==afterSource.version||beforeSource.configuration!==afterSource.configuration){status='unknown';reason='DISTANCE_PROVENANCE_MISMATCH';}
       else {
         deltaM=after.distanceM-routeDistance.distanceM;
         if (!Number.isSafeInteger(deltaM) || deltaM < 0) { status='unknown'; deltaM=null; reason='DISTANCE_DELTA_INVALID'; }

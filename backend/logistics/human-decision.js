@@ -15,6 +15,16 @@ function safeSnapshot(comparison) {
   delete snapshot.inputs.currentTime;
   return snapshot;
 }
+function fingerprintSnapshot(comparison) {
+  const copy=structuredClone(safeSnapshot(comparison));
+  const visit=value=>{
+    if(Array.isArray(value)){for(const item of value)visit(item);return;}
+    if(!value||typeof value!=='object')return;
+    if(value.providerId==='osrm-route-v1')delete value.evaluatedAt;
+    for(const child of Object.values(value))visit(child);
+  };
+  visit(copy);return copy;
+}
 
 function createHumanDecisionService({ clock = () => new Date(), compare, selectFulfillment, selectProviderQuote, requestProviderDispatch, assignDeliveryToRoute = null }) {
   if (![compare, selectFulfillment, selectProviderQuote, requestProviderDispatch].every(fn => typeof fn === 'function'))
@@ -41,9 +51,17 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
       FROM rotamoto.logistics_intelligence_settings WHERE company_id=$1${lock}`, [companyId]);
     const providerConfig = await client.query(`SELECT provider_id,version,enabled,integration_mode,api_enabled,capabilities
       FROM rotamoto.logistics_providers WHERE company_id=$1 ORDER BY provider_id${lock}`, [companyId]);
+    const geoSnapshots = await client.query(`SELECT geo.delivery_id::text AS delivery_id,geo.version,geo.provenance,geo.accuracy_m,geo.resolved_at
+      FROM rotamoto.delivery_geo_snapshots geo WHERE geo.company_id=$1 AND (geo.delivery_id=$2 OR EXISTS(
+        SELECT 1 FROM rotamoto.domain_records route
+        CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(route.payload->'deliveryIds')='array'
+          THEN route.payload->'deliveryIds' ELSE '[]'::jsonb END) stop_id(value)
+        WHERE route.company_id=$1 AND route.entity_type='Route' AND route.deleted_at IS NULL
+          AND upper(coalesce(route.payload->>'status',''))=ANY(ARRAY['PLANNED','ACTIVE','IN_PROGRESS']::text[])
+          AND stop_id.value=geo.delivery_id::text)) ORDER BY geo.delivery_id`,[companyId,deliveryId]);
     const basis = { deliveryVersion: Number(delivery.rows[0].version), deliveryStatus: delivery.rows[0].status,
       fulfillment: fulfillment.rows[0] || null, quotes: quotes.rows, routes: routes.rows, drivers: capacity.rows, assignedDeliveries: assigned.rows,
-      settings: settings.rows[0] || null, providers: providerConfig.rows, policy };
+      settings: settings.rows[0] || null, providers: providerConfig.rows, geoSnapshots:geoSnapshots.rows, policy };
     return { basis, fingerprint: digest(basis) };
   }
 
@@ -51,7 +69,7 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
     const comparison = await compare(client, principal, deliveryId, policy);
     const snapshot = safeSnapshot(comparison);
     const current = await context(client, principal.company_id, deliveryId, comparison.policy);
-    current.fingerprint=digest({basis:current.basis,comparison:snapshot});
+    current.fingerprint=digest({basis:current.basis,comparison:fingerprintSnapshot(comparison)});
     const decisionId = uuidV7(clock().getTime());
     const result = await client.query(`INSERT INTO rotamoto.logistics_decisions
       (company_id,decision_id,delivery_id,status,policy,recommended_alternative_id,snapshot,state_fingerprint,evaluated_at,proposed_by)
@@ -136,7 +154,7 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
   async function revalidate(client, principal, row) {
     const current=await context(client,principal.company_id,row.delivery_id,row.policy,true);
     const comparison=await compare(client,principal,row.delivery_id,row.policy);
-    current.fingerprint=digest({basis:current.basis,comparison:safeSnapshot(comparison)});
+    current.fingerprint=digest({basis:current.basis,comparison:fingerprintSnapshot(comparison)});
     if (current.fingerprint!==row.state_fingerprint) return { stale: true, decision: await markStale(client,principal,row,current.fingerprint) };
     return { stale:false, current };
   }

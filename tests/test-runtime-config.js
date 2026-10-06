@@ -7,6 +7,14 @@ const dev=loadRuntimeConfig({NODE_ENV:'development'});
 assert.equal(dev.host,'127.0.0.1');
 assert.equal(dev.databaseUrl,'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto');
 assert.equal(dev.trustProxy,false);
+assert.equal(dev.routeDistance.enabled,false);
+assert.equal(dev.routeDistance.baseUrl,null);
+const localRoad=loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',
+  ROUTEMOTO_ROUTE_DISTANCE_URL:'http://127.0.0.1:5000',ROUTEMOTO_ROUTE_DISTANCE_VERSION:'local-map-1'});
+assert.deepEqual(localRoad.routeDistance,{enabled:true,baseUrl:'http://127.0.0.1:5000',version:'local-map-1',timeoutMs:2500});
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true'}),/exige ROUTEMOTO_ROUTE_DISTANCE_URL/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_URL:'http://example.org'}),/HTTPS/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_URL:'http://127.0.0.1:5000?token=x'}),/base HTTP/u);
 assert.equal(hostAllowed('127.0.0.1:8787',dev.allowedHosts,false),true);
 assert.equal(hostAllowed('[::1]:8787',dev.allowedHosts,false),true);
 assert.equal(hostAllowed('attacker.example',dev.allowedHosts,false),false);
@@ -19,6 +27,8 @@ const prod={NODE_ENV:'production',HOST:'127.0.0.1',PORT:'8787',
   TRUSTED_PROXY_ADDRESSES:'127.0.0.1',DATABASE_TLS_CA_FILE:'/etc/ssl/certs/rotamoto-ca.pem',
   ROTAMOTO_SECRET_PROVIDER_MODULE:'/opt/rotamoto-secrets/provider.js'};
 const config=loadRuntimeConfig(prod);
+assert.equal(config.routeDistance.enabled,false,'road engine is disabled unless explicitly configured');
+assert.throws(()=>loadRuntimeConfig({...prod,ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_URL:'http://router.internal:5000'}),/HTTPS/u);
 assert.equal(config.production,true);
 assert.equal(config.trustProxy,true);
 assert.equal(config.deliveryQrKeyRef,null);

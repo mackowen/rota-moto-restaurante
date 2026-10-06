@@ -23,6 +23,7 @@ const {createDomainQueryHttpHandler}=require('./backend/domain/query-http');
 const {createDeliveryQrService}=require('./backend/domain/delivery-qr');
 const {createDeliveryQrHttpHandler}=require('./backend/domain/delivery-qr-http');
 const {createLogisticsService}=require('./backend/logistics/service');
+const {createOsrmRouteDistanceProvider}=require('./backend/logistics/osrm-route-distance');
 const {createLogisticsHttpHandler}=require('./backend/logistics/http');
 const {createTerritorialAnalyticsService}=require('./backend/analytics/territorial-service');
 const {createTerritorialAnalyticsHttpHandler}=require('./backend/analytics/territorial-http');
@@ -76,7 +77,9 @@ const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQr
   keyRef:CONFIG.deliveryQrKeyRef,kid:CONFIG.deliveryQrKeyId
 }):null;
 const deliveryQrHttp=createDeliveryQrHttpHandler({identityService,queryService:domainQueryService,qrService:deliveryQrService,logger:()=>{}});
-const logisticsService=createLogisticsService({assignDeliveryToRoute:syncService.assignDeliveryToRoute});
+const routeDistanceProvider=CONFIG.routeDistance.enabled?createOsrmRouteDistanceProvider({baseUrl:CONFIG.routeDistance.baseUrl,
+  version:CONFIG.routeDistance.version,timeoutMs:CONFIG.routeDistance.timeoutMs}):null;
+const logisticsService=createLogisticsService({assignDeliveryToRoute:syncService.assignDeliveryToRoute,routeDistanceProvider});
 const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const territorialAnalyticsHttp=createTerritorialAnalyticsHttpHandler({identityService,service:createTerritorialAnalyticsService(),logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const adminService=createAdminService({repository:createAdminRepository()});
