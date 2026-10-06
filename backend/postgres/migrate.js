@@ -76,15 +76,19 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
   const command = args[0] || 'up';
   const e2e = args.length === 2 && args[1] === '--e2e';
   const disposableCampaign = args.length === 2 && args[1] === '--campaign-0068-source';
+  const throughMatch = args.length === 2 ? /^--through=(\d{4}_[a-z0-9_]+)$/u.exec(args[1]) : null;
+  const throughId = throughMatch?.[1] || null;
   if (!['up', 'down', 'status'].includes(command) ||
-      (args.length > 1 && !e2e && !disposableCampaign) || args.length > 2 ||
+      (args.length > 1 && !e2e && !disposableCampaign && !throughId) || args.length > 2 ||
+      (throughId && (command !== 'up' || !getMigrations().some(migration => migration.id === throughId))) ||
+      (throughId && (e2e || disposableCampaign)) ||
       ((e2e || disposableCampaign) && command === 'down')) {
-    throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e (up/status somente)]');
+    throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e|--campaign-0068-source|--through=<migration conhecida>]');
   }
   if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && command !== 'status') {
     throw new Error('Migrations mutáveis em NODE_ENV=test exigem --e2e e rotamoto_e2e.');
   }
-  return { command, connectionString: disposableCampaign ? disposableCampaignMigrationConnectionString(env)
+  return { command, ...(throughId ? { throughId } : {}), connectionString: disposableCampaign ? disposableCampaignMigrationConnectionString(env)
     : e2e ? e2eMigrationConnectionString(env) : migrationConnectionString(env) };
 }
 
@@ -172,7 +176,7 @@ async function status(client, migrations) {
 }
 
 async function main() {
-  const { command, connectionString } = resolveMigrationInvocation();
+  const { command, connectionString, throughId } = resolveMigrationInvocation();
   const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
   let lockHeld = false;
   try {
@@ -184,7 +188,10 @@ async function main() {
     await client.query('SELECT pg_advisory_lock($1, $2)', [LOCK_KEY_1, LOCK_KEY_2]);
     lockHeld = true;
     await ensureMetadata(client);
-    const migrations = getMigrations();
+    const allMigrations = getMigrations();
+    const throughIndex = throughId ? allMigrations.findIndex(migration => migration.id === throughId) : -1;
+    if (throughId && throughIndex < 0) throw new Error('Migration checkpoint desconhecido.');
+    const migrations = throughId ? allMigrations.slice(0, throughIndex + 1) : allMigrations;
     if (command === 'up') await migrateUp(client, migrations);
     else if (command === 'down') await migrateDown(client, migrations);
     else await status(client, migrations);

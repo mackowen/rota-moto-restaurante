@@ -32,6 +32,19 @@ assert.throws(() => resolveMigrationInvocation(['up', '--campaign-0068-source'],
   /aceita somente/, 'campaign source rejects official database');
 assert.throws(() => resolveMigrationInvocation(['down', '--campaign-0068-source'], env), /Uso:/,
   'campaign migration has no destructive down command');
+const deploymentEnv = { NODE_ENV: 'production', MIGRATOR_DATABASE_URL: official };
+assert.deepEqual(resolveMigrationInvocation(['up', '--through=0016_company_timezone'], deploymentEnv),
+  { command: 'up', throughId: '0016_company_timezone', connectionString: official },
+  'operator can advance the official migration runner to a known checkpoint');
+assert.throws(() => resolveMigrationInvocation(['up', '--through=9999_unknown'], deploymentEnv), /Uso:/,
+  'unknown migration checkpoint is rejected before database connection');
+assert.throws(() => resolveMigrationInvocation(['up', '--through=0016_company_timezone'], env),
+  /Migrations mutáveis em NODE_ENV=test exigem --e2e/,
+  'checkpoint does not bypass the test environment guard');
+assert.throws(() => resolveMigrationInvocation(['up', '--through=0016_company_timezone', '--e2e'], deploymentEnv), /Uso:/,
+  'checkpoint cannot be combined with test-only targets');
+assert.throws(() => resolveMigrationInvocation(['down', '--through=0016_company_timezone'], deploymentEnv), /Uso:/,
+  'checkpoint option is only available for additive up');
 
 const invalid = [
   ['official database', { E2E_MIGRATOR_DATABASE_URL: official }],
