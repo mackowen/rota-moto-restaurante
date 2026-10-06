@@ -24,6 +24,7 @@
     "storage:gc": "node scripts/proof-media-gc.js",
     "test:delivery-qr": "node tests/test-delivery-qr.js",
     "test:logistics": "node tests/test-logistics-domain.js && node tests/test-logistics-http.js",
+    "test:logistics-intelligence": "node tests/test-logistics-intelligence.js",
     "test:logistics-postgres": "NODE_ENV=test node tests/test-logistics-e2e-postgres.js",
     "test:logistics-secret-privileges": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-logistics-secret-privileges-postgres.js",
     "test:territorial-postgres": "NODE_ENV=test E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-territorial-postgres.js",

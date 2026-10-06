@@ -10,7 +10,11 @@ async function main() {
     listProviders: async () => ({ providers: [] }),
     createProvider: async (_client, _principal, body) => { calls.push(['create', body]); return { provider: { code: body.code } }; },
     ensureInternalProvider: async () => ({ id: 'internal-test' }),
-    analytics: async () => { calls.push(['analytics']); return { providers: [] }; }
+    analytics: async () => { calls.push(['analytics']); return { providers: [] }; },
+    getIntelligenceSettings: async () => ({ settings: { configured: false, version: 0 }, policies: ['lowest_cost'] }),
+    updateIntelligenceSettings: async (_client, scope, body) => { calls.push(['intelligence-update', scope.company_id, body]); return { settings: { version: 1 } }; },
+    logisticsEconomicAnalytics: async () => ({ ownFleet: {}, external: {} }),
+    compareLogisticsAlternatives: async (_client, scope, id, policy) => ({ deliveryId: id, tenant: scope.company_id, policy, alternatives: [], recommendation: { status: 'insufficient_data' } })
   };
   const identityService = {
     async withAuthenticatedTenant(token, operation, permission) { assert.equal(token, 'a'.repeat(43)); calls.push(['permission', permission]); return operation({}, principal); },
@@ -31,7 +35,14 @@ async function main() {
     assert.equal((await create.json()).provider.code, 'partner_1');
     const analytics = await fetch(`${base}/api/logistics/analytics`, { headers });
     assert.equal(analytics.status, 200);
-    assert.deepEqual(calls.filter(row => row[0] === 'permission').map(row => row[1]), ['company.manage','company.manage','orders.read']);
+    assert.equal((await fetch(`${base}/api/logistics/intelligence/settings`, { headers })).status, 200);
+    assert.equal((await fetch(`${base}/api/logistics/intelligence/analytics`, { headers })).status, 200);
+    const deliveryId = '00000000-0000-4000-8000-000000000001';
+    const comparison = await fetch(`${base}/api/logistics/deliveries/${deliveryId}/comparison?policy=lowest_cost`, { headers });
+    assert.equal(comparison.status, 200); assert.equal((await comparison.json()).deliveryId, deliveryId);
+    const update = await fetch(`${base}/api/logistics/intelligence/settings`, { method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json', 'X-CSRF-Token': 'csrf-test' }, body: JSON.stringify({ expectedVersion: 0 }) });
+    assert.equal(update.status, 200);
+    assert.deepEqual(calls.filter(row => row[0] === 'permission').map(row => row[1]), ['company.manage','company.manage','orders.read','orders.read','orders.read','orders.read','company.manage']);
     assert.equal(calls.find(row => row[0] === 'create')[1].code, 'partner_1');
   } finally { await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   console.log('Logistics authenticated HTTP, CSRF, RBAC, analytics scope and sanitized errors: OK');

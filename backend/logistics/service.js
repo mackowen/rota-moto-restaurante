@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { uuidV7 } = require('../identity/service');
 const D = require('./domain');
 const { createProviderIntegrationService, resolveTestProviderConfiguration } = require('./provider-integration');
+const { createLogisticsIntelligenceService } = require('./intelligence');
 
 class LogisticsServiceError extends Error {
   constructor(code, message) { super(message); this.name = 'LogisticsServiceError'; this.code = code; }
@@ -422,8 +423,9 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
       FROM rotamoto.provider_command_outbox WHERE company_id=$1 AND delivery_id=$2 ORDER BY created_at DESC LIMIT 50`, [principal.company_id,deliveryId]);
     return { commands: result.rows };
   }
+  const intelligence = createLogisticsIntelligenceService({ clock, testProvider, ensureInternalProvider });
   return Object.freeze({ ensureInternalProvider, listProviders, createProvider, updateProvider, getFulfillment, selectFulfillment, requestDispatch, updateFulfillment, analytics,
     requestProviderQuote, listProviderQuotes, selectProviderQuote, requestProviderDispatch, requestProviderCancel, requestProviderTracking,
-    requestProviderReconciliation, getProviderCommands });
+    requestProviderReconciliation, getProviderCommands, ...intelligence });
 }
 module.exports = { LogisticsServiceError, createLogisticsService };
