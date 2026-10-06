@@ -73,7 +73,8 @@ async function start(handler) {
 }
 
 async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
-  persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory } = {}) {
+  persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [] } = {}) {
+  if (env.NODE_ENV !== 'test' || typeof extraHttpHandlers !== 'function') throw new Error('Handlers extras do fixture só são aceitos no modo test.');
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
   const disposableCampaign = clients.migrator ? env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' : false;
   if (persistDisposableFixture && (!disposableCampaign || env.NODE_ENV !== 'test' ||
@@ -127,7 +128,9 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       allowedOrigin: originConfig });
     const queryHttp = createDomainQueryHttpHandler({ identityService,
       queryService: createDomainQueryService({ repository: createDomainQueryRepository() }), logger: () => {}, rateLimiter: limiter });
-    host = await start([identityHttp, adminHttp, proofHttp, syncHttp, queryHttp]);
+    const testHandlers = await extraHttpHandlers(Object.freeze({ identityService, runtime, pool }));
+    if (!Array.isArray(testHandlers) || testHandlers.some(handler => typeof handler !== 'function')) throw new Error('Handlers E2E inválidos.');
+    host = await start([identityHttp, adminHttp, proofHttp, syncHttp, queryHttp, ...testHandlers]);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {} } = {}) => {
       const response = await fetch(`${host.base}${path}`, { method, headers: { Origin: allowedOrigins[0] || host.base,
@@ -291,8 +294,10 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
 
     const authenticatedCall = (path, options = {}) => call(path, { ...options,
       cookie: options.cookie || sessionCookie, csrf: options.csrf === undefined ? csrf : options.csrf });
+    const browserMfaCode = codeAt(enrollment.body.secret, Math.floor(Date.now() / 30000) + 1);
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
-      driverId, orderId, deliveryId, email, password, mfaCode: futureCode, apiOrigin: host.base, runtime, call, authenticatedCall }));
+      driverId, orderId, deliveryId, email, password, mfaCode: browserMfaCode,
+      browserSessionCookie: sessionCookie, apiOrigin: host.base, runtime, call, authenticatedCall }));
     const recoveryRequest = await call('/api/identity/recovery', { method: 'POST', body: { email } });
     assert.equal(recoveryRequest.status, 202, JSON.stringify(recoveryRequest.body));
     assert.equal(JSON.stringify(recoveryRequest.body).includes(emails[1].token), false,

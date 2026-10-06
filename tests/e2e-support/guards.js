@@ -52,9 +52,7 @@ function createE2eClients(env = process.env, ClientType = createClient) {
   const targets = resolveE2eTargets(env); // Both targets fail closed before either client is constructed.
   const database = targets.database || 'rotamoto_e2e';
   const clientConfig = (value, role) => {
-    const parsed = new URL(value);
-    return { host: parsed.hostname, port: Number(parsed.port), database: parsed.pathname.slice(1), user: role,
-      password: storedLoopbackCredential(role, database), connectionTimeoutMillis: 5000 };
+    return { connectionString: value, password: storedLoopbackCredential(role, database), connectionTimeoutMillis: 5000 };
   };
   return Object.freeze({
     runtime: new ClientType({ ...clientConfig(targets.runtime, 'rotamoto_app'),
