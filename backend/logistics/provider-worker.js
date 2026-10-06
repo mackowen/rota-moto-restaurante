@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { retryDelayMs } = require('./provider-integration');
+const { retryDelayMs, resolveTestProviderConfiguration } = require('./provider-integration');
 const { createProviderIntegrationService } = require('./provider-integration');
 
 function createProviderCredentialResolver({ privilegedPool, secretProvider }) {
@@ -27,8 +27,9 @@ function createProviderCredentialResolver({ privilegedPool, secretProvider }) {
   };
 }
 
-function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenantResolver, providerIntegration = createProviderIntegrationService(), logger = () => {}, clock = () => Date.now(), randomUUID = crypto.randomUUID, leaseSeconds = 45 } = {}) {
+function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenantResolver, testProvider = null, providerIntegration = createProviderIntegrationService({ testProvider }), logger = () => {}, clock = () => Date.now(), randomUUID = crypto.randomUUID, leaseSeconds = 45 } = {}) {
   if (!pool || !adapterRegistry || typeof credentialResolver !== 'function' || typeof tenantResolver !== 'function') throw new TypeError('Worker provider requer pool, adapters, tenant resolver e credential resolver.');
+  if (testProvider && (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function')) throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
   let stopping = false;
   async function withTenant(companyId, operation) {
     const client = await pool.connect();
@@ -133,12 +134,18 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
       fulfillmentId: command.fulfillment_id, commandId: command.command_id, correlationId: command.correlation_id,
       idempotencyKey: command.idempotency_key };
     try {
-      const provider = await withTenant(command.company_id, async client => {
+      const resolved = await withTenant(command.company_id, async client => {
         const result = await client.query(`SELECT code,capabilities,enabled,api_enabled FROM rotamoto.logistics_providers WHERE company_id=$1 AND provider_id=$2`, [command.company_id,command.provider_id]);
-        return result.rows[0] || null;
+        return { provider: result.rows[0] || null, test: resolveTestProviderConfiguration(testProvider, command.company_id, command.provider_id) };
       });
-      if (!provider || !provider.enabled || !provider.api_enabled) {
+      const { provider, test } = resolved;
+      if (!provider || !provider.enabled || (!provider.api_enabled && !test)) {
         await finish({ ...command }, leaseToken, { status: 'needs_review', errorClass: 'AUTH' });
+        return true;
+      }
+      const requiredCapability = { QUOTE_REQUEST:'quote', DISPATCH_REQUEST:'dispatch', CANCEL_REQUEST:'cancel', TRACKING_REFRESH:'tracking', RECONCILE:'tracking' }[command.operation];
+      if (!(test?.capabilities || provider.capabilities || []).includes(requiredCapability)) {
+        await finish(command, leaseToken, { status: 'rejected', errorClass: 'PERMANENT' });
         return true;
       }
       const adapter = adapterRegistry.get(provider.code);

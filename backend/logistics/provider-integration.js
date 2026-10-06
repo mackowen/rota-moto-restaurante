@@ -7,6 +7,17 @@ const OPERATIONS = new Set(['QUOTE_REQUEST','DISPATCH_REQUEST','CANCEL_REQUEST',
 const TRANSIENT = new Set(['TRANSIENT','RATE_LIMIT']);
 const ALLOWED_PAYLOAD_KEYS = new Set(['deliveryId','fulfillmentId','quoteId','dispatchAttemptId','reason']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const TEST_CAPABILITIES = new Set(['quote','dispatch','cancel','tracking']);
+function resolveTestProviderConfiguration(testProvider, companyId, providerId) {
+  if (!testProvider) return null;
+  if (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function') throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
+  const config = testProvider(companyId, providerId);
+  if (config == null) return null;
+  if (!config || config.companyId !== companyId || config.providerId !== providerId || config.providerCode !== 'ifood' || config.adapter !== 'fake' ||
+      !Array.isArray(config.capabilities) || config.capabilities.some(value => !TEST_CAPABILITIES.has(value)) ||
+      !config.capabilities.length) throw new Error('Test provider configuration is invalid or cross-tenant.');
+  return Object.freeze({ ...config, capabilities: Object.freeze([...new Set(config.capabilities)]) });
+}
 function safePayload(value = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key => !ALLOWED_PAYLOAD_KEYS.has(key))) throw Object.assign(new Error('Payload de comando inválido.'), { code: 'INVALID_INPUT' });
   const result = {};
@@ -28,7 +39,8 @@ function retryDelayMs({ attempts, classification, retryAfterSeconds = null, seed
   const jitter = crypto.createHash('sha256').update(String(seed)).digest().readUInt16BE(0) % Math.max(1, Math.floor(base / 4));
   return Math.min(base + jitter, 3600000);
 }
-function createProviderIntegrationService({ clock = () => new Date() } = {}) {
+function createProviderIntegrationService({ clock = () => new Date(), testProvider = null } = {}) {
+  if (testProvider && (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function')) throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
   async function enqueue(client, principal, input) {
     if (!input || !OPERATIONS.has(input.operation)) throw Object.assign(new Error('Operação externa inválida.'), { code: 'INVALID_INPUT' });
     const payload = safePayload(input.payload);
@@ -36,11 +48,13 @@ function createProviderIntegrationService({ clock = () => new Date() } = {}) {
     const commandId = input.commandId || uuidV7(clock().getTime());
     const correlationId = input.correlationId || commandId;
     const key = deterministicKey({ companyId: principal.company_id, providerId: ids.providerId, operation: input.operation, requestKey: input.requestKey });
-    const provider = await client.query(`SELECT provider_id,enabled,integration_mode,api_enabled,capabilities FROM rotamoto.logistics_providers WHERE company_id=$1 AND provider_id=$2`, [principal.company_id, ids.providerId]);
+    const provider = await client.query(`SELECT provider_id,code,enabled,integration_mode,api_enabled,capabilities FROM rotamoto.logistics_providers WHERE company_id=$1 AND provider_id=$2`, [principal.company_id, ids.providerId]);
     if (!provider.rowCount || !provider.rows[0].enabled) throw Object.assign(new Error('Provider indisponível.'), { code: 'PROVIDER_UNAVAILABLE' });
-    if (provider.rows[0].integration_mode !== 'api' || !provider.rows[0].api_enabled) throw Object.assign(new Error('API externa não configurada.'), { code: 'PROVIDER_NOT_CONFIGURED' });
+    const testConfig = resolveTestProviderConfiguration(testProvider, principal.company_id, ids.providerId);
+    if (testConfig && provider.rows[0].code !== testConfig.providerCode) throw Object.assign(new Error('Test provider mapping does not match provider identity.'), { code: 'PROVIDER_UNAVAILABLE' });
+    if (!testConfig && (provider.rows[0].integration_mode !== 'api' || !provider.rows[0].api_enabled)) throw Object.assign(new Error('API externa não configurada.'), { code: 'PROVIDER_NOT_CONFIGURED' });
     const capability = { QUOTE_REQUEST: 'quote', DISPATCH_REQUEST: 'dispatch', CANCEL_REQUEST: 'cancel', TRACKING_REFRESH: 'tracking', RECONCILE: 'tracking' }[input.operation];
-    if (!provider.rows[0].capabilities.includes(capability)) throw Object.assign(new Error('Capability indisponível.'), { code: 'CAPABILITY_UNAVAILABLE' });
+    if (!(testConfig?.capabilities || provider.rows[0].capabilities).includes(capability)) throw Object.assign(new Error('Capability indisponível.'), { code: 'CAPABILITY_UNAVAILABLE' });
     const result = await client.query(`INSERT INTO rotamoto.provider_command_outbox
       (company_id,command_id,provider_id,delivery_id,fulfillment_id,operation,idempotency_key,payload,correlation_id,created_by)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)
@@ -92,4 +106,4 @@ function createProviderIntegrationService({ clock = () => new Date() } = {}) {
   }
   return Object.freeze({ enqueue, saveQuote, selectQuote, ingestEvent });
 }
-module.exports = { OPERATIONS, safePayload, deterministicKey, retryDelayMs, createProviderIntegrationService };
+module.exports = { OPERATIONS, safePayload, deterministicKey, retryDelayMs, resolveTestProviderConfiguration, createProviderIntegrationService };

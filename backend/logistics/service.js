@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const { uuidV7 } = require('../identity/service');
 const D = require('./domain');
-const { createProviderIntegrationService } = require('./provider-integration');
+const { createProviderIntegrationService, resolveTestProviderConfiguration } = require('./provider-integration');
 
 class LogisticsServiceError extends Error {
   constructor(code, message) { super(message); this.name = 'LogisticsServiceError'; this.code = code; }
@@ -29,7 +29,14 @@ function asFulfillment(row) {
 const FIELDS = `company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,external_reference,status,selected_at,
  selected_by,revision,eta_at,estimated_cost_minor,estimated_cost_currency,final_cost_minor,final_cost_currency,updated_at`;
 
-function createLogisticsService({ clock = () => new Date(), providerIntegration = createProviderIntegrationService({ clock }) } = {}) {
+function createLogisticsService({ clock = () => new Date(), testProvider = null, providerIntegration = createProviderIntegrationService({ clock, testProvider }) } = {}) {
+  if (testProvider && (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function')) throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
+  function providerProjection(row) {
+    const provider = asProvider(row), test = resolveTestProviderConfiguration(testProvider, provider.companyId, provider.id);
+    if (test && provider.code !== test.providerCode) throw new Error('Test provider mapping does not match provider identity.');
+    return test ? { ...provider, capabilities: test.capabilities, apiEnabled: true, integrationMode: 'api',
+      credentialConfigured: false, testAdapter: true } : provider;
+  }
   async function audit(client, principal, action, resource, id, details) {
     await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
       VALUES($1,$2,$3,'user',$4,$5,$6,$7::jsonb)`,
@@ -52,7 +59,7 @@ function createLogisticsService({ clock = () => new Date(), providerIntegration 
   async function listProviders(client, principal) {
     const result = await client.query(`SELECT provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at,integration_mode,api_enabled,last_connection_test_at,last_connection_test_status
       FROM rotamoto.logistics_providers WHERE company_id=$1 ORDER BY provider_class,display_name,provider_id`, [principal.company_id]);
-    return { providers: result.rows.map(asProvider) };
+    return { providers: result.rows.map(providerProjection) };
   }
   async function createProvider(client, principal, input) {
     await ensureInternalProvider(client, principal);
@@ -71,7 +78,7 @@ function createLogisticsService({ clock = () => new Date(), providerIntegration 
     } catch (error) { if (error?.code === '23505') fail('PROVIDER_CODE_CONFLICT', 'Código de provider já cadastrado nesta empresa.'); throw error; }
     await audit(client, principal, 'logistics.provider.created', 'logistics_provider', id,
       { code, class: input.class, enabled: input.enabled, capabilities: ['manual_assignment'] });
-    return { provider: asProvider(result.rows[0]) };
+    return { provider: providerProjection(result.rows[0]) };
   }
   async function updateProvider(client, principal, id, input) {
     D.uuid(id, 'providerId');
@@ -92,7 +99,7 @@ function createLogisticsService({ clock = () => new Date(), providerIntegration 
     if (!result.rowCount) fail('REVISION_CONFLICT', 'Provider inexistente ou alterado por outra sessão.');
     await audit(client, principal, 'logistics.provider.updated', 'logistics_provider', id,
       { version: result.rows[0].version, enabled: result.rows[0].enabled, integrationMode: result.rows[0].integration_mode });
-    return { provider: asProvider(result.rows[0]) };
+    return { provider: providerProjection(result.rows[0]) };
   }
   async function getFulfillment(client, principal, deliveryId) {
     D.uuid(deliveryId, 'deliveryId');
@@ -364,7 +371,7 @@ function createLogisticsService({ clock = () => new Date(), providerIntegration 
     if (current.rowCount && current.rows[0].provider_id === selected.provider_id) {
       const row = current.rows[0];
       if (row.revision !== input.expectedRevision) fail('REVISION_CONFLICT', 'A alocação mudou. Atualize a tela.');
-      const updated = await client.query(`UPDATE rotamoto.delivery_fulfillments SET quote_amount_minor=$3,quote_currency=$4,
+      const updated = await client.query(`UPDATE rotamoto.delivery_fulfillments SET
         estimated_cost_minor=$3,estimated_cost_currency=$4,eta_at=$5,revision=revision+1,updated_by=$6,updated_at=now()
         WHERE company_id=$1 AND fulfillment_id=$2 RETURNING ${FIELDS}`,
       [principal.company_id,row.fulfillment_id,selected.amount_minor,selected.currency,selected.eta_at,principal.user_id]);

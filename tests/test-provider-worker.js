@@ -12,7 +12,7 @@ async function exercise(classification, operation = 'DISPATCH_REQUEST') {
   const client = { async query(sql, params = []) {
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') { if (sql === 'COMMIT') state.committed = true; return { rowCount:0,rows:[] }; }
     if (sql.includes("set_config('app.tenant_id'")) { assert.equal(params[0],command.company_id); return {rows:[{}]}; }
-    if (sql.includes('logistics_providers')) return {rowCount:1,rows:[{code:'test_provider',capabilities:['dispatch'],enabled:true,api_enabled:true}]};
+    if (sql.includes('logistics_providers')) return {rowCount:1,rows:[{code:'test_provider',capabilities:['quote','dispatch'],enabled:true,api_enabled:true}]};
     if (sql.includes("SELECT o.payload->>'externalId'")) return {rowCount:1,rows:[{external_order_id:null,order_source:'manual'}]};
     if (sql.includes('FROM rotamoto.provider_event_inbox')) return {rowCount:0,rows:[]};
     if (sql.includes('provider_command_outbox SET status=$4')) {

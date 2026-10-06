@@ -1,5 +1,7 @@
 'use strict';
 
+if (process.env.NODE_ENV !== 'test') throw new Error('Fake logistics provider is available only in NODE_ENV=test.');
+
 const crypto = require('node:crypto');
 
 // Test-only adapter. It is deliberately located under tests and must never be

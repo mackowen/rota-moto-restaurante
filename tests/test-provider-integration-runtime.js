@@ -2,7 +2,10 @@
 
 const assert = require('node:assert/strict');
 const { deterministicKey, retryDelayMs, safePayload } = require('../backend/logistics/provider-integration');
+const previousNodeEnv = process.env.NODE_ENV;
+process.env.NODE_ENV = 'test';
 const { createFakeLogisticsProvider } = require('./helpers/fake-logistics-provider');
+if (previousNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = previousNodeEnv;
 
 const base = { companyId: 'tenant-a', providerId: 'provider-a', operation: 'DISPATCH_REQUEST', requestKey: 'delivery-1' };
 const key = deterministicKey(base);
