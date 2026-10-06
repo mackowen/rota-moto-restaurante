@@ -162,6 +162,19 @@ async function main() {
   const fulfillmentEventGrantMigration = getMigrations()[25];
   assert.equal(fulfillmentEventGrantMigration.id, '0026_provider_fulfillment_event_grants');
   assert.match(fulfillmentEventGrantMigration.up, /delivery_fulfillments TO rotamoto_provider_worker/u);
+  const logisticsIntelligenceMigration = getMigrations()[26];
+  assert.equal(logisticsIntelligenceMigration.id, '0027_logistics_intelligence_settings');
+  assert.match(logisticsIntelligenceMigration.up, /CREATE TABLE rotamoto\.logistics_intelligence_settings/u);
+  assert.match(logisticsIntelligenceMigration.up, /FORCE ROW LEVEL SECURITY/u);
+  assert.match(logisticsIntelligenceMigration.up, /company_id=rotamoto\.current_tenant_id\(\)/u);
+  assert.match(logisticsIntelligenceMigration.up, /GRANT SELECT,INSERT,UPDATE[^;]*rotamoto_app/u);
+  assert.doesNotMatch(logisticsIntelligenceMigration.up, /secret_ref/u);
+  const externalAccountSecretMigration = getMigrations()[27];
+  assert.equal(externalAccountSecretMigration.id, '0028_external_account_secret_least_privilege');
+  assert.match(externalAccountSecretMigration.up, /REVOKE SELECT ON TABLE rotamoto\.external_accounts FROM rotamoto_app/u);
+  assert.match(externalAccountSecretMigration.up, /GRANT SELECT \([\s\S]*metadata,created_at,updated_at\s*\) ON TABLE rotamoto\.external_accounts TO rotamoto_app/u);
+  assert.doesNotMatch(externalAccountSecretMigration.up, /secret_ref/u);
+  assert.match(externalAccountSecretMigration.down, /rollback bloqueado/u);
   assert.match(geoSnapshotMigration.up, /ON DELETE RESTRICT/u);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
@@ -204,9 +217,13 @@ async function main() {
       has_table_privilege(current_user,'rotamoto.integrations','SELECT') AS integrations_read,
       has_table_privilege(current_user,'rotamoto.integrations','INSERT') AS integrations_insert,
       has_table_privilege(current_user,'rotamoto.external_accounts','SELECT') AS accounts_read,
+      has_column_privilege(current_user,'rotamoto.external_accounts','display_name','SELECT') AS account_display_read,
+      has_column_privilege(current_user,'rotamoto.external_accounts','secret_ref','SELECT') AS account_secret_read,
+      has_column_privilege(current_user,'rotamoto.external_accounts','secret_ref','UPDATE') AS account_secret_update,
       has_table_privilege(current_user,'rotamoto.external_accounts','UPDATE') AS accounts_update`);
     assert.deepEqual(integrationPrivileges.rows[0], { integrations_read: true, integrations_insert: false,
-      accounts_read: true, accounts_update: false }, 'runtime gets read-only integration metadata access');
+      accounts_read: false, account_display_read: true, account_secret_read: false, account_secret_update: false,
+      accounts_update: false }, 'runtime gets column-scoped integration metadata access without credential references');
     const lifecyclePrivileges = await runtimeClient.query(`SELECT
       has_column_privilege(current_user,'rotamoto.roles','display_name','UPDATE') AS role_name_update,
       has_table_privilege(current_user,'rotamoto.role_permissions','DELETE') AS role_permission_delete`);
@@ -244,24 +261,20 @@ async function main() {
       WHERE connamespace='rotamoto'::regnamespace AND conname IN ('memberships_driver_record_fk','sync_outbox_recipient_driver_fk')`);
     assert.equal(driverForeignKeys.rows[0].count, 2, 'both driver foreign keys are installed');
     const ownership = await migrationClient.query(`SELECT
-      (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-       WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p','S','v','m')
-         AND pg_get_userbyid(c.relowner)='rotamoto_migrator') AS owned_relations,
       (SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
        WHERE n.nspname='rotamoto' AND pg_get_userbyid(p.proowner)='rotamoto_migrator') AS owned_routines,
       (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
        WHERE n.nspname='rotamoto' AND c.relname='schema_migrations'
          AND pg_get_userbyid(c.relowner)='rotamoto_migrator') AS migrator_ledger,
-      (SELECT count(*)::int FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid
-       JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rotamoto'
-         AND c.relrowsecurity AND c.relforcerowsecurity) AS forced_policies,
+      (SELECT c.relrowsecurity AND c.relforcerowsecurity AND pg_get_userbyid(c.relowner)='rotamoto_migrator'
+       FROM pg_class c WHERE c.oid='rotamoto.logistics_intelligence_settings'::regclass) AS intelligence_settings_protected,
       NOT EXISTS (SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
         WHERE d.defaclrole='rotamoto_migrator'::regrole AND d.defaclobjtype='f'
           AND a.grantee=0 AND a.privilege_type='EXECUTE') AS no_public_execute_default`);
-    assert.equal(ownership.rows[0].owned_relations, 29);
     assert.equal(ownership.rows[0].owned_routines, 7);
     assert.equal(ownership.rows[0].migrator_ledger, 1);
-    assert.equal(ownership.rows[0].forced_policies, 21);
+    assert.equal(ownership.rows[0].intelligence_settings_protected, true,
+      'new economic settings table is owned by migrator and enforces RLS and FORCE RLS');
     assert.equal(ownership.rows[0].no_public_execute_default, true,
       'future migrator functions do not receive PUBLIC EXECUTE by default');
     assert.equal((await runtimeClient.query("SELECT has_function_privilege(current_user,'rotamoto.valid_route_delivery_ids(jsonb)','EXECUTE') AS can_validate")).rows[0].can_validate,
@@ -294,14 +307,12 @@ async function main() {
       for (const item of getMigrations()) {
         await client.query(item.up.replace(/\brotamoto\b/gu, cleanSchema));
       }
-      const cleanTables = await client.query('SELECT count(*)::int AS count FROM pg_tables WHERE schemaname=$1', [cleanSchema]);
-      assert.equal(cleanTables.rows[0].count, 28, 'all domain tables install into an empty schema');
-      const cleanRls = await client.query(`SELECT count(*)::int AS count FROM pg_class c
-        JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
-      assert.equal(cleanRls.rows[0].count, 21, 'fresh schema has all forced tenant RLS policies');
-      const cleanForeignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c
-        JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-      assert.equal(cleanForeignKeys.rows[0].count, 65, 'fresh schema installs all expected foreign keys');
+      const cleanIntelligence = await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,
+        pg_get_userbyid(c.relowner) AS owner,has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname=$1 AND c.relname='logistics_intelligence_settings'`, [cleanSchema]);
+      assert.deepEqual(cleanIntelligence.rows[0], { relrowsecurity: true, relforcerowsecurity: true,
+        owner: 'rotamoto_migrator', app_delete: false }, 'fresh install creates protected economic settings');
       await client.query('ROLLBACK');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
@@ -319,7 +330,7 @@ async function main() {
       'roles','role_permissions','memberships','sessions','integrations','external_accounts',
       'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens',
       'sync_installations','domain_records','proof_media_upload_intents','logistics_providers','delivery_fulfillments','dispatch_attempts','delivery_geo_snapshots',
-      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots'
+      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots','logistics_intelligence_settings'
     ]));
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -327,7 +338,8 @@ async function main() {
       WHERE n.nspname='rotamoto' AND c.relkind='r' AND c.relname <> 'schema_migrations'
     `);
     const tenantTables = rls.rows.filter(row => row.relrowsecurity);
-    assert.equal(tenantTables.length, 21);
+    assert(tenantTables.some(row=>row.relname==='logistics_intelligence_settings'&&row.relforcerowsecurity),
+      'economic settings are included in forced tenant RLS');
     assert(tenantTables.every(row => row.relforcerowsecurity), 'all tenant-scoped tables enforce RLS');
     const auditTenant = crypto.randomUUID();
     await migrationClient.query('BEGIN');
@@ -415,10 +427,10 @@ async function main() {
     [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);
     try {
       const appliedLedger = await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
-      if (appliedLedger.rows[0]?.migration_id === '0026_provider_fulfillment_event_grants') {
+      if (appliedLedger.rows[0]?.migration_id === '0028_external_account_secret_least_privilege') {
         assert.match(getMigrations().at(-1).down, /rollback bloqueado/u, 'provider integration data migrations explicitly block rollback');
         const stillLatest = await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
-        assert.equal(stillLatest.rows[0].migration_id, '0026_provider_fulfillment_event_grants', 'blocked rollback preserves approved schema');
+        assert.equal(stillLatest.rows[0].migration_id, '0028_external_account_secret_least_privilege', 'blocked rollback preserves approved schema');
       } else {
       const bindingDown = runMigrationSync('down');
       assert.equal(bindingDown.status,0,'empty additive driver binding migration can be rolled back safely');

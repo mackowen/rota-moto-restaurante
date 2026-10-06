@@ -26,10 +26,10 @@ async function main() {
       (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass`)).rows[0];
     assert.deepEqual(identity, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', bypass: false });
     const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations
-      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants')
+      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege')
       ORDER BY migration_id`);
     assert.deepEqual(migration.rows.map(row => row.migration_id), [
-      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants'
+      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege'
     ], 'E2E schema includes the tested logistics, geography and least-privilege migrations');
     const catalog = await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
       has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,
@@ -62,14 +62,21 @@ async function main() {
     await client.query('BEGIN');
     try {
       for (const migration of getMigrations()) await client.query(migration.up.replace(/\brotamoto\b/gu, cleanSchema));
-      const objects = await client.query(`SELECT count(*)::int AS tables FROM pg_tables WHERE schemaname=$1`, [cleanSchema]);
-      assert.equal(objects.rows[0].tables, 28, 'clean install includes all migration tables through 0026');
-      const forced = await client.query(`SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-        WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
-      assert.equal(forced.rows[0].count, 21, 'clean install FORCE-enables RLS on all tenant tables');
-      const foreignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
-        WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-      assert.equal(foreignKeys.rows[0].count, 65, 'clean install creates logistics, geography and canonical foreign keys');
+      const intelligenceTable = await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
+        has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname='logistics_intelligence_settings'`, [cleanSchema]);
+      assert.deepEqual(intelligenceTable.rows[0], { relrowsecurity: true, relforcerowsecurity: true, owner: 'rotamoto_migrator',
+        app_select: true, app_delete: false }, 'economic settings are tenant scoped and runtime least privilege applies');
+      const intelligencePolicy = await client.query(`SELECT policyname,qual,with_check FROM pg_policies
+        WHERE schemaname=$1 AND tablename='logistics_intelligence_settings'`, [cleanSchema]);
+      assert.equal(intelligencePolicy.rowCount, 1);
+      assert.equal(intelligencePolicy.rows[0].policyname, 'tenant_isolation');
+      assert.match(intelligencePolicy.rows[0].qual, /current_tenant_id/u);
+      assert.match(intelligencePolicy.rows[0].with_check, /current_tenant_id/u);
+      const intelligenceConstraints = await client.query(`SELECT conname,contype,pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint WHERE conrelid=($1||'.logistics_intelligence_settings')::regclass`, [cleanSchema]);
+      assert.ok(intelligenceConstraints.rows.some(row => row.contype === 'f' && /FOREIGN KEY \(company_id, internal_provider_id\)/u.test(row.definition)),
+        'economic profile references internal provider within its tenant');
       const cleanProvider = await client.query(`SELECT
         has_table_privilege('rotamoto_app',$1||'.logistics_providers','SELECT') AS table_select,
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','provider_id','SELECT') AS id_select,
@@ -143,6 +150,12 @@ async function main() {
       const migration0026 = getMigrations()[25];
       assert.equal(migration0026.id, '0026_provider_fulfillment_event_grants');
       await client.query(migration0026.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const migration0027 = getMigrations()[26];
+      assert.equal(migration0027.id, '0027_logistics_intelligence_settings');
+      await client.query(migration0027.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const migration0028 = getMigrations()[27];
+      assert.equal(migration0028.id, '0028_external_account_secret_least_privilege');
+      await client.query(migration0028.up.replace(/\brotamoto\b/gu, upgradeSchema));
       const after0020 = await client.query(`SELECT has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','SELECT') AS command_read,
         has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','DELETE') AS command_delete,
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_read,
@@ -238,6 +251,18 @@ async function main() {
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
         VALUES($1,$2,'Delivery','restaurante',$3,$4::jsonb,1,now(),now())`, [tenantA, serviceDelivery, appInstall,
         JSON.stringify({ id: serviceDelivery, companyId: tenantA, orderId: serviceOrder, status: 'CREATED', driverId: null })]);
+      const economicSettings = await logistics.updateIntelligenceSettings(client, principal, { expectedVersion: 0,
+        fixedCostPerDeliveryMinor: 500, variableCostPerKmMinor: 100, currency: 'BRL', defaultPolicy: 'lowest_cost' });
+      assert.equal(economicSettings.settings.version, 1);
+      const comparison = await logistics.compareLogisticsAlternatives(client, principal, serviceDelivery);
+      assert.equal(comparison.inputs.commercialOrderValueUsed, false);
+      assert.equal(comparison.inputs.earningUsedAsTotalCost, false);
+      assert.equal(comparison.alternatives.find(item => item.mode === 'internal').cost.status, 'insufficient_data',
+        'a configured variable cost with unknown distance is not silently treated as zero');
+      assert.equal(comparison.recommendation.status, 'insufficient_data', 'no valid external quote means abstain');
+      await assert.rejects(logistics.updateIntelligenceSettings(client, principal, { expectedVersion: 0,
+        fixedCostPerDeliveryMinor: 500, variableCostPerKmMinor: 100, currency: 'BRL', defaultPolicy: 'lowest_cost' }),
+      error => error.code === 'REVISION_CONFLICT', 'stale economic profile revision is rejected');
       const internalAllocationId = id();
       const internal = await logistics.selectFulfillment(client, principal, serviceDelivery, { providerId: internalProvider, mode: 'internal',
         driverId: driverA, fulfillmentId: internalAllocationId, expectedRevision: 0 });

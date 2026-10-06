@@ -19,8 +19,8 @@ function runtimeConnectionString() {
 
 function psqlRuntime(sql) {
   return spawnSync('psql', ['-X','-w','-q','-h','127.0.0.1','-p','5432','-U','rotamoto_app','-d','rotamoto_e2e',
-    '-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-A','-t','-c',sql],
-  { encoding: 'utf8', timeout: 10000 });
+    '-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-A','-t'],
+  { encoding: 'utf8', timeout: 10000, input: sql });
 }
 
 async function main() {
@@ -39,15 +39,27 @@ async function main() {
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','configuration','SELECT') AS configuration_select,
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','secret_ref','SELECT') AS secret_select,
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','secret_ref','UPDATE') AS secret_update,
+      has_table_privilege('rotamoto_app','rotamoto.external_accounts','SELECT') AS external_accounts_table_select,
+      has_column_privilege('rotamoto_app','rotamoto.external_accounts','display_name','SELECT') AS external_display_select,
+      has_column_privilege('rotamoto_app','rotamoto.external_accounts','secret_ref','SELECT') AS external_secret_select,
+      has_column_privilege('rotamoto_app','rotamoto.external_accounts','secret_ref','UPDATE') AS external_secret_update,
+      has_table_privilege('rotamoto_app','rotamoto.external_accounts','UPDATE') AS external_accounts_update,
       has_function_privilege('rotamoto_app','rotamoto.claim_provider_command(uuid,uuid,integer)','EXECUTE') AS global_provider_claim`,
     ['0019_logistics_provider_secret_least_privilege']);
     assert.deepEqual(state.rows[0], { role: 'rotamoto_migrator', database: 'rotamoto_e2e', checksum: migration.checksum,
       runtime_elevated: false,
-      table_select: false, provider_id_select: true, configuration_select: true, secret_select: false, secret_update: false, global_provider_claim: false });
+      table_select: false, provider_id_select: true, configuration_select: true, secret_select: false, secret_update: false,
+      external_accounts_table_select: false, external_display_select: true, external_secret_select: false, external_secret_update: false,
+      external_accounts_update: false, global_provider_claim: false });
     const identity = psqlRuntime('SELECT current_user||\':\'||current_database()');
     assert.equal(identity.status, 0, 'psql -w authenticates runtime using the locally provisioned credential');
     assert.equal(identity.stdout.trim(), 'rotamoto_app:rotamoto_e2e');
     const tenant = crypto.randomUUID();
+    const allowedAccountProjection = psqlRuntime(`BEGIN; SET LOCAL app.tenant_id='${tenant}'; SELECT company_id,integration_id,display_name,link_status,confirmed_at FROM rotamoto.external_accounts LIMIT 0; COMMIT;`);
+    assert.equal(allowedAccountProjection.status, 0, 'runtime can read external account metadata projection');
+    const deniedAccountSelect = psqlRuntime(`BEGIN; SET LOCAL app.tenant_id='${tenant}'; SELECT secret_ref FROM rotamoto.external_accounts LIMIT 0; COMMIT;`);
+    assert.notEqual(deniedAccountSelect.status, 0, 'runtime cannot select external account secret_ref');
+    assert.match(deniedAccountSelect.stderr, /42501/u, 'external account secret_ref SELECT fails for insufficient privilege');
     const allowed = psqlRuntime(`BEGIN; SET LOCAL app.tenant_id='${tenant}'; SELECT company_id,provider_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at FROM rotamoto.logistics_providers LIMIT 0; COMMIT;`);
     assert.equal(allowed.status, 0, 'runtime executes the operational provider projection in tenant context');
     const deniedSelect = psqlRuntime(`BEGIN; SET LOCAL app.tenant_id='${tenant}'; SELECT secret_ref FROM rotamoto.logistics_providers LIMIT 0; COMMIT;`);
