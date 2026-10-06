@@ -44,8 +44,8 @@ async function main(){
     assert.equal(live.headers.get('content-security-policy'),"default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
     assert.equal(live.headers.get('strict-transport-security'),null,'development does not assert TLS');
     const ready=await request('/health/ready');
-    assert.equal(ready.status,200,'readiness confirms the runtime PostgreSQL connection and schema');
-    assert.equal((await ready.json()).dependencies.postgres,'ready');
+    assert.equal(ready.status,503,'readiness fails closed until the installed schema includes every required feature migration');
+    assert.equal((await ready.json()).dependencies.postgres,'unavailable');
     const preflight=await request('/api/sync/push',{method:'OPTIONS',headers:{Origin:'http://localhost:8787',
       'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type,x-csrf-token'}});
     assert.equal(preflight.status,204,'CORS preflight is handled before route-specific method checks');

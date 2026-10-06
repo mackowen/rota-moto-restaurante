@@ -16,7 +16,7 @@ async function main(){
   assert.deepEqual(forced,['timeout','connections','pool']);
   const events=[];
   const pool={async connect(){return{async query(sql){
-    if(sql.includes('to_regclass'))return{rows:[{role:'rotamoto_app',domain_ready:true,sync_installations_ready:true,mfa_schema_ready:true,membership_driver_ready:true}]};
+    if(sql.includes('to_regclass'))return{rows:[{role:'rotamoto_app',domain_ready:true,sync_installations_ready:true,mfa_schema_ready:true,membership_driver_ready:true,logistics_schema_ready:true}]};
     if(sql.includes('current_user'))return{rows:[{role:'rotamoto_app'}]};return{rows:[]};
   },release(){}}},async end(){events.push('pool_closed')}};
   const started=await startServer({pool,config:{...CONFIG,port:0},logger:event=>events.push(event.event)});

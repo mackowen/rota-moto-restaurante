@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { uuidV7 } = require('../identity/service');
 const { createMediaStorage } = require('./media-storage');
 const OrderMoney = require('../../order-money');
+const { projectRestaurantDriverAssignment, projectInternalExecution } = require('../logistics/sync-projection');
 
 const WRITE_OWNERS = Object.freeze({ Order: 'restaurante', Route: 'restaurante', Driver: 'restaurante', Earning: 'restaurante',
   LocationPoint: 'motoboy', DeliveryProof: 'motoboy' });
@@ -527,6 +528,12 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           outcomes.updated += 1;
         }
       }
+      if (entityType === 'Delivery' && appKey === 'restaurante') {
+        const previousDriverId = existing.rows[0]?.payload?.driverId || null;
+        const nextDriverId = canonical.driverId || null;
+        await projectRestaurantDriverAssignment(client, { companyId, userId, deliveryId: canonicalId,
+          previousDriverId, driverId: nextDriverId, deliveryStatus: canonical.status, now });
+      }
       if (entityType === 'DeliveryProof' && canonical.media?.storageRef?.objectKey) {
         await client.query(`DELETE FROM rotamoto.proof_media_upload_intents
           WHERE company_id=$1 AND proof_id=$2::uuid AND object_key=$3`,
@@ -568,6 +575,8 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           if (executionStatus === 'DELIVERED') projected.completedAt = canonical.occurredAt || projectedAt;
           await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5
             WHERE company_id=$1 AND record_id=$2`, [companyId, relatedId, JSON.stringify(projected), projectedVersion, projectedAt]);
+          await projectInternalExecution(client, { companyId, userId, deliveryId: relatedId,
+            deliveryStatus: executionStatus, now });
           pending.push({ entityType: 'Delivery', canonicalId: relatedId, canonical: projected,
             meta: { createdAt: new Date(currentDelivery.rows[0].created_at), updatedAt: new Date(projectedAt), version: projectedVersion },
             changed: true, relatedType: 'Order', relatedId: null });

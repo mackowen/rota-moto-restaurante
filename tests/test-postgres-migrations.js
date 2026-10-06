@@ -110,6 +110,12 @@ async function main() {
   assert.match(driverBindingMigration.up, /sync_outbox_recipient_driver_fk/);
   assert.match(driverBindingMigration.down, /WHERE driver_id IS NOT NULL/u);
   assert.match(driverBindingMigration.down, /WHERE recipient_driver_id IS NOT NULL/u);
+  const logisticsMigration = getMigrations()[16];
+  assert.equal(logisticsMigration.id, '0017_logistics_fulfillment');
+  assert.match(logisticsMigration.up, /delivery_fulfillments_one_active_uq/u);
+  assert.match(logisticsMigration.up, /UNIQUE \(company_id, provider_id, idempotency_key\)/u);
+  assert.match(logisticsMigration.up, /FORCE ROW LEVEL SECURITY/u);
+  assert.match(logisticsMigration.down, /rollback bloqueado/u);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
   assert.match(migration.up, /CREATE TABLE rotamoto\.memberships/);
@@ -167,6 +173,23 @@ async function main() {
       (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='rotamoto.sync_outbox'::regclass) AS outbox_forced_rls`);
     assert.deepEqual(driverBindingPrivileges.rows[0], { driver_link_update: true, driver_link_read: true, outbox_delete: false,
       membership_forced_rls: true, outbox_forced_rls: true }, 'driver binding is tenant protected and runtime has no destructive outbox rights');
+    const logisticsPrivileges = await runtimeClient.query(`SELECT
+      has_table_privilege(current_user,'rotamoto.logistics_providers','SELECT') AS provider_read,
+      has_column_privilege(current_user,'rotamoto.logistics_providers','provider_id','INSERT') AS provider_insert,
+      has_column_privilege(current_user,'rotamoto.logistics_providers','display_name','UPDATE') AS provider_update,
+      has_column_privilege(current_user,'rotamoto.logistics_providers','secret_ref','UPDATE') AS provider_secret_ref_update,
+      has_column_privilege(current_user,'rotamoto.logistics_providers','provider_class','UPDATE') AS provider_class_update,
+      has_table_privilege(current_user,'rotamoto.logistics_providers','DELETE') AS provider_delete,
+      has_column_privilege(current_user,'rotamoto.delivery_fulfillments','mode','INSERT') AS fulfillment_insert,
+      has_table_privilege(current_user,'rotamoto.delivery_fulfillments','DELETE') AS fulfillment_delete,
+      has_column_privilege(current_user,'rotamoto.dispatch_attempts','status','UPDATE') AS attempt_status_update,
+      has_table_privilege(current_user,'rotamoto.dispatch_attempts','DELETE') AS attempts_delete,
+      (SELECT bool_and(c.relrowsecurity AND c.relforcerowsecurity) FROM pg_class c
+        WHERE c.oid IN ('rotamoto.logistics_providers'::regclass,'rotamoto.delivery_fulfillments'::regclass,'rotamoto.dispatch_attempts'::regclass)) AS logistics_force_rls`);
+    assert.deepEqual(logisticsPrivileges.rows[0], { provider_read: true, provider_insert: true, provider_update: true,
+      provider_secret_ref_update: false, provider_class_update: false, provider_delete: false, fulfillment_insert: true,
+      fulfillment_delete: false, attempt_status_update: true, attempts_delete: false, logistics_force_rls: true },
+    'logistics runtime access uses column grants, forced RLS and no destructive rights');
     const driverForeignKeys = await migrationClient.query(`SELECT count(*)::int AS count FROM pg_constraint
       WHERE connamespace='rotamoto'::regnamespace AND conname IN ('memberships_driver_record_fk','sync_outbox_recipient_driver_fk')`);
     assert.equal(driverForeignKeys.rows[0].count, 2, 'both driver foreign keys are installed');
@@ -185,10 +208,10 @@ async function main() {
       NOT EXISTS (SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
         WHERE d.defaclrole='rotamoto_migrator'::regrole AND d.defaclobjtype='f'
           AND a.grantee=0 AND a.privilege_type='EXECUTE') AS no_public_execute_default`);
-    assert.equal(ownership.rows[0].owned_relations, 20);
-    assert.equal(ownership.rows[0].owned_routines, 4);
+    assert.equal(ownership.rows[0].owned_relations, 24);
+    assert.equal(ownership.rows[0].owned_routines, 5);
     assert.equal(ownership.rows[0].migrator_ledger, 1);
-    assert.equal(ownership.rows[0].forced_policies, 12);
+    assert.equal(ownership.rows[0].forced_policies, 16);
     assert.equal(ownership.rows[0].no_public_execute_default, true,
       'future migrator functions do not receive PUBLIC EXECUTE by default');
     assert.equal((await runtimeClient.query("SELECT has_function_privilege(current_user,'rotamoto.valid_route_delivery_ids(jsonb)','EXECUTE') AS can_validate")).rows[0].can_validate,
@@ -222,13 +245,13 @@ async function main() {
         await client.query(item.up.replace(/\brotamoto\b/gu, cleanSchema));
       }
       const cleanTables = await client.query('SELECT count(*)::int AS count FROM pg_tables WHERE schemaname=$1', [cleanSchema]);
-      assert.equal(cleanTables.rows[0].count, 19, 'all domain tables install into an empty schema');
+      assert.equal(cleanTables.rows[0].count, 23, 'all domain tables install into an empty schema');
       const cleanRls = await client.query(`SELECT count(*)::int AS count FROM pg_class c
         JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
-      assert.equal(cleanRls.rows[0].count, 12, 'fresh schema has all forced tenant RLS policies');
+      assert.equal(cleanRls.rows[0].count, 16, 'fresh schema has all forced tenant RLS policies');
       const cleanForeignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c
         JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-    assert.equal(cleanForeignKeys.rows[0].count, 36, 'fresh schema installs all expected foreign keys');
+    assert.equal(cleanForeignKeys.rows[0].count, 50, 'fresh schema installs all expected foreign keys');
       await client.query('ROLLBACK');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
@@ -245,7 +268,7 @@ async function main() {
       'schema_migrations','users','credentials','recovery_tokens','companies','permissions',
       'roles','role_permissions','memberships','sessions','integrations','external_accounts',
       'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens',
-      'sync_installations','domain_records'
+      'sync_installations','domain_records','proof_media_upload_intents','logistics_providers','delivery_fulfillments','dispatch_attempts'
     ]));
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -253,7 +276,7 @@ async function main() {
       WHERE n.nspname='rotamoto' AND c.relkind='r' AND c.relname <> 'schema_migrations'
     `);
     const tenantTables = rls.rows.filter(row => row.relrowsecurity);
-    assert.equal(tenantTables.length, 12);
+    assert.equal(tenantTables.length, 16);
     assert(tenantTables.every(row => row.relforcerowsecurity), 'all tenant-scoped tables enforce RLS');
     const auditTenant = crypto.randomUUID();
     await migrationClient.query('BEGIN');
@@ -283,6 +306,9 @@ async function main() {
     const tenantB = crypto.randomUUID();
     await tenantQuery(runtimeClient, tenantA, `INSERT INTO rotamoto.companies (id,name) VALUES ($1,'QA tenant A')`, [tenantA]);
     await tenantQuery(runtimeClient, tenantB, `INSERT INTO rotamoto.companies (id,name) VALUES ($1,'QA tenant B')`, [tenantB]);
+    const logisticsProviderId = crypto.randomUUID();
+    await tenantQuery(runtimeClient, tenantA, `INSERT INTO rotamoto.logistics_providers(company_id,provider_id,code,display_name,provider_class)
+      VALUES($1,$2,'qa_provider','QA provider','partner')`, [tenantA, logisticsProviderId]);
     try {
       await runtimeClient.query('BEGIN');
       await runtimeClient.query(`SELECT set_config('app.tenant_id',$1,true)`, [tenantA]);
@@ -293,6 +319,11 @@ async function main() {
       await runtimeClient.query(`SELECT set_config('app.tenant_id',$1,true)`, [tenantA]);
       await assert.rejects(runtimeClient.query(`INSERT INTO rotamoto.companies (id,name) VALUES ($1,'cross-tenant')`, [tenantB]), /row-level security|policy/i, 'tenant context rejects cross-tenant writes');
       await runtimeClient.query('ROLLBACK');
+      await assert.rejects(tenantQuery(runtimeClient, tenantA, `INSERT INTO rotamoto.logistics_providers(company_id,provider_id,code,display_name,provider_class)
+        VALUES($1,$2,'cross_tenant_provider','cross tenant','partner')`, [tenantB, crypto.randomUUID()]), /row-level security|policy/i,
+      'provider inserts cannot cross tenants');
+      const visibleProviders = await tenantQuery(runtimeClient, tenantA, `SELECT provider_id::text FROM rotamoto.logistics_providers WHERE company_id=$1`, [tenantA]);
+      assert.deepEqual(visibleProviders.rows.map(row => row.provider_id), [logisticsProviderId], 'provider read is tenant scoped');
       await assert.rejects(tenantQuery(runtimeClient, tenantA, `INSERT INTO rotamoto.audit_log(id,company_id,actor_kind,action)
         VALUES ($1,$2,'user','qa.invalid.actor')`, [crypto.randomUUID(), tenantA]), /audit_log_user_actor_required/,
       'user audit entries require a canonical actor user');
@@ -307,6 +338,7 @@ async function main() {
       'outbox cannot be published before creation');
     } finally {
       await client.query('ROLLBACK').catch(() => {});
+      await tenantQuery(migrationClient, tenantA, `DELETE FROM rotamoto.logistics_providers WHERE provider_id=$1`, [logisticsProviderId]);
       await tenantQuery(migrationClient, tenantA, `DELETE FROM rotamoto.companies WHERE id=$1`, [tenantA]);
       await tenantQuery(migrationClient, tenantB, `DELETE FROM rotamoto.companies WHERE id=$1`, [tenantB]);
     }
