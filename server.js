@@ -22,6 +22,8 @@ const {createDomainQueryService}=require('./backend/domain/query-service');
 const {createDomainQueryHttpHandler}=require('./backend/domain/query-http');
 const {createDeliveryQrService}=require('./backend/domain/delivery-qr');
 const {createDeliveryQrHttpHandler}=require('./backend/domain/delivery-qr-http');
+const {createLogisticsService}=require('./backend/logistics/service');
+const {createLogisticsHttpHandler}=require('./backend/logistics/http');
 const {createAdminRepository}=require('./backend/admin/repository');
 const {createAdminService}=require('./backend/admin/service');
 const {createAdminHttpHandler}=require('./backend/admin/http');
@@ -72,6 +74,8 @@ const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQr
   keyRef:CONFIG.deliveryQrKeyRef,kid:CONFIG.deliveryQrKeyId
 }):null;
 const deliveryQrHttp=createDeliveryQrHttpHandler({identityService,queryService:domainQueryService,qrService:deliveryQrService,logger:()=>{}});
+const logisticsService=createLogisticsService();
+const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const adminService=createAdminService({repository:createAdminRepository()});
 const adminHttp=createAdminHttpHandler({identityService,adminService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 
@@ -88,9 +92,11 @@ async function databaseReadiness(pool=identityPool){
       to_regclass('rotamoto.domain_records') IS NOT NULL AS domain_ready,
       to_regclass('rotamoto.sync_installations') IS NOT NULL AS sync_installations_ready,
       EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.sessions') AND attname='mfa_verified_at' AND NOT attisdropped) AS mfa_schema_ready,
-      EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.memberships') AND attname='driver_id' AND NOT attisdropped) AS membership_driver_ready`);
+      EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.memberships') AND attname='driver_id' AND NOT attisdropped) AS membership_driver_ready,
+      to_regclass('rotamoto.logistics_providers') IS NOT NULL AND to_regclass('rotamoto.delivery_fulfillments') IS NOT NULL
+        AND to_regclass('rotamoto.dispatch_attempts') IS NOT NULL AS logistics_schema_ready`);
     await client.query('COMMIT');
-    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true;
+    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true&&result.rows[0]?.logistics_schema_ready===true;
   }catch(error){try{await client.query('ROLLBACK')}catch(_){}throw error}
   finally{client.release()}
 }
@@ -109,7 +115,7 @@ async function route(req,res){
       if(!ALLOWED_ORIGINS.includes(req.headers.origin))return json(res,403,{error:{code:'ORIGIN_INVALID',message:'Origem não permitida.'},requestId:req.requestId});
       res.writeHead(204,{'Access-Control-Allow-Origin':req.headers.origin,'Access-Control-Allow-Credentials':'true',
         'Access-Control-Allow-Headers':'Content-Type, X-CSRF-Token',
-        'Access-Control-Allow-Methods':'GET,POST,PATCH,OPTIONS','Access-Control-Max-Age':'600','Vary':'Origin','X-Request-ID':req.requestId});
+        'Access-Control-Allow-Methods':'GET,POST,PUT,PATCH,OPTIONS','Access-Control-Max-Age':'600','Vary':'Origin','X-Request-ID':req.requestId});
       return res.end();
     }
     if(shuttingDown&&u.pathname!=='/health/live')return json(res,503,{status:'shutting_down',requestId:req.requestId});
@@ -118,6 +124,7 @@ async function route(req,res){
     if(await proofMediaHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
     if(await deliveryQrHttp(req,res))return;
+    if(await logisticsHttp(req,res))return;
     if(await syncHttp(req,res))return;
     if(req.headers.origin&&!ALLOWED_ORIGINS.includes(req.headers.origin))return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
     if(/^\/api\/(?:ifood|99food|keeta)(?:\/|$)/iu.test(u.pathname))return json(res,503,{error:{code:'PROVIDER_BLOCKED_EXTERNAL',message:'A integração externa ainda não foi validada e habilitada.'},requestId:req.requestId});
