@@ -2,9 +2,12 @@
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { Client } = require('pg');
+const { createClient } = require('../backend/postgres/connection');
 const { e2eMigrationConnectionString, getMigrations } = require('../backend/postgres/migrate');
 const { createLogisticsService } = require('../backend/logistics/service');
+const { createProviderIntegrationService } = require('../backend/logistics/provider-integration');
+const { createProviderWorker } = require('../backend/logistics/provider-worker');
+const { createFakeLogisticsProvider } = require('./helpers/fake-logistics-provider');
 
 function id() { return crypto.randomUUID(); }
 async function rejected(client, name, query) {
@@ -16,17 +19,17 @@ async function rejected(client, name, query) {
 
 async function main() {
   const connectionString = e2eMigrationConnectionString(process.env);
-  const client = new Client({ connectionString, application_name: 'rotamoto-logistics-e2e-test', statement_timeout: 5000 });
+  const client = createClient({ connectionString, application_name: 'rotamoto-logistics-e2e-test', statement_timeout: 5000 });
   await client.connect();
   try {
     const identity = (await client.query(`SELECT current_user AS role,current_database() AS database,
       (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass`)).rows[0];
     assert.deepEqual(identity, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', bypass: false });
     const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations
-      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery')
+      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants')
       ORDER BY migration_id`);
     assert.deepEqual(migration.rows.map(row => row.migration_id), [
-      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery'
+      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants'
     ], 'E2E schema includes the tested logistics, geography and least-privilege migrations');
     const catalog = await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
       has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,
@@ -109,6 +112,20 @@ async function main() {
       const migration0022 = getMigrations()[21];
       assert.equal(migration0022.id, '0022_provider_ambiguous_lease_recovery');
       await client.query(migration0022.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const migration0023 = getMigrations()[22];
+      assert.equal(migration0023.id, '0023_provider_worker_least_privilege');
+      await client.query(migration0023.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const claimAcl = await client.query(`SELECT has_function_privilege('rotamoto_app',$1||'.claim_provider_command(uuid,uuid,integer)','EXECUTE') AS app_execute`, [upgradeSchema]);
+      assert.equal(claimAcl.rows[0].app_execute, false, 'application runtime cannot claim cross-tenant provider commands');
+      const migration0024 = getMigrations()[23];
+      assert.equal(migration0024.id, '0024_provider_tracking_status_grant');
+      await client.query(migration0024.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const migration0025 = getMigrations()[24];
+      assert.equal(migration0025.id, '0025_provider_event_worker_grants');
+      await client.query(migration0025.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const migration0026 = getMigrations()[25];
+      assert.equal(migration0026.id, '0026_provider_fulfillment_event_grants');
+      await client.query(migration0026.up.replace(/\brotamoto\b/gu, upgradeSchema));
       const after0020 = await client.query(`SELECT has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','SELECT') AS command_read,
         has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','DELETE') AS command_delete,
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_read,
@@ -141,7 +158,7 @@ async function main() {
       await client.query(`INSERT INTO rotamoto.delivery_fulfillments(company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,status,selected_by,updated_by,revision)
         VALUES($1,$2,$3,$4,'internal',$5,'selected',$6,$6,1),($1,$7,$8,$9,'external',NULL,'selected',$6,$6,1)`,
       [tenantA, id(), sourceDelivery, internalProvider, driverA, actor, externalFulfillmentId, externalDelivery, partner]);
-      await client.query(`UPDATE rotamoto.logistics_providers SET integration_mode='api',api_enabled=true,secret_ref='local-v1:00000000-0000-4000-8000-000000000099',capabilities=ARRAY['manual_assignment','quote','dispatch']::text[] WHERE company_id=$1 AND provider_id=$2`, [tenantA,partner]);
+      await client.query(`UPDATE rotamoto.logistics_providers SET integration_mode='api',api_enabled=true,secret_ref='local-v1:00000000-0000-4000-8000-000000000099',capabilities=ARRAY['manual_assignment','quote','dispatch','cancel','tracking']::text[] WHERE company_id=$1 AND provider_id=$2`, [tenantA,partner]);
       const staleDispatchId=id(), staleQuoteId=id(), lease=id();
       await client.query(`INSERT INTO rotamoto.provider_command_outbox(company_id,command_id,provider_id,delivery_id,fulfillment_id,operation,idempotency_key,payload,status,attempts,lease_token,lease_until,correlation_id)
         VALUES($1,$2,$3,$4,$5,'DISPATCH_REQUEST',$6,$7::jsonb,'leased',1,$8,now()-interval '1 minute',$9),
@@ -187,13 +204,20 @@ async function main() {
       const visible = await client.query(`SELECT count(*)::int AS count FROM rotamoto.logistics_providers`);
       assert.equal(visible.rows[0].count, 3);
 
-      const logistics = createLogisticsService();
+      const providerIntegration = createProviderIntegrationService();
+      const logistics = createLogisticsService({ providerIntegration });
       const principal = { company_id: tenantA, user_id: actor };
+      const manualKey = `manual-dispatch-${crypto.randomUUID()}`;
+      const manualAttempt = await logistics.requestDispatch(client, principal, externalDelivery, { idempotencyKey:manualKey });
+      assert.equal(manualAttempt.status,'requested');
+      assert.equal((await logistics.requestDispatch(client, principal, externalDelivery, { idempotencyKey:manualKey })).duplicate,true,
+        'manual dispatch retry is idempotent');
       const serviceDelivery = id();
       const serviceOrder = id();
+      const externalOrderReference = id();
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
         VALUES($1,$2,'Order','restaurante',$3,$4::jsonb,1,now(),now())`, [tenantA, serviceOrder, appInstall,
-        JSON.stringify({ id: serviceOrder, companyId: tenantA, source: 'ifood' })]);
+        JSON.stringify({ id: serviceOrder, companyId: tenantA, source: 'ifood', externalId: externalOrderReference })]);
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
         VALUES($1,$2,'Delivery','restaurante',$3,$4::jsonb,1,now(),now())`, [tenantA, serviceDelivery, appInstall,
         JSON.stringify({ id: serviceDelivery, companyId: tenantA, orderId: serviceOrder, status: 'CREATED', driverId: null })]);
@@ -212,11 +236,57 @@ async function main() {
       assert.equal((await client.query(`SELECT count(*)::int AS n FROM rotamoto.delivery_fulfillments WHERE company_id=$1 AND delivery_id=$2 AND status='superseded'`, [tenantA, serviceDelivery])).rows[0].n, 1,
         'internal allocation is retained as superseded history');
 
-      const idempotencyKey = `manual-dispatch-${crypto.randomUUID()}`;
-      const attempt = await logistics.requestDispatch(client, principal, serviceDelivery, { idempotencyKey });
-      assert.equal(attempt.status, 'requested');
-      assert.equal((await logistics.requestDispatch(client, principal, serviceDelivery, { idempotencyKey })).duplicate, true,
-        'manual dispatch retry is idempotent');
+      const quoteRequest = await logistics.requestProviderQuote(client, principal, serviceDelivery, { providerId: partner, idempotencyKey: `quote-${crypto.randomUUID()}` });
+      assert.equal(quoteRequest.status,'queued');
+      const fake = createFakeLogisticsProvider({ clock: () => Date.now() });
+      const fakeRegistryAdapter = { ...fake, async quote(context) { return { quote: await fake.quote(context) }; } };
+      const workerClient = { async query(sql,params) {
+        if (sql === 'BEGIN') return client.query('SAVEPOINT provider_worker_scope');
+        if (sql === 'COMMIT') return client.query('RELEASE SAVEPOINT provider_worker_scope');
+        if (sql === 'ROLLBACK') { await client.query('ROLLBACK TO SAVEPOINT provider_worker_scope'); return client.query('RELEASE SAVEPOINT provider_worker_scope'); }
+        return client.query(sql,params);
+      }, release(){} };
+      const worker = createProviderWorker({ pool: { query:(sql,params)=>client.query(sql,params), async connect(){ return workerClient; } },
+        adapterRegistry:{ get:()=>fakeRegistryAdapter }, credentialResolver:async()=>({clientId:'test',clientSecret:'test'}), tenantResolver:async()=>[tenantA],
+        providerIntegration, logger:()=>{} });
+      assert.equal(await worker.runOnce(),true,'fake worker handles queued quote');
+      const quoteCommandState = await client.query(`SELECT status,last_error_class FROM rotamoto.provider_command_outbox WHERE company_id=$1 AND command_id=$2`,[tenantA,quoteRequest.commandId]);
+      assert.equal(quoteCommandState.rows[0]?.status,'succeeded',`fake quote command should complete (${quoteCommandState.rows[0]?.last_error_class || 'no error class'})`);
+      const availableQuotes = await logistics.listProviderQuotes(client,principal,serviceDelivery);
+      assert.equal(availableQuotes.quotes.length,1);
+      assert.equal(availableQuotes.quotes[0].amountMinor,1290);
+      const selectedQuote = await logistics.selectProviderQuote(client,principal,serviceDelivery,{ quoteId:availableQuotes.quotes[0].id,
+        fulfillmentId:id(),expectedQuoteVersion:availableQuotes.quotes[0].version,expectedRevision:external.fulfillment.revision });
+      assert.equal(selectedQuote.fulfillment.mode,'external');
+      const apiDispatch = await logistics.requestProviderDispatch(client,principal,serviceDelivery,{ quoteId:availableQuotes.quotes[0].id,idempotencyKey:`api-dispatch-${crypto.randomUUID()}` });
+      assert.equal(apiDispatch.status,'pending');
+      await worker.runOnce();
+      const confirmedAttempt = await client.query(`SELECT status FROM rotamoto.dispatch_attempts WHERE company_id=$1 AND attempt_id=$2`,[tenantA,apiDispatch.attemptId]);
+      assert.equal(confirmedAttempt.rows[0].status,'accepted','fake adapter confirmation updates its linked dispatch attempt');
+      const eventTime = new Date().toISOString();
+      const rawEvent = Buffer.from(JSON.stringify({ id:'evt-internal-1',orderId:externalOrderReference,fullCode:'REQUEST_DRIVER_SUCCESS',createdAt:eventTime }));
+      const normalizedEvent = { externalEventId:'evt-internal-1',externalOrderId:externalOrderReference,occurredAt:eventTime,status:'accepted',externalStatus:'REQUEST_DRIVER_SUCCESS' };
+      const inboxFirst = await providerIntegration.ingestEvent(client,{companyId:tenantA,providerId:partner,event:normalizedEvent,rawBody:rawEvent});
+      const inboxDuplicate = await providerIntegration.ingestEvent(client,{companyId:tenantA,providerId:partner,event:normalizedEvent,rawBody:rawEvent});
+      assert.equal(inboxFirst.duplicate,false);
+      assert.equal(inboxDuplicate.duplicate,true,'duplicate event ID and digest is idempotent');
+      const trackingRequest = await logistics.requestProviderTracking(client,principal,serviceDelivery,{idempotencyKey:`tracking-${crypto.randomUUID()}`});
+      assert.equal(trackingRequest.status,'queued'); await worker.runOnce();
+      const processedEvent = await client.query(`SELECT status,processed_at FROM rotamoto.provider_event_inbox WHERE company_id=$1 AND event_id=$2`,[tenantA,inboxFirst.event_id]);
+      assert.equal(processedEvent.rows[0].status,'processed'); assert.ok(processedEvent.rows[0].processed_at);
+      assert.equal((await logistics.getFulfillment(client,principal,serviceDelivery)).fulfillments.find(row=>row.id===selectedQuote.fulfillment.id).status,'accepted',
+        'asynchronous event projection confirms only the matching tenant/provider external fulfillment');
+      await worker.runOnce();
+      const tracking = await client.query(`SELECT status,eta_at,provenance FROM rotamoto.provider_tracking_snapshots WHERE company_id=$1 AND fulfillment_id=$2`,[tenantA,selectedQuote.fulfillment.id]);
+      assert.equal(tracking.rows[0].status,'in_progress'); assert.equal(tracking.rows[0].provenance,'external_provider');
+      const cancelRequest = await logistics.requestProviderCancel(client,principal,serviceDelivery,{idempotencyKey:`cancel-${crypto.randomUUID()}`});
+      await worker.runOnce();
+      assert.equal((await client.query(`SELECT status FROM rotamoto.provider_command_outbox WHERE company_id=$1 AND command_id=$2`,[tenantA,cancelRequest.commandId])).rows[0].status,'succeeded',
+        'provider cancel request acknowledgement is tracked separately from cancellation confirmation');
+      const reconcileRequest = await logistics.requestProviderReconciliation(client,principal,serviceDelivery,{idempotencyKey:`reconcile-${crypto.randomUUID()}`});
+      await worker.runOnce();
+      assert.equal((await client.query(`SELECT operation FROM rotamoto.provider_command_outbox WHERE company_id=$1 AND command_id=$2`,[tenantA,reconcileRequest.commandId])).rows[0].operation,'RECONCILE');
+
       const afterRequest = await logistics.getFulfillment(client, principal, serviceDelivery);
       assert.equal(afterRequest.delivery.orderSource, 'ifood', 'commercial source is exposed separately from the logistics provider');
       await rejected(client, 'active_external_reassignment', () => logistics.selectFulfillment(client, principal, serviceDelivery, {
@@ -224,22 +294,15 @@ async function main() {
       await rejected(client, 'stale_fulfillment_revision', () => logistics.updateFulfillment(client, principal, serviceDelivery,
         { expectedRevision: afterRequest.fulfillments[0].revision - 1, status: 'accepted' }));
 
-      await logistics.updateFulfillment(client, principal, serviceDelivery, { expectedRevision: afterRequest.fulfillments[0].revision,
-        status: 'accepted', externalReference: 'ref-QA-1' });
-      const accepted = await logistics.getFulfillment(client, principal, serviceDelivery);
+      assert.equal(afterRequest.fulfillments.find(row=>row.id===selectedQuote.fulfillment.id).status,'accepted');
+      const accepted = afterRequest;
       await logistics.updateFulfillment(client, principal, serviceDelivery, { expectedRevision: accepted.fulfillments[0].revision, status: 'in_progress' });
-      const progressing = await logistics.getFulfillment(client, principal, serviceDelivery);
-      await logistics.updateFulfillment(client, principal, serviceDelivery, { expectedRevision: progressing.fulfillments[0].revision,
-        status: 'completed', finalCostMinor: 1250, finalCostCurrency: 'BRL' });
-      const completed = await logistics.getFulfillment(client, principal, serviceDelivery);
-      assert.equal(completed.fulfillments[0].finalCost.amountMinor, 1250);
       const logisticsReport = await logistics.analytics(client, principal);
       const partnerReport = logisticsReport.providers.find(item => item.providerId === partner);
-      assert.equal(partnerReport.reconciledCostCount, 1);
-      assert.equal(partnerReport.reconciledCostCoverage, 0.5, 'coverage includes both partner allocations, including unknown cost');
-      assert.equal(partnerReport.reconciledCosts[0].amountMinor, 1250);
-      assert.deepEqual(partnerReport.estimatedCosts, [], 'unknown estimate remains absent rather than zero');
-      assert.equal((await client.query(`SELECT payload->>'status' AS status FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2`, [tenantA, serviceDelivery])).rows[0].status, 'DELIVERED');
+      assert.equal(partnerReport.reconciledCostCount, 0);
+      assert.equal(partnerReport.reconciledCostCoverage, 0, 'no reconciled cost is claimed while external cancellation is pending');
+      assert.equal(partnerReport.estimatedCostCoverage,0.5,'provider quote contributes one known estimated cost from two partner allocations');
+      assert.equal(partnerReport.estimatedCosts[0].amountMinor,1290,'provider quote estimate is recorded in native currency');
 
       const fallbackDelivery = id();
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
@@ -267,4 +330,4 @@ async function main() {
     console.log('Logistics PostgreSQL E2E schema, RLS, FK, active-allocation and idempotency guards: PASS (transaction rolled back)');
   } finally { await client.end(); }
 }
-main().catch(error => { console.error(`Logistics PostgreSQL E2E failed: ${error.message}`); process.exitCode = 1; });
+main().catch(error => { console.error(`Logistics PostgreSQL E2E failed: ${error.stack || error.message}`); process.exitCode = 1; });

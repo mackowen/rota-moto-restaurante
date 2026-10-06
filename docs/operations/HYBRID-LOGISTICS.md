@@ -1,64 +1,74 @@
 # Operação logística híbrida
 
-## Modelo e limites atuais
+## Modelo e estado atual
 
-`Order.source` identifica a origem comercial. `LogisticsProvider` identifica quem executa a entrega. `Delivery` continua sendo o agregado compartilhado; `Route` planeja somente a frota própria. Uma alocação externa não recebe `driverId` e não aparece como tarefa do Motoboy.
+`Order.source` identifica a origem comercial. `LogisticsProvider` identifica quem executa a entrega. `Delivery` continua sendo o agregado compartilhado; `Route` planeja somente a frota própria. Entregador externo nunca é `Driver`, e snapshot externo nunca é `LocationPoint` do Motoboy.
 
-O provider `internal_fleet` e providers externos cadastrados operam em **modo manual**. `manual_assignment` é a única capability persistida/habilitada pelo serviço atual. A tela deixa explícito que registrar um despacho manual não chama a plataforma. Não selecione um provider externo como API ativa com base apenas no cadastro.
+O Restaurante tem endpoints autenticados e tenant-scoped para configuração não secreta do provider, solicitação/listagem/seleção de quote, dispatch, cancelamento, refresh de tracking, reconciliação e leitura de comandos. Escritas exigem `company.manage`, sessão, CSRF/origin e MFA conforme a política existente. API não é habilitada pelo endpoint administrativo; `api_enabled` permanece false até existir credencial por boundary autorizada e todos os requisitos comerciais.
 
-## Estado por plataforma
+No fluxo visual, a operação MANUAL segue disponível. Modo API exibe quote/dispatch/cancel/tracking/reconcile apenas habilitados quando o banco informa provider API ativo. Sem configuração, os controles ficam desativados e explicam o estado. O registro manual não chama qualquer plataforma.
 
-| Plataforma | Pedidos comerciais | Logística externa | Situação nesta versão |
+## Providers
+
+| Provider | Comercial/pedidos | Logística externa | Estado |
 |---|---|---|---|
-| iFood | Laboratório local legado; protocolo comercial não habilitado | Documentação oficial cobre disponibilidade/cotação, solicitação assíncrona de entregador para pedido iFood existente, cancelamento antes da aceitação, tracking e eventos | Adapter de transporte isolado e testes de contrato locais. Ainda não conectado ao serviço/outbox, não habilitado no catálogo operacional e sem teste com credencial ou homologação. API **não configurada**. |
-| 99Food | Boundary local bloqueado | Nenhuma documentação oficial de logística foi encontrada nesta auditoria | **Bloqueado por documentação** para capacidades logísticas; sem chamadas inventadas. |
-| Keeta | APIs oficiais de pedidos e eventos existem | Merchant SelfDelivery informa despacho/entrega/atualização do courier do próprio comerciante. Não foi encontrada API oficial para contratar courier Keeta/3PL de fora do fluxo de pedidos | Capacidades de logística contratada **não documentadas**. Não tratar API comercial ou autoentrega como contratação logística externa. |
+| iFood | Pedidos existentes permanecem sob `Order.source`; o adapter exige referência externa UUID compatível com o contrato já auditado. | Adapter registrado para quote, requestDriver, cancel e tracking. `202` permanece `requested/pending`. | Preparado com registry/worker/outbox; tráfego fail-closed. Credencial resolver, merchant authorization, elegibilidade/contrato e homologação ausentes. Webhook ingress ainda não está conectado ao servidor. |
+| 99Food | Boundary comercial separado. | Nenhuma documentação oficial logística comprovada no Registro 0082. | Sem adapter e sem capability. `NOT_DOCUMENTED / BLOCKED`. |
+| Keeta | APIs de pedidos/self-delivery não comprovam courier contratado. | Nenhuma API oficial comprovada para contratar courier externo no domínio deste fluxo. | Sem adapter. `NOT_DOCUMENTED / BLOCKED`. |
 
-O catálogo comercial de `integrations` permanece independente do catálogo `logistics_providers`. Ser uma origem suportada comercialmente não ativa cotação, despacho, tracking nem webhook logístico.
+## API e semântica do worker
 
-## Adapter iFood
+Rotas em `/api/logistics/` usam a identidade e transação tenant autenticadas. O outbox de provider é separado de `sync_outbox` porque side effects remotos têm retry e resultado ambíguo próprios. Seleção de quote e criação do fulfillment ocorrem na mesma transação. O dispatch grava `DispatchAttempt` e command outbox juntos; o worker só chama adapter depois do commit.
 
-Código: `backend/logistics/providers/ifood.js`. As operações aceitam IDs de pedido iFood já existentes, representados no modelo interno pelo `Order.externalId`; não transformam pedido próprio em pedido On-Demand fora da plataforma. O adapter normaliza a cotação para minor units BRL, preserva expiração e não inventa ETA a partir do tempo de preparação. `requestDriver` e cancelamento retornam apenas `requested/pending` após HTTP 202; confirmação depende de evento posterior.
+`scripts/provider-worker.js` é processo server-side separado. Ele exige `ROTAMOTO_PROVIDER_WORKER_ENABLED=true`, uma allowlist explícita `ROTAMOTO_PROVIDER_WORKER_TENANTS`, role `rotamoto_provider_worker`, role `rotamoto_provider_resolver`, senha resolvida pelo keystore e pool/TLS configurados. O worker não usa migrator. A role worker não recebe `secret_ref`; a role resolver lê só a coluna necessária e é tenant-scoped por RLS. Migration 0023 revoga de `rotamoto_app` o claim SECURITY DEFINER que poderia devolver comandos de outro tenant.
 
-Credenciais chegam por `credentialResolver(companyId, 'ifood')`, uma fronteira injetada do backend. O adapter não lê banco nem `secret_ref`, não recebe credenciais pelo frontend e não persiste token. A integração ainda precisa de um resolver administrativo autorizado ligado ao secret provider, configuração/homologação comercial e worker transacional antes de qualquer capacidade poder ser ligada.
+As roles dedicadas não existem no PostgreSQL oficial deste host. O worker e o ingress não devem ser iniciados até um DBA provisioná-las conforme `backend/postgres/admin/provider-runtime-roles.md` e gravar as respectivas referências no secret store. A ausência de role/segredo mantém chamadas bloqueadas. Mesmo após provisionadas, configuração iFood, `api_enabled` e capabilities não são promovidas automaticamente.
 
-Timeout, erro de rede, 401, 403, 429, 5xx, respostas JSON inválidas e schemas inesperados produzem erros de código/classes sanitizados. Nenhum corpo de erro, endereço, telefone, nome, header Authorization ou token é retornado nos erros. O adapter não repete despacho/cancelamento: depois de timeout o resultado remoto é ambíguo e exige reconciliação. As operações GET podem ser reexecutadas pelo chamador com limite/backoff operacional.
+Entrega é at-least-once com chave local estável. Não existe exactly-once. Backoff limitado/jitter é persistido para falhas transitórias e rate limit. Falha AUTH/permanente/conflito não repete automaticamente. Timeout de dispatch/cancel e lease expirada viram `unknown_outcome`/revisão humana; nunca há retry cego. HTTP 202 confirma somente que a requisição foi aceita para processamento, não que courier foi alocado nem que cancelamento foi concluído.
 
-Os dados de tracking do iFood são snapshots do provider, não `LocationPoint` do Motoboy. Courier externo não vira `Driver`. HMAC-SHA256 do webhook iFood é validável sobre o corpo bruto via `verifyWebhookSignature`; ainda falta endpoint público dedicado, persistência/idempotência do evento e fila de processamento. Não há webhook operacional ativo nesta versão.
+## Quote, dispatch, tracking e cancelamento
 
-## Quote e lifecycle
+Quote persiste provider, ID externo, moeda, valor em minor units, ETA somente quando fornecido, validade, timestamps e versão. Expirada não pode ser selecionada. Valores permanecem na moeda nativa; preço ausente não vira zero.
 
-O adapter aceita somente quote ainda válida no instante da resposta, identifica a referência externa e registra moeda explícita BRL. Uma ausência de preço nunca vira zero. Cotação, seleção persistida com expiração, fila outbox, worker de despacho, retry durável e reconciliação ainda não estão ligados ao fluxo operacional; não use esse módulo diretamente em operação de restaurante. A seleção manual e o fallback manual/frota própria seguem disponíveis conforme o lifecycle de Delivery.
+Dispatch usa quote selecionada, cria `DispatchAttempt` e command no mesmo commit. Estado `requested`/`pending` não promove a Delivery para execução confirmada. Tracking persiste somente snapshot mínimo e timestamp de proveniência; coordenadas externas não são armazenadas nem encaminhadas ao Motoboy. Cancelamento é command assíncrono; resposta 202 não marca fulfillment como cancelado.
 
-### Fundação persistente 0020–0022 (campanha 0083)
+Fallback para manual/frota própria continua disponível quando a lifecycle da Delivery permite. A interface não cria Driver externo e respeita rota ativa e reconciliação necessária antes da reatribuição.
 
-A migration `0020_provider_integration_runtime` acrescenta `provider_quotes`, `provider_command_outbox`, `provider_event_inbox` e `provider_tracking_snapshots`. As quatro tabelas são tenant-scoped, usam RLS e FORCE RLS. O outbox de provider é separado de `sync_outbox`, porque comandos remotos têm retry, lease e resultado ambíguo próprios. O claim usa `FOR UPDATE SKIP LOCKED` e só entrega comandos de providers explicitamente habilitados em modo API. `api_enabled` começa falso; nesta versão nenhum provider logístico tem API habilitada no fluxo operacional.
+## Webhook, inbox e reconciliação
 
-`backend/logistics/provider-integration.js` contém criação idempotente de comandos, validação de payload minimizado, persistência normalizada de quote, seleção com optimistic version/expiração e inbox com digest e deduplicação. `backend/logistics/provider-worker.js` contém o loop de worker, lease, resolução de adapter injetada, retries limitados com jitter determinístico e tratamento de timeout de dispatch/cancel como `UNKNOWN_OUTCOME`. As migrations 0021–0022 tornam o claim tenant-scoped e transformam lease expirada de despacho/cancelamento em estado ambíguo, sem repetição cega. O worker não é iniciado pelo servidor HTTP nesta campanha. Uma conexão de serviço isolada e um resolver de segredo de produção continuam necessários antes de processar tráfego externo; não conceda SELECT de `secret_ref` ao runtime para contornar esse limite.
+O adapter iFood tem verificação HMAC-SHA256 e normalização estrita, mas ainda não existe endpoint HTTP de webhook ligado ao servidor nem resolução autenticada de tenant/provider por rota externa. `provider_event_inbox` persiste somente eventos normalizados/digest, sem body bruto. A ingestão genérica exige company/provider resolvidos por boundary confiável; ela não deve ser exposta como endpoint aceitando `companyId` do payload.
 
-O helper de adapter fake existe somente em `tests/helpers` e não é importado pelo servidor. Ele é exclusivo de testes. O outbox entrega at-least-once; chaves locais estáveis evitam duplicação local, enquanto resultado remoto ambíguo exige reconciliação. Não há promessa exactly-once.
+O contrato consultado não fornece mecanismo anti-replay por timestamp para este adapter. Não invente header de timestamp. Quando endpoint ingress for ativado com rota/provider secret configurados, usar HMAC sobre bytes brutos e unicidade de ID de evento/digest; evento fora de ordem precisa comparar timestamp fornecido pelo evento e jamais retroceder projeção. No estado atual, webhook é `OPEN`, sem recebimento externo.
 
-As tabelas e serviços persistentes ainda não estão ligados aos endpoints de operação, projeção de eventos/webhook ou UI/analytics do Restaurante. Para a campanha 0083, portanto, quotes e comandos API não estão disponíveis aos operadores. A migration prepara armazenamento e worker, mas não deve ser interpretada como ativação end-to-end do provider.
+Reconciliação está exposta na API como command, mas polling externo e projeção assíncrona de eventos ainda dependem de endpoint/capabilities documentados e worker habilitado. Divergência deve ser registrada para operador, não sobrescrita silenciosamente.
 
-## Credenciais e dados
+## Configuração e credenciais
 
-Não colocar segredo em configuração JSON, IndexedDB, localStorage, fixtures de Git ou log. O runtime não pode ler `logistics_providers.secret_ref` diretamente por privilégio PostgreSQL. A credential resolver precisa obter a referência por uma camada backend autorizada e ler o segredo pelo keystore. O adapter limita tamanho de resposta externa, valida schemas e não guarda conteúdo bruto.
+Admin pode editar nome, modo manual/API não ativado e configuração não secreta. A listagem informa `apiEnabled`, credencial configurada (derivada apenas do gate persistido), webhook e último teste sem retornar segredo ou `secret_ref`. A tela nunca recebe token/segredo.
+
+`rotamoto_app` não tem SELECT/UPDATE de `logistics_providers.secret_ref`. Não use role migrator em worker/runtime. O adapter recebe credenciais somente da camada de keystore. O fake provider está sob `tests/` e não é incluído no registry de produção nem no script operacional.
+
+## Analytics e retenção
+
+Analytics informa volume manual/própria/provider e contagens persistidas de quotes, seleção/expiração, dispatch confirmado/falho/desconhecido, cancelamentos desconhecidos, retries, reconciliação e revisão humana. Dispatch confirmado conta tentativa API vinculada confirmada; `202` não entra como confirmação. Os totais são acumulados por provider; não se calcula lucro/margem e não há conversão de moeda.
+
+Quotes, commands, eventos e snapshots têm retenção operacional; ainda não há cleanup automático. Remoção deve aguardar definição operacional e preservar trilha de auditoria/idempotência/reconciliação. A inbox guarda apenas schema normalizado e digest, não payload bruto/PII.
 
 ## Pesquisa oficial consultada em 2026-10-06
 
-- iFood Shipping: [orders iFood](https://developer.ifood.com.br/en-US/docs/food/guides/modules/shipping/inside), [orders externos / On-Demand](https://developer.ifood.com.br/en-US/docs/food/guides/modules/shipping/outside), [endpoints](https://developer.ifood.com.br/en-US/docs/food/guides/modules/shipping/endpoints), [introdução e requisitos de contrato/eligibilidade](https://developer.ifood.com.br/en-US/docs/food/guides/modules/shipping/intro).
-- iFood auth centralizada: [OAuth client_credentials](https://developer.ifood.com.br/en-US/docs/food/guides/modules/authentication/centralized). A documentação requer credenciais do Developer Portal; as capabilities dependem de permissões concedidas e contratação/eligibilidade.
-- iFood eventos: [webhook e polling](https://developer.ifood.com.br/en-US/docs/food/guides/modules/events/webhook-overview), [assinatura HMAC](https://developer.ifood.com.br/en-US/docs/food/guides/modules/events/webhook-signature), [requisitos de homologação](https://developer.ifood.com.br/en-US/docs/food/guides/modules/events/homologation). Webhook é at-least-once e sem ACK; polling pode ser usado para reconciliação.
-- iFood rate limit: [limites publicados por endpoint](https://developer.ifood.com.br/en-US/docs/getting-started/documentation/rate-limit/). Os valores podem mudar; o adapter não faz polling nem define scheduler.
-- Keeta: [Open Delivery API](https://api-docs.mykeeta.com/apis/opendelivery/section/introduction-to-test-store-management), [Keeta Merchant SelfDelivery/order API](https://api-docs.mykeeta.com/apis/standard/order). Há autenticação e autorização por portal/loja, homologação/test store e eventos; a documentação localizada não comprova serviço de courier contratado externo para esse domínio.
-- 99Food: pesquisa restrita a portal/documentação oficial não localizou documentação de developer/logística acessível/publicada. Estado `NOT_DOCUMENTED`, não prova de que o serviço não exista em contrato privado.
+- iFood Shipping: [orders iFood](https://developer.ifood.com.br/en-US/docs/food/guides/modules/shipping/inside), [orders externos / On-Demand](https://developer.ifood.com.br/en-US/docs/food/guides/modules/shipping/outside), [endpoints](https://developer.ifood.com.br/en-US/docs/food/guides/modules/shipping/endpoints), [requisitos de contrato/eligibilidade](https://developer.ifood.com.br/en-US/docs/food/guides/modules/shipping/intro).
+- OAuth centralizado: [client_credentials](https://developer.ifood.com.br/en-US/docs/food/guides/modules/authentication/centralized). Credenciais são emitidas pelo portal; autorização/permissões dependem de app e merchant.
+- Eventos: [webhook/polling](https://developer.ifood.com.br/en-US/docs/food/guides/modules/events/webhook-overview), [HMAC](https://developer.ifood.com.br/en-US/docs/food/guides/modules/events/webhook-signature), [homologação](https://developer.ifood.com.br/en-US/docs/food/guides/modules/events/homologation). Webhook é at-least-once; polling aparece como caminho de reconciliação na documentação consultada.
+- [Rate limits iFood](https://developer.ifood.com.br/en-US/docs/getting-started/documentation/rate-limit/); valores precisam ser revalidados antes de ativação.
+- Keeta: [Open Delivery](https://api-docs.mykeeta.com/apis/opendelivery/section/introduction-to-test-store-management), [Merchant SelfDelivery/order API](https://api-docs.mykeeta.com/apis/standard/order). A fonte localizada não comprova contratação de courier externo.
+- 99Food: portal/documentação oficial de logística não acessível/localizada no Registro 0082; isso não prova inexistência de oferta em contrato privado.
 
-## Capacidades e classificação
+## Classificação
 
-- **IMPLEMENTADO:** boundary iFood de quote, dispatch request, cancel request, tracking, normalização de eventos e validação HMAC; apenas testável por mocks locais.
-- **SIMULADO PARA TESTE:** fixtures determinísticas de responses e eventos no teste de contrato; não são respostas de plataforma.
-- **BLOQUEADO POR CREDENCIAL:** chamadas reais iFood, até credencial/tenant authorization e resolver de keystore existirem.
-- **BLOQUEADO POR CONTRATO COMERCIAL:** contratação/eligibilidade, certificação e homologação iFood.
-- **BLOQUEADO POR DOCUMENTAÇÃO:** 99Food logística; API logística de Keeta para contratar terceiros.
-- **NÃO SUPORTADO:** prova de entrega logística iFood no fluxo documentado consultado; courier externo como Driver interno; atribuir ao Motoboy localização de fornecedor.
-- **OPEN:** ligar adapter ao quote service/outbox/retry worker, persistir quotes com TTL, integrar webhook iFood com assinatura + idempotência/tenant resolution, desenhar configuração de secret_ref por keystore e entregar operação UI/analytics de API após testes homologados.
+- **IMPLEMENTADO:** endpoints autenticados de integração, persistência canônica existente (0020–0022), criação de commands no outbox, registry iFood, worker separado com pool least-privilege, retry/unknown outcome, quote/dispatch/cancel/tracking/reconcile UI, métricas agregadas, audit seguro e proteção do claim em 0023.
+- **SIMULADO PARA TESTE:** adapter fake apenas em `tests/helpers`; registry e adapters são testados sem tráfego externo.
+- **BLOQUEADO POR CREDENCIAL/INFRA:** ativar worker requer roles `rotamoto_provider_worker`/`rotamoto_provider_resolver` e referências de senha/keystore ainda ausentes neste host.
+- **BLOQUEADO POR CONTRATO COMERCIAL:** elegibilidade, autorização merchant e homologação iFood.
+- **BLOQUEADO POR DOCUMENTAÇÃO:** logística 99Food e courier externo Keeta.
+- **OPEN:** ingress HMAC HTTP com resolução segura de tenant/provider; processamento assíncrono de eventos e proteção fora de ordem; provisionar roles dedicadas e executar fluxo interno de quote→dispatch→event→tracking→cancel/reconcile em PostgreSQL com Fake; Browser QA autenticado.
+- **NÃO SUPORTADO:** proof logístico iFood no fluxo documentado; transformar courier externo em Driver; misturar localização externa com Motoboy.

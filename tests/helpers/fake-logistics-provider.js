@@ -12,7 +12,7 @@ function createFakeLogisticsProvider({ outcomes = [], clock = () => Date.now() }
     async quote({ commandId }) {
       const id = crypto.createHash('sha256').update(commandId).digest('hex').slice(0, 32);
       return { provider: 'test_fake', externalQuoteReference: `${id.slice(0,8)}-${id.slice(8,12)}-4${id.slice(13,16)}-8${id.slice(17,20)}-${id.slice(20,32)}`,
-        currency: 'BRL', amountMinor: 1290, issuedAt: new Date(clock()).toISOString(), expiresAt: new Date(clock() + 60000).toISOString(), etaAt: null };
+        currency: 'BRL', amountMinor: 1290, createdAt: new Date(clock()).toISOString(), expiresAt: new Date(clock() + 60000).toISOString(), etaAt: null };
     },
     async dispatch(context) {
       const result = outcome();
@@ -24,7 +24,7 @@ function createFakeLogisticsProvider({ outcomes = [], clock = () => Date.now() }
       return { status: 'confirmed', externalReference: `test-${context.commandId}` };
     },
     async cancel() { const result = outcome(); if (result === 'timeout') throw Object.assign(new Error('test timeout'), { classification: 'UNKNOWN_OUTCOME' }); return { status: result === 'failure' ? 'rejected' : 'pending' }; },
-    async tracking() { return { status: 'in_progress', etaAt: new Date(clock() + 300000).toISOString(), provenance: 'external_provider' }; },
+    async tracking() { return { provider: 'test_fake', status: 'in_progress', etaAt: new Date(clock() + 300000).toISOString(), trackedAt: new Date(clock()).toISOString(), provenance: 'external_provider' }; },
     async reconcile() { return { status: 'confirmed' }; },
     events
   });

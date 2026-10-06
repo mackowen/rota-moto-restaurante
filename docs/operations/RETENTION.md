@@ -11,6 +11,7 @@ ou política de exclusão automática.
 | audit_log | trilha de segurança/admin append-only no PostgreSQL | Integridade permanente no desenho atual; prazo/arquivamento precisa de decisão. Nunca atualizar/apagar pela role runtime. |
 | logs HTTP | request ID, rota, status, duração e código sanitizado; sem body/credenciais | Rotação/capacidade e prazo devem ser definidos pelo operador; não incluir payload. |
 | sync inbox/outbox | recibos, IDs, status, conflito e payload operacional tenant-scoped | Manter pendente, conflito, tombstone e idempotência; política de compactação já documentada no produto é aplicável apenas ao que for seguro. Retenção server-side depende de política. |
+| logistics provider quotes/commands/events | preço/moeda/ETA normalizados, chaves idempotentes, digests HMAC e status sanitizados; tenant-scoped | Quotes vencem para seleção pelo `expires_at`, mas permanecem auditáveis. Comandos e eventos não são apagados automaticamente; manter evidência de retry/reconciliação e unicidade de evento. Tracking guarda apenas o snapshot mais recente por fulfillment. Definir prazo de arquivo/eliminação antes de implementar cleanup. |
 | LocalIdMap/aliases | IDs necessários para retry/reconciliação | Não remover enquanto outbox, eventos ou tombstones puderem referenciá-los; horizonte de reinstalação/recovery precisa definição. |
 | backups | podem conter todos os dados locais/PG e PII | Cópias plaintext sensíveis com acesso/retention controlados; prazo, cifragem, localização e destruição dependem de decisão operacional/legal. |
 

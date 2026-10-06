@@ -57,6 +57,13 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         { re: new RegExp(`^/api/logistics/providers/(${UUID})$`, 'u'), methods: ['PATCH'] },
         { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/fulfillment$`, 'u'), methods: ['GET','PUT','PATCH'] },
         { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/dispatch-attempts$`, 'u'), methods: ['POST'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-quotes$`, 'u'), methods: ['GET','POST'] },
+        { re: new RegExp(`^/api/logistics/provider-quotes/(${UUID})/select$`, 'u'), methods: ['POST'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-dispatch$`, 'u'), methods: ['POST'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-cancel$`, 'u'), methods: ['POST'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-tracking$`, 'u'), methods: ['POST'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-reconcile$`, 'u'), methods: ['POST'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-commands$`, 'u'), methods: ['GET'] },
         { re: /^\/api\/logistics\/analytics$/u, methods: ['GET'] }
       ];
       const route = routes.map(item => ({ ...item, match: item.re.exec(url.pathname) })).find(item => item.match);
@@ -74,13 +81,26 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         }
         const body = write ? await readJson(req) : null;
         const path = url.pathname;
+        let match;
         if (path === '/api/logistics/providers') return req.method === 'GET' ? logisticsService.listProviders(client, principal) : logisticsService.createProvider(client, principal, body);
         if (path === '/api/logistics/internal-provider') {
           if (Object.keys(body).length) error('INVALID_INPUT', 'Objeto vazio obrigatório.');
           return { provider: await logisticsService.ensureInternalProvider(client, principal) };
         }
         if (path === '/api/logistics/analytics') return logisticsService.analytics(client, principal);
-        let match = /^\/api\/logistics\/providers\/([0-9a-f-]{36})$/u.exec(path);
+        match = new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-quotes$`, 'u').exec(path);
+        if (match) return req.method === 'GET' ? logisticsService.listProviderQuotes(client, principal, match[1])
+          : logisticsService.requestProviderQuote(client, principal, match[1], body);
+        match = new RegExp(`^/api/logistics/provider-quotes/(${UUID})/select$`, 'u').exec(path);
+        if (match) return logisticsService.selectProviderQuote(client, principal, body.deliveryId, { ...body, quoteId: match[1] });
+        for (const [suffix, method] of [['provider-dispatch','requestProviderDispatch'],['provider-cancel','requestProviderCancel'],
+          ['provider-tracking','requestProviderTracking'],['provider-reconcile','requestProviderReconciliation']]) {
+          match = new RegExp(`^/api/logistics/deliveries/(${UUID})/${suffix}$`, 'u').exec(path);
+          if (match) return logisticsService[method](client, principal, match[1], body);
+        }
+        match = new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-commands$`, 'u').exec(path);
+        if (match) return logisticsService.getProviderCommands(client, principal, match[1]);
+        match = /^\/api\/logistics\/providers\/([0-9a-f-]{36})$/u.exec(path);
         if (match) return logisticsService.updateProvider(client, principal, match[1], body);
         match = new RegExp(`^/api/logistics/deliveries/(${UUID})/fulfillment$`, 'u').exec(path);
         if (match) {

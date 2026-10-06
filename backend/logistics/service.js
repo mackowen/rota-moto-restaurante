@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { uuidV7 } = require('../identity/service');
 const D = require('./domain');
+const { createProviderIntegrationService } = require('./provider-integration');
 
 class LogisticsServiceError extends Error {
   constructor(code, message) { super(message); this.name = 'LogisticsServiceError'; this.code = code; }
@@ -11,6 +12,9 @@ function fail(code, message) { throw new LogisticsServiceError(code, message); }
 function asProvider(row) {
   return { id: row.provider_id, companyId: row.company_id, code: row.code, displayName: row.display_name,
     class: row.provider_class, enabled: row.enabled, capabilities: row.capabilities,
+    integrationMode: row.integration_mode || 'manual', apiEnabled: row.api_enabled === true,
+    credentialConfigured: row.api_enabled === true, webhookConfigured: false,
+    lastConnectionTestAt: row.last_connection_test_at || null, lastConnectionTestStatus: row.last_connection_test_status || 'not_configured',
     configuration: row.configuration, version: row.version, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function asFulfillment(row) {
@@ -25,28 +29,28 @@ function asFulfillment(row) {
 const FIELDS = `company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,external_reference,status,selected_at,
  selected_by,revision,eta_at,estimated_cost_minor,estimated_cost_currency,final_cost_minor,final_cost_currency,updated_at`;
 
-function createLogisticsService({ clock = () => new Date() } = {}) {
+function createLogisticsService({ clock = () => new Date(), providerIntegration = createProviderIntegrationService({ clock }) } = {}) {
   async function audit(client, principal, action, resource, id, details) {
     await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
       VALUES($1,$2,$3,'user',$4,$5,$6,$7::jsonb)`,
     [uuidV7(clock().getTime()), principal.company_id, principal.user_id, action, resource, id, JSON.stringify(details)]);
   }
   async function ensureInternalProvider(client, principal) {
-    const existing = await client.query(`SELECT provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at
+    const existing = await client.query(`SELECT provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at,integration_mode,api_enabled,last_connection_test_at,last_connection_test_status
       FROM rotamoto.logistics_providers WHERE company_id=$1 AND code='internal_fleet'`, [principal.company_id]);
     if (existing.rowCount) return asProvider(existing.rows[0]);
     const id = uuidV7(clock().getTime());
     const inserted = await client.query(`INSERT INTO rotamoto.logistics_providers
       (company_id,provider_id,code,display_name,provider_class,enabled,capabilities,created_by,updated_by)
       VALUES($1,$2,'internal_fleet','Frota própria','internal_fleet',true,ARRAY['manual_assignment']::text[],$3,$3)
-      RETURNING provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at`,
+      RETURNING provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at,integration_mode,api_enabled,last_connection_test_at,last_connection_test_status`,
     [principal.company_id, id, principal.user_id]);
     await audit(client, principal, 'logistics.provider.internal_initialized', 'logistics_provider', id,
       { code: 'internal_fleet', capabilities: ['manual_assignment'] });
     return asProvider(inserted.rows[0]);
   }
   async function listProviders(client, principal) {
-    const result = await client.query(`SELECT provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at
+    const result = await client.query(`SELECT provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at,integration_mode,api_enabled,last_connection_test_at,last_connection_test_status
       FROM rotamoto.logistics_providers WHERE company_id=$1 ORDER BY provider_class,display_name,provider_id`, [principal.company_id]);
     return { providers: result.rows.map(asProvider) };
   }
@@ -71,21 +75,23 @@ function createLogisticsService({ clock = () => new Date() } = {}) {
   }
   async function updateProvider(client, principal, id, input) {
     D.uuid(id, 'providerId');
-    const allowed = new Set(['displayName', 'enabled', 'configuration', 'expectedVersion']);
+    const allowed = new Set(['displayName', 'enabled', 'configuration', 'integrationMode', 'expectedVersion']);
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !allowed.has(key)) ||
         !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) fail('INVALID_INPUT', 'Atualização de provider inválida.');
     const name = input.displayName === undefined ? null : D.validateName(input.displayName);
     if (input.enabled !== undefined && typeof input.enabled !== 'boolean') fail('INVALID_INPUT', 'enabled inválido.');
+    if (input.integrationMode !== undefined && !['manual','api'].includes(input.integrationMode)) fail('INVALID_INPUT', 'Modo de integração inválido.');
     const configuration = input.configuration === undefined ? null : D.validateConfiguration(input.configuration);
     const result = await client.query(`UPDATE rotamoto.logistics_providers SET
         display_name=COALESCE($4,display_name),enabled=COALESCE($5,enabled),configuration=COALESCE($6::jsonb,configuration),
-        version=version+1,updated_by=$3,updated_at=now()
-      WHERE company_id=$1 AND provider_id=$2 AND version=$7 AND provider_class<>'internal_fleet'
-      RETURNING provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at`,
-    [principal.company_id, id, principal.user_id, name, input.enabled ?? null, configuration === null ? null : JSON.stringify(configuration), input.expectedVersion]);
+        integration_mode=COALESCE($7,integration_mode),version=version+1,updated_by=$3,updated_at=now()
+      WHERE company_id=$1 AND provider_id=$2 AND version=$8 AND provider_class<>'internal_fleet'
+        AND (COALESCE($7,integration_mode)<>'api' OR code='ifood')
+      RETURNING provider_id,company_id,code,display_name,provider_class,enabled,capabilities,configuration,version,created_at,updated_at,integration_mode,api_enabled,last_connection_test_at,last_connection_test_status`,
+    [principal.company_id, id, principal.user_id, name, input.enabled ?? null, configuration === null ? null : JSON.stringify(configuration), input.integrationMode ?? null, input.expectedVersion]);
     if (!result.rowCount) fail('REVISION_CONFLICT', 'Provider inexistente ou alterado por outra sessão.');
     await audit(client, principal, 'logistics.provider.updated', 'logistics_provider', id,
-      { version: result.rows[0].version, enabled: result.rows[0].enabled });
+      { version: result.rows[0].version, enabled: result.rows[0].enabled, integrationMode: result.rows[0].integration_mode });
     return { provider: asProvider(result.rows[0]) };
   }
   async function getFulfillment(client, principal, deliveryId) {
@@ -101,11 +107,16 @@ function createLogisticsService({ clock = () => new Date() } = {}) {
     const orderId = delivery.rows[0].payload.orderId;
     const order = orderId ? await client.query(`SELECT payload FROM rotamoto.domain_records
       WHERE company_id=$1 AND record_id=$2 AND entity_type='Order' AND deleted_at IS NULL`, [principal.company_id, orderId]) : { rows: [] };
+    const tracking = await client.query(`SELECT s.fulfillment_id,s.provider_id,s.status,s.eta_at,s.provider_updated_at,s.provenance
+      FROM rotamoto.provider_tracking_snapshots s WHERE s.company_id=$1 AND s.delivery_id=$2 ORDER BY s.provider_updated_at DESC NULLS LAST LIMIT 1`,
+    [principal.company_id,deliveryId]);
     return { delivery: { id: deliveryId, status: delivery.rows[0].payload.status, version: delivery.rows[0].version,
       driverId: delivery.rows[0].payload.driverId || null, orderSource: order.rows[0]?.payload?.source ?? null }, fulfillments: rows.rows.map(asFulfillment), attempts: attempts.rows.map(row => ({
       id: row.attempt_id, fulfillmentId: row.fulfillment_id, providerId: row.provider_id, status: row.status,
       requestedAt: row.requested_at, respondedAt: row.responded_at, externalReference: row.external_reference,
-      errorCode: row.error_code, retryCount: row.retry_count })) };
+      errorCode: row.error_code, retryCount: row.retry_count })), tracking: tracking.rows[0] ? { providerId: tracking.rows[0].provider_id,
+        status: tracking.rows[0].status, etaAt: tracking.rows[0].eta_at, updatedAt: tracking.rows[0].provider_updated_at,
+        provenance: tracking.rows[0].provenance } : null };
   }
   async function emitDelivery(client, principal, row, oldDriverId = null) {
     const installation = await client.query(`SELECT id FROM rotamoto.sync_installations
@@ -284,12 +295,128 @@ function createLogisticsService({ clock = () => new Date() } = {}) {
         ORDER BY f.final_cost_currency) FILTER (WHERE f.final_cost_minor IS NOT NULL),'[]'::jsonb) AS reconciled_costs
       FROM rotamoto.delivery_fulfillments f JOIN rotamoto.logistics_providers p USING(company_id,provider_id)
       WHERE f.company_id=$1 AND f.status<>'superseded' GROUP BY p.provider_class,f.provider_id,p.code,p.display_name ORDER BY p.provider_class,p.display_name`, [principal.company_id]);
+    const integration = await client.query(`WITH commands AS (
+      SELECT c.provider_id,count(*) FILTER(WHERE operation='QUOTE_REQUEST')::int AS quote_requests,
+        count(*) FILTER(WHERE operation='DISPATCH_REQUEST')::int AS dispatch_requested,
+        count(*) FILTER(WHERE operation='DISPATCH_REQUEST' AND c.status='rejected')::int AS dispatch_failed,
+        count(*) FILTER(WHERE operation='DISPATCH_REQUEST' AND c.status='unknown_outcome')::int AS dispatch_unknown,
+        count(*) FILTER(WHERE operation='CANCEL_REQUEST')::int AS cancellation_requests,
+        count(*) FILTER(WHERE operation='CANCEL_REQUEST' AND c.status='unknown_outcome')::int AS cancellation_unknown,
+        count(*) FILTER(WHERE operation='RECONCILE')::int AS reconciliation_requests,
+        count(*) FILTER(WHERE c.status='needs_review')::int AS operator_review,
+        COALESCE(sum(GREATEST(attempts-1,0)),0)::int AS retries,
+        count(a.attempt_id) FILTER(WHERE operation='DISPATCH_REQUEST' AND a.status IN ('accepted','completed'))::int AS dispatch_confirmed
+      FROM rotamoto.provider_command_outbox c LEFT JOIN rotamoto.dispatch_attempts a
+        ON a.company_id=c.company_id AND a.attempt_id=(c.payload->>'dispatchAttemptId')::uuid
+      WHERE c.company_id=$1 GROUP BY c.provider_id
+    ), quotes AS (
+      SELECT provider_id,count(*)::int AS received,count(*) FILTER(WHERE status='selected')::int AS selected,
+        count(*) FILTER(WHERE expires_at<=now() AND status<>'selected')::int AS expired
+      FROM rotamoto.provider_quotes WHERE company_id=$1 GROUP BY provider_id
+    ) SELECT p.provider_id,p.code,COALESCE(c.quote_requests,0)::int AS quote_requests,
+      COALESCE(q.received,0)::int AS quotes_received,COALESCE(q.selected,0)::int AS quotes_selected,COALESCE(q.expired,0)::int AS quotes_expired,
+      COALESCE(c.dispatch_requested,0)::int AS dispatch_requested,COALESCE(c.dispatch_confirmed,0)::int AS dispatch_confirmed,
+      COALESCE(c.dispatch_failed,0)::int AS dispatch_failed,COALESCE(c.dispatch_unknown,0)::int AS dispatch_unknown,
+      COALESCE(c.cancellation_requests,0)::int AS cancellation_requests,COALESCE(c.cancellation_unknown,0)::int AS cancellation_unknown,
+      COALESCE(c.retries,0)::int AS retries,COALESCE(c.reconciliation_requests,0)::int AS reconciliation_requests,
+      COALESCE(c.operator_review,0)::int AS operator_review
+      FROM rotamoto.logistics_providers p LEFT JOIN commands c USING(provider_id) LEFT JOIN quotes q USING(provider_id)
+      WHERE p.company_id=$1 ORDER BY p.code`, [principal.company_id]);
     return { providers: result.rows.map(row => ({ providerId: row.provider_id, code: row.code, displayName: row.display_name,
       class: row.provider_class, allocations: row.allocations, internal: row.internal_count, external: row.external_count,
       completed: row.completed_count, estimatedCostCount: row.estimated_cost_count, estimatedCostCoverage: row.allocations ? row.estimated_cost_count / row.allocations : null,
       estimatedCosts: row.estimated_costs, reconciledCostCount: row.reconciled_cost_count,
-      reconciledCostCoverage: row.allocations ? row.reconciled_cost_count / row.allocations : null, reconciledCosts: row.reconciled_costs })) };
+      reconciledCostCoverage: row.allocations ? row.reconciled_cost_count / row.allocations : null, reconciledCosts: row.reconciled_costs })),
+      integrations: integration.rows.map(row => ({ providerId: row.provider_id, code: row.code, quoteRequests: row.quote_requests,
+        quotesReceived: row.quotes_received, quotesSelected: row.quotes_selected, quotesExpired: row.quotes_expired,
+        dispatchRequested: row.dispatch_requested, dispatchConfirmed: row.dispatch_confirmed, dispatchFailed: row.dispatch_failed,
+        dispatchUnknown: row.dispatch_unknown, cancellationRequests: row.cancellation_requests,
+        cancellationUnknown: row.cancellation_unknown, retries: row.retries, reconciliationRequests: row.reconciliation_requests,
+        operatorReview: row.operator_review })) };
   }
-  return Object.freeze({ ensureInternalProvider, listProviders, createProvider, updateProvider, getFulfillment, selectFulfillment, requestDispatch, updateFulfillment, analytics });
+  async function requestProviderQuote(client, principal, deliveryId, input) {
+    D.uuid(deliveryId, 'deliveryId'); D.uuid(input?.providerId, 'providerId');
+    if (typeof input?.idempotencyKey !== 'string' || input.idempotencyKey.length < 16 || input.idempotencyKey.length > 128) fail('INVALID_INPUT', 'Chave de cotação inválida.');
+    const delivery = await client.query(`SELECT 1 FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' AND deleted_at IS NULL`, [principal.company_id, deliveryId]);
+    if (!delivery.rowCount) fail('NOT_FOUND', 'Entrega não encontrada.');
+    const queued = await providerIntegration.enqueue(client, principal, { providerId: input.providerId, deliveryId, operation: 'QUOTE_REQUEST', requestKey: input.idempotencyKey, payload: { deliveryId } });
+    await audit(client, principal, 'logistics.provider.quote_requested', 'provider_command', queued.command.command_id,
+      { deliveryId, providerId: input.providerId, duplicate: queued.duplicate });
+    return { commandId: queued.command.command_id, status: queued.command.status, duplicate: queued.duplicate };
+  }
+  async function listProviderQuotes(client, principal, deliveryId) {
+    D.uuid(deliveryId, 'deliveryId');
+    const result = await client.query(`SELECT q.quote_id,q.provider_id,p.code,p.display_name,q.external_quote_id,q.status,q.currency,q.amount_minor,q.eta_at,q.issued_at,q.expires_at,q.selected_at,q.version
+      FROM rotamoto.provider_quotes q JOIN rotamoto.logistics_providers p USING(company_id,provider_id)
+      WHERE q.company_id=$1 AND q.delivery_id=$2 ORDER BY q.created_at DESC LIMIT 50`, [principal.company_id, deliveryId]);
+    return { quotes: result.rows.map(row => ({ id: row.quote_id, providerId: row.provider_id, provider: row.code, providerName: row.display_name,
+      status: row.status, currency: row.currency, amountMinor: Number(row.amount_minor), etaAt: row.eta_at, issuedAt: row.issued_at,
+      expiresAt: row.expires_at, selectedAt: row.selected_at, version: row.version })) };
+  }
+  async function selectProviderQuote(client, principal, deliveryId, input) {
+    D.uuid(deliveryId, 'deliveryId'); D.uuid(input?.quoteId, 'quoteId'); D.uuid(input?.fulfillmentId, 'fulfillmentId');
+    if (!Number.isSafeInteger(input.expectedQuoteVersion) || !Number.isSafeInteger(input.expectedRevision)) fail('INVALID_INPUT', 'Revisão da cotação inválida.');
+    const selected = await providerIntegration.selectQuote(client, principal, input.quoteId, input.expectedQuoteVersion);
+    if (selected.delivery_id !== deliveryId) fail('NOT_FOUND', 'Cotação não encontrada para esta entrega.');
+    const current = await client.query(`SELECT ${FIELDS} FROM rotamoto.delivery_fulfillments WHERE company_id=$1 AND delivery_id=$2
+      AND mode='external' AND status IN ('selected','dispatch_requested') ORDER BY revision DESC LIMIT 1 FOR UPDATE`, [principal.company_id,deliveryId]);
+    let fulfillment;
+    if (current.rowCount && current.rows[0].provider_id === selected.provider_id) {
+      const row = current.rows[0];
+      if (row.revision !== input.expectedRevision) fail('REVISION_CONFLICT', 'A alocação mudou. Atualize a tela.');
+      const updated = await client.query(`UPDATE rotamoto.delivery_fulfillments SET quote_amount_minor=$3,quote_currency=$4,
+        estimated_cost_minor=$3,estimated_cost_currency=$4,eta_at=$5,revision=revision+1,updated_by=$6,updated_at=now()
+        WHERE company_id=$1 AND fulfillment_id=$2 RETURNING ${FIELDS}`,
+      [principal.company_id,row.fulfillment_id,selected.amount_minor,selected.currency,selected.eta_at,principal.user_id]);
+      fulfillment = { fulfillment: asFulfillment(updated.rows[0]), duplicate: false };
+      await client.query(`UPDATE rotamoto.provider_quotes SET fulfillment_id=$3 WHERE company_id=$1 AND quote_id=$2`, [principal.company_id,input.quoteId,row.fulfillment_id]);
+    } else {
+      if (current.rowCount) fail('FULFILLMENT_RECONCILIATION_REQUIRED', 'Encerre o provider atual antes de selecionar outra cotação.');
+      fulfillment = await selectFulfillment(client, principal, deliveryId, { providerId: selected.provider_id, mode: 'external', driverId: null,
+        fulfillmentId: input.fulfillmentId, expectedRevision: input.expectedRevision, externalReference: null, etaAt: selected.eta_at?.toISOString?.() || null,
+        estimatedCostMinor: Number(selected.amount_minor), estimatedCostCurrency: selected.currency });
+      await client.query(`UPDATE rotamoto.delivery_fulfillments SET quote_amount_minor=$3,quote_currency=$4 WHERE company_id=$1 AND fulfillment_id=$2`,
+        [principal.company_id,input.fulfillmentId,selected.amount_minor,selected.currency]);
+      await client.query(`UPDATE rotamoto.provider_quotes SET fulfillment_id=$3 WHERE company_id=$1 AND quote_id=$2`, [principal.company_id,input.quoteId,input.fulfillmentId]);
+    }
+    await audit(client, principal, 'logistics.provider.quote_selected', 'provider_quote', input.quoteId,
+      { deliveryId, providerId: selected.provider_id, fulfillmentId: input.fulfillmentId, currency: selected.currency, amountMinor: Number(selected.amount_minor) });
+    return { quoteId: input.quoteId, fulfillment: fulfillment.fulfillment };
+  }
+  async function requestProviderDispatch(client, principal, deliveryId, input) {
+    D.uuid(deliveryId, 'deliveryId'); D.uuid(input?.quoteId, 'quoteId');
+    const quote = await client.query(`SELECT quote_id,provider_id,fulfillment_id,status,expires_at FROM rotamoto.provider_quotes WHERE company_id=$1 AND delivery_id=$2 AND quote_id=$3`, [principal.company_id, deliveryId, input.quoteId]);
+    if (!quote.rowCount || quote.rows[0].status !== 'selected' || !quote.rows[0].fulfillment_id || quote.rows[0].expires_at <= clock()) fail('INVALID_STATE_TRANSITION', 'Selecione uma cotação válida antes do despacho.');
+    const attempt = await requestDispatch(client, principal, deliveryId, { idempotencyKey: input.idempotencyKey });
+    const queued = await providerIntegration.enqueue(client, principal, { providerId: quote.rows[0].provider_id, deliveryId,
+      fulfillmentId: quote.rows[0].fulfillment_id, operation: 'DISPATCH_REQUEST', requestKey: input.idempotencyKey,
+      payload: { deliveryId, fulfillmentId: quote.rows[0].fulfillment_id, quoteId: input.quoteId, dispatchAttemptId: attempt.attemptId } });
+    return { ...attempt, commandId: queued.command.command_id, status: 'pending', duplicate: attempt.duplicate || queued.duplicate };
+  }
+  async function requestProviderOperation(client, principal, deliveryId, input, operation) {
+    D.uuid(deliveryId, 'deliveryId');
+    if (typeof input?.idempotencyKey !== 'string' || input.idempotencyKey.length < 16 || input.idempotencyKey.length > 128) fail('INVALID_INPUT', 'Chave de operação inválida.');
+    const active = await client.query(`SELECT fulfillment_id,provider_id,status FROM rotamoto.delivery_fulfillments WHERE company_id=$1 AND delivery_id=$2
+      AND mode='external' AND status IN ('selected','dispatch_requested','accepted','in_progress','arrived') ORDER BY revision DESC LIMIT 1`, [principal.company_id,deliveryId]);
+    if (!active.rowCount) fail('INVALID_STATE_TRANSITION', 'Não há fulfillment externo ativo para esta operação.');
+    const queued = await providerIntegration.enqueue(client, principal, { providerId: active.rows[0].provider_id, deliveryId,
+      fulfillmentId: active.rows[0].fulfillment_id, operation, requestKey: input.idempotencyKey,
+      payload: { deliveryId, fulfillmentId: active.rows[0].fulfillment_id, reason: operation === 'CANCEL_REQUEST' ? 'operator_request' : 'operator_reconcile' } });
+    await audit(client, principal, `logistics.provider.${operation.toLowerCase()}`, 'provider_command', queued.command.command_id,
+      { deliveryId, providerId: active.rows[0].provider_id, status: 'queued', duplicate: queued.duplicate });
+    return { commandId: queued.command.command_id, status: queued.command.status, duplicate: queued.duplicate };
+  }
+  async function requestProviderCancel(client, principal, deliveryId, input) { return requestProviderOperation(client, principal, deliveryId, input, 'CANCEL_REQUEST'); }
+  async function requestProviderTracking(client, principal, deliveryId, input) { return requestProviderOperation(client, principal, deliveryId, input, 'TRACKING_REFRESH'); }
+  async function requestProviderReconciliation(client, principal, deliveryId, input) { return requestProviderOperation(client, principal, deliveryId, input, 'RECONCILE'); }
+  async function getProviderCommands(client, principal, deliveryId) {
+    D.uuid(deliveryId, 'deliveryId');
+    const result = await client.query(`SELECT command_id,provider_id,operation,status,attempts,next_attempt_at,last_error_class,correlation_id,created_at,updated_at,completed_at
+      FROM rotamoto.provider_command_outbox WHERE company_id=$1 AND delivery_id=$2 ORDER BY created_at DESC LIMIT 50`, [principal.company_id,deliveryId]);
+    return { commands: result.rows };
+  }
+  return Object.freeze({ ensureInternalProvider, listProviders, createProvider, updateProvider, getFulfillment, selectFulfillment, requestDispatch, updateFulfillment, analytics,
+    requestProviderQuote, listProviderQuotes, selectProviderQuote, requestProviderDispatch, requestProviderCancel, requestProviderTracking,
+    requestProviderReconciliation, getProviderCommands });
 }
 module.exports = { LogisticsServiceError, createLogisticsService };
