@@ -23,10 +23,10 @@ async function main() {
       (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass`)).rows[0];
     assert.deepEqual(identity, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', bypass: false });
     const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations
-      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege')
+      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery')
       ORDER BY migration_id`);
     assert.deepEqual(migration.rows.map(row => row.migration_id), [
-      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege'
+      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery'
     ], 'E2E schema includes the tested logistics, geography and least-privilege migrations');
     const catalog = await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
       has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,
@@ -60,20 +60,25 @@ async function main() {
     try {
       for (const migration of getMigrations()) await client.query(migration.up.replace(/\brotamoto\b/gu, cleanSchema));
       const objects = await client.query(`SELECT count(*)::int AS tables FROM pg_tables WHERE schemaname=$1`, [cleanSchema]);
-      assert.equal(objects.rows[0].tables, 24, 'clean install includes all migration tables through 0019');
+      assert.equal(objects.rows[0].tables, 28, 'clean install includes all migration tables through 0020');
       const forced = await client.query(`SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
-      assert.equal(forced.rows[0].count, 17, 'clean install FORCE-enables RLS on all tenant tables');
+      assert.equal(forced.rows[0].count, 21, 'clean install FORCE-enables RLS on all tenant tables');
       const foreignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
         WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-      assert.equal(foreignKeys.rows[0].count, 54, 'clean install creates logistics, geography and canonical foreign keys');
+      assert.equal(foreignKeys.rows[0].count, 65, 'clean install creates logistics, geography and canonical foreign keys');
       const cleanProvider = await client.query(`SELECT
         has_table_privilege('rotamoto_app',$1||'.logistics_providers','SELECT') AS table_select,
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','provider_id','SELECT') AS id_select,
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_select,
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','UPDATE') AS secret_update`, [cleanSchema]);
       assert.deepEqual(cleanProvider.rows[0], { table_select: false, id_select: true, secret_select: false, secret_update: false },
-        'clean install 0001→0019 keeps secret_ref inaccessible to runtime');
+        'clean install through 0020 keeps secret_ref inaccessible to runtime');
+      const providerTables = await client.query(`SELECT count(*)::int AS total,
+        count(*) FILTER(WHERE relrowsecurity AND relforcerowsecurity)::int AS forced
+        FROM pg_class WHERE oid IN ('${cleanSchema}.provider_quotes'::regclass,'${cleanSchema}.provider_command_outbox'::regclass,
+          '${cleanSchema}.provider_event_inbox'::regclass,'${cleanSchema}.provider_tracking_snapshots'::regclass)`);
+      assert.deepEqual(providerTables.rows[0], { total: 4, forced: 4 }, 'all provider integration tables enforce tenant RLS');
     } finally { await client.query('ROLLBACK'); }
     assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [cleanSchema])).rowCount, 0,
       'clean-install schema sandbox was rolled back');
@@ -95,6 +100,21 @@ async function main() {
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','UPDATE') AS secret_update`, [upgradeSchema]);
       assert.deepEqual(after0019.rows[0], { table_select: false, id_select: true, secret_select: false, secret_update: false },
         'upgrade 0018→0019 revokes broad SELECT without weakening operational column reads');
+      const migration0020 = getMigrations()[19];
+      assert.equal(migration0020.id, '0020_provider_integration_runtime');
+      await client.query(migration0020.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const migration0021 = getMigrations()[20];
+      assert.equal(migration0021.id, '0021_provider_claim_tenant_scope');
+      await client.query(migration0021.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const migration0022 = getMigrations()[21];
+      assert.equal(migration0022.id, '0022_provider_ambiguous_lease_recovery');
+      await client.query(migration0022.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const after0020 = await client.query(`SELECT has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','SELECT') AS command_read,
+        has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','DELETE') AS command_delete,
+        has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_read,
+        (SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid=($1||'.provider_event_inbox')::regclass) AS inbox_forced`, [upgradeSchema]);
+      assert.deepEqual(after0020.rows[0], { command_read: true, command_delete: false, secret_read: false, inbox_forced: true },
+        'upgrade 0019→0020 adds durable provider runtime tables without secret access');
     } finally { await client.query('ROLLBACK'); }
     assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [upgradeSchema])).rowCount, 0,
       'upgrade sandbox is rolled back');
@@ -117,9 +137,22 @@ async function main() {
       await client.query(`INSERT INTO rotamoto.logistics_providers(company_id,provider_id,code,display_name,provider_class,created_by,updated_by)
         VALUES($1,$2,'internal_fleet','Frota própria','internal_fleet',$3,$3),($1,$4,'qa_partner','Parceiro QA','partner',$3,$3),
           ($1,$5,'qa_marketplace','Marketplace QA','marketplace',$3,$3)`, [tenantA, internalProvider, actor, partner, marketplace]);
+      const externalFulfillmentId=id();
       await client.query(`INSERT INTO rotamoto.delivery_fulfillments(company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,status,selected_by,updated_by,revision)
         VALUES($1,$2,$3,$4,'internal',$5,'selected',$6,$6,1),($1,$7,$8,$9,'external',NULL,'selected',$6,$6,1)`,
-      [tenantA, id(), sourceDelivery, internalProvider, driverA, actor, id(), externalDelivery, partner]);
+      [tenantA, id(), sourceDelivery, internalProvider, driverA, actor, externalFulfillmentId, externalDelivery, partner]);
+      await client.query(`UPDATE rotamoto.logistics_providers SET integration_mode='api',api_enabled=true,secret_ref='local-v1:00000000-0000-4000-8000-000000000099',capabilities=ARRAY['manual_assignment','quote','dispatch']::text[] WHERE company_id=$1 AND provider_id=$2`, [tenantA,partner]);
+      const staleDispatchId=id(), staleQuoteId=id(), lease=id();
+      await client.query(`INSERT INTO rotamoto.provider_command_outbox(company_id,command_id,provider_id,delivery_id,fulfillment_id,operation,idempotency_key,payload,status,attempts,lease_token,lease_until,correlation_id)
+        VALUES($1,$2,$3,$4,$5,'DISPATCH_REQUEST',$6,$7::jsonb,'leased',1,$8,now()-interval '1 minute',$9),
+          ($1,$10,$3,$4,$5,'QUOTE_REQUEST',$11,$12::jsonb,'leased',1,$8,now()-interval '1 minute',$13)`,
+      [tenantA,staleDispatchId,partner,externalDelivery,externalFulfillmentId,`dispatch-${staleDispatchId}`,JSON.stringify({deliveryId:externalDelivery}),lease,id(),staleQuoteId,`quote-${staleQuoteId}`,JSON.stringify({deliveryId:externalDelivery}),id()]);
+      const claimed = await client.query('SELECT * FROM rotamoto.claim_provider_command($1,$2,$3)', [tenantA,id(),45]);
+      assert.equal(claimed.rowCount,1);
+      assert.equal(claimed.rows[0].command_id,staleQuoteId,'a read-safe expired lease is reclaimed');
+      const ambiguous = await client.query(`SELECT status,last_error_class,lease_token FROM rotamoto.provider_command_outbox WHERE company_id=$1 AND command_id=$2`, [tenantA,staleDispatchId]);
+      assert.deepEqual(ambiguous.rows[0], {status:'unknown_outcome',last_error_class:'UNKNOWN_OUTCOME',lease_token:null},
+        'expired dispatch lease becomes ambiguous and is never blindly reclaimed');
       await rejected(client, 'external_driver_guard', () => client.query(`INSERT INTO rotamoto.delivery_fulfillments
         (company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,status,selected_by,updated_by,revision)
         VALUES($1,$2,$3,$4,'external',$5,'selected',$6,$6,2)`, [tenantA,id(),externalDelivery,partner,driverA,actor]));

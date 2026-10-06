@@ -125,6 +125,20 @@ async function main() {
   assert.match(providerLeastPrivilegeMigration.up, /GRANT SELECT \([\s\S]*configuration[\s\S]*\) ON TABLE rotamoto\.logistics_providers TO rotamoto_app/u);
   assert.doesNotMatch(providerLeastPrivilegeMigration.up, /GRANT SELECT \([\s\S]*secret_ref/u);
   assert.match(providerLeastPrivilegeMigration.down, /rollback bloqueado/u);
+  const providerRuntimeMigration = getMigrations()[19];
+  assert.equal(providerRuntimeMigration.id, '0020_provider_integration_runtime');
+  assert.match(providerRuntimeMigration.up, /FOR UPDATE OF o SKIP LOCKED/u);
+  assert.match(providerRuntimeMigration.up, /FORCE ROW LEVEL SECURITY/u);
+  assert.match(providerRuntimeMigration.up, /secret_ref IS NOT NULL/u);
+  const providerClaimMigration = getMigrations()[20];
+  assert.equal(providerClaimMigration.id, '0021_provider_claim_tenant_scope');
+  assert.match(providerClaimMigration.up, /p_company_id uuid/u);
+  assert.match(providerClaimMigration.up, /app\.tenant_id/u);
+  assert.match(providerClaimMigration.up, /FOR UPDATE OF o SKIP LOCKED/u);
+  const providerLeaseRecoveryMigration = getMigrations()[21];
+  assert.equal(providerLeaseRecoveryMigration.id, '0022_provider_ambiguous_lease_recovery');
+  assert.match(providerLeaseRecoveryMigration.up, /unknown_outcome/u);
+  assert.match(providerLeaseRecoveryMigration.up, /o\.operation NOT IN \('DISPATCH_REQUEST','CANCEL_REQUEST'\)/u);
   assert.match(geoSnapshotMigration.up, /ON DELETE RESTRICT/u);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
@@ -221,10 +235,10 @@ async function main() {
       NOT EXISTS (SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
         WHERE d.defaclrole='rotamoto_migrator'::regrole AND d.defaclobjtype='f'
           AND a.grantee=0 AND a.privilege_type='EXECUTE') AS no_public_execute_default`);
-    assert.equal(ownership.rows[0].owned_relations, 25);
-    assert.equal(ownership.rows[0].owned_routines, 6);
+    assert.equal(ownership.rows[0].owned_relations, 29);
+    assert.equal(ownership.rows[0].owned_routines, 7);
     assert.equal(ownership.rows[0].migrator_ledger, 1);
-    assert.equal(ownership.rows[0].forced_policies, 17);
+    assert.equal(ownership.rows[0].forced_policies, 21);
     assert.equal(ownership.rows[0].no_public_execute_default, true,
       'future migrator functions do not receive PUBLIC EXECUTE by default');
     assert.equal((await runtimeClient.query("SELECT has_function_privilege(current_user,'rotamoto.valid_route_delivery_ids(jsonb)','EXECUTE') AS can_validate")).rows[0].can_validate,
@@ -258,13 +272,13 @@ async function main() {
         await client.query(item.up.replace(/\brotamoto\b/gu, cleanSchema));
       }
       const cleanTables = await client.query('SELECT count(*)::int AS count FROM pg_tables WHERE schemaname=$1', [cleanSchema]);
-      assert.equal(cleanTables.rows[0].count, 24, 'all domain tables install into an empty schema');
+      assert.equal(cleanTables.rows[0].count, 28, 'all domain tables install into an empty schema');
       const cleanRls = await client.query(`SELECT count(*)::int AS count FROM pg_class c
         JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
-      assert.equal(cleanRls.rows[0].count, 17, 'fresh schema has all forced tenant RLS policies');
+      assert.equal(cleanRls.rows[0].count, 21, 'fresh schema has all forced tenant RLS policies');
       const cleanForeignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c
         JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-    assert.equal(cleanForeignKeys.rows[0].count, 54, 'fresh schema installs all expected foreign keys');
+      assert.equal(cleanForeignKeys.rows[0].count, 65, 'fresh schema installs all expected foreign keys');
       await client.query('ROLLBACK');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
@@ -281,7 +295,8 @@ async function main() {
       'schema_migrations','users','credentials','recovery_tokens','companies','permissions',
       'roles','role_permissions','memberships','sessions','integrations','external_accounts',
       'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens',
-      'sync_installations','domain_records','proof_media_upload_intents','logistics_providers','delivery_fulfillments','dispatch_attempts','delivery_geo_snapshots'
+      'sync_installations','domain_records','proof_media_upload_intents','logistics_providers','delivery_fulfillments','dispatch_attempts','delivery_geo_snapshots',
+      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots'
     ]));
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -289,7 +304,7 @@ async function main() {
       WHERE n.nspname='rotamoto' AND c.relkind='r' AND c.relname <> 'schema_migrations'
     `);
     const tenantTables = rls.rows.filter(row => row.relrowsecurity);
-    assert.equal(tenantTables.length, 17);
+    assert.equal(tenantTables.length, 21);
     assert(tenantTables.every(row => row.relforcerowsecurity), 'all tenant-scoped tables enforce RLS');
     const auditTenant = crypto.randomUUID();
     await migrationClient.query('BEGIN');

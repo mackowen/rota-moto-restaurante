@@ -30,6 +30,16 @@ Os dados de tracking do iFood são snapshots do provider, não `LocationPoint` d
 
 O adapter aceita somente quote ainda válida no instante da resposta, identifica a referência externa e registra moeda explícita BRL. Uma ausência de preço nunca vira zero. Cotação, seleção persistida com expiração, fila outbox, worker de despacho, retry durável e reconciliação ainda não estão ligados ao fluxo operacional; não use esse módulo diretamente em operação de restaurante. A seleção manual e o fallback manual/frota própria seguem disponíveis conforme o lifecycle de Delivery.
 
+### Fundação persistente 0020–0022 (campanha 0083)
+
+A migration `0020_provider_integration_runtime` acrescenta `provider_quotes`, `provider_command_outbox`, `provider_event_inbox` e `provider_tracking_snapshots`. As quatro tabelas são tenant-scoped, usam RLS e FORCE RLS. O outbox de provider é separado de `sync_outbox`, porque comandos remotos têm retry, lease e resultado ambíguo próprios. O claim usa `FOR UPDATE SKIP LOCKED` e só entrega comandos de providers explicitamente habilitados em modo API. `api_enabled` começa falso; nesta versão nenhum provider logístico tem API habilitada no fluxo operacional.
+
+`backend/logistics/provider-integration.js` contém criação idempotente de comandos, validação de payload minimizado, persistência normalizada de quote, seleção com optimistic version/expiração e inbox com digest e deduplicação. `backend/logistics/provider-worker.js` contém o loop de worker, lease, resolução de adapter injetada, retries limitados com jitter determinístico e tratamento de timeout de dispatch/cancel como `UNKNOWN_OUTCOME`. As migrations 0021–0022 tornam o claim tenant-scoped e transformam lease expirada de despacho/cancelamento em estado ambíguo, sem repetição cega. O worker não é iniciado pelo servidor HTTP nesta campanha. Uma conexão de serviço isolada e um resolver de segredo de produção continuam necessários antes de processar tráfego externo; não conceda SELECT de `secret_ref` ao runtime para contornar esse limite.
+
+O helper de adapter fake existe somente em `tests/helpers` e não é importado pelo servidor. Ele é exclusivo de testes. O outbox entrega at-least-once; chaves locais estáveis evitam duplicação local, enquanto resultado remoto ambíguo exige reconciliação. Não há promessa exactly-once.
+
+As tabelas e serviços persistentes ainda não estão ligados aos endpoints de operação, projeção de eventos/webhook ou UI/analytics do Restaurante. Para a campanha 0083, portanto, quotes e comandos API não estão disponíveis aos operadores. A migration prepara armazenamento e worker, mas não deve ser interpretada como ativação end-to-end do provider.
+
 ## Credenciais e dados
 
 Não colocar segredo em configuração JSON, IndexedDB, localStorage, fixtures de Git ou log. O runtime não pode ler `logistics_providers.secret_ref` diretamente por privilégio PostgreSQL. A credential resolver precisa obter a referência por uma camada backend autorizada e ler o segredo pelo keystore. O adapter limita tamanho de resposta externa, valida schemas e não guarda conteúdo bruto.
