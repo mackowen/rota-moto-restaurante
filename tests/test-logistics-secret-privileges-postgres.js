@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { Client } = require('pg');
+const { createClient } = require('../backend/postgres/connection');
 const { e2eMigrationConnectionString, getMigrations } = require('../backend/postgres/migrate');
 
 function runtimeConnectionString() {
@@ -26,7 +26,7 @@ function psqlRuntime(sql) {
 async function main() {
   const migrationUrl = e2eMigrationConnectionString(process.env);
   runtimeConnectionString();
-  const admin = new Client({ connectionString: migrationUrl, application_name: 'rotamoto-0019-privilege-catalog-test' });
+  const admin = createClient({ connectionString: migrationUrl, application_name: 'rotamoto-0019-privilege-catalog-test' });
   await admin.connect();
   try {
     const migration = getMigrations().find(item => item.id === '0019_logistics_provider_secret_least_privilege');
@@ -38,11 +38,12 @@ async function main() {
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','provider_id','SELECT') AS provider_id_select,
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','configuration','SELECT') AS configuration_select,
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','secret_ref','SELECT') AS secret_select,
-      has_column_privilege('rotamoto_app','rotamoto.logistics_providers','secret_ref','UPDATE') AS secret_update`,
+      has_column_privilege('rotamoto_app','rotamoto.logistics_providers','secret_ref','UPDATE') AS secret_update,
+      has_function_privilege('rotamoto_app','rotamoto.claim_provider_command(uuid,uuid,integer)','EXECUTE') AS global_provider_claim`,
     ['0019_logistics_provider_secret_least_privilege']);
     assert.deepEqual(state.rows[0], { role: 'rotamoto_migrator', database: 'rotamoto_e2e', checksum: migration.checksum,
       runtime_elevated: false,
-      table_select: false, provider_id_select: true, configuration_select: true, secret_select: false, secret_update: false });
+      table_select: false, provider_id_select: true, configuration_select: true, secret_select: false, secret_update: false, global_provider_claim: false });
     const identity = psqlRuntime('SELECT current_user||\':\'||current_database()');
     assert.equal(identity.status, 0, 'psql -w authenticates runtime using the locally provisioned credential');
     assert.equal(identity.stdout.trim(), 'rotamoto_app:rotamoto_e2e');

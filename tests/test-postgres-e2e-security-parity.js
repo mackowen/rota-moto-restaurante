@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { Client } = require('pg');
+const { createClient } = require('../backend/postgres/connection');
 const { getMigrations } = require('../backend/postgres/migrate');
 
 const ROLE_FLAGS = `SELECT rolname,rolsuper,rolcreatedb,rolcreaterole,rolreplication,rolbypassrls
@@ -95,7 +95,7 @@ async function main() {
   const e2eUrl = validateTarget(process.env.E2E_MIGRATOR_DATABASE_URL, 'rotamoto_e2e');
   const results = [];
   for (const [url, database] of [[officialUrl,'rotamoto'],[e2eUrl,'rotamoto_e2e']]) {
-    const client = new Client({ connectionString: url, connectionTimeoutMillis: 5000 });
+    const client = createClient({ connectionString: url, connectionTimeoutMillis: 5000 });
     try { await client.connect(); results.push(await snapshot(client,database)); }
     finally { await client.end().catch(()=>{}); }
   }

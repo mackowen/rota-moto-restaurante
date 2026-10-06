@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const http = require('node:http');
-const { Client } = require('pg');
+const { createClient } = require('../backend/postgres/connection');
 const { createIdentityService, tokenDigest } = require('../backend/identity/service');
 const { COOKIE_NAME, createRateLimiter } = require('../backend/identity/http');
 const { createSyncService } = require('../backend/domain/sync-service');
@@ -46,8 +46,8 @@ async function main() {
   }
   assert.equal(decodeURIComponent(new URL(process.env.DATABASE_URL).username), 'rotamoto_app');
   assert.equal(decodeURIComponent(new URL(process.env.MIGRATOR_DATABASE_URL).username), 'rotamoto_migrator');
-  const migrator = new Client({ connectionString: process.env.MIGRATOR_DATABASE_URL });
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const migrator = createClient({ connectionString: process.env.MIGRATOR_DATABASE_URL });
+  const client = createClient({ connectionString: process.env.DATABASE_URL });
   await migrator.connect();
   await client.connect();
   try {

@@ -7,7 +7,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { pipeline } = require('node:stream/promises');
 const { Readable } = require('node:stream');
-const { Client } = require('pg');
+const { createClient } = require('../postgres/connection');
 const { createEncryptedBackup, verifyArtifact, restoreEncryptedBackup, readKey, parseSafeUrl } = require('./backup-runner');
 
 const LOCK = 'rotamoto:proof-media:snapshot:v1';
@@ -87,7 +87,7 @@ async function canonicalReferences(client) {
   });
   return refs;
 }
-async function withSnapshotLock(databaseUrl, action, clientFactory = options => new Client(options)) {
+async function withSnapshotLock(databaseUrl, action, clientFactory = options => createClient(options)) {
   const client = clientFactory({ connectionString: databaseUrl }); await client.connect();
   try {
     await client.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [LOCK]);
@@ -232,7 +232,7 @@ async function listFiles(root, base = root, out = []) {
   }
   return out;
 }
-async function restoreRecoverySet({ directory, id, targetUrl, keyFile, disposableMediaDirectory, productionMediaDirectory, pgRestore, restoreDatabase = restoreEncryptedBackup, clientFactory = options => new Client(options) }) {
+async function restoreRecoverySet({ directory, id, targetUrl, keyFile, disposableMediaDirectory, productionMediaDirectory, pgRestore, restoreDatabase = restoreEncryptedBackup, clientFactory = options => createClient(options) }) {
   id = safeId(id);
   const parsedTarget = parseSafeUrl(targetUrl, { restore: true });
   if (!productionMediaDirectory) throw bad('Configured production media root is required to authorize a disposable restore target.');

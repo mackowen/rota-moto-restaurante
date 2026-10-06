@@ -1,14 +1,14 @@
 'use strict';
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { Client } = require('pg');
+const { createClient } = require('../backend/postgres/connection');
 const { e2eMigrationConnectionString, getMigrations } = require('../backend/postgres/migrate');
 const { createTerritorialAnalyticsService } = require('../backend/analytics/territorial-service');
 
 const id = () => crypto.randomUUID();
 async function main() {
   const connectionString = e2eMigrationConnectionString(process.env);
-  const client = new Client({ connectionString, application_name:'rotamoto-territorial-e2e-test', statement_timeout:10000 });
+  const client = createClient({ connectionString, application_name:'rotamoto-territorial-e2e-test', statement_timeout:10000 });
   await client.connect();
   const schema = `territorial_${crypto.randomUUID().replaceAll('-','')}`;
   try {

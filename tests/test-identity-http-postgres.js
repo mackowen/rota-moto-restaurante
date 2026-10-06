@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const http = require('node:http');
-const { Client } = require('pg');
+const { createClient } = require('../backend/postgres/connection');
 const { createIdentityService } = require('../backend/identity/service');
 const { createEmailDeliveryProvider } = require('../backend/identity/email-provider');
 const { createMfaProvider } = require('../backend/identity/mfa-provider');
@@ -46,7 +46,7 @@ async function listen(handler) {
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL oficial via pgpass é obrigatório.');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = createClient({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   assert.equal((await client.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_app',
     'HTTP integration fixtures must use the restricted runtime role');

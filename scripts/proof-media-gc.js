@@ -1,5 +1,5 @@
 'use strict';
-const { Pool } = require('pg');
+const { createPool } = require('../backend/postgres/connection');
 const { loadRuntimeConfig } = require('../backend/runtime/config');
 const { createFilesystemObjectStore } = require('../backend/domain/filesystem-object-store');
 const { runProofMediaGc, DEFAULT_GRACE_MS } = require('../backend/domain/proof-media-gc');
@@ -9,7 +9,7 @@ const { runProofMediaGc, DEFAULT_GRACE_MS } = require('../backend/domain/proof-m
   if (!config.mediaDirectory) throw new Error('Filesystem media não configurado.');
   const days = Number(process.env.ROTAMOTO_MEDIA_GC_GRACE_DAYS || DEFAULT_GRACE_MS / 86_400_000);
   if (!Number.isInteger(days) || days < 45 || days > 3650) throw new Error('Grace period deve ficar entre 45 e 3650 dias.');
-  const pool = new Pool({ connectionString: config.databaseUrl, max: 2, connectionTimeoutMillis: 5000 });
+  const pool = createPool({ connectionString: config.databaseUrl, max: 2, connectionTimeoutMillis: 5000 });
   try {
     const objectStore = await createFilesystemObjectStore({ directory: config.mediaDirectory });
     const result = await runProofMediaGc({ pool, objectStore, graceMs: days * 86_400_000, dryRun: !apply,

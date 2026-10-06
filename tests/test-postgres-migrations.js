@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { spawn, spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const path = require('node:path');
-const { Client } = require('pg');
+const { createClient } = require('../backend/postgres/connection');
 const { assertChecksums, getMigrations, withTransaction, migrationConnectionString } = require('../backend/postgres/migrate');
 
 async function tenantQuery(client, tenantId, sql, values = []) {
@@ -22,7 +22,7 @@ async function tenantQuery(client, tenantId, sql, values = []) {
 
 function runMigration(command) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), command], {
+    const child = spawn(process.execPath, migrationArgs(command), {
       env: process.env, stdio: ['ignore', 'pipe', 'pipe']
     });
     let stdout = '';
@@ -32,6 +32,15 @@ function runMigration(command) {
     child.once('error', reject);
     child.once('close', status => resolve({ status, stdout, stderr }));
   });
+}
+
+function migrationArgs(command) {
+  return [path.join(__dirname, '../backend/postgres/migrate.js'), command,
+    ...(process.env.NODE_ENV === 'test' ? ['--e2e'] : [])];
+}
+
+function runMigrationSync(command) {
+  return spawnSync(process.execPath, migrationArgs(command), { env: process.env, encoding: 'utf8', timeout: 10000 });
 }
 
 async function main() {
@@ -139,6 +148,20 @@ async function main() {
   assert.equal(providerLeaseRecoveryMigration.id, '0022_provider_ambiguous_lease_recovery');
   assert.match(providerLeaseRecoveryMigration.up, /unknown_outcome/u);
   assert.match(providerLeaseRecoveryMigration.up, /o\.operation NOT IN \('DISPATCH_REQUEST','CANCEL_REQUEST'\)/u);
+  const providerWorkerPrivilegeMigration = getMigrations()[22];
+  assert.equal(providerWorkerPrivilegeMigration.id, '0023_provider_worker_least_privilege');
+  assert.match(providerWorkerPrivilegeMigration.up, /REVOKE EXECUTE[\s\S]*rotamoto_app/u);
+  assert.match(providerWorkerPrivilegeMigration.up, /rotamoto_provider_worker/u);
+  assert.doesNotMatch(providerWorkerPrivilegeMigration.up, /GRANT[^;]*secret_ref[^;]*rotamoto_provider_worker/u);
+  const providerTrackingGrantMigration = getMigrations()[23];
+  assert.equal(providerTrackingGrantMigration.id, '0024_provider_tracking_status_grant');
+  assert.match(providerTrackingGrantMigration.up, /GRANT UPDATE \(status\).*rotamoto_provider_worker/u);
+  const providerEventGrantMigration = getMigrations()[24];
+  assert.equal(providerEventGrantMigration.id, '0025_provider_event_worker_grants');
+  assert.match(providerEventGrantMigration.up, /provider_event_inbox TO rotamoto_provider_worker/u);
+  const fulfillmentEventGrantMigration = getMigrations()[25];
+  assert.equal(fulfillmentEventGrantMigration.id, '0026_provider_fulfillment_event_grants');
+  assert.match(fulfillmentEventGrantMigration.up, /delivery_fulfillments TO rotamoto_provider_worker/u);
   assert.match(geoSnapshotMigration.up, /ON DELETE RESTRICT/u);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
@@ -151,9 +174,9 @@ async function main() {
   await assert.rejects(assertChecksums({ query: async () => ({ rows: [{ migration_id: '9999_removed_migration', checksum_sha256: '0'.repeat(64) }] }) }, []),
     /não existe mais/, 'runner refuses an applied migration missing from source');
 
-  const client = new Client({ connectionString: process.env.MIGRATOR_DATABASE_URL });
-  const runtimeClient = new Client({ connectionString: process.env.DATABASE_URL });
-  const migrationClient = new Client({ connectionString: process.env.MIGRATOR_DATABASE_URL });
+  const client = createClient({ connectionString: process.env.MIGRATOR_DATABASE_URL });
+  const runtimeClient = createClient({ connectionString: process.env.DATABASE_URL });
+  const migrationClient = createClient({ connectionString: process.env.MIGRATOR_DATABASE_URL });
   await client.connect();
   await runtimeClient.connect();
   await migrationClient.connect();
@@ -391,19 +414,21 @@ async function main() {
       (idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES ($1,$2,$3,$4,'sent')`,
     [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);
     try {
-      const bindingDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
-        env: process.env, encoding: 'utf8', timeout: 10000
-      });
+      const appliedLedger = await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
+      if (appliedLedger.rows[0]?.migration_id === '0026_provider_fulfillment_event_grants') {
+        assert.match(getMigrations().at(-1).down, /rollback bloqueado/u, 'provider integration data migrations explicitly block rollback');
+        const stillLatest = await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
+        assert.equal(stillLatest.rows[0].migration_id, '0026_provider_fulfillment_event_grants', 'blocked rollback preserves approved schema');
+      } else {
+      const bindingDown = runMigrationSync('down');
       assert.equal(bindingDown.status,0,'empty additive driver binding migration can be rolled back safely');
       assert.match(bindingDown.stdout,/revertida 0013_membership_driver_binding/);
-      const bindingReapplied=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'up'],{env:process.env,encoding:'utf8',timeout:10000});
+      const bindingReapplied=runMigrationSync('up');
       assert.equal(bindingReapplied.status,0,'driver binding migration reapplies after an empty rollback');
-      const bindingDownForLifecycle=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'down'],{env:process.env,encoding:'utf8',timeout:10000});
+      const bindingDownForLifecycle=runMigrationSync('down');
       assert.equal(bindingDownForLifecycle.status,0,'empty driver binding is removed before testing the preceding migration rollback');
       assert.match(bindingDownForLifecycle.stdout,/revertida 0013_membership_driver_binding/);
-      const reversibleDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
-        env: process.env, encoding: 'utf8', timeout: 10000
-      });
+      const reversibleDown = runMigrationSync('down');
       assert.equal(reversibleDown.status,0,'identity lifecycle migration has a safe reversible down');
       assert.match(reversibleDown.stdout,/revertida 0012_identity_rbac_lifecycle/);
       const lifecycleRevoked=await runtimeClient.query(`SELECT
@@ -411,41 +436,34 @@ async function main() {
         has_table_privilege(current_user,'rotamoto.role_permissions','DELETE') AS role_permission_delete`);
       assert.deepEqual(lifecycleRevoked.rows[0], { role_name_update: false, role_permission_delete: false },
         'down migration removes additive role-management privileges');
-      const lifecycleReapplied=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'up'],{env:process.env,encoding:'utf8',timeout:10000});
+      const lifecycleReapplied=runMigrationSync('up');
       assert.equal(lifecycleReapplied.status,0,'identity lifecycle migration reapplies cleanly');
       const stillThere=await tenantQuery(client,rollbackGuardId,'SELECT id FROM rotamoto.companies WHERE id=$1',[rollbackGuardId]);
       assert.equal(stillThere.rowCount,1,'schema-only rollback preserves tenant data');
-      const lifecycleRollbackAgain = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
-        env: process.env, encoding: 'utf8', timeout: 10000
-      });
+      const lifecycleRollbackAgain = runMigrationSync('down');
       assert.equal(lifecycleRollbackAgain.status,0,'empty driver binding rolls back after the lifecycle migration is reapplied');
       assert.match(lifecycleRollbackAgain.stdout,/revertida 0013_membership_driver_binding/);
-      const lifecycleRollbackSecond = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
-        env: process.env, encoding: 'utf8', timeout: 10000
-      });
+      const lifecycleRollbackSecond = runMigrationSync('down');
       assert.equal(lifecycleRollbackSecond.status,0,'identity lifecycle grants roll back safely a second time');
       assert.match(lifecycleRollbackSecond.stdout,/revertida 0012_identity_rbac_lifecycle/);
-      const previousGrantDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
-        env: process.env, encoding: 'utf8', timeout: 10000
-      });
+      const previousGrantDown = runMigrationSync('down');
       assert.equal(previousGrantDown.status,0,'runtime integration read grant rolls back safely');
       assert.match(previousGrantDown.stdout,/revertida 0011_runtime_integration_read/);
       const runtimeReadRevoked=await runtimeClient.query("SELECT has_table_privilege(current_user,'rotamoto.integrations','SELECT') AS can_read");
       assert.equal(runtimeReadRevoked.rows[0].can_read,false,'down migration revokes the additive integration read privilege');
-      const routeGrantDown=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'down'],{env:process.env,encoding:'utf8',timeout:10000});
+      const routeGrantDown=runMigrationSync('down');
       assert.equal(routeGrantDown.status,0,'previous route validation grant rolls back safely');
       assert.match(routeGrantDown.stdout,/revertida 0010_route_validation_runtime_grant/);
-      const constraintDown=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'down'],{env:process.env,encoding:'utf8',timeout:10000});
+      const constraintDown=runMigrationSync('down');
       assert.equal(constraintDown.status,0,'domain constraints and index roll back without deleting data');
-      const guardedDown = spawnSync(process.execPath, [path.join(__dirname, '../backend/postgres/migrate.js'), 'down'], {
-        env: process.env, encoding: 'utf8', timeout: 10000
-      });
+      const guardedDown = runMigrationSync('down');
       assert.notEqual(guardedDown.status, 0, 'foundation rollback remains guarded');
       assert.match(guardedDown.stderr, /(P0001|42501)/, 'migration runner reports the guarded rollback failure without row contents');
       const preserved = await tenantQuery(client, rollbackGuardId, `SELECT id FROM rotamoto.companies WHERE id=$1`, [rollbackGuardId]);
       assert.equal(preserved.rowCount, 1, 'rollback guard preserves existing rows');
-      const restored=spawnSync(process.execPath,[path.join(__dirname,'../backend/postgres/migrate.js'),'up'],{env:process.env,encoding:'utf8',timeout:10000});
+      const restored=runMigrationSync('up');
       assert.equal(restored.status,0,'full schema is restored after rollback guard verification');
+      }
     } finally {
       await client.query(`DELETE FROM rotamoto.provisioning_requests WHERE idempotency_key_digest=$1`, [rollbackGuardDigest]);
       await tenantQuery(client, rollbackGuardId, `DELETE FROM rotamoto.memberships WHERE id=$1`, [rollbackGuardMembershipId]);

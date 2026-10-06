@@ -1,11 +1,10 @@
 'use strict';
 
-const { Client } = require('pg');
-const pgpass = require('pgpass');
+const { createClient, resolvePgpassPassword } = require('../../backend/postgres/connection');
 
 function storedLoopbackCredential(role, database) {
-  const lookup = targetDatabase => new Promise(resolve => pgpass({ host: '127.0.0.1', port: '5432',
-    database: targetDatabase, user: role }, password => resolve(password)));
+  const lookup = targetDatabase => resolvePgpassPassword({ host: '127.0.0.1', port: 5432,
+    database: targetDatabase, user: role }, { required: false });
   return async () => {
     const exact = await lookup(database);
     // PostgreSQL passwords belong to cluster roles. Existing local operator
@@ -49,7 +48,7 @@ function resolveE2eTargets(env = process.env) {
   });
 }
 
-function createE2eClients(env = process.env, ClientType = Client) {
+function createE2eClients(env = process.env, ClientType = createClient) {
   const targets = resolveE2eTargets(env); // Both targets fail closed before either client is constructed.
   const database = targets.database || 'rotamoto_e2e';
   const clientConfig = (value, role) => {

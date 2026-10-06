@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { Client } = require('pg');
+const { createClient } = require('../backend/postgres/connection');
 const { createIdentityService } = require('../backend/identity/service');
 const { createEmailDeliveryProvider } = require('../backend/identity/email-provider');
 const { verifyPassword } = require('../backend/identity/passwords');
@@ -45,7 +45,7 @@ function expectCode(promise, code) {
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL PostgreSQL oficial via pgpass é obrigatório.');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = createClient({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   await client.query('BEGIN');
   const email = `qa-${crypto.randomUUID()}@example.invalid`;

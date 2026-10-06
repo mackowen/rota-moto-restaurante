@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client } = require('pg');
+const { createClient } = require('./connection');
 
 const MIGRATION_DIR = path.join(__dirname, 'migrations');
 const MIGRATION_TABLE = 'rotamoto.schema_migrations';
@@ -177,7 +177,7 @@ async function status(client, migrations) {
 
 async function main() {
   const { command, connectionString, throughId } = resolveMigrationInvocation();
-  const client = new Client({ connectionString, connectionTimeoutMillis: 5000 });
+  const client = createClient({ connectionString, connectionTimeoutMillis: 5000 });
   let lockHeld = false;
   try {
     await client.connect();
