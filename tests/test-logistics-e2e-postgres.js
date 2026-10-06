@@ -49,13 +49,13 @@ async function main() {
     try {
       for (const migration of getMigrations()) await client.query(migration.up.replace(/\brotamoto\b/gu, cleanSchema));
       const objects = await client.query(`SELECT count(*)::int AS tables FROM pg_tables WHERE schemaname=$1`, [cleanSchema]);
-      assert.equal(objects.rows[0].tables, 23, 'clean install includes all migration tables through 0017');
+      assert.equal(objects.rows[0].tables, 24, 'clean install includes all migration tables through 0018');
       const forced = await client.query(`SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
-      assert.equal(forced.rows[0].count, 16, 'clean install FORCE-enables RLS on all tenant tables');
+      assert.equal(forced.rows[0].count, 17, 'clean install FORCE-enables RLS on all tenant tables');
       const foreignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
         WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
-      assert.equal(foreignKeys.rows[0].count, 50, 'clean install creates logistics and canonical foreign keys');
+      assert.equal(foreignKeys.rows[0].count, 54, 'clean install creates logistics, geography and canonical foreign keys');
     } finally { await client.query('ROLLBACK'); }
     assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [cleanSchema])).rowCount, 0,
       'clean-install schema sandbox was rolled back');

@@ -24,6 +24,8 @@ const {createDeliveryQrService}=require('./backend/domain/delivery-qr');
 const {createDeliveryQrHttpHandler}=require('./backend/domain/delivery-qr-http');
 const {createLogisticsService}=require('./backend/logistics/service');
 const {createLogisticsHttpHandler}=require('./backend/logistics/http');
+const {createTerritorialAnalyticsService}=require('./backend/analytics/territorial-service');
+const {createTerritorialAnalyticsHttpHandler}=require('./backend/analytics/territorial-http');
 const {createAdminRepository}=require('./backend/admin/repository');
 const {createAdminService}=require('./backend/admin/service');
 const {createAdminHttpHandler}=require('./backend/admin/http');
@@ -76,6 +78,7 @@ const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQr
 const deliveryQrHttp=createDeliveryQrHttpHandler({identityService,queryService:domainQueryService,qrService:deliveryQrService,logger:()=>{}});
 const logisticsService=createLogisticsService();
 const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
+const territorialAnalyticsHttp=createTerritorialAnalyticsHttpHandler({identityService,service:createTerritorialAnalyticsService(),logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const adminService=createAdminService({repository:createAdminRepository()});
 const adminHttp=createAdminHttpHandler({identityService,adminService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 
@@ -94,9 +97,10 @@ async function databaseReadiness(pool=identityPool){
       EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.sessions') AND attname='mfa_verified_at' AND NOT attisdropped) AS mfa_schema_ready,
       EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.memberships') AND attname='driver_id' AND NOT attisdropped) AS membership_driver_ready,
       to_regclass('rotamoto.logistics_providers') IS NOT NULL AND to_regclass('rotamoto.delivery_fulfillments') IS NOT NULL
-        AND to_regclass('rotamoto.dispatch_attempts') IS NOT NULL AS logistics_schema_ready`);
+        AND to_regclass('rotamoto.dispatch_attempts') IS NOT NULL AS logistics_schema_ready,
+      to_regclass('rotamoto.delivery_geo_snapshots') IS NOT NULL AS territorial_analytics_schema_ready`);
     await client.query('COMMIT');
-    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true&&result.rows[0]?.logistics_schema_ready===true;
+    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true&&result.rows[0]?.logistics_schema_ready===true&&result.rows[0]?.territorial_analytics_schema_ready===true;
   }catch(error){try{await client.query('ROLLBACK')}catch(_){}throw error}
   finally{client.release()}
 }
@@ -124,7 +128,8 @@ async function route(req,res){
     if(await proofMediaHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
     if(await deliveryQrHttp(req,res))return;
-    if(await logisticsHttp(req,res))return;
+  if(await territorialAnalyticsHttp(req,res))return;
+  if(await logisticsHttp(req,res))return;
     if(await syncHttp(req,res))return;
     if(req.headers.origin&&!ALLOWED_ORIGINS.includes(req.headers.origin))return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
     if(/^\/api\/(?:ifood|99food|keeta)(?:\/|$)/iu.test(u.pathname))return json(res,503,{error:{code:'PROVIDER_BLOCKED_EXTERNAL',message:'A integração externa ainda não foi validada e habilitada.'},requestId:req.requestId});

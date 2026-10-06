@@ -16,6 +16,8 @@
     return result;
   };
   const card = html => `<div class="card">${html}</div>`;
+  let currentState = null;
+  let currentContext = null;
   function settingsPanel() {
     return card('<div class="setting-heading"><h2>Providers logísticos</h2><p>Cadastre providers para atribuição manual. Nesta versão somente manual_assignment está implementado; nenhuma plataforma é chamada.</p></div><div class="actions"><button class="btn primary" type="button" data-logistics-add>Cadastrar parceiro</button><button class="btn" type="button" data-logistics-refresh>Atualizar</button></div><div id="logistics-provider-list"><span class="muted">Carregando…</span></div>');
   }
@@ -62,9 +64,71 @@
   async function renderReport() {
     const root = document.querySelector('#fulfillment-analytics'); if (!root) return;
     try {
-      const data = await api('/logistics/analytics');
+      const [data] = await Promise.all([api('/logistics/analytics')]);
       root.innerHTML = `<h3>Alocações logísticas</h3>${data.providers.length ? data.providers.map(p => `<div class="report-row"><b>${esc(p.displayName)}</b><span>${p.class === 'internal_fleet' ? 'Frota própria' : 'Externo'} · ${p.allocations} alocações · ${p.completed} concluídas · ${p.reconciledCostCount} custos reconciliados</span></div>`).join('') : '<p class="muted">Sem alocações registradas.</p>'}<small>Custos são parciais e representam somente valores reconciliados.</small>`;
     } catch (_) { root.textContent = 'Resumo de fulfillment disponível para sessão administrativa autorizada.'; }
+    loadTerritorialReport();
+  }
+  function reportQuery() {
+    const state = currentState || {}, q = state.report || {};
+    const params = new URLSearchParams({ period: String(q.period || 30), metric: q.territorialMetric || 'volume' });
+    for (const [key, value] of Object.entries({ status:q.status, source:q.source, type:q.type, mode:q.fulfillmentMode, providerId:q.providerId })) if (value) params.set(key, value);
+    const selectedBike=(currentState?.bikes||[]).find(row=>row.name===q.bike || row.id===q.bike || row.canonicalId===q.bike);
+    const driver = String(selectedBike?.sync?.canonicalId||selectedBike?.canonicalId||selectedBike?.id||'');
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(driver)) params.set('driverId', driver);
+    return params.toString();
+  }
+  function hasUnresolvedDriverFilter() {
+    const selected=String(currentState?.report?.bike||'');
+    if(!selected)return false;
+    const bike=(currentState?.bikes||[]).find(row=>row.name===selected||row.id===selected||row.canonicalId===selected);
+    const id=String(bike?.sync?.canonicalId||bike?.canonicalId||bike?.id||'');
+    return !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(id);
+  }
+  function heatmapMarkup(data) {
+    const cells = data.cells || [];
+    const view = cells.length ? (() => {
+      const lats=cells.map(c=>c.latitude), lons=cells.map(c=>c.longitude), minLat=Math.min(...lats),maxLat=Math.max(...lats),minLon=Math.min(...lons),maxLon=Math.max(...lons);
+      const x=v=>maxLon===minLon?50:8+(v-minLon)/(maxLon-minLon)*84, y=v=>maxLat===minLat?50:92-(v-minLat)/(maxLat-minLat)*84;
+      return `<svg class="territorial-map" viewBox="0 0 100 100" role="img" aria-label="Mapa agregado por células geográficas">${cells.map(c=>`<circle cx="${x(c.longitude).toFixed(2)}" cy="${y(c.latitude).toFixed(2)}" r="${c.intensity===3?5:c.intensity===2?3.8:2.8}" class="territorial-cell intensity-${c.intensity}"><title>Célula ${esc(c.cell)} · ${esc(c.countBand)} entregas</title></circle>`).join('')}</svg>`;
+    })() : '<div class="territorial-empty">Sem células com amostra mínima neste recorte.</div>';
+    const rows = cells.map(c => `<tr><td>${esc(c.cell)}</td><td>${esc(c.countBand)}</td><td>${c.completed == null ? '—' : c.completed}</td><td>${c.cancelled == null ? '—' : c.cancelled}</td><td>${c.failed == null ? '—' : c.failed}</td><td>${c.averageDurationMinutes == null ? '—' : `${c.averageDurationMinutes.toFixed(1)} min`}</td><td>${c.averageActualDistanceKm == null ? '—' : `${c.averageActualDistanceKm.toFixed(2)} km`}</td><td>${c.averageEstimatedDistanceKm == null ? '—' : `${c.averageEstimatedDistanceKm.toFixed(2)} km`}</td><td>${c.averageDeliveryFeeBRL == null ? '—' : `R$ ${c.averageDeliveryFeeBRL.toFixed(2)}`}</td><td>${c.internalFleet == null ? '—' : c.internalFleet}/${c.external == null ? '—' : c.external}</td><td>${(c.providers||[]).map(p=>`${esc(p.code)} (${esc(p.countBand)})`).join(', ')||'—'}</td></tr>`).join('');
+    const percent = data.coverage == null ? 'indisponível' : `${(data.coverage*100).toFixed(1)}%`;
+    const q=currentState?.report||{};
+    return `<div class="section-head"><div><span class="eyebrow">Território</span><h2>Heatmap histórico de entregas</h2><p>Somente destinos confirmados; célula geográfica de aproximadamente 5 km e limiar mínimo de cinco entregas. Período: últimos ${Number(data.period)} dias${data.timeZone?` (${esc(data.timeZone)})`:''}.</p></div><button class="btn small" data-territorial-refresh>Atualizar</button></div><div class="territorial-filterbar"><label>Intensidade<select class="select" data-territorial-metric><option value="volume" ${data.metric==='volume'?'selected':''}>Volume</option><option value="delivery_fee" ${data.metric==='delivery_fee'?'selected':''}>Taxa média BRL</option><option value="duration" ${data.metric==='duration'?'selected':''}>Tempo médio</option><option value="actual_distance" ${data.metric==='actual_distance'?'selected':''}>Distância real média</option><option value="estimated_distance" ${data.metric==='estimated_distance'?'selected':''}>Distância estimada média</option></select></label><label>Execução<select class="select" data-territorial-mode><option value="" ${!q.fulfillmentMode?'selected':''}>Frota própria e terceiros</option><option value="internal" ${q.fulfillmentMode==='internal'?'selected':''}>Frota própria</option><option value="external" ${q.fulfillmentMode==='external'?'selected':''}>Terceiros</option></select></label><label>Provider<select class="select" data-territorial-provider><option value="" ${!q.providerId?'selected':''}>Todos</option>${(data.providerFilters||[]).map(p=>`<option value="${esc(p.id)}" ${q.providerId===p.id?'selected':''}>${esc(p.code)}</option>`).join('')}</select></label></div><div class="territorial-coverage"><b>${data.withLocation}/${data.totalEligible} com destino (${percent})</b><span>${data.withoutLocation} sem localização utilizável (${data.lowPrecision} com precisão acima de ${data.maximumMapAccuracyM} m) · ${data.suppressedCells} célula(s) suprimida(s) por amostra baixa</span></div>${view}<div class="territorial-legend"><span><i class="intensity-1"></i> menor</span><span><i class="intensity-2"></i> intermediária</span><span><i class="intensity-3"></i> maior</span><span>Em volume: bandas 5–9, 10–24 e 25+. Métricas por célula abaixo de cinco amostras são ocultadas.</span></div><div class="table-scroll"><table class="territorial-table"><thead><tr><th>Célula</th><th>Volume</th><th>Concluídas</th><th>Canceladas</th><th>Falhas</th><th>Tempo médio</th><th>Distância real</th><th>Distância estimada</th><th>Taxa média</th><th>Própria/terceiro</th><th>Provider</th></tr></thead><tbody>${rows||'<tr><td colspan="11">Sem dados agregados.</td></tr>'}</tbody></table></div><small>Mapa server-side agregado. Endereço, cliente, GPS individual e conteúdo de pedidos não são retornados. Geohash ${esc(data.algorithm)}; leitura local/offline não apresenta pontos geográficos crus.</small>${destinationEntryMarkup()}`;
+  }
+  function destinationEntryMarkup() {
+    if (!currentContext?.session?.permissions?.includes('company.manage')) return '';
+    const orders = currentState.orders || [], deliveries = currentState.deliveries || [];
+    const options = orders.filter(order=>!order.deleted&&!order.deletedAt).map(order=>{
+      const delivery=deliveries.find(row=>row.orderId===order.id || row.id===order.deliveryId);
+      const id=delivery?.sync?.canonicalId||delivery?.canonicalId||delivery?.id;
+      return id ? `<option value="${esc(id)}">#${esc(order.num||order.id)} · ${esc(order.status||'')}</option>` : '';
+    }).filter(Boolean).join('');
+    return `<details class="territorial-location-entry"><summary>Registrar destino manualmente confirmado</summary><p>Use coordenadas obtidas e conferidas por operador autorizado. Não use GPS do motorista nem geocodifique endereço durante o relatório.</p><form data-destination-form class="formgrid"><label class="full">Entrega<select name="deliveryId" class="select" required>${options||'<option value="">Nenhuma Delivery canônica local</option>'}</select></label><input type="hidden" name="expectedVersion" value="0"><label>Latitude<input class="input" name="latitude" type="number" step="any" min="-90" max="90" required></label><label>Longitude<input class="input" name="longitude" type="number" step="any" min="-180" max="180" required></label><label>Precisão conhecida (m)<input class="input" name="accuracyM" type="number" min="0" max="100000" step="any"></label><label class="full"><span><input type="checkbox" name="confirmDestination" required> Confirmo que o ponto representa o destino desta entrega.</span></label><div class="actions full"><button class="btn primary" ${options?'':'disabled'}>Salvar snapshot de destino</button><span data-destination-status role="status"></span></div></form></details>`;
+  }
+  async function loadTerritorialReport() {
+    const root=document.querySelector('#territorial-heatmap'); if(!root)return;
+    if(hasUnresolvedDriverFilter()) { root.innerHTML='<h2>Heatmap histórico</h2><p class="muted">O filtro de motoboy ainda não tem identificador canônico. Sincronize os dados e tente novamente; nenhum agregado sem filtro foi consultado.</p>'; return; }
+    root.textContent='Carregando agregados territoriais…';
+    try { const data=await api(`/analytics/territorial?${reportQuery()}`); if(!document.querySelector('#territorial-heatmap'))return; root.innerHTML=heatmapMarkup(data); bindTerritorial(root); }
+    catch(error){ root.innerHTML=`<h2>Heatmap histórico</h2><p class="muted">${error.message==='RECORTE_LIMIT_EXCEEDED'?'Reduza o período ou aplique filtros.':'Agregados territoriais indisponíveis. Verifique sessão, permissão e migration 0018.'}</p>${destinationEntryMarkup()}`; bindTerritorial(root); }
+  }
+  function bindTerritorial(root) {
+    root.querySelector('[data-territorial-refresh]')?.addEventListener('click',loadTerritorialReport);
+    const updateFilter=()=>{currentState.report={...(currentState.report||{}),territorialMetric:root.querySelector('[data-territorial-metric]')?.value||'volume',fulfillmentMode:root.querySelector('[data-territorial-mode]')?.value||'',providerId:root.querySelector('[data-territorial-provider]')?.value||''};loadTerritorialReport();};
+    root.querySelector('[data-territorial-metric]')?.addEventListener('change',updateFilter);
+    root.querySelector('[data-territorial-mode]')?.addEventListener('change',updateFilter);
+    root.querySelector('[data-territorial-provider]')?.addEventListener('change',updateFilter);
+    const form=root.querySelector('[data-destination-form]');
+    const updateVersion=async()=>{const deliveryId=form?.elements.deliveryId?.value;if(!deliveryId)return;try{const value=await api(`/analytics/territorial/deliveries/${encodeURIComponent(deliveryId)}/destination`);form.elements.expectedVersion.value=String(value.version||0);}catch(_){form.elements.expectedVersion.value='-1';}};
+    form?.elements.deliveryId?.addEventListener('change',()=>{if(form.elements.latitude)form.elements.latitude.value='';if(form.elements.longitude)form.elements.longitude.value='';if(form.elements.accuracyM)form.elements.accuracyM.value='';if(form.elements.confirmDestination)form.elements.confirmDestination.checked=false;updateVersion()});if(form)updateVersion();
+    root.querySelector('[data-destination-form]')?.addEventListener('submit',async event=>{
+      event.preventDefault(); const form=event.currentTarget,fields=new FormData(form),status=form.querySelector('[data-destination-status]');
+      if(status)status.textContent='Salvando…';
+      try { await api(`/analytics/territorial/deliveries/${encodeURIComponent(fields.get('deliveryId'))}/destination`,'PUT',{latitude:Number(fields.get('latitude')),longitude:Number(fields.get('longitude')),accuracyM:fields.get('accuracyM')===''?null:Number(fields.get('accuracyM')),confirmDestination:fields.get('confirmDestination')==='on',expectedVersion:Number(fields.get('expectedVersion'))}); if(status)status.textContent='Destino confirmado e salvo.'; await loadTerritorialReport(); }
+      catch(_){ if(status)status.textContent='Não foi possível salvar. Confirme permissão administrativa e Delivery canônica.'; }
+    });
   }
   function openDelivery(deliveryId, context) {
     if (!deliveryId) return window.RotaMotoApp?.toast?.('Sincronize a entrega antes de configurar fulfillment.','error');
@@ -94,6 +158,7 @@
     } catch (_) { if (root) root.textContent = 'Fulfillment exige sessão administrativa autorizada e API disponível.'; }
   }
   function bind(context) {
+    currentContext = context || currentContext; currentState = context?.state || currentState;
     document.querySelector('[data-logistics-refresh]')?.addEventListener('click', loadProviders);
     document.querySelector('[data-logistics-add]')?.addEventListener('click', newProvider);
     document.querySelectorAll('[data-logistics-toggle]').forEach(button => button.addEventListener('click', async () => {
