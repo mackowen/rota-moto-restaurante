@@ -7,6 +7,11 @@ const { resolveTestProviderConfiguration } = require('./provider-integration');
 
 const POLICIES = Object.freeze(['lowest_cost','prefer_internal','earliest_eta']);
 const MAX_MINOR = 9000000000000000;
+const ACTIVE_DELIVERY_STATES = new Set(['ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY']);
+const IN_PROGRESS_DELIVERY_STATES = new Set(['ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED']);
+const ACTIVE_ROUTE_STATES = new Set(['PLANNED','ACTIVE','IN_PROGRESS']);
+const ACTIVE_DRIVER_STATES = new Set(['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED']);
+const UNAVAILABLE_DRIVER_STATES = new Set(['INACTIVE','OFFLINE','DISABLED','SUSPENDED','INATIVO','INDISPONIVEL']);
 
 function invalid(message) { throw Object.assign(new Error(message), { code: 'INVALID_INPUT' }); }
 function normalizePolicy(value) {
@@ -44,27 +49,107 @@ function estimateInternalCost(model, distanceM) {
     rounding: 'variable component rounded up to the next minor unit', source: 'operator_configured_fleet_model', componentsKnown: 2, componentsTotal: 2 };
 }
 
+function normalizedOperationalStatus(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').trim().toUpperCase();
+}
+
+function summarizeFleetCapacity(drivers = [], deliveries = []) {
+  const workload = new Map();
+  let assignedDeliveries = 0, inProgressDeliveries = 0;
+  for (const delivery of deliveries) {
+    const driverId = typeof delivery.driverId === 'string' ? delivery.driverId : null;
+    const status = String(delivery.status || '').toUpperCase();
+    if (!driverId || !ACTIVE_DELIVERY_STATES.has(status)) continue;
+    const item = workload.get(driverId) || { assigned: 0, inProgress: 0 };
+    item.assigned += 1; assignedDeliveries += 1;
+    if (IN_PROGRESS_DELIVERY_STATES.has(status)) { item.inProgress += 1; inProgressDeliveries += 1; }
+    workload.set(driverId,item);
+  }
+  let activeDrivers = 0, knownUnavailableDrivers = 0, unknownStatusDrivers = 0;
+  const driversWithLoad = [];
+  let explicitlyAvailable = false;
+  for (const driver of drivers) {
+    const status = normalizedOperationalStatus(driver.status), load = workload.get(driver.driverId) || { assigned: 0, inProgress: 0 };
+    const active = ACTIVE_DRIVER_STATES.has(status), unavailable = UNAVAILABLE_DRIVER_STATES.has(status);
+    if (active) activeDrivers += 1;
+    else if (unavailable) knownUnavailableDrivers += 1;
+    else unknownStatusDrivers += 1;
+    if (load.assigned) driversWithLoad.push({ driverId: driver.driverId, assigned: load.assigned, inProgress: load.inProgress });
+    if (active && ['AVAILABLE','DISPONIVEL'].includes(status) && load.assigned === 0) explicitlyAvailable = true;
+  }
+  const availability = explicitlyAvailable ? 'available' :
+    drivers.length > 0 && activeDrivers === 0 && unknownStatusDrivers === 0 ? 'unavailable' : 'unknown';
+  return { availability, activeDrivers, knownUnavailableDrivers, unknownStatusDrivers,
+    assignedDeliveries, inProgressDeliveries, driversWithLoad,
+    capacityLimit: null, remainingSlots: null, capacityStatus: 'unknown',
+    evidence: { driverStatusesObserved: drivers.length, canonicalWorkloadObserved: true },
+    reasons: [
+      ...(availability === 'available' ? [{ code: 'EXPLICIT_AVAILABLE_STATUS', message: 'Há ao menos um Driver com status explicitamente disponível e sem entrega atribuída no retrato canônico.' }] : []),
+      ...(driversWithLoad.length ? [{ code: 'KNOWN_ASSIGNED_WORKLOAD', message: 'Entregas atribuídas/em andamento foram contadas por Driver; não há limite de carga configurado para concluir esgotamento.' }] : []),
+      { code: 'CAPACITY_LIMIT_NOT_CONFIGURED', message: 'O domínio não possui limite de entregas simultâneas por Driver; slots livres e capacidade esgotada permanecem desconhecidos.' },
+      ...(unknownStatusDrivers ? [{ code: 'DRIVER_STATUS_UNRECOGNIZED', message: 'Há status de Driver sem semântica operacional conhecida.' }] : [])
+    ] };
+}
+
+function assessRouteCompatibility({ deliveryId, deliveryDriverId = null, routes = [], targetCoordinatesKnown = false } = {}) {
+  if (deliveryDriverId) return { status: 'not_applicable', compatibility: 'unknown', candidates: [],
+    reason: 'DELIVERY_ALREADY_ASSIGNED', message: 'A Delivery já possui Driver; a avaliação de inclusão em outra rota não se aplica.' };
+  const active = routes.filter(route => ACTIVE_ROUTE_STATES.has(String(route.status || '').toUpperCase()));
+  if (!active.length) return { status: 'no_active_route_observed', compatibility: 'unknown', candidates: [],
+    reason: 'NO_ACTIVE_ROUTE_OBSERVED', message: 'Nenhuma Route ativa foi encontrada no retrato canônico do backend.' };
+  const candidates = [], rejected = [];
+  for (const route of active) {
+    if ((route.deliveryIds || []).includes(deliveryId)) {
+      rejected.push({ routeId: route.routeId, reason: 'DELIVERY_ALREADY_IN_ROUTE' }); continue;
+    }
+    const driverIds = [...new Set((route.stops || []).map(stop => stop.driverId).filter(Boolean))];
+    if (!route.stops?.length || driverIds.length !== 1 || route.stops.some(stop => !stop.driverId)) {
+      rejected.push({ routeId: route.routeId, reason: 'ROUTE_DRIVER_NOT_UNAMBIGUOUS' }); continue;
+    }
+    const driverStatus = normalizedOperationalStatus(route.stops[0].driverStatus);
+    if (!ACTIVE_DRIVER_STATES.has(driverStatus)) {
+      rejected.push({ routeId: route.routeId, driverId: driverIds[0], reason: UNAVAILABLE_DRIVER_STATES.has(driverStatus) ? 'ROUTE_DRIVER_UNAVAILABLE' : 'ROUTE_DRIVER_STATUS_UNKNOWN' });
+      continue;
+    }
+    const stopsWithCoordinates = route.stops.filter(stop => stop.coordinatesKnown).length;
+    candidates.push({ routeId: route.routeId, status: route.status, driverId: driverIds[0], stopCount: route.stops.length,
+      destinationCoordinateCoverage: route.stops.length ? stopsWithCoordinates / route.stops.length : 0,
+      targetCoordinatesKnown: Boolean(targetCoordinatesKnown), compatibility: 'unknown',
+      incrementalDistanceM: null, marginalCost: { status: 'insufficient_data', reason: 'CANONICAL_ROAD_DISTANCE_UNAVAILABLE' },
+      reason: !targetCoordinatesKnown || stopsWithCoordinates !== route.stops.length ? 'CONFIRMED_DESTINATION_COORDINATES_INCOMPLETE' : 'ROAD_DISTANCE_MODEL_UNAVAILABLE',
+      explanation: !targetCoordinatesKnown || stopsWithCoordinates !== route.stops.length ?
+        'Faltam coordenadas de destino confirmadas para todas as paradas e para a nova entrega.' :
+        'Driver ativo e Route canônica identificados, mas não há rede viária nem distância incremental confiável para afirmar compatibilidade geográfica ou custo marginal.' });
+  }
+  if (candidates.length) return { status: 'candidate_requires_route_validation', compatibility: 'unknown', candidates, rejected,
+    reason: 'ROAD_DISTANCE_MODEL_UNAVAILABLE', message: 'A rota é candidata por vínculo canônico com um Driver ativo; compatibilidade geográfica e distância incremental não podem ser confirmadas.' };
+  return { status: 'no_compatible_route_observed', compatibility: 'incompatible', candidates: [], rejected,
+    reason: 'NO_OPERATIONALLY_COMPATIBLE_ROUTE', message: 'Nenhuma Route ativa observada tem um Driver interno ativo e inequívoco.' };
+}
+
 function makeRecommendation(alternatives, policy) {
   const eligible = alternatives.filter(item => item.eligible);
+  const decisionCost = item => item.decisionCost || item.cost;
   const abstain = (code, message, details = {}) => ({ status: 'insufficient_data', selectedAlternativeId: null,
     tiedAlternativeIds: [], why: { code, message, ...details } });
   if (eligible.length < 2) return abstain('NOT_ENOUGH_ELIGIBLE_ALTERNATIVES', 'São necessárias pelo menos duas alternativas operacionais elegíveis para recomendar.');
   if (policy === 'prefer_internal') {
     const own = eligible.find(item => item.mode === 'internal');
     if (!own) return abstain('INTERNAL_FLEET_UNAVAILABLE', 'A frota própria não está elegível neste recorte.');
-    if (own.cost.status !== 'known') return abstain(own.cost.reason || 'INTERNAL_COST_UNKNOWN', 'A preferência pela frota própria não substitui os dados de custo ausentes.', { requirements: ['configure fixed cost, variable cost per km and currency', 'provide a valid delivery distance when the variable rate is positive'] });
+    const cost = own.decisionCost || own.cost;
+    if (cost.status !== 'known') return abstain(cost.reason || 'INTERNAL_COST_UNKNOWN', 'A preferência pela frota própria não substitui o custo marginal ou os dados operacionais ausentes.', { requirements: ['configure fixed cost, variable cost per km and currency', 'provide a valid delivery distance when the variable rate is positive', 'confirm there is no active route requiring an unknown incremental road distance'] });
     return { status: 'recommended', selectedAlternativeId: own.id, tiedAlternativeIds: [], why: {
       code: 'POLICY_PREFER_INTERNAL', message: 'A frota própria foi recomendada pela política configurada; a decisão final e a confirmação de capacidade são humanas.',
-      evidence: [{ code: 'INTERNAL_FLEET_PREFERENCE', value: policy }, { code: 'CONFIGURED_COST', amountMinor: own.cost.amountMinor, currency: own.cost.currency }],
+      evidence: [{ code: 'INTERNAL_FLEET_PREFERENCE', value: policy }, { code: 'CONFIGURED_COST', amountMinor: cost.amountMinor, currency: cost.currency }],
       limitations: ['fleet capacity is not verified by this comparison', 'this is a configured estimate, not realized operating cost'] } };
   }
   if (policy === 'lowest_cost') {
-    const missing = eligible.filter(item => item.cost.status !== 'known');
+    const missing = eligible.filter(item => decisionCost(item).status !== 'known');
     if (missing.length) return abstain('COST_COVERAGE_INCOMPLETE', 'Há alternativas elegíveis sem custo conhecido; não é possível afirmar qual tem menor custo.', { missingAlternativeIds: missing.map(item => item.id) });
-    const currencies = [...new Set(eligible.map(item => item.cost.currency))];
+    const currencies = [...new Set(eligible.map(item => decisionCost(item).currency))];
     if (currencies.length !== 1) return abstain('CURRENCY_MISMATCH', 'As alternativas usam moedas diferentes; nenhuma conversão é feita.', { currencies });
-    const min = Math.min(...eligible.map(item => item.cost.amountMinor));
-    const winners = eligible.filter(item => item.cost.amountMinor === min).sort((a,b) => a.id.localeCompare(b.id));
+    const min = Math.min(...eligible.map(item => decisionCost(item).amountMinor));
+    const winners = eligible.filter(item => decisionCost(item).amountMinor === min).sort((a,b) => a.id.localeCompare(b.id));
     if (winners.length > 1) return { status: 'tie', selectedAlternativeId: null, tiedAlternativeIds: winners.map(item => item.id),
       why: { code: 'COST_TIE', message: 'As alternativas têm o mesmo valor nominal conhecido; a decisão continua humana.', currency: currencies[0], amountMinor: min } };
     return { status: 'recommended', selectedAlternativeId: winners[0].id, tiedAlternativeIds: [], why: {
@@ -84,6 +169,54 @@ function makeRecommendation(alternatives, policy) {
 }
 
 function createLogisticsIntelligenceService({ clock = () => new Date(), testProvider = null, ensureInternalProvider } = {}) {
+  async function loadFleetCapacity(client, companyId) {
+    const driverResult = await client.query(`SELECT record_id::text AS driver_id,payload->>'status' AS status FROM rotamoto.domain_records
+      WHERE company_id=$1 AND entity_type='Driver' AND deleted_at IS NULL ORDER BY record_id`,[companyId]);
+    const deliveryResult = await client.query(`SELECT payload->>'driverId' AS driver_id,payload->>'status' AS status FROM rotamoto.domain_records
+      WHERE company_id=$1 AND entity_type='Delivery' AND deleted_at IS NULL
+        AND payload->>'status' IN ('ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY')`,[companyId]);
+    return summarizeFleetCapacity(driverResult.rows.map(row=>({driverId:row.driver_id,status:row.status})),
+      deliveryResult.rows.map(row=>({driverId:row.driver_id,status:row.status})));
+  }
+
+  async function loadRouteSnapshot(client, companyId, deliveryId, deliveryDriverId = null) {
+    const targetGeo = await client.query(`SELECT provenance,accuracy_m FROM rotamoto.delivery_geo_snapshots
+      WHERE company_id=$1 AND delivery_id=$2`,[companyId,deliveryId]);
+    const routesResult = await client.query(`WITH active_routes AS (
+          SELECT r.record_id,r.payload,r.updated_at,count(*) OVER() AS total_routes
+          FROM rotamoto.domain_records r WHERE r.company_id=$1 AND r.entity_type='Route' AND r.deleted_at IS NULL
+            AND upper(coalesce(r.payload->>'status',''))=ANY($2::text[])
+          ORDER BY r.updated_at DESC,r.record_id LIMIT 100
+        ) SELECT r.record_id::text AS route_id,r.payload->>'status' AS status,
+          CASE WHEN jsonb_typeof(r.payload->'deliveryIds')='array' THEN r.payload->'deliveryIds' ELSE '[]'::jsonb END AS delivery_ids,
+          coalesce(r.total_routes,0)::int AS total_routes,
+          coalesce(jsonb_agg(jsonb_build_object('deliveryId',stop.record_id::text,'driverId',stop.payload->>'driverId',
+            'driverStatus',driver.payload->>'status','coordinatesKnown',
+              (geo.delivery_id IS NOT NULL AND geo.provenance IN ('manual','customer_destination')))
+            ORDER BY members.ordinality) FILTER(WHERE stop.record_id IS NOT NULL),'[]'::jsonb) AS stops
+        FROM active_routes r
+        LEFT JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(r.payload->'deliveryIds')='array'
+          THEN r.payload->'deliveryIds' ELSE '[]'::jsonb END) WITH ORDINALITY AS members(value,ordinality) ON true
+        LEFT JOIN rotamoto.domain_records stop ON stop.company_id=$1 AND stop.entity_type='Delivery' AND stop.deleted_at IS NULL
+          AND stop.record_id::text=members.value
+        LEFT JOIN rotamoto.domain_records driver ON driver.company_id=stop.company_id AND driver.entity_type='Driver'
+          AND driver.deleted_at IS NULL AND driver.record_id::text=stop.payload->>'driverId'
+        LEFT JOIN rotamoto.delivery_geo_snapshots geo ON geo.company_id=stop.company_id AND geo.delivery_id=stop.record_id
+        GROUP BY r.record_id,r.payload,r.updated_at,r.total_routes ORDER BY r.updated_at DESC,r.record_id`,[companyId,[...ACTIVE_ROUTE_STATES]]);
+    const routes = routesResult.rows.map(row=>({ routeId:row.route_id,status:row.status,
+      deliveryIds:Array.isArray(row.delivery_ids)?row.delivery_ids.filter(id=>typeof id==='string'):[],
+      stops:Array.isArray(row.stops)?row.stops:[] }));
+    const target=targetGeo.rows[0];
+    const targetCoordinatesKnown=Boolean(target && ['manual','customer_destination'].includes(target.provenance));
+    const result=assessRouteCompatibility({deliveryId,deliveryDriverId,routes,targetCoordinatesKnown});
+    result.routesObserved=Number(routesResult.rows[0]?.total_routes||0);
+    result.routeScanLimit=100;
+    result.scanComplete=result.routesObserved<=100;
+    if (!result.scanComplete) result.limitations=['A análise consultou as 100 Routes ativas mais recentes; há outras Routes no tenant.'];
+    result.targetCoordinate={known:targetCoordinatesKnown,provenance:target?.provenance||null,accuracyM:target?.accuracy_m==null?null:Number(target.accuracy_m)};
+    return result;
+  }
+
   async function readSettings(client, companyId) {
     const result = await client.query(`SELECT fixed_cost_per_delivery_minor,variable_cost_per_km_minor,currency,default_policy,version,updated_at
       FROM rotamoto.logistics_intelligence_settings WHERE company_id=$1`, [companyId]);
@@ -141,14 +274,26 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       Number.isFinite(order.km) && order.km >= 0 && order.km <= Number.MAX_SAFE_INTEGER / 1000 ? Math.round(order.km * 1000) : null;
     const distanceSource = Number.isSafeInteger(delivery.estimatedDistanceM) ? 'Delivery.estimatedDistanceM' : rawDistanceM !== null ? 'Order.km (legacy estimate)' : null;
     const settings = await readSettings(client, principal.company_id);
+    const fleetCapacity = await loadFleetCapacity(client,principal.company_id);
+    const routeAssessment = await loadRouteSnapshot(client,principal.company_id,deliveryId,delivery.driverId||null);
     const internalResult = await client.query(`SELECT provider_id,enabled FROM rotamoto.logistics_providers
       WHERE company_id=$1 AND code='internal_fleet'`, [principal.company_id]);
     const alternatives = [];
     if (internalResult.rowCount && internalResult.rows[0].enabled) {
       const cost = estimateInternalCost(settings.costModel, rawDistanceM);
+      const routeCandidate = routeAssessment.candidates.length > 0;
+      const isolatedDecisionCost = routeAssessment.status === 'no_active_route_observed' && routeAssessment.scanComplete
+        ? { ...cost, basis:'new_route_assumption', assumption:'no active canonical route observed; an unsynchronized local-only route may exist' }
+        : { status:'insufficient_data',reason:routeCandidate?'INCREMENTAL_ROUTE_DISTANCE_UNKNOWN':'ROUTE_STATE_NOT_COMPLETE' };
       alternatives.push({ id: `internal:${internalResult.rows[0].provider_id}`, mode: 'internal', providerId: internalResult.rows[0].provider_id,
-        providerName: 'Frota própria', kind: 'configured_estimate', eligible: true, availability: { status: 'unverified', requiresHumanConfirmation: true },
-        etaAt: null, etaStatus: 'unknown', cost, reasons: [{ code: 'FLEET_CAPACITY_NOT_VERIFIED', message: 'A disponibilidade de motoboy precisa ser confirmada pelo operador.' }] });
+        providerName: 'Frota própria', kind: 'configured_estimate', eligible: fleetCapacity.availability !== 'unavailable',
+        availability: { status: fleetCapacity.availability, requiresHumanConfirmation: fleetCapacity.availability !== 'available' },
+        etaAt: null, etaStatus: 'unknown', cost, decisionCost:isolatedDecisionCost,
+        marginalCost:routeCandidate?{status:'insufficient_data',reason:'CANONICAL_ROAD_DISTANCE_UNAVAILABLE'}:isolatedDecisionCost,
+        fleetCapacity, routeAssessment,
+        reasons: [{ code: 'FLEET_CAPACITY_NOT_VERIFIED', message: fleetCapacity.availability === 'unavailable' ?
+          'Nenhum Driver ativo foi encontrado no retrato canônico; a frota própria não está elegível neste momento.' :
+          'A disponibilidade/carga máxima da frota precisa de confirmação humana; o domínio não configura limite simultâneo.' }] });
     }
     const providersResult = await client.query(`SELECT provider_id,code,display_name,provider_class,enabled,integration_mode,api_enabled,capabilities
       FROM rotamoto.logistics_providers WHERE company_id=$1 AND provider_class<>'internal_fleet' ORDER BY provider_id`, [principal.company_id]);
@@ -204,24 +349,28 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     const payout = [...payoutByCurrency.entries()].map(([currency,amount]) => ({ currency,amountMinor:amount.toString(),
       meaning:'canonical Earning / driver payout record; not proof of payment or total operating cost' }));
     const recommendation = makeRecommendation(alternatives,policy);
-    const knownCosts = alternatives.filter(item=>item.eligible&&item.cost.status==='known');
+    const knownCosts = alternatives.filter(item=>item.eligible&&(item.decisionCost||item.cost).status==='known');
     const earliestEta = alternatives.filter(item=>item.eligible&&item.etaAt&&Number.isFinite(Date.parse(item.etaAt)))
       .sort((a,b)=>Date.parse(a.etaAt)-Date.parse(b.etaAt)||a.id.localeCompare(b.id))[0] || null;
     const comparisons = alternatives.map(item=>{
-      const sameCurrency = item.eligible&&item.cost.status==='known' ? knownCosts.filter(other=>other.cost.currency===item.cost.currency) : [];
-      const cheapest = sameCurrency.length ? [...sameCurrency].sort((a,b)=>a.cost.amountMinor-b.cost.amountMinor||a.id.localeCompare(b.id))[0] : null;
+      const comparedCost=item.decisionCost||item.cost;
+      const sameCurrency = item.eligible&&comparedCost.status==='known' ? knownCosts.filter(other=>(other.decisionCost||other.cost).currency===comparedCost.currency) : [];
+      const cheapest = sameCurrency.length ? [...sameCurrency].sort((a,b)=>(a.decisionCost||a.cost).amountMinor-(b.decisionCost||b.cost).amountMinor||a.id.localeCompare(b.id))[0] : null;
       const deltaEta = item.etaAt&&earliestEta&&Number.isFinite(Date.parse(item.etaAt)) ? Date.parse(item.etaAt)-Date.parse(earliestEta.etaAt) : null;
-      return { alternativeId:item.id, ...(cheapest?{costBaselineAlternativeId:cheapest.id,costDifferenceMinor:item.cost.amountMinor-cheapest.cost.amountMinor,currency:item.cost.currency}:{}),
+      return { alternativeId:item.id, ...(cheapest?{costBaselineAlternativeId:cheapest.id,costDifferenceMinor:comparedCost.amountMinor-(cheapest.decisionCost||cheapest.cost).amountMinor,currency:comparedCost.currency}:{}),
         ...(deltaEta===null?{}:{etaBaselineAlternativeId:earliestEta.id,etaDifferenceMs:deltaEta}) };
     });
     return { deliveryId, policy, alternatives, comparisons, recommendation,
+      capacity:fleetCapacity, routeAssessment,
       inputs: { estimatedDistanceM: rawDistanceM, distanceSource, currencyConversion: false,
         commercialOrderValueUsed: false, earningUsedAsTotalCost: false,
         driverPayout: payout, currentTime: clock().toISOString() },
       explanation: { costBasis: 'internal: configured fixed-per-delivery plus variable-per-kilometer estimate; external: valid quote or operator-entered manual estimate',
-        limitations: ['Order value/revenue is not logistics cost', 'Earning is a driver payout record and is shown separately',
+      limitations: ['Order value/revenue is not logistics cost', 'Earning is a driver payout record and is shown separately',
           'quote and estimates are not realized charges', 'fixed and variable profile covers only the components explicitly configured',
-          'fleet/provider capacity is not guaranteed; the operator makes the final decision', 'the recommendation never dispatches'] } };
+          'driver records do not prove availability or spare capacity; the operator must confirm',
+          'Route has ordered Delivery IDs but no trusted road distance model; straight-line coordinates are not used as road distance',
+          'the recommendation never dispatches'] } };
   }
 
   async function economicAnalytics(client, principal) {
@@ -248,6 +397,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       WHERE l.mode='internal'
     ) SELECT COALESCE(jsonb_agg(to_jsonb(costs)),'[]'::jsonb) AS modes,(SELECT to_jsonb(earning) FROM earning) AS earning FROM costs`, [principal.company_id]);
     const settings = await readSettings(client,principal.company_id);
+    const capacity = await loadFleetCapacity(client,principal.company_id);
     const modes = result.rows[0]?.modes || [];
     const internalRows = modes.filter(item=>item.mode==='internal'), externalRows=modes.filter(item=>item.mode==='external');
     const summarize = rows => {
@@ -267,7 +417,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     const earning=result.rows[0]?.earning||{};
     const payouts=new Map(); for (const item of earning.payouts||[]) if(item.currency&&/^\d+$/u.test(String(item.amountMinor||''))) payouts.set(item.currency,(payouts.get(item.currency)||0n)+BigInt(item.amountMinor));
     const ownFleet=summarize(internalRows);
-    return { settings, ownFleet, external:summarize(externalRows),
+    return { settings, ownFleet, external:summarize(externalRows), capacity,
       driverPayout:{ deliveriesWithEarning:Number(earning.known||0),totalEligibleDeliveries:ownFleet.completed,
         coverage:ownFleet.completed?Number(earning.known||0)/ownFleet.completed:null,
         byCurrency:[...payouts.entries()].map(([currency,amount])=>({currency,amountMinor:amount.toString()})),
@@ -278,4 +428,5 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     compareLogisticsAlternatives:compareDelivery, logisticsEconomicAnalytics:economicAnalytics });
 }
 
-module.exports = { POLICIES, normalizePolicy, normalizeSettings, estimateInternalCost, makeRecommendation, createLogisticsIntelligenceService };
+module.exports = { POLICIES, normalizePolicy, normalizeSettings, estimateInternalCost, makeRecommendation,
+  summarizeFleetCapacity, assessRouteCompatibility, createLogisticsIntelligenceService };

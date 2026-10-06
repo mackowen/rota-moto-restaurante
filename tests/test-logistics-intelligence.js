@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { estimateInternalCost, makeRecommendation, normalizeSettings } = require('../backend/logistics/intelligence');
+const { estimateInternalCost, makeRecommendation, normalizeSettings, summarizeFleetCapacity, assessRouteCompatibility } = require('../backend/logistics/intelligence');
 
 const alternative = (id, mode, amountMinor, options = {}) => ({ id, mode, eligible: options.eligible ?? true,
   cost: amountMinor === null ? { status: 'insufficient_data', reason: options.reason || 'NO_COST' } :
@@ -31,5 +31,48 @@ assert.equal(makeRecommendation([own, alternative('manual', 'external_manual', n
 assert.equal(makeRecommendation([alternative('b', 'internal', 100), alternative('a', 'external_api', 100)], 'lowest_cost').status,
   'tie', 'nominal cost tie is returned without selecting');
 assert.equal(makeRecommendation([own], 'lowest_cost').status, 'insufficient_data', 'one eligible alternative is insufficient');
+
+const busyCapacity=summarizeFleetCapacity([{driverId:'driver-a',status:'active'}],Array.from({length:4},(_,index)=>({
+  driverId:'driver-a',status:index===0?'ASSIGNED':'OUT_FOR_DELIVERY'
+})));
+assert.equal(busyCapacity.activeDrivers,1);
+assert.equal(busyCapacity.assignedDeliveries,4);
+assert.equal(busyCapacity.inProgressDeliveries,3);
+assert.equal(busyCapacity.availability,'unknown','active Driver plus workload never implies free capacity');
+assert.equal(busyCapacity.capacityStatus,'unknown','load limit is not invented when no capacity setting exists');
+assert.equal(busyCapacity.capacityLimit,null);
+const explicitlyAvailable=summarizeFleetCapacity([{driverId:'driver-b',status:'DISPONÍVEL'}],[]);
+assert.equal(explicitlyAvailable.availability,'available','the canonical Restaurant available status is recognized only without assigned workload');
+const activeInRoute=summarizeFleetCapacity([{driverId:'driver-route',status:'EM ROTA'}],[{driverId:'driver-route',status:'OUT_FOR_DELIVERY'}]);
+assert.equal(activeInRoute.activeDrivers,1,'the canonical Restaurant in-route status is an active Driver');
+assert.equal(activeInRoute.availability,'unknown','an in-route Driver is active but not available for another assignment');
+const offlineCapacity=summarizeFleetCapacity([{driverId:'driver-c',status:'OFFLINE'}],[]);
+assert.equal(offlineCapacity.availability,'unavailable','an explicit offline status is a known unavailable state');
+
+const routeCandidate=assessRouteCompatibility({deliveryId:'delivery-new',targetCoordinatesKnown:true,routes:[{
+  routeId:'route-active',status:'IN_PROGRESS',deliveryIds:['delivery-stop'],stops:[{
+    deliveryId:'delivery-stop',driverId:'driver-a',driverStatus:'active',coordinatesKnown:true
+  }]
+}]});
+assert.equal(routeCandidate.status,'candidate_requires_route_validation');
+assert.equal(routeCandidate.compatibility,'unknown','an active route and confirmed coordinates alone do not prove road compatibility');
+assert.equal(routeCandidate.candidates[0].driverId,'driver-a');
+assert.equal(routeCandidate.candidates[0].incrementalDistanceM,null,'no straight-line value is passed off as route distance');
+assert.equal(routeCandidate.candidates[0].marginalCost.status,'insufficient_data');
+const incompatibleRoute=assessRouteCompatibility({deliveryId:'delivery-new',routes:[{
+  routeId:'route-offline',status:'ACTIVE',deliveryIds:['delivery-stop'],stops:[{
+    deliveryId:'delivery-stop',driverId:'driver-offline',driverStatus:'offline',coordinatesKnown:true
+  }]
+}]});
+assert.equal(incompatibleRoute.compatibility,'incompatible','route with an explicitly offline Driver is operationally incompatible');
+assert.equal(incompatibleRoute.rejected[0].reason,'ROUTE_DRIVER_UNAVAILABLE');
+assert.equal(assessRouteCompatibility({deliveryId:'delivery-new',routes:[{routeId:'old',status:'COMPLETED',stops:[]}]}).status,
+  'no_active_route_observed','completed routes are not considered active candidates');
+assert.equal(assessRouteCompatibility({deliveryId:'delivery-new',deliveryDriverId:'driver-already-assigned'}).status,
+  'not_applicable','already allocated deliveries do not receive a route addition suggestion');
+const unknownRouteCost=alternative('internal-route','internal',900);
+unknownRouteCost.decisionCost={status:'insufficient_data',reason:'INCREMENTAL_ROUTE_DISTANCE_UNKNOWN'};
+assert.equal(makeRecommendation([unknownRouteCost,external],'lowest_cost').why.code,'COST_COVERAGE_INCOMPLETE',
+  'a cheaper quote cannot be declared while the internal route marginal cost is unknown');
 
 console.log('Logistics intelligence deterministic recommendations: OK');
