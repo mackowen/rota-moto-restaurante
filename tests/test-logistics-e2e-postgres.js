@@ -22,8 +22,12 @@ async function main() {
     const identity = (await client.query(`SELECT current_user AS role,current_database() AS database,
       (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass`)).rows[0];
     assert.deepEqual(identity, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', bypass: false });
-    const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0017_logistics_fulfillment'`);
-    assert.equal(migration.rowCount, 1, 'only the E2E database has the applied logistics migration');
+    const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations
+      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege')
+      ORDER BY migration_id`);
+    assert.deepEqual(migration.rows.map(row => row.migration_id), [
+      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege'
+    ], 'E2E schema includes the tested logistics, geography and least-privilege migrations');
     const catalog = await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
       has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,
       has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete
@@ -33,32 +37,67 @@ async function main() {
     assert.equal(catalog.rowCount, 3);
     for (const row of catalog.rows) {
       assert.equal(row.relrowsecurity, true); assert.equal(row.relforcerowsecurity, true);
-      assert.equal(row.owner, 'rotamoto_migrator'); assert.equal(row.app_select, true); assert.equal(row.app_delete, false);
+      assert.equal(row.owner, 'rotamoto_migrator'); assert.equal(row.app_delete, false);
+      assert.equal(row.app_select, row.relname !== 'logistics_providers',
+        'provider table access is column-scoped while fulfillment and attempt reads stay operational');
     }
     const appPrivileges = await client.query(`SELECT
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','provider_id','INSERT') AS provider_insert,
+      has_table_privilege('rotamoto_app','rotamoto.logistics_providers','SELECT') AS provider_table_select,
+      has_column_privilege('rotamoto_app','rotamoto.logistics_providers','provider_id','SELECT') AS provider_id_select,
+      has_column_privilege('rotamoto_app','rotamoto.logistics_providers','configuration','SELECT') AS provider_configuration_select,
+      has_column_privilege('rotamoto_app','rotamoto.logistics_providers','secret_ref','SELECT') AS provider_secret_select,
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','provider_class','UPDATE') AS provider_class_update,
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','secret_ref','UPDATE') AS provider_secret_update,
       has_column_privilege('rotamoto_app','rotamoto.delivery_fulfillments','mode','INSERT') AS fulfillment_insert,
       has_column_privilege('rotamoto_app','rotamoto.dispatch_attempts','status','UPDATE') AS attempts_update`);
-    assert.deepEqual(appPrivileges.rows[0], { provider_insert: true, provider_class_update: false, provider_secret_update: false,
-      fulfillment_insert: true, attempts_update: true });
+    assert.deepEqual(appPrivileges.rows[0], { provider_insert: true, provider_table_select: false, provider_id_select: true,
+      provider_configuration_select: true, provider_secret_select: false, provider_class_update: false,
+      provider_secret_update: false, fulfillment_insert: true, attempts_update: true });
 
     const cleanSchema = `logistics_sandbox_${crypto.randomUUID().replaceAll('-', '')}`;
     await client.query('BEGIN');
     try {
       for (const migration of getMigrations()) await client.query(migration.up.replace(/\brotamoto\b/gu, cleanSchema));
       const objects = await client.query(`SELECT count(*)::int AS tables FROM pg_tables WHERE schemaname=$1`, [cleanSchema]);
-      assert.equal(objects.rows[0].tables, 24, 'clean install includes all migration tables through 0018');
+      assert.equal(objects.rows[0].tables, 24, 'clean install includes all migration tables through 0019');
       const forced = await client.query(`SELECT count(*)::int AS count FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname=$1 AND c.relrowsecurity AND c.relforcerowsecurity`, [cleanSchema]);
       assert.equal(forced.rows[0].count, 17, 'clean install FORCE-enables RLS on all tenant tables');
       const foreignKeys = await client.query(`SELECT count(*)::int AS count FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace
         WHERE n.nspname=$1 AND c.contype='f'`, [cleanSchema]);
       assert.equal(foreignKeys.rows[0].count, 54, 'clean install creates logistics, geography and canonical foreign keys');
+      const cleanProvider = await client.query(`SELECT
+        has_table_privilege('rotamoto_app',$1||'.logistics_providers','SELECT') AS table_select,
+        has_column_privilege('rotamoto_app',$1||'.logistics_providers','provider_id','SELECT') AS id_select,
+        has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_select,
+        has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','UPDATE') AS secret_update`, [cleanSchema]);
+      assert.deepEqual(cleanProvider.rows[0], { table_select: false, id_select: true, secret_select: false, secret_update: false },
+        'clean install 0001→0019 keeps secret_ref inaccessible to runtime');
     } finally { await client.query('ROLLBACK'); }
     assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [cleanSchema])).rowCount, 0,
       'clean-install schema sandbox was rolled back');
+
+    const upgradeSchema = `logistics_upgrade_${crypto.randomUUID().replaceAll('-', '')}`;
+    await client.query('BEGIN');
+    try {
+      for (const migration of getMigrations().slice(0, 18))
+        await client.query(migration.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const before0019 = await client.query(`SELECT has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_select`, [upgradeSchema]);
+      assert.equal(before0019.rows[0].secret_select, true, 'upgrade precondition reproduces the 0018 table grant');
+      const migration0019 = getMigrations()[18];
+      assert.equal(migration0019.id, '0019_logistics_provider_secret_least_privilege');
+      await client.query(migration0019.up.replace(/\brotamoto\b/gu, upgradeSchema));
+      const after0019 = await client.query(`SELECT
+        has_table_privilege('rotamoto_app',$1||'.logistics_providers','SELECT') AS table_select,
+        has_column_privilege('rotamoto_app',$1||'.logistics_providers','provider_id','SELECT') AS id_select,
+        has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_select,
+        has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','UPDATE') AS secret_update`, [upgradeSchema]);
+      assert.deepEqual(after0019.rows[0], { table_select: false, id_select: true, secret_select: false, secret_update: false },
+        'upgrade 0018→0019 revokes broad SELECT without weakening operational column reads');
+    } finally { await client.query('ROLLBACK'); }
+    assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [upgradeSchema])).rowCount, 0,
+      'upgrade sandbox is rolled back');
 
     await client.query('BEGIN');
     try {

@@ -119,6 +119,12 @@ async function main() {
   const geoSnapshotMigration = getMigrations()[17];
   assert.equal(geoSnapshotMigration.id, '0018_delivery_geo_snapshots');
   assert.match(geoSnapshotMigration.up, /FORCE ROW LEVEL SECURITY/u);
+  const providerLeastPrivilegeMigration = getMigrations()[18];
+  assert.equal(providerLeastPrivilegeMigration.id, '0019_logistics_provider_secret_least_privilege');
+  assert.match(providerLeastPrivilegeMigration.up, /REVOKE SELECT ON TABLE rotamoto\.logistics_providers FROM rotamoto_app/u);
+  assert.match(providerLeastPrivilegeMigration.up, /GRANT SELECT \([\s\S]*configuration[\s\S]*\) ON TABLE rotamoto\.logistics_providers TO rotamoto_app/u);
+  assert.doesNotMatch(providerLeastPrivilegeMigration.up, /GRANT SELECT \([\s\S]*secret_ref/u);
+  assert.match(providerLeastPrivilegeMigration.down, /rollback bloqueado/u);
   assert.match(geoSnapshotMigration.up, /ON DELETE RESTRICT/u);
   assert.equal(migration.checksum, crypto.createHash('sha256').update(migration.up).digest('hex'));
   assert.match(migration.up, /CREATE TABLE rotamoto\.users/);
@@ -179,6 +185,8 @@ async function main() {
       membership_forced_rls: true, outbox_forced_rls: true }, 'driver binding is tenant protected and runtime has no destructive outbox rights');
     const logisticsPrivileges = await runtimeClient.query(`SELECT
       has_table_privilege(current_user,'rotamoto.logistics_providers','SELECT') AS provider_read,
+      has_column_privilege(current_user,'rotamoto.logistics_providers','provider_id','SELECT') AS provider_id_read,
+      has_column_privilege(current_user,'rotamoto.logistics_providers','secret_ref','SELECT') AS provider_secret_ref_read,
       has_column_privilege(current_user,'rotamoto.logistics_providers','provider_id','INSERT') AS provider_insert,
       has_column_privilege(current_user,'rotamoto.logistics_providers','display_name','UPDATE') AS provider_update,
       has_column_privilege(current_user,'rotamoto.logistics_providers','secret_ref','UPDATE') AS provider_secret_ref_update,
@@ -190,7 +198,8 @@ async function main() {
       has_table_privilege(current_user,'rotamoto.dispatch_attempts','DELETE') AS attempts_delete,
       (SELECT bool_and(c.relrowsecurity AND c.relforcerowsecurity) FROM pg_class c
         WHERE c.oid IN ('rotamoto.logistics_providers'::regclass,'rotamoto.delivery_fulfillments'::regclass,'rotamoto.dispatch_attempts'::regclass)) AS logistics_force_rls`);
-    assert.deepEqual(logisticsPrivileges.rows[0], { provider_read: true, provider_insert: true, provider_update: true,
+    assert.deepEqual(logisticsPrivileges.rows[0], { provider_read: false, provider_id_read: true, provider_secret_ref_read: false,
+      provider_insert: true, provider_update: true,
       provider_secret_ref_update: false, provider_class_update: false, provider_delete: false, fulfillment_insert: true,
       fulfillment_delete: false, attempt_status_update: true, attempts_delete: false, logistics_force_rls: true },
     'logistics runtime access uses column grants, forced RLS and no destructive rights');
