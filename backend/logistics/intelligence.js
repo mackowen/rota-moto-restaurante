@@ -370,7 +370,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
         ? driverCanAcceptNewRoute ? { ...cost, basis:'new_route_assumption', assumption:'explicitly available Driver with configured capacity; no active canonical Route observed; local-only Route may exist' }
           : { status:'insufficient_data',reason:hasUnknownActiveCapacity?'CAPACITY_UNKNOWN':'NO_DRIVER_WITH_KNOWN_CAPACITY' }
         : { status:'insufficient_data',reason:routeCandidate?'ROUTE_INSERTION_NOT_PROVEN':'ROUTE_STATE_NOT_COMPLETE' };
-      const decisionCost=selectedRouteMarginal || isolatedDecisionCost;
+      const decisionCost=selectedRouteMarginal ? {status:'insufficient_data',reason:'ROUTE_DISTANCE_SCOPE_INCOMPLETE'} : isolatedDecisionCost;
       const internalEligible=fleetCapacity.byDriver.some(driver=>driver.active&&(driver.capacityStatus==='unknown'||driver.remainingSlots>0));
       alternatives.push({ id: `internal:${internalResult.rows[0].provider_id}`, mode: 'internal', providerId: internalResult.rows[0].provider_id,
         providerName: 'Frota própria', kind: 'configured_estimate', eligible: internalEligible,
@@ -378,8 +378,8 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
         etaAt: null, etaStatus: 'unknown', cost, decisionCost,
         marginalCost:selectedRouteMarginal||isolatedDecisionCost,
         fleetCapacity, routeAssessment,
-        reasons: [{ code: decisionCost.status==='known'&&selectedRouteMarginal?'ROUTE_INSERTION_SUPPORTED':decisionCost.status==='known'?'CAPACITY_AND_COST_KNOWN':'CAPACITY_OR_ROUTE_UNKNOWN', message: decisionCost.status==='known'&&selectedRouteMarginal ?
-          `Rota ${routeAssessment.bestInsertion.routeId}: inserção na posição ${routeAssessment.bestInsertion.position+1}; distância incremental ${routeAssessment.bestInsertion.incrementalDistanceM} m com proveniência ${routeAssessment.bestInsertion.distanceProvenance?.providerId||'informada'}.` : decisionCost.status==='known' ?
+        reasons: [{ code: selectedRouteMarginal?'ROUTE_DISTANCE_SCOPE_INCOMPLETE':decisionCost.status==='known'?'CAPACITY_AND_COST_KNOWN':'CAPACITY_OR_ROUTE_UNKNOWN', message: selectedRouteMarginal ?
+          `Rota ${routeAssessment.bestInsertion.routeId}: delta entre destinos ${routeAssessment.bestInsertion.incrementalDistanceM} m e custo variável parcial ${selectedRouteMarginal.currency} ${selectedRouteMarginal.amountMinor}; origem/garagem, posição atual do Driver e retorno não são modelados, então o custo não compara alternativas. Proveniência ${routeAssessment.bestInsertion.distanceProvenance?.providerId||'informada'}.` : decisionCost.status==='known' ?
           'Há Driver explicitamente disponível, limite de entregas conhecido e slots restantes; o custo apresentado é isolado para uma nova rota.' :
           internalEligible?'Capacidade, ordem da Route, distância ou perfil de custo ainda não foram comprovados para recomendar a frota própria.':'Nenhum Driver ativo com capacidade conhecida disponível foi encontrado para a nova alocação.' }] });
     }

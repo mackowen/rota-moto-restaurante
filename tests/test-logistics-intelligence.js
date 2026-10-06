@@ -88,6 +88,11 @@ const unknownRouteCost=alternative('internal-route','internal',900);
 unknownRouteCost.decisionCost={status:'insufficient_data',reason:'INCREMENTAL_ROUTE_DISTANCE_UNKNOWN'};
 assert.equal(makeRecommendation([unknownRouteCost,external],'lowest_cost').why.code,'COST_COVERAGE_INCOMPLETE',
   'a cheaper quote cannot be declared while the internal route marginal cost is unknown');
+const partialRouteCost=alternative('partial-route','internal',900);
+partialRouteCost.marginalCost={status:'known',amountMinor:310,currency:'BRL',limitations:['origin/return unknown']};
+partialRouteCost.decisionCost={status:'insufficient_data',reason:'ROUTE_DISTANCE_SCOPE_INCOMPLETE'};
+assert.equal(makeRecommendation([partialRouteCost,external],'lowest_cost').why.code,'COST_COVERAGE_INCOMPLETE',
+  'partial stop-to-stop road delta remains visible but cannot rank alternatives without route origin/current position');
 
 (async()=>{
   const ids=['stop-a','stop-b'],newId='stop-new';
