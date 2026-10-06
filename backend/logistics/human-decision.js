@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { uuidV7 } = require('../identity/service');
+const { buildDecisionQuality } = require('./decision-quality');
 function fail(code, message) { throw Object.assign(new Error(message), { name:'LogisticsDecisionError', code }); }
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
@@ -84,6 +85,37 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
       FROM rotamoto.logistics_decisions WHERE company_id=$1 AND delivery_id=$2 ORDER BY created_at DESC LIMIT 30`,
     [principal.company_id,deliveryId]);
     return { decisions: result.rows.map(project) };
+  }
+  async function quality(client, principal) {
+    const result = await client.query(`WITH selected AS (
+      SELECT d.*, alternative.value AS selected_alternative,
+        alternative.value->>'mode' AS selected_mode
+      FROM rotamoto.logistics_decisions d
+      LEFT JOIN LATERAL jsonb_array_elements(COALESCE(d.snapshot->'alternatives','[]'::jsonb)) alternative(value)
+        ON alternative.value->>'id'=d.selected_alternative_id
+      WHERE d.company_id=$1
+      ORDER BY d.created_at DESC,d.decision_id DESC LIMIT 1000
+    ) SELECT d.decision_id,d.delivery_id,d.version,d.status,d.policy,d.recommended_alternative_id,d.selected_alternative_id,
+        d.snapshot,d.evaluated_at,d.decided_at,d.decided_by,d.execution_result,d.created_at,
+        f.fulfillment_id AS outcome_fulfillment_id,f.mode AS outcome_mode,f.provider_id AS outcome_provider_id,
+        f.status AS outcome_fulfillment_status,f.estimated_cost_minor AS outcome_estimated_cost_minor,
+        f.estimated_cost_currency AS outcome_estimated_cost_currency,f.final_cost_minor AS outcome_final_cost_minor,
+        f.final_cost_currency AS outcome_final_cost_currency,f.selected_at AS outcome_selected_at,
+        a.status AS outcome_attempt_status,delivery.payload->>'completedAt' AS delivery_completed_at
+      FROM selected d
+      LEFT JOIN rotamoto.dispatch_attempts a ON d.selected_mode='external_api'
+        AND a.company_id=d.company_id AND a.attempt_id=CASE
+          WHEN d.execution_result->>'fulfillmentId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          THEN (d.execution_result->>'fulfillmentId')::uuid ELSE NULL END
+      LEFT JOIN rotamoto.delivery_fulfillments f ON f.company_id=d.company_id AND f.delivery_id=d.delivery_id AND
+        ((d.selected_mode='external_api' AND f.fulfillment_id=a.fulfillment_id) OR
+         (d.selected_mode<>'external_api' AND f.fulfillment_id=CASE
+          WHEN d.execution_result->>'fulfillmentId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          THEN (d.execution_result->>'fulfillmentId')::uuid ELSE NULL END))
+      LEFT JOIN rotamoto.domain_records delivery ON delivery.company_id=d.company_id AND delivery.record_id=d.delivery_id
+        AND delivery.entity_type='Delivery'
+      ORDER BY d.created_at DESC,d.decision_id DESC`,[principal.company_id]);
+    return buildDecisionQuality(result.rows,{generatedAt:clock().toISOString(),limit:1000});
   }
   async function getForUpdate(client, principal, decisionId, expectedVersion, idempotency = null) {
     const result = await client.query(`SELECT * FROM rotamoto.logistics_decisions
@@ -235,7 +267,7 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
       alternativeId,mode:alternative.mode,status:resultPayload.status,commandId:resultPayload.commandId});
     return {decision:project(update.rows[0]),action,duplicate:false};
   }
-  return Object.freeze({evaluate,list,approve,reject,recalculate,execute});
+  return Object.freeze({evaluate,list,quality,approve,reject,recalculate,execute});
 }
 
 module.exports={createHumanDecisionService};

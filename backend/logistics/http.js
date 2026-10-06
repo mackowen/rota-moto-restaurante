@@ -67,6 +67,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         { re: /^\/api\/logistics\/analytics$/u, methods: ['GET'] },
         { re: /^\/api\/logistics\/intelligence\/settings$/u, methods: ['GET','PUT'] },
         { re: /^\/api\/logistics\/intelligence\/analytics$/u, methods: ['GET'] },
+        { re: /^\/api\/logistics\/intelligence\/decision-quality$/u, methods: ['GET'] },
         { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/comparison$`, 'u'), methods: ['GET'] },
         { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/decisions$`, 'u'), methods: ['GET','POST'] },
         { re: new RegExp(`^/api/logistics/decisions/(${UUID})/(approve|reject|recalculate|execute)$`, 'u'), methods: ['POST'] }
@@ -78,7 +79,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
       const token = tokenFrom(req); if (!token) error('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
       const write = !['GET','HEAD'].includes(req.method);
       if (write) sameOrigin(req, allowedOrigin);
-      const permission = ['/api/logistics/analytics','/api/logistics/intelligence/analytics'].includes(url.pathname) ||
+      const permission = ['/api/logistics/analytics','/api/logistics/intelligence/analytics','/api/logistics/intelligence/decision-quality'].includes(url.pathname) ||
         /\/(comparison|decisions)$/u.test(url.pathname) || url.pathname === '/api/logistics/intelligence/settings' && req.method === 'GET'
         ? 'orders.read' : 'company.manage';
       const result = await identityService.withAuthenticatedTenant(token, async (client, principal) => {
@@ -98,6 +99,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         if (path === '/api/logistics/intelligence/settings') return req.method === 'GET'
           ? logisticsService.getIntelligenceSettings(client,principal) : logisticsService.updateIntelligenceSettings(client,principal,body);
         if (path === '/api/logistics/intelligence/analytics') return logisticsService.logisticsEconomicAnalytics(client,principal);
+        if (path === '/api/logistics/intelligence/decision-quality') return logisticsService.logisticsDecisionQuality(client,principal);
         match = new RegExp(`^/api/logistics/deliveries/(${UUID})/comparison$`, 'u').exec(path);
         if (match) return logisticsService.compareLogisticsAlternatives(client,principal,match[1],url.searchParams.get('policy'));
         match = new RegExp(`^/api/logistics/deliveries/(${UUID})/decisions$`, 'u').exec(path);

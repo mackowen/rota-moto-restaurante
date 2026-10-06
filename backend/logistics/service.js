@@ -433,6 +433,7 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
     requestProviderReconciliation, getProviderCommands, ...intelligence,
     evaluateLogisticsDecision: humanDecisions.evaluate, listLogisticsDecisions: humanDecisions.list,
     approveLogisticsDecision: humanDecisions.approve, rejectLogisticsDecision: humanDecisions.reject,
-    recalculateLogisticsDecision: humanDecisions.recalculate, executeLogisticsDecision: humanDecisions.execute });
+    recalculateLogisticsDecision: humanDecisions.recalculate, executeLogisticsDecision: humanDecisions.execute,
+    logisticsDecisionQuality: humanDecisions.quality });
 }
 module.exports = { LogisticsServiceError, createLogisticsService };

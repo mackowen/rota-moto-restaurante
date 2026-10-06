@@ -74,6 +74,16 @@ Para um plano completo e capacidade com slot, são avaliadas todas as posições
 
 Nenhuma sugestão altera Route, Driver, fulfillment ou despacho automaticamente. Sem provider viário confiável em execução normal, a recomendação de inserção permanece indisponível e o resultado explica os dados ausentes.
 
+## Qualidade das decisões assistidas
+
+`GET /api/logistics/intelligence/decision-quality` expõe uma projeção read-only tenant-scoped de até 1.000 decisões recentes. Usa `logistics_decisions.snapshot` como previsão imutável no instante da avaliação; `selected_alternative_id` e ator/instante da decisão como escolha humana; fulfillment/dispatch attempt e `Delivery.completedAt` como execução/outcome observados. Cada snapshot guarda a versão da configuração econômica/política, a versão do lifecycle da decisão e o instante; não consulta a configuração econômica atual para recalcular decisões antigas e não incorpora quotes posteriores.
+
+Aceite da recomendação = aprovações que selecionaram a alternativa recomendada / decisões humanas (aprovação ou rejeição) com recomendação disponível. Divergência = aprovações cuja alternativa fixada difere da recomendada / aprovações com recomendação e escolha conhecidas. Rejeitar sem escolha não é contado como divergência. Outcomes distinguem concluída, falha, cancelada, desconhecida, pendente e não executada; status `stale` e `rejected` não geram outcome operacional.
+
+Estimado × final e erro absoluto só entram na cobertura quando ambos os custos estão conhecidos e na mesma moeda. O custo final continua sendo custo operacional informado/reconciliado; não prova liquidação. ETA × duração só é computado quando a alternativa escolhida tem ETA absoluto válido e existe `Delivery.completedAt` canônico; ambos são medidos desde `evaluatedAt`. Sem timestamp final, ETA, custo ou correspondência de fulfillment/attempt, a métrica fica desconhecida e fora do numerador, com denominador/cobertura visíveis.
+
+A diferença entre alternativas é derivada somente dos custos no snapshot original, com moeda igual. A diferença registrada é descritiva e não é economia realizada, resultado causal nem economia atribuída ao RotaMoto. Não há ML, ajuste automático de política ou auto-dispatch. O relatório preserva política, alternativas, limitações e o drill-down individual para reconstruir o conhecimento, a decisão e o resultado observado.
+
 O relatório agrupa custos estimados e custos finais explicitamente reconciliados por modo (própria/externa), sem somar moedas, e mostra cobertura/denominador. `Earning` é exibido separadamente como repasse registrado, não como custo total ou comprovante de pagamento. A diferença entre cenários não é anunciada como economia gerada pelo produto: não há baseline contrafactual defensável.
 
 ## Pesquisa oficial consultada em 2026-10-06

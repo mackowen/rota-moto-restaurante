@@ -438,7 +438,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       return { alternativeId:item.id, ...(cheapest?{costBaselineAlternativeId:cheapest.id,costDifferenceMinor:comparedCost.amountMinor-(cheapest.decisionCost||cheapest.cost).amountMinor,currency:comparedCost.currency}:{}),
         ...(deltaEta===null?{}:{etaBaselineAlternativeId:earliestEta.id,etaDifferenceMs:deltaEta}) };
     });
-    return { deliveryId, policy, alternatives, comparisons, recommendation,
+    return { deliveryId, policy, policyVersion: settings.version, alternatives, comparisons, recommendation,
       capacity:fleetCapacity, routeAssessment,
       inputs: { estimatedDistanceM: rawDistanceM, distanceSource, currencyConversion: false,
         commercialOrderValueUsed: false, earningUsedAsTotalCost: false,

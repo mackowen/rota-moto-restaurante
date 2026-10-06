@@ -416,6 +416,15 @@ async function main() {
         'asynchronous event projection confirms only the matching tenant/provider external fulfillment');
       assert.equal((await logistics.listLogisticsDecisions(client,principal,serviceDelivery)).decisions.find(item=>item.id===proposed.decision.id).status,'executed',
         'decision history reflects confirmation only after the normalized provider event projected');
+      const qualityReport=await logistics.logisticsDecisionQuality(client,principal);
+      const qualityDecision=qualityReport.decisions.find(item=>item.id===proposed.decision.id);
+      assert.ok(qualityDecision,'decision quality includes the immutable recommendation snapshot');
+      assert.equal(qualityDecision.outcome.status,'pending','provider acceptance is not treated as delivery completion');
+      assert.equal(qualityDecision.outcome.finalReconciledCost,null,'missing reconciled cost stays unknown');
+      await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantB]);
+      const tenantBQuality=await logistics.logisticsDecisionQuality(client,{company_id:tenantB,user_id:actor});
+      assert.equal(tenantBQuality.decisions.some(item=>item.id===proposed.decision.id),false,'decision quality is isolated by tenant');
+      await client.query("SELECT set_config('app.tenant_id',$1,true)",[tenantA]);
       await worker.runOnce();
       const tracking = await client.query(`SELECT status,eta_at,provenance FROM rotamoto.provider_tracking_snapshots WHERE company_id=$1 AND fulfillment_id=$2`,[tenantA,selectedQuote.fulfillment.id]);
       assert.equal(tracking.rows[0].status,'in_progress'); assert.equal(tracking.rows[0].provenance,'external_provider');

@@ -14,6 +14,7 @@ async function main() {
     getIntelligenceSettings: async () => ({ settings: { configured: false, version: 0 }, policies: ['lowest_cost'] }),
     updateIntelligenceSettings: async (_client, scope, body) => { calls.push(['intelligence-update', scope.company_id, body]); return { settings: { version: 1 } }; },
     logisticsEconomicAnalytics: async () => ({ ownFleet: {}, external: {} }),
+    logisticsDecisionQuality: async (_client,scope) => { calls.push(['decision-quality',scope.company_id]); return {metrics:{recommendationApproval:{rate:null}},decisions:[]}; },
     compareLogisticsAlternatives: async (_client, scope, id, policy) => ({ deliveryId: id, tenant: scope.company_id, policy, alternatives: [], recommendation: { status: 'insufficient_data' } }),
     listLogisticsDecisions: async (_client,scope,id)=>({decisions:[{id,tenant:scope.company_id}]}),
     evaluateLogisticsDecision: async (_client,scope,id,policy)=>{calls.push(['decision-evaluate',scope.company_id,id,policy]);return {decision:{id,status:'proposed'}};},
@@ -42,6 +43,8 @@ async function main() {
     assert.equal(analytics.status, 200);
     assert.equal((await fetch(`${base}/api/logistics/intelligence/settings`, { headers })).status, 200);
     assert.equal((await fetch(`${base}/api/logistics/intelligence/analytics`, { headers })).status, 200);
+    const quality=await fetch(`${base}/api/logistics/intelligence/decision-quality`,{headers});
+    assert.equal(quality.status,200);assert.equal((await quality.json()).decisions.length,0);
     const deliveryId = '00000000-0000-4000-8000-000000000001';
     const comparison = await fetch(`${base}/api/logistics/deliveries/${deliveryId}/comparison?policy=lowest_cost`, { headers });
     assert.equal(comparison.status, 200); assert.equal((await comparison.json()).deliveryId, deliveryId);
@@ -53,7 +56,7 @@ async function main() {
     assert.equal(approve.status,200);assert.equal((await approve.json()).decision.alternativeId,'fake:eligible');
     const update = await fetch(`${base}/api/logistics/intelligence/settings`, { method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json', 'X-CSRF-Token': 'csrf-test' }, body: JSON.stringify({ expectedVersion: 0 }) });
     assert.equal(update.status, 200);
-    assert.deepEqual(calls.filter(row => row[0] === 'permission').map(row => row[1]), ['company.manage','company.manage','orders.read','orders.read','orders.read','orders.read','orders.read','orders.read','company.manage','company.manage']);
+    assert.deepEqual(calls.filter(row => row[0] === 'permission').map(row => row[1]), ['company.manage','company.manage','orders.read','orders.read','orders.read','orders.read','orders.read','orders.read','orders.read','company.manage','company.manage']);
     assert.equal(calls.find(row => row[0] === 'create')[1].code, 'partner_1');
   } finally { await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   console.log('Logistics authenticated HTTP, CSRF, RBAC, analytics scope and sanitized errors: OK');
