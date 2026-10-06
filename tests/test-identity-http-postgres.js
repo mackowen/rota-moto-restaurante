@@ -107,8 +107,14 @@ async function main() {
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
     await client.query(`UPDATE rotamoto.credentials SET mfa_required=false WHERE user_id=$1`, [accepted.body.userId]);
     const missingMfa = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId } });
-    assert.equal(missingMfa.status, 403, 'administrative identities cannot establish sessions without verified MFA');
-    assert.equal(missingMfa.body.error.code, 'MFA_REQUIRED');
+    assert.equal(missingMfa.status, 200, 'an identity without an enrolled MFA secret receives only an enrollment-limited session');
+    assert.equal(missingMfa.body.mfaEnrollmentRequired, true);
+    const limitedCookie=missingMfa.headers.get('set-cookie').split(';',1)[0];
+    const limitedSession=await call('/api/identity/session',{cookie:limitedCookie});
+    assert.equal(limitedSession.status,200);assert.equal(limitedSession.body.mfaEnrollmentRequired,true);
+    const limitedAdmin=await call('/api/admin/memberships?limit=100',{cookie:limitedCookie});
+    assert.equal(limitedAdmin.status,403,'enrollment-limited session cannot access administrative data');
+    await client.query(`UPDATE rotamoto.credentials SET mfa_secret_ref='local-v1:synthetic-test-reference' WHERE user_id=$1`, [accepted.body.userId]);
     const rejectedMfa = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId, mfaCode: '000000' } });
     assert.equal(rejectedMfa.status, 403, 'invalid MFA proof cannot establish a session');
     const wrong = await call('/api/identity/login', { method: 'POST', body: { email, password: 'synthetic-wrong-password' , companyId } });
@@ -128,11 +134,10 @@ async function main() {
     assert.equal(session.body.activeCompanyId, companyId, 'tenant context comes from validated session');
     assert.equal(session.body.email, email);
     assert.equal(session.body.mfaVerified, true);
-    assert.notEqual(session.body.csrfToken, login.body.csrfToken, 'session bootstrap rotates CSRF for reload-safe in-memory use');
+    assert.equal(session.body.csrfToken, login.body.csrfToken, 'session bootstrap preserves a stable CSRF token for reload-safe in-memory use');
     assert.equal(JSON.stringify(session.body).includes('password_phc'), false);
-    const csrfRotated = await call('/api/identity/tenant', { method: 'POST', body: { companyId }, cookie: sessionCookie, csrf: login.body.csrfToken });
-    assert.equal(csrfRotated.status, 403);
-    assert.equal(csrfRotated.body.error.code, 'CSRF_INVALID');
+    const csrfStable = await call('/api/identity/tenant', { method: 'POST', body: { companyId }, cookie: sessionCookie, csrf: login.body.csrfToken });
+    assert.equal(csrfStable.status, 200, 'stable CSRF remains valid after session bootstrap');
     const wrongMethod = await call('/api/identity/session', { method: 'POST', body: {} });
     assert.equal(wrongMethod.status, 405);
     assert.equal(wrongMethod.headers.get('allow'), 'GET');
@@ -232,8 +237,12 @@ async function main() {
     const mfaState = await client.query('SELECT mfa_required FROM rotamoto.credentials WHERE user_id=$1', [adminAccepted.body.userId]);
     assert.equal(mfaState.rows[0].mfa_required, true, 'administrative role invitations require MFA before activation of a session');
     const noProvider = createIdentityService({ pool, emailProvider: provider });
-    await assert.rejects(noProvider.authenticate(adminEmail, adminPassword, companyId), error => error.code === 'MFA_REQUIRED',
-      'administrative login fails closed when there is no MFA provider');
+    const adminEnrollment = await noProvider.authenticate(adminEmail, adminPassword, companyId);
+    assert.equal(adminEnrollment.mfaEnrollmentRequired, true,
+      'administrative identity without an enrolled secret receives only an enrollment-limited session');
+    await client.query(`UPDATE rotamoto.credentials SET mfa_secret_ref='local-v1:synthetic-manager-reference' WHERE user_id=$1`, [adminAccepted.body.userId]);
+    await assert.rejects(noProvider.authenticate(adminEmail, adminPassword, companyId, '654321'), error => error.code === 'MFA_REQUIRED',
+      'administrative login with an enrolled secret fails closed when the MFA provider is unavailable');
     const adminLogin = await call('/api/identity/login', { method: 'POST', body: { email: adminEmail,
       password: adminPassword, companyId, mfaCode: '654321' } });
     assert.equal(adminLogin.status, 200);

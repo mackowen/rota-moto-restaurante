@@ -153,10 +153,14 @@ async function main() {
     assert.match(account.rows[0].password_phc, /^\$argon2id\$/u);
     assert.equal(await verifyPassword(account.rows[0].password_phc, password), true);
     assert.equal(account.rows[0].password_phc.includes(password), false);
+    assert.equal(await verifyPassword(account.rows[0].password_phc, 'wrong synthetic password'), false,
+      'the directly persisted owner credential rejects a known incorrect password');
 
-    await expectCode(service.authenticate(email, password, provisioned.companyId), 'MFA_REQUIRED');
+    const limitedSession = await service.authenticate(email, password, provisioned.companyId);
+    assert.equal(limitedSession.mfaEnrollmentRequired, true,
+      'a correct password creates only an enrollment-limited session when required MFA has no configured secret');
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [provisioned.companyId]);
-    await client.query(`UPDATE rotamoto.credentials SET mfa_required=false WHERE user_id=$1`, [provisioned.userId]);
+    await client.query(`UPDATE rotamoto.credentials SET mfa_required=false,mfa_secret_ref='local-v1:synthetic-test-reference' WHERE user_id=$1`, [provisioned.userId]);
     await expectCode(service.authenticate(email, 'wrong synthetic password', provisioned.companyId), 'INVALID_CREDENTIALS');
     const failed = await client.query(`SELECT failed_attempts FROM rotamoto.credentials WHERE user_id=$1`, [provisioned.userId]);
     assert.equal(failed.rows[0].failed_attempts, 1, 'failed password attempts persist atomically');
