@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process');
 process.env.ALLOWED_ORIGIN='http://localhost:8787';
 const http=require('node:http');
-const {route,assertLoopbackHost,runtimeDatabaseConnectionString,CONFIG}=require('../server');
+const {route,assertLoopbackHost,runtimeDatabaseConnectionString,databaseReadiness,CONFIG}=require('../server');
 const {hostAllowed}=require('../backend/runtime/config');
 const {createSyncHttpHandler}=require('../backend/domain/sync-http');
 const {createIdentityHttpHandler}=require('../backend/identity/http');
@@ -21,6 +21,12 @@ async function main(){
   assert.equal(runtimeDatabaseConnectionString('postgresql://rotamoto_app@db.internal:5432/rotamoto'),
     'postgresql://rotamoto_app@db.internal:5432/rotamoto');
   assert.equal(CONFIG.trustProxy,false,'forwarded headers are not trusted');
+  const readinessResult=values=>({async connect(){return{async query(sql){if(sql==='BEGIN'||sql==='COMMIT'||sql.startsWith('SET LOCAL'))return{rows:[]};return{rows:[values]};},release(){}};}});
+  const readySchema={role:'rotamoto_app',domain_ready:true,sync_installations_ready:true,mfa_schema_ready:true,
+    membership_driver_ready:true,logistics_schema_ready:true,territorial_analytics_schema_ready:true};
+  assert.equal(await databaseReadiness(readinessResult({...readySchema,territorial_analytics_schema_ready:false})),false,
+    'readiness stays fail-closed if any required schema capability is absent');
+  assert.equal(await databaseReadiness(readinessResult(readySchema)),true,'readiness accepts the full required schema');
   assert.equal(hostAllowed('attacker.example',CONFIG.allowedHosts,false),false,'unlisted Host is rejected before routing');
   const exposedBoot=spawnSync(process.execPath,['server.js'],{cwd:require('node:path').join(__dirname,'..'),env:{...process.env,NODE_ENV:'development',HOST:'0.0.0.0'},encoding:'utf8'});
   assert.notEqual(exposedBoot.status,0,'server refuses to start on a public interface without user authentication');
@@ -44,8 +50,10 @@ async function main(){
     assert.equal(live.headers.get('content-security-policy'),"default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
     assert.equal(live.headers.get('strict-transport-security'),null,'development does not assert TLS');
     const ready=await request('/health/ready');
-    assert.equal(ready.status,503,'readiness fails closed until the installed schema includes every required feature migration');
-    assert.equal((await ready.json()).dependencies.postgres,'unavailable');
+    assert([200,503].includes(ready.status),'readiness reports either current schema state without assuming an old deployment');
+    const readyBody=await ready.json();
+    assert.equal(readyBody.status,ready.status===200?'ready':'not_ready');
+    assert.equal(readyBody.dependencies.postgres,ready.status===200?'ready':'unavailable');
     const preflight=await request('/api/sync/push',{method:'OPTIONS',headers:{Origin:'http://localhost:8787',
       'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type,x-csrf-token'}});
     assert.equal(preflight.status,204,'CORS preflight is handled before route-specific method checks');
