@@ -98,8 +98,11 @@ function createLogisticsService({ clock = () => new Date() } = {}) {
     const attempts = rows.rowCount ? await client.query(`SELECT attempt_id,fulfillment_id,provider_id,status,requested_at,responded_at,
       external_reference,error_code,retry_count FROM rotamoto.dispatch_attempts WHERE company_id=$1 AND delivery_id=$2
       ORDER BY requested_at DESC LIMIT 20`, [principal.company_id, deliveryId]) : { rows: [] };
+    const orderId = delivery.rows[0].payload.orderId;
+    const order = orderId ? await client.query(`SELECT payload FROM rotamoto.domain_records
+      WHERE company_id=$1 AND record_id=$2 AND entity_type='Order' AND deleted_at IS NULL`, [principal.company_id, orderId]) : { rows: [] };
     return { delivery: { id: deliveryId, status: delivery.rows[0].payload.status, version: delivery.rows[0].version,
-      driverId: delivery.rows[0].payload.driverId || null }, fulfillments: rows.rows.map(asFulfillment), attempts: attempts.rows.map(row => ({
+      driverId: delivery.rows[0].payload.driverId || null, orderSource: order.rows[0]?.payload?.source ?? null }, fulfillments: rows.rows.map(asFulfillment), attempts: attempts.rows.map(row => ({
       id: row.attempt_id, fulfillmentId: row.fulfillment_id, providerId: row.provider_id, status: row.status,
       requestedAt: row.requested_at, respondedAt: row.responded_at, externalReference: row.external_reference,
       errorCode: row.error_code, retryCount: row.retry_count })) };
@@ -273,12 +276,19 @@ function createLogisticsService({ clock = () => new Date() } = {}) {
       count(*)::int AS allocations, count(*) FILTER (WHERE f.mode='internal')::int AS internal_count,
       count(*) FILTER (WHERE f.mode='external')::int AS external_count,
       count(*) FILTER (WHERE f.status='completed')::int AS completed_count,
-      count(*) FILTER (WHERE f.final_cost_minor IS NOT NULL)::int AS reconciled_cost_count
+      count(*) FILTER (WHERE f.estimated_cost_minor IS NOT NULL)::int AS estimated_cost_count,
+      count(*) FILTER (WHERE f.final_cost_minor IS NOT NULL)::int AS reconciled_cost_count,
+      COALESCE(jsonb_agg(jsonb_build_object('currency',f.estimated_cost_currency,'amountMinor',f.estimated_cost_minor)
+        ORDER BY f.estimated_cost_currency) FILTER (WHERE f.estimated_cost_minor IS NOT NULL),'[]'::jsonb) AS estimated_costs,
+      COALESCE(jsonb_agg(jsonb_build_object('currency',f.final_cost_currency,'amountMinor',f.final_cost_minor)
+        ORDER BY f.final_cost_currency) FILTER (WHERE f.final_cost_minor IS NOT NULL),'[]'::jsonb) AS reconciled_costs
       FROM rotamoto.delivery_fulfillments f JOIN rotamoto.logistics_providers p USING(company_id,provider_id)
       WHERE f.company_id=$1 AND f.status<>'superseded' GROUP BY p.provider_class,f.provider_id,p.code,p.display_name ORDER BY p.provider_class,p.display_name`, [principal.company_id]);
     return { providers: result.rows.map(row => ({ providerId: row.provider_id, code: row.code, displayName: row.display_name,
       class: row.provider_class, allocations: row.allocations, internal: row.internal_count, external: row.external_count,
-      completed: row.completed_count, reconciledCostCount: row.reconciled_cost_count })) };
+      completed: row.completed_count, estimatedCostCount: row.estimated_cost_count, estimatedCostCoverage: row.allocations ? row.estimated_cost_count / row.allocations : null,
+      estimatedCosts: row.estimated_costs, reconciledCostCount: row.reconciled_cost_count,
+      reconciledCostCoverage: row.allocations ? row.reconciled_cost_count / row.allocations : null, reconciledCosts: row.reconciled_costs })) };
   }
   return Object.freeze({ ensureInternalProvider, listProviders, createProvider, updateProvider, getFulfillment, selectFulfillment, requestDispatch, updateFulfillment, analytics });
 }

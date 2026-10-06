@@ -154,12 +154,16 @@ async function main() {
       const visible = await client.query(`SELECT count(*)::int AS count FROM rotamoto.logistics_providers`);
       assert.equal(visible.rows[0].count, 3);
 
-      const logistics = createLogisticsService({ clock: () => new Date('2026-10-06T12:00:00.000Z') });
+      const logistics = createLogisticsService();
       const principal = { company_id: tenantA, user_id: actor };
       const serviceDelivery = id();
+      const serviceOrder = id();
+      await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Order','restaurante',$3,$4::jsonb,1,now(),now())`, [tenantA, serviceOrder, appInstall,
+        JSON.stringify({ id: serviceOrder, companyId: tenantA, source: 'ifood' })]);
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
         VALUES($1,$2,'Delivery','restaurante',$3,$4::jsonb,1,now(),now())`, [tenantA, serviceDelivery, appInstall,
-        JSON.stringify({ id: serviceDelivery, companyId: tenantA, status: 'CREATED', driverId: null })]);
+        JSON.stringify({ id: serviceDelivery, companyId: tenantA, orderId: serviceOrder, status: 'CREATED', driverId: null })]);
       const internalAllocationId = id();
       const internal = await logistics.selectFulfillment(client, principal, serviceDelivery, { providerId: internalProvider, mode: 'internal',
         driverId: driverA, fulfillmentId: internalAllocationId, expectedRevision: 0 });
@@ -181,6 +185,7 @@ async function main() {
       assert.equal((await logistics.requestDispatch(client, principal, serviceDelivery, { idempotencyKey })).duplicate, true,
         'manual dispatch retry is idempotent');
       const afterRequest = await logistics.getFulfillment(client, principal, serviceDelivery);
+      assert.equal(afterRequest.delivery.orderSource, 'ifood', 'commercial source is exposed separately from the logistics provider');
       await rejected(client, 'active_external_reassignment', () => logistics.selectFulfillment(client, principal, serviceDelivery, {
         providerId: marketplace, mode: 'external', driverId: null, fulfillmentId: id(), expectedRevision: afterRequest.fulfillments[0].revision }));
       await rejected(client, 'stale_fulfillment_revision', () => logistics.updateFulfillment(client, principal, serviceDelivery,
@@ -195,6 +200,12 @@ async function main() {
         status: 'completed', finalCostMinor: 1250, finalCostCurrency: 'BRL' });
       const completed = await logistics.getFulfillment(client, principal, serviceDelivery);
       assert.equal(completed.fulfillments[0].finalCost.amountMinor, 1250);
+      const logisticsReport = await logistics.analytics(client, principal);
+      const partnerReport = logisticsReport.providers.find(item => item.providerId === partner);
+      assert.equal(partnerReport.reconciledCostCount, 1);
+      assert.equal(partnerReport.reconciledCostCoverage, 0.5, 'coverage includes both partner allocations, including unknown cost');
+      assert.equal(partnerReport.reconciledCosts[0].amountMinor, 1250);
+      assert.deepEqual(partnerReport.estimatedCosts, [], 'unknown estimate remains absent rather than zero');
       assert.equal((await client.query(`SELECT payload->>'status' AS status FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2`, [tenantA, serviceDelivery])).rows[0].status, 'DELIVERED');
 
       const fallbackDelivery = id();
