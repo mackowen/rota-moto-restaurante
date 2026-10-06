@@ -694,7 +694,7 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
         AND m.company_id=c.id AND s.revoked_at IS NULL AND s.idle_expires_at>$2 AND s.absolute_expires_at>$2
         AND u.disabled_at IS NULL AND m.status='active' AND c.status='active' AND cred.user_id=s.user_id
       RETURNING s.id::text AS session_id,s.user_id::text,s.active_company_id::text AS company_id,m.role_id::text,
-        m.driver_id::text AS driver_id,s.mfa_verified_at,cred.mfa_required,cred.mfa_secret_ref IS NOT NULL AS mfa_configured,
+        m.driver_id::text AS driver_id,c.time_zone AS company_time_zone,s.mfa_verified_at,cred.mfa_required,cred.mfa_secret_ref IS NOT NULL AS mfa_configured,
         (cred.mfa_required AND cred.mfa_secret_ref IS NULL) AS mfa_enrollment_required`, [digest, now]);
     return result.rowCount ? { ...result.rows[0], authenticated: true } : null;
   }

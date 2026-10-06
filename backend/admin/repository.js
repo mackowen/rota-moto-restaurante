@@ -198,11 +198,21 @@ function createAdminRepository() {
     return { membershipId, driverId: null, previousDriverId: driverId, changed: true };
   }
   async function company(client, companyId) {
-    const result = await client.query(`SELECT id::text,name,status,created_at,updated_at
+    const result = await client.query(`SELECT id::text,name,status,time_zone,created_at,updated_at
       FROM rotamoto.companies WHERE id=$1`, [companyId]);
     if (!result.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
     const row = result.rows[0];
-    return { id: row.id, name: row.name, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at };
+    return { id: row.id, name: row.name, status: row.status, timeZone: row.time_zone, createdAt: row.created_at, updatedAt: row.updated_at };
+  }
+  async function updateCompanyTimeZone(client, principal, timeZone) {
+    const current = await client.query(`SELECT time_zone FROM rotamoto.companies WHERE id=$1 FOR UPDATE`, [principal.company_id]);
+    if (!current.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
+    const previous = current.rows[0].time_zone;
+    const updated = await client.query(`UPDATE rotamoto.companies SET time_zone=$2,updated_at=now()
+      WHERE id=$1 RETURNING time_zone,updated_at`, [principal.company_id, timeZone]);
+    await writeAudit(client, principal, 'company.time_zone.changed', 'company', principal.company_id,
+      { previousTimeZone: previous, timeZone: updated.rows[0].time_zone });
+    return { timeZone: updated.rows[0].time_zone, updatedAt: updated.rows[0].updated_at };
   }
   async function memberships(client, companyId, { limit, cursor }) {
     const after = decodeCursor(cursor);
@@ -251,7 +261,7 @@ function createAdminRepository() {
     return { integrations: publicCatalog(persisted) };
   }
   return Object.freeze({ company, memberships, roles, integrations, permissions, createRole, updateRole, updateMembership,
-    associateMembershipDriver, disassociateMembershipDriver });
+    updateCompanyTimeZone, associateMembershipDriver, disassociateMembershipDriver });
 }
 
 module.exports = { createAdminRepository, decodeCursor, encodeCursor };

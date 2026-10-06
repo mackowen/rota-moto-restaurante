@@ -92,10 +92,10 @@ assert.deepEqual(plain(current.EXECUTION_EVENT_STATUS), plain(sibling.EXECUTION_
 assert.deepEqual(plain(current.WRITE_AUTHORITY), plain(sibling.WRITE_AUTHORITY), 'ownership/authorities devem coincidir');
 assert.deepEqual(plain(current.SYNC_ACK), plain(sibling.SYNC_ACK), 'vocabulário de ACK deve coincidir');
 assert.deepEqual(plain(current.ENTITY_SCHEMAS), plain(sibling.ENTITY_SCHEMAS), 'required fields e tipos compartilhados devem coincidir');
-assert.deepEqual(sortedKeys(current.ENTITY_SCHEMAS), ['Delivery', 'DeliveryEvent', 'DeliveryProof', 'Driver', 'Earning', 'LocationPoint', 'Order', 'Route'].sort());
+assert.deepEqual(sortedKeys(current.ENTITY_SCHEMAS), ['Company', 'Delivery', 'DeliveryEvent', 'DeliveryProof', 'Driver', 'Earning', 'LocationPoint', 'Order', 'Route'].sort());
 assert.deepEqual(sortedKeys(current.STATUS), ['ACCEPTED', 'ARRIVED', 'ASSIGNED', 'CANCELLED', 'CREATED', 'DELIVERED', 'FAILED', 'OUT_FOR_DELIVERY', 'PICKED_UP', 'REDELIVERY', 'RETURNED'].sort());
 assert.equal(current.WRITE_AUTHORITY.Company, 'server', 'Company é server-owned e não é schema gravável pelo cliente');
-assert.equal(current.ENTITY_SCHEMAS.Company, undefined);
+assert.equal(current.ENTITY_SCHEMAS.Company.fields.timeZone, 'nullable-iana-time-zone');
 for (const entity of sortedKeys(current.ENTITY_SCHEMAS)) {
   assert.deepEqual(plain(current.ENTITY_SCHEMAS[entity].required), plain(sibling.ENTITY_SCHEMAS[entity].required), `${entity} required fields devem coincidir`);
   assert.ok(current.ENTITY_SCHEMAS[entity].required.includes('id') || entity === 'DeliveryEvent', `${entity} deve ter identificador obrigatório conforme seu tipo`);
@@ -103,6 +103,20 @@ for (const entity of sortedKeys(current.ENTITY_SCHEMAS)) {
 assert.equal(current.ENTITY_SCHEMAS.DeliveryEvent.required.includes('eventId'), true);
 assert.equal(current.ENTITY_SCHEMAS.Delivery.required.includes('companyId'), true);
 assert.equal(current.ENTITY_SCHEMAS.Delivery.required.includes('status'), true);
+for (const contract of [current, sibling]) {
+  const companyTime = '2026-01-02T03:04:05.000Z';
+  const company = { id: 'company-1', name: 'QA', createdAt: companyTime, updatedAt: companyTime, timeZone: 'America/Sao_Paulo' };
+  assert.equal(contract.validateEntity('Company', company).valid, true, 'Company aceita timezone IANA canônico');
+  assert.equal(contract.validateEntity('Company', { ...company, timeZone: null }).valid, true, 'Company representa explicitamente timezone ainda não configurado');
+  assert.equal(contract.validateEntity('Company', { ...company, timeZone: '+03:00' }).valid, false, 'offset fixo não é timezone canônico');
+  assert.equal(contract.validateEntity('Company', { ...company, timeZone: 'Etc/GMT+3' }).valid, false, 'zona de offset fixo não é operacional');
+  const money = { currency: 'BRL', completeness: 'partial', provenance: { kind: 'manual' }, components: { deliveryFeeMinor: 1234 } };
+  const order = { id: 'order-money', companyId: 'company-1', createdAt: companyTime, updatedAt: companyTime, version: 1, money };
+  assert.equal(contract.validateEntity('Order', order).valid, true, 'Order.money v1 aditivo deve validar');
+  assert.equal(contract.validateEntity('Order', { ...order, money: { ...money, components: { deliveryFeeMinor: 12.5 } } }).valid, false, 'componentes monetários não aceitam float');
+  assert.equal(contract.validateEntity('Order', { ...order, money: { ...money, currency: 'ZZZ' } }).valid, false, 'moeda deve ser ISO suportada');
+  assert.equal(contract.validateEntity('Order', { ...order, money: { currency: 'BRL', completeness: 'complete', provenance: { kind: 'import' }, components: { itemsSubtotalMinor: 1000, discountMinor: 0, deliveryFeeMinor: 200, serviceFeeMinor: 0, otherFeeMinor: 0, totalMinor: 1199 } } }).valid, false, 'total inconsistente deve falhar');
+}
 
 for (const contract of [current, sibling]) {
   validateV1RevisionMetadata(contract);

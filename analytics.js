@@ -1,14 +1,16 @@
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) root.RotaMotoAnalytics = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
   'use strict';
+  const Money = root?.RotaMotoOrderMoney || (typeof require === 'function' ? require('./order-money') : null);
 
   const DATA_DICTIONARY = Object.freeze({
-    orders: { name: 'Pedidos', source: 'Order.createdAt/status/type/source', formula: 'contagem de Orders no período de criação e filtros selecionados', unit: 'pedidos', states: 'todos os estados conhecidos; status ausente fica em “desconhecido”', period: 'Order.createdAt (janela móvel)', missing: 'data inválida é excluída e contada como incompleta', limits: 'origem é comercial, não provider logístico' },
-    deliveryFees: { name: 'Taxas de entrega', source: 'Order.deliveryFee; legado Order.value', formula: 'soma/média de taxas válidas apenas para Deliveries concluídas', unit: 'BRL', currency: 'BRL', states: 'DELIVERED e taxa válida', period: 'coorte por Order.createdAt', missing: 'taxa ausente/inválida é excluída do denominador e reduz cobertura', limits: 'não é faturamento de produtos nem valor integral do pedido' },
-    orderTicket: { name: 'Ticket médio do pedido', source: 'Order.amountMinor + Order.currency', formula: 'média convertida da unidade mínima ISO 4217 por moeda, somente valores válidos', unit: 'valor médio por pedido', currency: 'agrupado por ISO 4217; moedas nunca são somadas', states: 'qualquer Order do recorte com montante canônico válido', period: 'coorte por Order.createdAt', missing: 'excluído do denominador e indicado na cobertura', limits: 'o contrato não define se montante inclui taxa de entrega; não denominar faturamento de produtos' },
+    orders: { name: 'Pedidos', source: 'Order.createdAt/status/type/source', formula: 'contagem de Orders no período de criação e filtros selecionados', unit: 'pedidos', states: 'todos os estados conhecidos; status ausente fica em “desconhecido”', period: 'Order.createdAt (datas civis da Company quando timezone configurado; intervalo UTC quando ausente)', missing: 'data inválida é excluída e contada como incompleta', limits: 'origem é comercial, não provider logístico' },
+    deliveryFees: { name: 'Taxas de entrega', source: 'Order.deliveryFee; legado Order.value', formula: 'soma/média de taxas válidas apenas para Deliveries concluídas', unit: 'BRL', currency: 'BRL', states: 'DELIVERED e taxa válida', period: 'coorte por Order.createdAt', missing: 'taxa ausente/inválida ou moeda desconhecida é excluída do denominador e reduz cobertura', limits: 'BRL legado só é reconhecido para canais locais conhecidos; não é faturamento de produtos nem valor integral do pedido' },
+    orderTicket: { name: 'Ticket médio do pedido', source: 'Order.money.totalMinor + Order.money.currency', formula: 'média do total explicitamente mapeado em minor units, agrupado por moeda', unit: 'valor médio por pedido', currency: 'agrupado por ISO 4217; moedas nunca são somadas', states: 'Orders com total conhecido e moeda explícita no objeto monetário canônico', period: 'coorte por Order.createdAt', missing: 'legado amountMinor/value sem composição comprovada fica fora e reduz cobertura', limits: 'média de totais conhecidos não equivale a faturamento agregado; cobertura depende da origem' },
+    orderMoneyComponents: { name: 'Componentes monetários do pedido', source: 'Order.money.components/provenance/completeness', formula: 'agregação de cada componente conhecido separada por ISO currency', unit: 'unidade mínima monetária', states: 'todos os Orders com componente válido', period: 'coorte por Order.createdAt', missing: 'componente ausente é desconhecido, nunca zero', limits: 'não calcula margem nem infere taxas omitidas' },
     driverPayout: { name: 'Repasse registrado', source: 'Earning.amountMinor/currency', formula: 'soma/média de Earnings BRL válidos associados às Deliveries do recorte', unit: 'BRL', currency: 'BRL', states: 'Earning ligado a Delivery do recorte', period: 'coorte por Order.createdAt; não por data de pagamento', missing: 'Earning ausente não vira zero; cobertura por entregas associadas', limits: 'repasse ao Driver, não custo operacional integral' },
     estimatedDistance: { name: 'Distância estimada', source: 'Delivery.estimatedDistanceM; legado Order.km', formula: 'média e soma apenas de valores não negativos válidos', unit: 'km', states: 'Deliveries do recorte', period: 'coorte por Order.createdAt', missing: 'excluído e contado como indisponível', limits: 'Route ou estimativa local não é distância percorrida' },
     actualDistance: { name: 'Distância real', source: 'Delivery.actualDistanceM; legado Order.gpsDistanceKm', formula: 'média e soma apenas de distâncias reais válidas', unit: 'km', states: 'Deliveries do recorte', period: 'coorte por Order.createdAt', missing: 'excluído e contado como indisponível', limits: 'cobertura depende de telemetria/projeção sincronizada' },
@@ -61,13 +63,15 @@
     return Number.isFinite(total) ? { total, average: total / values.length, count: values.length } : { total: null, average: null, count: 0 };
   }
   function validTimezone(zone) {
-    if (typeof zone !== 'string' || !zone.trim()) return false;
+    if (typeof zone !== 'string' || !zone.trim() || /^[+-]\d{2}:?\d{2}$/u.test(zone) || /^Etc\/GMT[+-]\d{1,2}$/iu.test(zone)) return false;
     try { new Intl.DateTimeFormat('en', { timeZone: zone }).format(0); return true; } catch (_) { return false; }
   }
   function localParts(at, timeZone) {
     const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', weekday: 'short', hourCycle: 'h23' }).formatToParts(at);
     return Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
   }
+  function localDateKey(parts) { return `${parts.year}-${parts.month}-${parts.day}`; }
+  function shiftDateKey(key, days) { const date = new Date(`${key}T00:00:00.000Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); }
   function eventTimestamp(events, delivery, types) {
     if (!delivery?.id) return null;
     const matches = (events || []).filter(e => (e.entityId === delivery.id || e.deliveryId === delivery.id) && types.includes(String(e.type || '').toUpperCase()));
@@ -77,8 +81,11 @@
   function aggregate(input = {}, options = {}) {
     const now = timestamp(options.now) ?? Date.now();
     const period = options.period === 'all' ? null : Number(options.period);
-    const periodDays = Number.isFinite(period) && period > 0 ? period : 30;
-    const cutoff = period === null ? null : now - periodDays * 86400000;
+    const periodDays = Number.isFinite(period) && period > 0 ? Math.min(3660, Math.floor(period)) : 30;
+    const tz = validTimezone(options.timeZone) ? options.timeZone : null;
+    const localToday = tz ? localDateKey(localParts(now, tz)) : null;
+    const localStartDate = tz && period !== null ? shiftDateKey(localToday, -(periodDays - 1)) : null;
+    const cutoff = period === null || tz ? null : now - periodDays * 86400000;
     const deliveries = input.deliveries || [];
     const events = input.deliveryEvents || [];
     const allOrders = (input.orders || []).filter(o => !o.deleted && !o.deletedAt);
@@ -93,22 +100,25 @@
     for (const order of allOrders) {
       const createdAt = timestamp(order.createdAt);
       if (createdAt === null || createdAt > now) { invalidCreatedAt++; continue; }
-      if (cutoff !== null && createdAt < cutoff) continue;
+      const createdLocalParts = tz ? localParts(createdAt, tz) : null;
+      const createdLocalDate = createdLocalParts ? localDateKey(createdLocalParts) : null;
+      if (localStartDate !== null && createdLocalDate < localStartDate || cutoff !== null && createdAt < cutoff) continue;
       const delivery = deliveriesById.get(order.deliveryId) || deliveriesByOrder.get(order.id) || null;
       const status = canonicalStatus(delivery, order);
       const driverId = delivery?.driverId || order.driverId || order.bikeId || '';
       const driverName = order.bike || (input.drivers || []).find(d => d.id === driverId)?.name || (input.bikes || []).find(d => d.id === driverId)?.name || '';
       const source = [order.sourceId, typeof order.source === 'string' ? order.source : order.source?.origin, order.channel].find(value => typeof value === 'string' && value.trim()) || '';
-      const rawFee = order.deliveryFee !== undefined && order.deliveryFee !== null ? order.deliveryFee : order.value;
+      const money = Money?.canonicalComponents(order) || { kind: 'unknown', currency: null, scale: null };
+      const rawFee = Number.isSafeInteger(money.deliveryFeeMinor) ? money.deliveryFeeMinor / (10 ** money.scale) : money.kind === 'legacy_delivery_fee' ? money.legacyDeliveryFee : null;
       const fee = finiteNonNegative(rawFee);
-      const feeCurrency = order.deliveryFeeCurrency || 'BRL';
+      const feeCurrency = money.currency;
       const hasEstimatedM = delivery?.estimatedDistanceM !== null && delivery?.estimatedDistanceM !== undefined;
       const hasActualM = delivery?.actualDistanceM !== null && delivery?.actualDistanceM !== undefined;
       const estimatedM = finiteNonNegative(delivery?.estimatedDistanceM);
       const actualM = finiteNonNegative(delivery?.actualDistanceM);
       const estimatedDistanceKm = hasEstimatedM ? (estimatedM === null ? null : estimatedM / 1000) : finiteNonNegative(order.km);
       const actualDistanceKm = hasActualM ? (actualM === null ? null : actualM / 1000) : finiteNonNegative(order.gpsDistanceKm);
-      normalized.push({ order, delivery, createdAt, status, driverId, driverName, source: source.trim() || 'unknown', deliveryFeeBRL: feeCurrency === 'BRL' ? fee : null, estimatedDistanceKm, actualDistanceKm });
+      normalized.push({ order, delivery, createdAt, createdLocalParts, createdLocalDate, status, driverId, driverName, source: source.trim() || 'unknown', deliveryFeeBRL: feeCurrency === 'BRL' ? fee : null, estimatedDistanceKm, actualDistanceKm, money });
     }
     const filtered = normalized.filter(row => (!options.driver || row.driverName === options.driver || row.driverId === options.driver)
       && (!options.status || row.status === (ORDER_TO_DELIVERY[String(options.status).toUpperCase()] || String(options.status).toUpperCase()))
@@ -125,16 +135,33 @@
     const fee = sumAverage(feeValues);
 
     const ticketValues = {};
+    const moneyComponentValues = Object.create(null);
     let ticketMissing = 0;
     for (const row of filtered) {
-      const minor = row.order.amountMinor;
-      const currency = row.order.currency;
-      if (!Number.isSafeInteger(minor) || minor < 0 || !validCurrency(currency)) { ticketMissing++; continue; }
+      const minor = row.money.totalMinor;
+      const currency = row.money.currency;
+      if (!Number.isSafeInteger(minor) || minor < 0 || !validCurrency(currency)) { ticketMissing++; }
+      else {
       const divisor = currencyDivisor(currency);
-      if (!divisor) { ticketMissing++; continue; }
+      if (!divisor) ticketMissing++;
+      else {
       (ticketValues[currency] ||= []).push(minor / divisor);
+      }
+      }
+      for (const component of ['itemsSubtotalMinor','discountMinor','deliveryFeeMinor','serviceFeeMinor','otherFeeMinor']) {
+        const amount = row.money[component];
+        if (!Number.isSafeInteger(amount) || !currency) continue;
+        const divisor = currencyDivisor(currency);
+        if (!divisor) continue;
+        const key = `${component}:${currency}`;
+        (moneyComponentValues[key] ||= []).push(amount / divisor);
+      }
     }
     const orderTicket = Object.fromEntries(Object.entries(ticketValues).map(([currency, values]) => [currency, sumAverage(values)]));
+    const moneyComponents = Object.fromEntries(Object.entries(moneyComponentValues).map(([key, values]) => [key, sumAverage(values)]));
+    const completeMoneyCount = filtered.filter(row => row.money.kind === 'canonical_complete').length;
+    const moneyKinds = Object.create(null);
+    for (const row of filtered) moneyKinds[row.money.kind] = (moneyKinds[row.money.kind] || 0) + 1;
 
     const earningsByDelivery = new Map();
     const deliveryAliases = new Map();
@@ -199,7 +226,7 @@
     const addressGroups = new Map();
     const hourly = Array(24).fill(0);
     const weekdays = Array(7).fill(0);
-    const tz = validTimezone(options.timeZone) ? options.timeZone : null;
+    const daily = Object.create(null);
     for (const row of filtered) {
       statusCounts[row.status] = (statusCounts[row.status] || 0) + 1;
       const type = String(row.order.type || '').trim();
@@ -225,15 +252,20 @@
         addressGroups.set(key, group);
       }
       if (tz) {
-        const parts = localParts(row.createdAt, tz);
+        const parts = row.createdLocalParts;
         hourly[Number(parts.hour)]++;
         weekdays[['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday)]++;
+        const dayKey = row.createdLocalDate;
+        daily[dayKey] = (daily[dayKey] || 0) + 1;
       }
     }
+    const dailyVolume = tz ? (localStartDate !== null
+      ? Array.from({ length: periodDays }, (_, index) => { const date = shiftDateKey(localStartDate, index); return { date, count: daily[date] || 0 }; })
+      : Object.entries(daily).sort(([a],[b]) => a.localeCompare(b)).map(([date,count]) => ({ date, count }))) : null;
     const knownStatusCount = filtered.filter(row => KNOWN_STATUSES.has(row.status)).length;
     const open = filtered.filter(row => OPEN_STATUSES.has(row.status)).length;
     return {
-      ...(options.includeExportRows ? { exportRows: filtered.map(row => ({ num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: row.status, type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt })) } : {}),
+      ...(options.includeExportRows ? { exportRows: filtered.map(row => ({ num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: row.status, type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, moneyCurrency: row.money.currency || '', moneyCompleteness: row.money.kind, itemsSubtotalMinor: row.money.itemsSubtotalMinor ?? null, discountMinor: row.money.discountMinor ?? null, deliveryFeeMinor: row.money.deliveryFeeMinor ?? null, serviceFeeMinor: row.money.serviceFeeMinor ?? null, otherFeeMinor: row.money.otherFeeMinor ?? null, totalMinor: row.money.totalMinor ?? null, estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt })) } : {}),
       total: filtered.length, invalidCreatedAt,
       completedCount: completed.length,
       cancelledCount: filtered.filter(row => row.status === 'CANCELLED').length,
@@ -249,17 +281,18 @@
       distinctAddressCount: addressGroups.size,
       coverage: {
         deliveryFee: { available: fee.count, total: completed.length, missing: feeMissing },
-        orderAmount: { available: Object.values(orderTicket).reduce((sum, item) => sum + item.count, 0), total: filtered.length, missing: ticketMissing },
+        orderAmount: { available: Object.values(orderTicket).reduce((sum, item) => sum + item.count, 0), total: filtered.length, missing: ticketMissing, complete: completeMoneyCount, kinds: moneyKinds },
         status: { available: knownStatusCount, total: filtered.length, missing: filtered.length - knownStatusCount },
         earning: { available: earnings.count, total: earningScope.size, missing: Math.max(0, earningScope.size - earnings.count) },
         estimatedDistance: { available: estimatedDistance.count, total: filtered.length, missing: estimatedMissing },
         actualDistance: { available: actualDistance.count, total: filtered.length, missing: actualMissing },
       },
-      deliveryFees: fee, orderTicket, driverPayout: earnings,
+      deliveryFees: fee, orderTicket, moneyComponents, driverPayout: earnings,
       estimatedDistance, actualDistance, durations,
       hourlyVolume: tz ? hourly : null, weekdayVolume: tz ? weekdays : null,
+      dailyVolume,
       timeZone: tz,
-      cohort: 'Order.createdAt; rolling UTC interval',
+      cohort: 'Order.createdAt; configured period uses Company civil dates and timezone; unset timezone uses rolling UTC interval',
       freshness: options.freshness || 'local snapshot; freshness not proven',
     };
   }

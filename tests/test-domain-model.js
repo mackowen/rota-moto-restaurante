@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 require('../contract.js');
 const C=globalThis.RotaMotoContract;
 const {createMediaStorage}=require('../backend/domain/media-storage');
-assert.deepEqual(Object.keys(C.ENTITY_SCHEMAS).sort(),['Delivery','DeliveryEvent','DeliveryProof','Driver','Earning','LocationPoint','Order','Route'].sort());
+assert.deepEqual(Object.keys(C.ENTITY_SCHEMAS).sort(),['Company','Delivery','DeliveryEvent','DeliveryProof','Driver','Earning','LocationPoint','Order','Route'].sort());
 const base={id:'e1',companyId:'c1',createdAt:'2026-10-04T10:00:00.000Z',updatedAt:'2026-10-04T10:00:00.000Z',version:1};
 assert.equal(C.validateEntity('Earning',{...base,deliveryId:'d1',amountMinor:105,currency:'BRL',components:[]}).valid,true);
 assert.equal(C.validateEntity('Earning',{...base,amountMinor:105,currency:'BRL',components:[{code:'delivery_fee',amountMinor:105}],ruleVersion:'fees-v2'}).valid,true);

@@ -27,7 +27,7 @@ Este documento descreve a API local do backend do Restaurante. O servidor deve p
 | Método/path | Auth/permissão | Entrada | Saída/efeito | Idempotência/erros |
 |---|---|---|---|---|
 | `POST /api/identity/login` | Anônima; rate limit | `email,password,companyId`; `mfaCode` quando solicitado | Define cookie de sessão; retorna `userId,companyId,csrfToken` | Não enumera conta; 401/400/429. Roles com permissão administrativa e contas marcadas exigem provider MFA; sem provider, falha fechado. |
-| `GET /api/identity/session` | Cookie de sessão | — | usuário, empresa ativa, permissões, `driverId` canônico associado (ou `null`), indicador `mfaVerified` e CSRF renovado | 401 se sessão inválida/expirada. Motoboy sem `driverId` permanece sem acesso às operações Motoboy. |
+| `GET /api/identity/session` | Cookie de sessão | — | usuário, empresa ativa, permissões, `driverId` canônico associado (ou `null`), `companyTimeZone` IANA ou `null`, indicador `mfaVerified` e CSRF renovado | 401 se sessão inválida/expirada. Motoboy sem `driverId` permanece sem acesso às operações Motoboy. |
 | `POST /api/identity/logout` | Sessão + CSRF | — | Revoga a sessão e limpa cookie; 204 | Repetição permanece segura. |
 | `POST /api/identity/tenant` | Sessão + CSRF | `companyId` como seleção | Atualiza empresa ativa somente após validar membership ativo; retorna `activeCompanyId` | A entrada seleciona; nunca concede acesso. Tenant administrativo também exige que a sessão já tenha MFA verificado. |
 | `POST /api/identity/recovery` | Anônima; rate limit | `email` | 202 `{accepted:true}` | Resposta não enumera usuários. Entrega depende de provider configurado. |
@@ -72,7 +72,8 @@ Lista retorna `{records:[{id,record,version,createdAt,updatedAt,deletedAt}],next
 
 | Método/path | Permissão | Entrada | Saída |
 |---|---|---|---|
-| `GET /api/admin/company` | `company.manage` | — | ID, nome, status e timestamps da empresa ativa. |
+| `GET /api/admin/company` | `company.manage` | — | ID, nome, status, `timeZone` IANA ou `null` e timestamps da empresa ativa. |
+| `PUT /api/admin/company` | `company.manage` + MFA verificado + CSRF | `{timeZone:string|null}` | Define ou limpa timezone operacional IANA da Company; registra auditoria. Offset fixo/identificador inválido retorna 400. |
 | `GET /api/admin/memberships?limit=…&cursor=…` | `members.read` | `limit` (1–100) e cursor | Memberships da empresa ativa com identificadores, email, estado, role e permissions. Não retorna credenciais/sessões. |
 | `GET /api/admin/roles` | `company.manage` | — | Roles da empresa e permission keys. |
 | `GET /api/admin/permissions` | `company.manage` | — | Catálogo versionado e descrições de permission keys. |

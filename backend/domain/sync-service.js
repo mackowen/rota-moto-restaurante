@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { uuidV7 } = require('../identity/service');
 const { createMediaStorage } = require('./media-storage');
+const OrderMoney = require('../../order-money');
 
 const WRITE_OWNERS = Object.freeze({ Order: 'restaurante', Route: 'restaurante', Driver: 'restaurante', Earning: 'restaurante',
   LocationPoint: 'motoboy', DeliveryProof: 'motoboy' });
@@ -58,6 +59,18 @@ class SyncError extends Error {
 }
 
 function invalid(message) { throw new SyncError('INVALID_INPUT', message); }
+function validateOrderMoneyRecord(record) {
+  if (Object.hasOwn(record || {}, 'amountMinor') && (!Number.isSafeInteger(record.amountMinor) || record.amountMinor < 0 || record.amountMinor > 9000000000000000)) invalid('Order.amountMinor legado inválido.');
+  if (Object.hasOwn(record || {}, 'currency') && OrderMoney.currencyScale(record.currency) === null) invalid('Order.currency legada inválida.');
+  if (!Object.hasOwn(record || {}, 'money')) return true;
+  const result = OrderMoney.validateMoney(record.money);
+  if (!result.valid) invalid('Order.money inválido ou inconsistente.');
+  if (record.money.provenance.kind === 'external') {
+    const source = typeof record.source === 'string' ? record.source.toLowerCase() : '';
+    if (!source || source !== String(record.money.provenance.sourceId || '').toLowerCase()) invalid('Order.money provenance não corresponde à origem comercial.');
+  }
+  return true;
+}
 function boundedText(value, name, max = 255) {
   if (typeof value !== 'string' || !value.trim() || Buffer.byteLength(value.trim(), 'utf8') > max || /[\u0000-\u001f\u007f]/u.test(value)) invalid(`${name} inválido.`);
   return value.trim();
@@ -316,6 +329,9 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         if(Object.hasOwn(record,'components')&&(!Array.isArray(record.components)||record.components.length>100||
           record.components.some(item=>!item||typeof item.code!=='string'||!item.code.trim()||item.code.length>4000||!Number.isSafeInteger(item.amountMinor)||Math.abs(item.amountMinor)>9000000000000000)))invalid('Earning.components inválido.');
         if(Object.hasOwn(record,'ruleVersion')&&(typeof record.ruleVersion!=='string'||record.ruleVersion.length>4000))invalid('Earning.ruleVersion inválida.');
+      }
+      if(entityType==='Order'){
+        validateOrderMoneyRecord(record);
       }
       if (entityType === 'Delivery' && canonical.driverId) {
         const driverId = await resolveReferencedAlias(client, companyId, 'Driver', canonical.driverId);
@@ -759,4 +775,4 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
   return Object.freeze({ registerInstallation, push, pull });
 }
 
-module.exports = { SyncError, createSyncService, validatePacket, ENTITY_ARRAYS, TRANSITIONS, WRITE_OWNERS };
+module.exports = { SyncError, createSyncService, validatePacket, validateOrderMoneyRecord, ENTITY_ARRAYS, TRANSITIONS, WRITE_OWNERS };

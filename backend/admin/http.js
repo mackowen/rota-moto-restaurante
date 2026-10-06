@@ -48,6 +48,9 @@ function validateDriverLink(body) {
   if (typeof body.driverId !== 'string' || !UUID.test(body.driverId)) throw error('INVALID_INPUT');
   return body.driverId.toLowerCase();
 }
+function isIanaTimeZone(value) {
+  try { if (/^Etc\/GMT[+-]\d{1,2}$/iu.test(value)) return false; new Intl.DateTimeFormat('en', { timeZone: value }).format(0); return true; } catch (_) { return false; }
+}
 
 function createAdminHttpHandler({ identityService, adminService, rateLimiter = createRateLimiter(), logger = () => {}, allowedOrigin }) {
   if (!identityService || !adminService) throw new TypeError('Serviços de identidade e administração obrigatórios.');
@@ -59,7 +62,9 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
     try {
       let config = req.method === 'POST' && url.pathname === '/api/admin/roles'
         ? { method: 'POST', permission: 'company.manage', operation: 'createRole' }
-        : ROUTES[url.pathname]; let match;
+        : url.pathname === '/api/admin/company' && req.method === 'PUT'
+          ? { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyTimeZone' }
+          : ROUTES[url.pathname]; let match;
       if (!config && (match = /^\/api\/admin\/roles\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateRole', id: match[1] };
       if (!config && (match = /^\/api\/admin\/memberships\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateMembership', id: match[1] };
       if (!config && (match = /^\/api\/admin\/memberships\/([0-9a-f-]{36})\/driver$/iu.exec(url.pathname)))
@@ -90,6 +95,12 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
         switch (config.operation) {
           case 'memberships': return adminService.memberships(client, principal, query);
           case 'company': return adminService.company(client, principal);
+          case 'updateCompanyTimeZone': {
+            exact(body, ['timeZone']);
+            const value = body.timeZone;
+            if (value !== null && (typeof value !== 'string' || !value.trim() || value.length > 128 || /^[+-]\d{2}:?\d{2}$/u.test(value) || !isIanaTimeZone(value))) throw error('INVALID_INPUT');
+            return adminService.updateCompanyTimeZone(client, principal, value);
+          }
           case 'roles': return adminService.roles(client, principal);
           case 'permissions': return adminService.permissions(client, principal);
           case 'integrations': return adminService.integrations(client, principal);

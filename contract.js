@@ -41,7 +41,8 @@
   // Canonical fields are deliberately explicit. Legacy/local-only fields stay
   // outside these shapes and may be carried under namespaced extensions.
   const ENTITY_SCHEMAS = Object.freeze({
-    Order:Object.freeze({required:['id','companyId','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',number:'text',customer:'object-or-text',phone:'text',address:'text',notes:'text',items:'array',payments:'array',amountMinor:'money-minor',currency:'currency',source:'text',externalId:'text',extensions:'extensions'})}),
+    Company:Object.freeze({required:['id','name','createdAt','updatedAt'],fields:Object.freeze({id:'id',name:'text',status:'text',timeZone:'nullable-iana-time-zone',createdAt:'timestamp',updatedAt:'timestamp'})}),
+    Order:Object.freeze({required:['id','companyId','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',number:'text',customer:'object-or-text',phone:'text',address:'text',notes:'text',items:'array',payments:'array',amountMinor:'money-minor',currency:'currency',money:'order-money',source:'text',externalId:'text',extensions:'extensions'})}),
     Driver:Object.freeze({required:['id','companyId','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',name:'text',phone:'text',email:'text',status:'text',extensions:'extensions'})}),
     Route:Object.freeze({required:['id','companyId','createdAt','updatedAt','version','deliveryIds'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',deliveryIds:'id-array',stops:'array',origin:'object',status:'text',extensions:'extensions'})}),
     Delivery:Object.freeze({required:['id','companyId','status','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',orderId:'id',driverId:'id',status:'delivery-status',priority:'text',assignedAt:'nullable-timestamp',acceptedAt:'nullable-timestamp',pickedUpAt:'nullable-timestamp',arrivedAt:'nullable-timestamp',completedAt:'nullable-timestamp',estimatedDistanceM:'nullable-number',actualDistanceM:'nullable-number',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',extensions:'extensions'})}),
@@ -139,7 +140,10 @@
     'positive-integer':v=>Number.isSafeInteger(v)&&v>0,
     'nullable-number':v=>v===null||Number.isFinite(v),
     'money-minor':v=>Number.isSafeInteger(v)&&Math.abs(v)<=9000000000000000,
-    currency:v=>typeof v==='string'&&/^[A-Z]{3}$/u.test(v),
+    currency:v=>validIsoCurrency(v),
+    'iana-time-zone':v=>validTimeZone(v),
+    'nullable-iana-time-zone':v=>v===null||validTimeZone(v),
+    'order-money':v=>validateOrderMoney(v),
     'delivery-status':v=>Object.hasOwn(STATUS,v),
     latitude:v=>Number.isFinite(v)&&v>=-90&&v<=90,
     longitude:v=>Number.isFinite(v)&&v>=-180&&v<=180,
@@ -149,6 +153,19 @@
     'media-ref':v=>DOMAIN_TYPES.object(v)&&DOMAIN_TYPES.text(v.mimeType)&&['image/png','image/jpeg'].includes(v.mimeType)&&Number.isSafeInteger(v.sizeBytes)&&v.sizeBytes>=0&&v.sizeBytes<=8388608&&DOMAIN_TYPES.object(v.storageRef)&&DOMAIN_TYPES.id(v.storageRef.provider)&&DOMAIN_TYPES.text(v.storageRef.objectKey)&&v.storageRef.objectKey.trim().length<=512&&/^[a-f0-9]{64}$/iu.test(v.sha256||''),
     extensions:v=>DOMAIN_TYPES.object(v)
   };
+  function validTimeZone(value){try{if(typeof value!=='string'||!value.trim()||/^[+-]\d{2}:?\d{2}$/u.test(value)||/^Etc\/GMT[+-]\d{1,2}$/iu.test(value))return false;new Intl.DateTimeFormat('en',{timeZone:value}).format(0);return true}catch(_){return false}}
+  function validIsoCurrency(value){if(typeof value!=='string'||!/^[A-Z]{3}$/u.test(value)||typeof Intl.supportedValuesOf!=='function')return false;try{return Intl.supportedValuesOf('currency').includes(value)}catch(_){return false}}
+  function validateOrderMoney(value){
+    if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['currency','completeness','provenance','components'].includes(k)))return false;
+    if(!DOMAIN_TYPES.currency(value.currency)||!['complete','partial','unknown'].includes(value.completeness))return false;
+    const p=value.provenance;if(!p||typeof p!=='object'||Array.isArray(p)||Object.keys(p).some(k=>!['kind','sourceId'].includes(k))||!['manual','external','import'].includes(p.kind)||(p.sourceId!==undefined&&(typeof p.sourceId!=='string'||!/^[a-z0-9][a-z0-9_.:-]{0,79}$/iu.test(p.sourceId))))return false;
+    const c=value.components;if(!c||typeof c!=='object'||Array.isArray(c)||Object.keys(c).some(k=>!['itemsSubtotalMinor','discountMinor','deliveryFeeMinor','serviceFeeMinor','otherFeeMinor','totalMinor'].includes(k))||(value.completeness==='unknown'&&Object.keys(c).length))return false;
+    if(Object.values(c).some(n=>!Number.isSafeInteger(n)||n<0||n>9000000000000000))return false;
+    const keys=['itemsSubtotalMinor','discountMinor','deliveryFeeMinor','serviceFeeMinor','otherFeeMinor','totalMinor'];
+    if(value.completeness==='complete'&&keys.some(k=>!Object.hasOwn(c,k)))return false;
+    if(keys.every(k=>Object.hasOwn(c,k))&&c.itemsSubtotalMinor-c.discountMinor+c.deliveryFeeMinor+c.serviceFeeMinor+c.otherFeeMinor!==c.totalMinor)return false;
+    return true;
+  }
   function validateEntity(entity,record){
     const schema=ENTITY_SCHEMAS[entity],errors=[];
     if(!schema)return{valid:false,errors:['UNKNOWN_ENTITY']};
@@ -158,6 +175,10 @@
       const type=schema.fields[key];
       if(!type){if(/^x_[a-z0-9]+_/iu.test(key))continue;errors.push('UNKNOWN_FIELD:'+key);continue}
       if(!DOMAIN_TYPES[type](value))errors.push('INVALID:'+key);
+    }
+    if(entity==='Order'){
+      if(Object.hasOwn(record,'amountMinor')&&record.amountMinor!==undefined&&record.amountMinor!==null&&(!Number.isSafeInteger(record.amountMinor)||record.amountMinor<0))errors.push('INVALID:amountMinor');
+      if(Object.hasOwn(record,'currency')&&record.currency!==undefined&&record.currency!==null&&!validIsoCurrency(record.currency))errors.push('INVALID:currency');
     }
     return{valid:errors.length===0,errors};
   }

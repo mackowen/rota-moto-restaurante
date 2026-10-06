@@ -11,6 +11,9 @@ function createAdminService({ repository }) {
   }
   return Object.freeze({
     company: (client, principal) => repository.company(client, principal.company_id),
+    updateCompanyTimeZone(client, principal, timeZone) {
+      return repository.updateCompanyTimeZone(client, principal, timeZone);
+    },
     memberships(client, principal, query = {}) {
       if (Object.keys(query).some(key => !['limit', 'cursor'].includes(key))) {
         const error = new Error('Parâmetro de consulta não permitido.'); error.code = 'INVALID_INPUT'; throw error;

@@ -256,6 +256,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           const csrfToken = await identityService.renewCsrfToken(client, value.session_id, sessionToken);
           return { userId: value.user_id, email: user.rows[0].email, emailVerified: user.rows[0].email_verified,
             activeCompanyId: value.company_id, activeRoleId: value.role_id, driverId: value.driver_id || null,
+            companyTimeZone: value.company_time_zone || null,
             permissions: permissions.rows.map(row => row.permission_key),
             mfaVerified: Boolean(value.mfa_verified_at), mfaConfigured: Boolean(value.mfa_configured),
             mfaEnrollmentRequired: Boolean(value.mfa_enrollment_required), csrfToken };

@@ -49,10 +49,12 @@
       notes: order.notes ?? order.obs,
       source: typeof order.source === 'string' ? order.source : (order.sourceId || order.source?.origin || order.channel),
       externalId: order.externalId || order.source?.id,
+      money: order.money,
     };
     for (const [key, value] of Object.entries(fields)) {
       if (typeof value === 'string' && value.trim()) record[key] = value.trim();
       else if (key === 'customer' && value && typeof value === 'object' && !Array.isArray(value)) record[key] = value;
+      else if (key === 'money' && value && typeof value === 'object') record[key] = value;
     }
     if (Array.isArray(order.items)) record.items = order.items;
     if (Array.isArray(order.payments)) record.payments = order.payments;
