@@ -10,6 +10,7 @@ const { createLogisticsService } = require('../../backend/logistics/service');
 const { createProviderIntegrationService } = require('../../backend/logistics/provider-integration');
 const { createProviderWorker } = require('../../backend/logistics/provider-worker');
 const { createFakeLogisticsProvider } = require('../helpers/fake-logistics-provider');
+const { createFakeRouteDistanceProvider } = require('../helpers/fake-route-distance-provider');
 
 function createProviderBrowserRuntime({ pool, outcomes = ['pending', 'timeout', 'pending'] } = {}) {
   if (process.env.NODE_ENV !== 'test') throw new Error('Provider browser E2E runtime is available only in NODE_ENV=test.');
@@ -18,7 +19,8 @@ function createProviderBrowserRuntime({ pool, outcomes = ['pending', 'timeout', 
   const testProvider = (companyId, providerId) => configuration?.companyId === companyId && configuration?.providerId === providerId
     ? { ...configuration, adapter: 'fake', providerCode: 'ifood', capabilities: ['quote','dispatch','cancel','tracking'] } : null;
   const providerIntegration = createProviderIntegrationService({ testProvider });
-  const logisticsService = createLogisticsService({ providerIntegration, testProvider });
+  const fakeRouteDistanceProvider=createFakeRouteDistanceProvider();
+  const logisticsService = createLogisticsService({ providerIntegration, testProvider, routeDistanceProvider:fakeRouteDistanceProvider });
   const fake = createFakeLogisticsProvider({ outcomes });
   const fakeAdapter = Object.freeze({
     async quote(context) { return { quote: await fake.quote(context) }; },
@@ -59,6 +61,10 @@ function createProviderBrowserRuntime({ pool, outcomes = ['pending', 'timeout', 
     configure({ companyId, providerId }) {
       if (process.env.NODE_ENV !== 'test' || typeof companyId !== 'string' || typeof providerId !== 'string') throw new Error('Invalid E2E provider scope.');
       configuration = Object.freeze({ companyId, providerId });
+    },
+    configureRouteDistance(input){
+      if(process.env.NODE_ENV!=='test'||!input||typeof input.companyId!=='string')throw new Error('Invalid E2E route-distance scope.');
+      fakeRouteDistanceProvider.configure(input);
     },
     async ingestEvent(client, input) {
       if (!configuration || input.companyId !== configuration.companyId || input.providerId !== configuration.providerId) throw new Error('E2E event scope mismatch.');

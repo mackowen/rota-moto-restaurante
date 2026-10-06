@@ -110,6 +110,9 @@
     for (const key of ['name', 'phone', 'email', 'status']) {
       if (typeof driver[key] === 'string' && driver[key].trim()) record[key] = driver[key].trim();
     }
+    if (driver.capacity && driver.capacity.unit === 'deliveries' && Number.isSafeInteger(driver.capacity.limit) &&
+        driver.capacity.limit >= 1 && driver.capacity.limit <= 500 && Object.keys(driver.capacity).every(key=>['unit','limit'].includes(key)))
+      record.capacity = { unit:'deliveries', limit:driver.capacity.limit };
     if (driver.deletedAt) record.deletedAt = timestamp(driver.deletedAt);
     return record;
   }

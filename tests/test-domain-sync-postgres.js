@@ -178,6 +178,20 @@ async function main() {
       assert.match(deliveryId, /^[0-9a-f-]{36}$/iu);
       assert.match(earningId, /^[0-9a-f-]{36}$/iu);
       assert.notEqual(orderId, 'order-local-1');
+      const capacityDriver={id:'driver-capacity-local',name:'Motorista capacidade',status:'DISPONÍVEL',capacity:{unit:'deliveries',limit:4},
+        createdAt:baseTime,updatedAt:new Date().toISOString(),version:1};
+      const capacityPush=await call('/api/sync/push',{method:'POST',body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...packet.data,orders:[],deliveries:[],drivers:[capacityDriver],routes:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[]}}});
+      assert.equal(capacityPush.status,200,JSON.stringify(capacityPush.body));
+      assert.equal(capacityPush.body.operationResults[0].status,'accepted','optional capacity syncs through the authenticated canonical domain path');
+      const canonicalCapacityDriver=capacityPush.body.operationResults[0].canonicalId;
+      const storedCapacity=await client.query("SELECT payload->'capacity' AS capacity FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Driver'",[companyId,canonicalCapacityDriver]);
+      assert.deepEqual(storedCapacity.rows[0].capacity,{unit:'deliveries',limit:4});
+      const invalidCapacityPush=await call('/api/sync/push',{method:'POST',body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...packet.data,orders:[],deliveries:[],drivers:[{...capacityDriver,id:'driver-capacity-invalid',capacity:{unit:'kg',limit:20}}],routes:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[]}}});
+      assert.equal(invalidCapacityPush.status,200);
+      assert.equal(invalidCapacityPush.body.operationResults[0].status,'rejected','unsupported weight/volume capacity is rejected instead of entering the canonical model');
+      assert.equal(invalidCapacityPush.body.operationResults[0].error.code,'INVALID_INPUT');
       const domainOrders = await call('/api/domain/orders?limit=1');
       assert.equal(domainOrders.status, 200, JSON.stringify(domainOrders.body));
       assert.equal(domainOrders.body.records.length, 1);

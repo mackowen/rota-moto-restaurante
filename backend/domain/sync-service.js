@@ -293,6 +293,13 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       delete canonical.baseVersion;
       delete canonical.sync;
       let routeMembershipChange = null;
+      if(entityType==='Driver'&&record.capacity!==undefined){
+        const capacity=record.capacity;
+        if(!capacity||typeof capacity!=='object'||Array.isArray(capacity)||Object.keys(capacity).some(key=>!['unit','limit'].includes(key))||
+          Object.keys(capacity).length!==2||capacity.unit!=='deliveries'||!Number.isSafeInteger(capacity.limit)||capacity.limit<1||capacity.limit>500)
+          invalid('Driver.capacity deve informar um limite entre 1 e 500 entregas ativas.');
+        canonical.capacity={unit:'deliveries',limit:capacity.limit};
+      }
       if(entityType==='Route'&&record.deliveryIds===undefined&&resolved.created)canonical.deliveryIds=[];
       if(entityType==='Route'&&record.deliveryIds!==undefined){
         if(appKey!=='restaurante')throw new SyncError('FORBIDDEN','Somente o Restaurante planeja a associação de rotas.');

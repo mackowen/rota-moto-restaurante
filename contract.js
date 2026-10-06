@@ -43,7 +43,7 @@
   const ENTITY_SCHEMAS = Object.freeze({
     Company:Object.freeze({required:['id','name','createdAt','updatedAt'],fields:Object.freeze({id:'id',name:'text',status:'text',timeZone:'nullable-iana-time-zone',createdAt:'timestamp',updatedAt:'timestamp'})}),
     Order:Object.freeze({required:['id','companyId','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',number:'text',customer:'object-or-text',phone:'text',address:'text',notes:'text',items:'array',payments:'array',amountMinor:'money-minor',currency:'currency',money:'order-money',source:'text',externalId:'text',extensions:'extensions'})}),
-    Driver:Object.freeze({required:['id','companyId','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',name:'text',phone:'text',email:'text',status:'text',extensions:'extensions'})}),
+    Driver:Object.freeze({required:['id','companyId','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',name:'text',phone:'text',email:'text',status:'text',capacity:'delivery-capacity',extensions:'extensions'})}),
     Route:Object.freeze({required:['id','companyId','createdAt','updatedAt','version','deliveryIds'],fields:Object.freeze({id:'id',companyId:'id',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',deliveryIds:'id-array',stops:'array',origin:'object',status:'text',extensions:'extensions'})}),
     Delivery:Object.freeze({required:['id','companyId','status','createdAt','updatedAt','version'],fields:Object.freeze({id:'id',companyId:'id',orderId:'id',driverId:'id',status:'delivery-status',priority:'text',assignedAt:'nullable-timestamp',acceptedAt:'nullable-timestamp',pickedUpAt:'nullable-timestamp',arrivedAt:'nullable-timestamp',completedAt:'nullable-timestamp',estimatedDistanceM:'nullable-number',actualDistanceM:'nullable-number',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',baseVersion:'revision',deletedAt:'nullable-timestamp',extensions:'extensions'})}),
     DeliveryEvent:Object.freeze({required:['eventId','entity','entityId','type','occurredAt','protocolVersion'],fields:Object.freeze({eventId:'id',entity:'text',entityId:'id',type:'text',occurredAt:'timestamp',createdAt:'timestamp',updatedAt:'timestamp',version:'revision',companyId:'id',actor:'object',payload:'object',protocolVersion:'positive-integer',extensions:'extensions'})}),
@@ -144,6 +144,7 @@
     'iana-time-zone':v=>validTimeZone(v),
     'nullable-iana-time-zone':v=>v===null||validTimeZone(v),
     'order-money':v=>validateOrderMoney(v),
+    'delivery-capacity':v=>!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===2&&v.unit==='deliveries'&&Number.isSafeInteger(v.limit)&&v.limit>=1&&v.limit<=500,
     'delivery-status':v=>Object.hasOwn(STATUS,v),
     latitude:v=>Number.isFinite(v)&&v>=-90&&v<=90,
     longitude:v=>Number.isFinite(v)&&v>=-180&&v<=180,

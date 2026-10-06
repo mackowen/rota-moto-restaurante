@@ -103,9 +103,13 @@ for (const entity of sortedKeys(current.ENTITY_SCHEMAS)) {
 assert.equal(current.ENTITY_SCHEMAS.DeliveryEvent.required.includes('eventId'), true);
 assert.equal(current.ENTITY_SCHEMAS.Delivery.required.includes('companyId'), true);
 assert.equal(current.ENTITY_SCHEMAS.Delivery.required.includes('status'), true);
+assert.equal(current.ENTITY_SCHEMAS.Driver.fields.capacity,'delivery-capacity');
 for (const contract of [current, sibling]) {
   const companyTime = '2026-01-02T03:04:05.000Z';
   const company = { id: 'company-1', name: 'QA', createdAt: companyTime, updatedAt: companyTime, timeZone: 'America/Sao_Paulo' };
+  const capacityDriver={id:'driver-1',companyId:'company-1',createdAt:companyTime,updatedAt:companyTime,version:1,capacity:{unit:'deliveries',limit:4}};
+  assert.equal(contract.validateEntity('Driver',capacityDriver).valid,true,'both apps accept canonical delivery capacity');
+  assert.equal(contract.validateEntity('Driver',{...capacityDriver,capacity:{unit:'weight',limit:4}}).valid,false);
   assert.equal(contract.validateEntity('Company', company).valid, true, 'Company aceita timezone IANA canônico');
   assert.equal(contract.validateEntity('Company', { ...company, timeZone: null }).valid, true, 'Company representa explicitamente timezone ainda não configurado');
   assert.equal(contract.validateEntity('Company', { ...company, timeZone: '+03:00' }).valid, false, 'offset fixo não é timezone canônico');

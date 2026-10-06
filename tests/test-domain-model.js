@@ -10,6 +10,10 @@ assert.equal(C.validateEntity('Earning',{...base,amountMinor:105,currency:'BRL',
 assert.equal(C.validateEntity('Earning',{...base,amountMinor:105,currency:'BRL',components:[{amountMinor:105}]}).valid,false);
 assert.equal(C.validateEntity('Earning',{...base,amountMinor:1.2,currency:'BRL'}).valid,false);
 assert.equal(C.validateEntity('Earning',{...base,amountMinor:10,currency:'brl'}).valid,false);
+assert.equal(C.validateEntity('Driver',{...base,capacity:{unit:'deliveries',limit:3}}).valid,true);
+assert.equal(C.validateEntity('Driver',{...base,capacity:{unit:'weight',limit:3}}).valid,false);
+assert.equal(C.validateEntity('Driver',{...base,capacity:{unit:'deliveries',limit:3.5}}).valid,false);
+assert.equal(C.validateEntity('Driver',{...base,capacity:{unit:'deliveries',limit:501}}).valid,false);
 assert.equal(C.validateEntity('Delivery',{...base,status:'IMPOSSIBLE'}).valid,false);
 assert.equal(C.validateEntity('Delivery',{...base,status:'ASSIGNED',unexpected:true}).valid,false);
 assert.equal(C.validateEntity('Delivery',{...base,status:'ASSIGNED',x_ifood_external:{key:'value'}}).valid,true);

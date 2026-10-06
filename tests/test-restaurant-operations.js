@@ -49,11 +49,12 @@ assert.equal(Contract.validateEntity('Order', order).valid, true);
 const driver = Operations.canonicalDriver({
   id: 'driver_1', companyId: 'company_1', createdAt, updatedAt: createdAt, version: 1,
   name: 'Bia', phone: '555', status: 'AVAILABLE', latitude: -23.5, coords: [-23.5, -46.6],
-  presence: { inside: true }, location: 'private GPS',
+  capacity: { unit:'deliveries',limit:3 }, presence: { inside: true }, location: 'private GPS',
 }, 'company_fallback');
 assert.equal(driver.latitude, undefined);
 assert.equal(driver.coords, undefined);
 assert.equal(driver.presence, undefined);
+assert.deepEqual(driver.capacity,{unit:'deliveries',limit:3});
 assert.equal(Operations.canonicalDriver({ id: 'driver-canonical', createdAt, updatedAt: createdAt,
   sync: { state: 'local', version: 2, canonicalVersion: 1 } }, 'company_1').baseVersion, 1);
 assert.equal(Contract.validateEntity('Driver', driver).valid, true);

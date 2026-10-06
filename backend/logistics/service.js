@@ -30,7 +30,7 @@ function asFulfillment(row) {
 const FIELDS = `company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,external_reference,status,selected_at,
  selected_by,revision,eta_at,estimated_cost_minor,estimated_cost_currency,final_cost_minor,final_cost_currency,updated_at`;
 
-function createLogisticsService({ clock = () => new Date(), testProvider = null, providerIntegration = createProviderIntegrationService({ clock, testProvider }) } = {}) {
+function createLogisticsService({ clock = () => new Date(), testProvider = null, providerIntegration = createProviderIntegrationService({ clock, testProvider }), routeDistanceProvider = null } = {}) {
   if (testProvider && (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function')) throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
   function providerProjection(row) {
     const provider = asProvider(row), test = resolveTestProviderConfiguration(testProvider, provider.companyId, provider.id);
@@ -423,7 +423,7 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
       FROM rotamoto.provider_command_outbox WHERE company_id=$1 AND delivery_id=$2 ORDER BY created_at DESC LIMIT 50`, [principal.company_id,deliveryId]);
     return { commands: result.rows };
   }
-  const intelligence = createLogisticsIntelligenceService({ clock, testProvider, ensureInternalProvider });
+  const intelligence = createLogisticsIntelligenceService({ clock, testProvider, ensureInternalProvider, routeDistanceProvider });
   return Object.freeze({ ensureInternalProvider, listProviders, createProvider, updateProvider, getFulfillment, selectFulfillment, requestDispatch, updateFulfillment, analytics,
     requestProviderQuote, listProviderQuotes, selectProviderQuote, requestProviderDispatch, requestProviderCancel, requestProviderTracking,
     requestProviderReconciliation, getProviderCommands, ...intelligence });
