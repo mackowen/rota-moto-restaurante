@@ -228,7 +228,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const orderDelivery = await call('/api/sync/push', { method: 'POST', cookie: sessionCookie, csrf, body: {
       protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId: `pkt_${crypto.randomUUID()}`,
       deviceId: restaurantDevice, source: { deviceId: restaurantDevice }, createdAt: now,
-      data: { orders: [{ id: orderLocalId, customer: 'Cliente E2E', status: 'CREATED', createdAt: now, updatedAt: now, version: 1 }],
+      data: { orders: [{ id: orderLocalId, customer: 'Cliente E2E', source: 'ifood', externalId: crypto.randomUUID(), status: 'CREATED', createdAt: now, updatedAt: now, version: 1 }],
         deliveries: [{ id: deliveryLocalId, orderId: orderLocalId, driverId, status: 'ASSIGNED', createdAt: now, updatedAt: now, version: 1 }] }
     } });
     assert.equal(orderDelivery.status, 200, JSON.stringify(orderDelivery.body));

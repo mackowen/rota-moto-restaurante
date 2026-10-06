@@ -25,7 +25,7 @@ function createFakeLogisticsProvider({ outcomes = [], clock = () => Date.now() }
     },
     async cancel() { const result = outcome(); if (result === 'timeout') throw Object.assign(new Error('test timeout'), { classification: 'UNKNOWN_OUTCOME' }); return { status: result === 'failure' ? 'rejected' : 'pending' }; },
     async tracking() { return { provider: 'test_fake', status: 'in_progress', etaAt: new Date(clock() + 300000).toISOString(), trackedAt: new Date(clock()).toISOString(), provenance: 'external_provider' }; },
-    async reconcile() { return { status: 'confirmed' }; },
+    async reconcile() { return { provider: 'test_fake', status: 'accepted', trackedAt: new Date(clock()).toISOString(), provenance: 'external_provider' }; },
     events
   });
 }

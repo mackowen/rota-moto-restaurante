@@ -47,7 +47,7 @@
       phone: order.phone,
       address: order.address,
       notes: order.notes ?? order.obs,
-      source: typeof order.source === 'string' ? order.source : (order.sourceId || order.source?.origin || order.channel),
+      source: typeof order.source === 'string' ? order.source : (order.source?.origin || order.channel || order.sourceId),
       externalId: order.externalId || order.source?.id,
       money: order.money,
     };
@@ -72,6 +72,30 @@
     }
     if (order.deletedAt) record.deletedAt = timestamp(order.deletedAt);
     return record;
+  }
+
+  // Canonical sync stores Order.source as a string while the local-first UI
+  // keeps source metadata in an object. Preserve both representations without
+  // inferring the commercial source from any logistics provider.
+  function mergeCanonicalOrder(local, canonical) {
+    const row = { ...(local || {}), ...(canonical || {}), id: local?.id || canonical?.id };
+    const knownCanonical = typeof canonical?.source === 'string' && canonical.source.trim()
+      ? canonical.source.trim() : null;
+    const localSource = typeof local?.source === 'string'
+      ? { origin: local.source }
+      : local?.source && typeof local.source === 'object' && !Array.isArray(local.source)
+        ? { ...local.source } : null;
+    if (knownCanonical) {
+      row.source = { ...(localSource?.origin === knownCanonical ? localSource : {}), origin: knownCanonical };
+      row.sourceId = knownCanonical;
+    } else if (localSource) {
+      row.source = localSource;
+      if (local?.sourceId) row.sourceId = local.sourceId;
+    } else {
+      delete row.source;
+      if (!local?.sourceId) delete row.sourceId;
+    }
+    return row;
   }
 
   function canonicalDriver(driver, companyId) {
@@ -175,6 +199,6 @@
     return Number.isSafeInteger(minor) ? minor : null;
   }
 
-  return Object.freeze({ canonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, canonicalRoute,
+  return Object.freeze({ canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, canonicalRoute,
     validateRouteMembership, localIdForDelivery, findOrderForDeliveryId, minorUnitsFromDecimal });
 });

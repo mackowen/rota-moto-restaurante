@@ -16,6 +16,22 @@ const order = Operations.canonicalOrder({
 assert.equal(order.number, '42');
 assert.equal(order.notes, 'Portaria');
 assert.equal(order.source, 'ifood');
+assert.equal(Operations.canonicalOrder({ id: 'source-priority', createdAt, updatedAt: createdAt,
+  sourceId: 'legacy-alias', channel: 'whatsapp', source: { origin: 'ifood' } }, 'company_1').source, 'ifood',
+  'canonical commercial source prefers the explicit source object over legacy aliases');
+const mergedKnownSource = Operations.mergeCanonicalOrder({ id: 'local-order', source: { origin: 'ifood', id: 'ext-1', status: 'ACCEPTED' },
+  sourceId: 'ifood', channel: 'ifood', localOnly: true }, { id: 'canonical-order', source: 'ifood', customer: 'Cliente' });
+assert.deepEqual(mergedKnownSource.source, { origin: 'ifood', id: 'ext-1', status: 'ACCEPTED' });
+assert.equal(mergedKnownSource.sourceId, 'ifood');
+assert.equal(mergedKnownSource.localOnly, true);
+const mergedUnknownSource = Operations.mergeCanonicalOrder({ id: 'local-order', source: { origin: 'whatsapp', id: 'thread-1' },
+  sourceId: 'whatsapp', channel: 'whatsapp' }, { id: 'canonical-order', customer: 'Cliente' });
+assert.deepEqual(mergedUnknownSource.source, { origin: 'whatsapp', id: 'thread-1' }, 'missing canonical source preserves known local commercial origin');
+assert.equal(Operations.mergeCanonicalOrder({ id: 'unknown' }, { id: 'canonical' }).source, undefined,
+  'unknown origin stays unknown');
+assert.equal(Operations.canonicalOrder({ id: 'logistics-only', createdAt, updatedAt: createdAt,
+  logisticsProvider: { code: 'ifood' } }, 'company_1').source, undefined,
+  'commercial source is never inferred from the logistics provider');
 assert.equal(Operations.canonicalOrder({ id: 'o-canonical', createdAt, updatedAt: createdAt,
   sync: { state: 'local', version: 2, canonicalId: 'o-canonical', canonicalVersion: 1 } }, 'company_1').baseVersion, 1,
   'changed imported Orders carry their last observed canonical revision');
