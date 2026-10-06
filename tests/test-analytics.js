@@ -154,5 +154,6 @@ assert.match(html, /Endereços mais recorrentes/);
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 assert.match(appSource, /kpi\('Taxas de entrega hoje'/);
 assert.doesNotMatch(appSource, /kpi\('Faturamento hoje'/);
+assert.match(appSource, /Taxa de entrega conhecida \(BRL\)/, 'CSV names the known fee semantics explicitly');
 
 console.log('Analytics baseline tests passed');
