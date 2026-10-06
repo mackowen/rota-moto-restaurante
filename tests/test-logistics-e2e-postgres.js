@@ -26,18 +26,18 @@ async function main() {
       (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass`)).rows[0];
     assert.deepEqual(identity, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', bypass: false });
     const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations
-      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection')
+      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings')
       ORDER BY migration_id`);
     assert.deepEqual(migration.rows.map(row => row.migration_id), [
-      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection'
+      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings'
     ], 'E2E schema includes the tested logistics, geography and least-privilege migrations');
     const catalog = await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
       has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,
       has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='rotamoto' AND c.relname=ANY($1::text[]) ORDER BY c.relname`,
-      [['logistics_providers','delivery_fulfillments','dispatch_attempts','logistics_decisions']]);
-    assert.equal(catalog.rowCount, 4);
+      [['logistics_providers','delivery_fulfillments','dispatch_attempts','logistics_decisions','logistics_route_settings']]);
+    assert.equal(catalog.rowCount, 5);
     for (const row of catalog.rows) {
       assert.equal(row.relrowsecurity, true); assert.equal(row.relforcerowsecurity, true);
       assert.equal(row.owner, 'rotamoto_migrator'); assert.equal(row.app_delete, false);
@@ -84,6 +84,18 @@ async function main() {
       assert.equal(intelligencePolicy.rows[0].policyname, 'tenant_isolation');
       assert.match(intelligencePolicy.rows[0].qual, /current_tenant_id/u);
       assert.match(intelligencePolicy.rows[0].with_check, /current_tenant_id/u);
+      const routeSettingsTable=await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
+        has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname='logistics_route_settings'`,[cleanSchema]);
+      assert.deepEqual(routeSettingsTable.rows[0],{relrowsecurity:true,relforcerowsecurity:true,owner:'rotamoto_migrator',app_select:true,app_delete:false},
+        'route origin settings are tenant isolated and non-destructive for runtime');
+      const routeSettingsPolicy=await client.query(`SELECT policyname,qual,with_check FROM pg_policies WHERE schemaname=$1 AND tablename='logistics_route_settings'`,[cleanSchema]);
+      assert.equal(routeSettingsPolicy.rowCount,1);assert.equal(routeSettingsPolicy.rows[0].policyname,'tenant_isolation');
+      assert.match(routeSettingsPolicy.rows[0].qual,/current_tenant_id/u);assert.match(routeSettingsPolicy.rows[0].with_check,/current_tenant_id/u);
+      const routeSettingsConstraints=await client.query(`SELECT contype,pg_get_constraintdef(oid) AS definition FROM pg_constraint
+        WHERE conrelid=($1||'.logistics_route_settings')::regclass`,[cleanSchema]);
+      assert.ok(routeSettingsConstraints.rows.some(row=>row.contype==='c'&&/origin_latitude.*-90/u.test(row.definition)));
+      assert.ok(routeSettingsConstraints.rows.some(row=>row.contype==='c'&&/origin_mode/u.test(row.definition)));
       const decisionTable=await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
         has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete
         FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname='logistics_decisions'`,[cleanSchema]);
@@ -198,6 +210,14 @@ async function main() {
       const decisionStatuses=await client.query(`SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
         WHERE conrelid=($1||'.logistics_decisions')::regclass AND conname='logistics_decisions_status_check'`,[upgradeSchema]);
       assert.match(decisionStatuses.rows[0].definition,/cancelled/u,'decision lifecycle can record provider cancellation confirmation');
+      const migration0032=getMigrations()[31];assert.equal(migration0032.id,'0032_logistics_route_origin_settings');
+      await client.query(migration0032.up.replace(/\brotamoto\b/gu,upgradeSchema));
+      const routeSettingsSecurity=await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
+        has_table_privilege('rotamoto_app',c.oid,'SELECT') AS runtime_read,has_table_privilege('rotamoto_app',c.oid,'DELETE') AS runtime_delete
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname='logistics_route_settings'`,[upgradeSchema]);
+      assert.deepEqual(routeSettingsSecurity.rows[0],{relrowsecurity:true,relforcerowsecurity:true,owner:'rotamoto_migrator',runtime_read:true,runtime_delete:false});
+      const routeSettingsPolicy=await client.query(`SELECT qual,with_check FROM pg_policies WHERE schemaname=$1 AND tablename='logistics_route_settings'`,[upgradeSchema]);
+      assert.equal(routeSettingsPolicy.rowCount,1);assert.match(routeSettingsPolicy.rows[0].qual,/current_tenant_id/u);assert.match(routeSettingsPolicy.rows[0].with_check,/current_tenant_id/u);
       const after0020 = await client.query(`SELECT has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','SELECT') AS command_read,
         has_table_privilege('rotamoto_app',$1||'.provider_command_outbox','DELETE') AS command_delete,
         has_column_privilege('rotamoto_app',$1||'.logistics_providers','secret_ref','SELECT') AS secret_read,
@@ -207,6 +227,19 @@ async function main() {
     } finally { await client.query('ROLLBACK'); }
     assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [upgradeSchema])).rowCount, 0,
       'upgrade sandbox is rolled back');
+
+    const from0022Schema=`logistics_upgrade_0022_${crypto.randomUUID().replaceAll('-','')}`;
+    await client.query('BEGIN');
+    try{
+      for(const migration of getMigrations().slice(0,22))await client.query(migration.up.replace(/\brotamoto\b/gu,from0022Schema));
+      for(const migration of getMigrations().slice(22))await client.query(migration.up.replace(/\brotamoto\b/gu,from0022Schema));
+      const upgradedRouteSettings=await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
+        has_table_privilege('rotamoto_app',c.oid,'DELETE') AS runtime_delete FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname=$1 AND c.relname='logistics_route_settings'`,[from0022Schema]);
+      assert.deepEqual(upgradedRouteSettings.rows[0],{relrowsecurity:true,relforcerowsecurity:true,owner:'rotamoto_migrator',runtime_delete:false},
+        'upgrade 0022→0032 creates tenant-scoped operational route configuration');
+    }finally{await client.query('ROLLBACK')}
+    assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1',[from0022Schema])).rowCount,0,'0022 upgrade sandbox rolled back');
 
     await client.query('BEGIN');
     try {

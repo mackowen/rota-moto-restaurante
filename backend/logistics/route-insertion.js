@@ -45,7 +45,8 @@ function createRouteDistanceService({ provider = null } = {}) {
 }
 
 async function calculateInsertionOptions({ companyId, routeId, deliveryIds, newDeliveryId, capacity,
-  routeDistanceService, coordinatesByDeliveryId = null }) {
+  routeDistanceService, coordinatesByDeliveryId = null, startCoordinate = null, endCoordinate = null,
+  startLabel = 'origin', endLabel = 'origin' }) {
   if (!routeDistanceService || typeof routeDistanceService.calculate !== 'function') throw new TypeError('Route distance service required.');
   if (!Array.isArray(deliveryIds) || deliveryIds.length > 500 || new Set(deliveryIds).size !== deliveryIds.length ||
       deliveryIds.some(id=>typeof id!=='string'||!id) || typeof newDeliveryId!=='string' || deliveryIds.includes(newDeliveryId))
@@ -54,13 +55,20 @@ async function calculateInsertionOptions({ companyId, routeId, deliveryIds, newD
     return { status:'unknown', reason:'CAPACITY_UNKNOWN', routeDistance:{status:'unknown',distanceM:null,provenance:null}, candidates:[] };
   if (capacity.remainingSlots <= 0)
     return { status:'unavailable', reason:'CAPACITY_FULL', routeDistance:{status:'unknown',distanceM:null,provenance:null}, candidates:[] };
-  const routeDistance = await routeDistanceService.calculate({ companyId, routeId, deliveryIds, coordinatesByDeliveryId });
+  const distanceInput = ids => {
+    const coordinates = Object.assign(Object.create(null),coordinatesByDeliveryId||{});
+    const ordered=[...ids];
+    if(startCoordinate){ordered.unshift(`__route_start_${startLabel}__`);coordinates[ordered[0]]=startCoordinate;}
+    if(endCoordinate){const id=`__route_end_${endLabel}__`;ordered.push(id);coordinates[id]=endCoordinate;}
+    return {companyId,routeId,deliveryIds:ordered,coordinatesByDeliveryId:coordinates};
+  };
+  const routeDistance = await routeDistanceService.calculate(distanceInput(deliveryIds));
   if (routeDistance.status !== 'known')
     return { status:routeDistance.status, reason:routeDistance.reason||'ROUTE_DISTANCE_UNKNOWN', routeDistance, candidates:[] };
   const candidates=[];
   for (let position=0; position<=deliveryIds.length; position++) {
     const next=[...deliveryIds.slice(0,position),newDeliveryId,...deliveryIds.slice(position)];
-    const after=await routeDistanceService.calculate({ companyId, routeId, deliveryIds:next, coordinatesByDeliveryId });
+    const after=await routeDistanceService.calculate(distanceInput(next));
     let deltaM=null, status=after.status, reason=after.reason||null;
     if (after.status==='known') {
       const beforeSource=routeDistance.provenance,afterSource=after.provenance;

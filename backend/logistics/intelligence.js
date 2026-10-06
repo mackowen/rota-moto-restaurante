@@ -128,17 +128,20 @@ function assessRouteCompatibility({ deliveryId, deliveryDriverId = null, routes 
       rejected.push({ routeId: route.routeId, driverId: driverIds[0], reason: UNAVAILABLE_DRIVER_STATES.has(driverStatus) ? 'ROUTE_DRIVER_UNAVAILABLE' : 'ROUTE_DRIVER_STATUS_UNKNOWN' });
       continue;
     }
-    const stopsWithCoordinates = route.stops.filter(stop => stop.coordinatesKnown).length;
-    candidates.push({ routeId: route.routeId, status: route.status, driverId: driverIds[0], stopCount: route.stops.length,
-      destinationCoordinateCoverage: route.stops.length ? stopsWithCoordinates / route.stops.length : 0,
+    const orderedStops=route.stops||[],remainingStops=orderedStops.filter(stop=>ACTIVE_DELIVERY_STATES.has(String(stop.status||'').toUpperCase()));
+    const stopsWithCoordinates = remainingStops.filter(stop => stop.coordinatesKnown).length;
+    candidates.push({ routeId: route.routeId, status: route.status, driverId: driverIds[0], stopCount: remainingStops.length,
+      deliveryIds:remainingStops.map(stop=>stop.deliveryId),
+      destinationCoordinateCoverage: remainingStops.length ? stopsWithCoordinates / remainingStops.length : 0,
       targetCoordinatesKnown: Boolean(targetCoordinatesKnown), compatibility: 'unknown',
       incrementalDistanceM: null, marginalCost: { status: 'insufficient_data', reason: 'CAPACITY_OR_DISTANCE_UNKNOWN' },
       planComplete: route.deliveryIds.length>0&&route.stops.length===route.deliveryIds.length&&route.stops.every((stop,index)=>
-        stop.found===true&&stop.deliveryId===route.deliveryIds[index]&&ACTIVE_DELIVERY_STATES.has(String(stop.status||'').toUpperCase()))&&
-        new Set(route.deliveryIds).size===route.deliveryIds.length,
+        stop.found===true&&stop.deliveryId===route.deliveryIds[index]&&
+        (ACTIVE_DELIVERY_STATES.has(String(stop.status||'').toUpperCase())||TERMINAL_DELIVERY_STATES.has(String(stop.status||'').toUpperCase())))&&
+        remainingStops.length>0&&new Set(route.deliveryIds).size===route.deliveryIds.length,
       plannedStops:route.stops.map((stop,index)=>({deliveryId:stop.deliveryId,sequence:index+1,status:stop.status||null,found:stop.found===true})),
-      reason: !targetCoordinatesKnown || stopsWithCoordinates !== route.stops.length ? 'CONFIRMED_DESTINATION_COORDINATES_INCOMPLETE' : 'ROAD_DISTANCE_MODEL_UNAVAILABLE',
-      explanation: !targetCoordinatesKnown || stopsWithCoordinates !== route.stops.length ?
+      reason: !targetCoordinatesKnown || stopsWithCoordinates !== remainingStops.length ? 'CONFIRMED_DESTINATION_COORDINATES_INCOMPLETE' : 'ROAD_DISTANCE_MODEL_UNAVAILABLE',
+      explanation: !targetCoordinatesKnown || stopsWithCoordinates !== remainingStops.length ?
         'Faltam coordenadas de destino confirmadas para todas as paradas e para a nova entrega.' :
         'Driver ativo e Route canônica identificados. A capacidade, completude e distância serão validadas antes de sugerir uma posição.' });
   }
@@ -201,6 +204,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
   }
 
   async function loadRouteSnapshot(client, companyId, deliveryId, deliveryDriverId = null) {
+    const routeSettings = await getRouteSettings(client,companyId);
     const targetGeo = await client.query(`SELECT provenance,accuracy_m,latitude,longitude FROM rotamoto.delivery_geo_snapshots
       WHERE company_id=$1 AND delivery_id=$2`,[companyId,deliveryId]);
     const routesResult = await client.query(`WITH active_routes AS (
@@ -214,8 +218,9 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
           coalesce(jsonb_agg(jsonb_build_object('deliveryId',members.value,'found',stop.record_id IS NOT NULL,
             'driverId',stop.payload->>'driverId','status',stop.payload->>'status','driverStatus',driver.payload->>'status',
             'driverCapacity',driver.payload->'capacity','coordinatesKnown',
-            (geo.delivery_id IS NOT NULL AND geo.provenance IN ('manual','customer_destination')),
-            'coordinates',CASE WHEN geo.provenance IN ('manual','customer_destination') THEN jsonb_build_object('latitude',geo.latitude,'longitude',geo.longitude) ELSE NULL END)
+            (geo.delivery_id IS NOT NULL AND geo.provenance IN ('manual','customer_destination') AND geo.accuracy_m BETWEEN 0 AND 100),
+            'coordinates',CASE WHEN geo.provenance IN ('manual','customer_destination') AND geo.accuracy_m BETWEEN 0 AND 100
+              THEN jsonb_build_object('latitude',geo.latitude,'longitude',geo.longitude) ELSE NULL END)
             ORDER BY members.ordinality) FILTER(WHERE members.value IS NOT NULL),'[]'::jsonb) AS stops
         FROM active_routes r
         LEFT JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(r.payload->'deliveryIds')='array'
@@ -230,7 +235,8 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       deliveryIds:Array.isArray(row.delivery_ids)?row.delivery_ids.filter(id=>typeof id==='string'):[],
       stops:Array.isArray(row.stops)?row.stops:[] }));
     const target=targetGeo.rows[0];
-    const targetCoordinatesKnown=Boolean(target && ['manual','customer_destination'].includes(target.provenance));
+    const targetCoordinatesKnown=Boolean(target && ['manual','customer_destination'].includes(target.provenance)&&
+      Number.isFinite(Number(target.accuracy_m))&&Number(target.accuracy_m)>=0&&Number(target.accuracy_m)<=100);
     const result=assessRouteCompatibility({deliveryId,deliveryDriverId,routes,targetCoordinatesKnown});
     result.routesObserved=Number(routesResult.rows[0]?.total_routes||0);
     result.routeScanLimit=100;
@@ -238,16 +244,21 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     if (!result.scanComplete) result.limitations=['A análise consultou as 100 Routes ativas mais recentes; há outras Routes no tenant.'];
     result.targetCoordinate={known:targetCoordinatesKnown,provenance:target?.provenance||null,accuracyM:target?.accuracy_m==null?null:Number(target.accuracy_m)};
     result.routes=routes;
+    result.origin={mode:routeSettings.originMode,source:routeSettings.originMode==='custom'?'coordenada informada pelo administrador':'estabelecimento',
+      known:routeSettings.origin?.latitude!=null&&routeSettings.origin?.longitude!=null,provenance:routeSettings.originProvenance,
+      version:routeSettings.version,returnToOrigin:routeSettings.returnToOrigin};
     const coordinatesByDeliveryId=Object.create(null);
+    if(routeSettings.origin)coordinatesByDeliveryId.__route_origin__=routeSettings.origin;
     if(targetCoordinatesKnown)coordinatesByDeliveryId[deliveryId]={latitude:Number(target.latitude),longitude:Number(target.longitude)};
     for(const route of routes)for(const stop of route.stops||[])if(stop.found&&stop.coordinatesKnown&&stop.coordinates&&
       Number.isFinite(stop.coordinates.latitude)&&Number.isFinite(stop.coordinates.longitude))coordinatesByDeliveryId[stop.deliveryId]=stop.coordinates;
     for(const route of routes)for(const stop of route.stops||[])delete stop.coordinates;
     Object.defineProperty(result,'coordinatesByDeliveryId',{value:coordinatesByDeliveryId,enumerable:false});
+    Object.defineProperty(result,'routeSettings',{value:routeSettings,enumerable:false});
     return result;
   }
 
-  async function enrichRouteInsertions(routeAssessment,fleetCapacity,companyId,deliveryId,deliveryStatus,costModel) {
+  async function enrichRouteInsertions(client,routeAssessment,fleetCapacity,companyId,deliveryId,deliveryStatus,costModel) {
     if(deliveryAssessmentNotInsertable(deliveryStatus))return routeAssessment;
     for(const candidate of routeAssessment.candidates||[]){
       const route=(routeAssessment.routes||[]).find(item=>item.routeId===candidate.routeId);
@@ -266,30 +277,66 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       if(driver.remainingSlots<=0){candidate.compatibility='incompatible';candidate.reason='CAPACITY_FULL';
         candidate.insertion={status:'unavailable',reason:'CAPACITY_FULL',routeDistance:{status:'unknown',distanceM:null,provenance:null},candidates:[],bestPosition:null};
         candidate.marginalCost={status:'insufficient_data',reason:'CAPACITY_FULL'};continue}
-      const insertion=await calculateInsertionOptions({companyId,routeId:candidate.routeId,deliveryIds:route.deliveryIds,
+      const routeStatus=String(route?.status||'').toUpperCase(),requiresOrigin=!['ACTIVE','IN_PROGRESS'].includes(routeStatus)||routeAssessment.origin?.returnToOrigin;
+      if(requiresOrigin&&!routeAssessment.origin?.known){candidate.compatibility='unknown';candidate.reason='ROUTE_ORIGIN_UNKNOWN';
+        candidate.positionEvidence={start:'unknown',source:routeAssessment.origin?.source||'estabelecimento',returnToOrigin:Boolean(routeAssessment.origin?.returnToOrigin)};
+        candidate.insertion={status:'unknown',reason:'ROUTE_ORIGIN_UNKNOWN',routeDistance:{status:'unknown',distanceM:null,provenance:null},candidates:[],bestPosition:null};
+        candidate.marginalCost={status:'insufficient_data',reason:'ROUTE_ORIGIN_UNKNOWN'};continue}
+      let startCoordinate=routeAssessment.coordinatesByDeliveryId.__route_origin__,startSource='origem configurada',locationEvidence=null;
+      if(['ACTIVE','IN_PROGRESS'].includes(routeStatus)){
+        const position=await client.query(`SELECT point.payload FROM rotamoto.domain_records point
+          JOIN rotamoto.domain_records delivery ON delivery.company_id=point.company_id AND delivery.record_id=point.related_record_id
+            AND delivery.entity_type='Delivery' AND delivery.deleted_at IS NULL
+          WHERE point.company_id=$1 AND point.entity_type='LocationPoint' AND point.deleted_at IS NULL
+            AND delivery.payload->>'driverId'=$2 AND upper(coalesce(delivery.payload->>'status',''))=ANY($3::text[])
+          ORDER BY (point.payload->>'recordedAt') DESC,point.updated_at DESC LIMIT 1`,
+        [companyId,candidate.driverId,[...IN_PROGRESS_DELIVERY_STATES]]);
+        const point=position.rows[0]?.payload||null,at=point?.recordedAt?Date.parse(point.recordedAt):NaN,now=clock().getTime();
+        const valid=point&&Number.isFinite(Number(point.latitude))&&Number(point.latitude)>=-90&&Number(point.latitude)<=90&&
+          Number.isFinite(Number(point.longitude))&&Number(point.longitude)>=-180&&Number(point.longitude)<=180&&
+          Number.isFinite(at)&&at<=now+30_000&&now-at<=120_000&&Number.isFinite(Number(point.accuracyM))&&Number(point.accuracyM)>=0&&Number(point.accuracyM)<=100;
+        locationEvidence={status:valid?'known':'unknown',provenance:'LocationPoint Motoboy vinculado a Delivery do Driver interno',recordedAt:valid?point.recordedAt:null,
+          accuracyM:valid?Number(point.accuracyM):null,reason:valid?null:'DRIVER_LOCATION_STALE_OR_INVALID'};
+        if(valid){startCoordinate={latitude:Number(point.latitude),longitude:Number(point.longitude)};startSource='posição atual confiável do Driver';}
+        else {candidate.compatibility='unknown';candidate.reason='DRIVER_LOCATION_STALE_OR_INVALID';candidate.positionEvidence={start:'unknown',location:locationEvidence,
+          originSource:routeAssessment.origin.source,returnToOrigin:routeAssessment.origin.returnToOrigin};candidate.insertion={status:'unknown',reason:candidate.reason,
+          routeDistance:{status:'unknown',distanceM:null,provenance:null},candidates:[],bestPosition:null};candidate.marginalCost={status:'insufficient_data',reason:candidate.reason};continue}
+      }
+      const insertion=await calculateInsertionOptions({companyId,routeId:candidate.routeId,deliveryIds:candidate.deliveryIds,
         newDeliveryId:deliveryId,capacity:{status:'known',remainingSlots:driver.remainingSlots},routeDistanceService,
-        coordinatesByDeliveryId:routeAssessment.coordinatesByDeliveryId});
+        coordinatesByDeliveryId:routeAssessment.coordinatesByDeliveryId,startCoordinate,
+        endCoordinate:routeAssessment.origin.returnToOrigin?routeAssessment.coordinatesByDeliveryId.__route_origin__:null,
+        startLabel:routeStatus==='PLANNED'?'origin':'driver-position',endLabel:'origin'});
+      if(insertion.status==='known'){
+        const toCanonicalPosition=position=>position<candidate.deliveryIds.length?route.deliveryIds.indexOf(candidate.deliveryIds[position]):route.deliveryIds.length;
+        insertion.bestRoutePosition=toCanonicalPosition(insertion.bestPosition);
+        for(const option of insertion.candidates)option.routePosition=toCanonicalPosition(option.position);
+      }
       candidate.insertion=insertion;candidate.compatibility=insertion.status==='known'?'compatible':insertion.status==='unavailable'?'unknown':'unknown';
       candidate.incrementalDistanceM=insertion.incrementalDistanceM??null;
       candidate.distanceProvenance=insertion.provenance||insertion.routeDistance?.provenance||null;
+      candidate.positionEvidence={start:startSource,location:locationEvidence,originSource:routeAssessment.origin.source,
+        returnToOrigin:routeAssessment.origin.returnToOrigin,originVersion:routeAssessment.origin.version,
+        policy:routeAssessment.origin.returnToOrigin?'return_to_origin':'end_at_last_delivery'};
       candidate.reason=insertion.reason||null;
       candidate.explanation=insertion.status==='known'?
-        `Rota, ordem e capacidade verificadas. Posição ${insertion.bestPosition+1} em Route.deliveryIds; distância da rota ${insertion.routeDistance.distanceM} m, após inserção ${insertion.distanceAfterInsertionM} m, acréscimo ${insertion.incrementalDistanceM} m.`:
+        `Rota, ordem, capacidade e escopo viário completo verificados. Início: ${startSource}; ${routeAssessment.origin.returnToOrigin?'retorna à origem':'termina na última entrega'}. Posição ${insertion.bestPosition+1} em Route.deliveryIds; distância ${insertion.routeDistance.distanceM} m, após inserção ${insertion.distanceAfterInsertionM} m, acréscimo ${insertion.incrementalDistanceM} m.`:
         `A inserção não pode ser calculada: ${insertion.reason||insertion.status}.`;
       if(insertion.status==='known'){
         const marginal=estimateInternalCost(costModel,insertion.incrementalDistanceM);
         candidate.marginalCost=marginal.status==='known'?{...marginal,basis:'marginal_route_insertion',formula:'fixedCostPerDeliveryMinor + ceil(variableCostPerKmMinor × incrementalDistanceM / 1000)',
-          distanceProvenance:insertion.provenance,capacityEvidence:candidate.capacity,routeOrderSource:'Route.deliveryIds',limitations:['fixed cost remains charged per added delivery',
-            'distance covers only the ordered destination points provided; no depot/current Driver position or return leg is modeled',
+          distanceProvenance:insertion.provenance,capacityEvidence:candidate.capacity,routeOrderSource:'Route.deliveryIds',positionEvidence:candidate.positionEvidence,limitations:['fixed cost remains charged per added delivery',
+            'distance covers configured origin/current trusted internal Driver position, ordered remaining stops, and configured return leg',
             'distance provider provenance is required; no straight-line fallback']} : marginal;
       }else candidate.marginalCost={status:'insufficient_data',reason:insertion.reason||'ROUTE_DISTANCE_UNKNOWN'};
     }
     const bestKnown=(routeAssessment.candidates||[]).filter(item=>item.compatibility==='compatible'&&item.marginalCost?.status==='known')
       .sort((a,b)=>a.marginalCost.amountMinor-b.marginalCost.amountMinor||a.routeId.localeCompare(b.routeId)||a.insertion.bestPosition-b.insertion.bestPosition)[0];
     if(bestKnown){routeAssessment.status='insertion_calculated';routeAssessment.bestInsertion={routeId:bestKnown.routeId,driverId:bestKnown.driverId,
-      position:bestKnown.insertion.bestPosition,incrementalDistanceM:bestKnown.insertion.incrementalDistanceM,
+      position:bestKnown.insertion.bestRoutePosition??bestKnown.insertion.bestPosition,activeSequencePosition:bestKnown.insertion.bestPosition,
+      incrementalDistanceM:bestKnown.insertion.incrementalDistanceM,
       distanceAfterInsertionM:bestKnown.insertion.distanceAfterInsertionM,marginalCost:bestKnown.marginalCost,
-      distanceProvenance:bestKnown.distanceProvenance};
+      distanceProvenance:bestKnown.distanceProvenance,positionEvidence:bestKnown.positionEvidence};
       routeAssessment.message='Inserção calculada com capacidade, ordem e distância provenientes de dados verificáveis.';}
     else if(routeAssessment.candidates?.length)routeAssessment.status='candidate_requires_validation';
     return routeAssessment;
@@ -309,6 +356,46 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       { configured: false, costModel: null, defaultPolicy: 'lowest_cost', version: 0, updatedAt: null };
   }
   async function getSettings(client, principal) { return { settings: await readSettings(client, principal.company_id), policies: POLICIES }; }
+  async function getRouteSettings(client, companyId) {
+    const result=await client.query(`SELECT origin_mode,origin_latitude,origin_longitude,origin_provenance,return_to_origin,version,updated_at
+      FROM rotamoto.logistics_route_settings WHERE company_id=$1`,[companyId]);
+    const row=result.rows[0];
+    return row?{originMode:row.origin_mode,origin:row.origin_latitude==null?null:{latitude:Number(row.origin_latitude),longitude:Number(row.origin_longitude)},
+      originProvenance:row.origin_provenance,returnToOrigin:row.return_to_origin,version:Number(row.version),updatedAt:row.updated_at}:
+      {originMode:'establishment',origin:null,originProvenance:null,returnToOrigin:false,version:0,updatedAt:null};
+  }
+  async function readRouteSettings(client,principal){return {settings:await getRouteSettings(client,principal.company_id),locationPolicy:{maxAgeSeconds:120,maxAccuracyM:100,
+    activeRouteStart:'fresh internal Driver LocationPoint only; no fallback to establishment origin'}};}
+  async function updateRouteSettings(client,principal,input){
+    const allowed=new Set(['expectedVersion','originMode','latitude','longitude','returnToOrigin']);
+    if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!allowed.has(key))||
+      !Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<0||!['establishment','custom'].includes(input.originMode)||
+      typeof input.returnToOrigin!=='boolean')invalid('Configuração de origem/retorno inválida.');
+    let latitude=null,longitude=null,provenance=null;
+    if(input.originMode==='custom'){
+      const hasLat=input.latitude!==null&&input.latitude!==undefined,hasLon=input.longitude!==null&&input.longitude!==undefined;
+      if(hasLat!==hasLon)invalid('Informe latitude e longitude juntas.');
+      if(hasLat){latitude=input.latitude;longitude=input.longitude;
+        if(!Number.isFinite(latitude)||latitude< -90||latitude>90||!Number.isFinite(longitude)||longitude< -180||longitude>180)invalid('Coordenadas fora dos limites válidos.');
+        provenance='operator_configured';}
+    }else if(input.latitude!=null||input.longitude!=null)invalid('O modo estabelecimento usa somente localização canônica existente.');
+    const current=await client.query(`SELECT version FROM rotamoto.logistics_route_settings WHERE company_id=$1 FOR UPDATE`,[principal.company_id]);
+    const version=current.rowCount?Number(current.rows[0].version):0;
+    if(version!==input.expectedVersion)throw Object.assign(new Error('Configuração alterada em outra sessão.'),{code:'REVISION_CONFLICT'});
+    const result=await client.query(`INSERT INTO rotamoto.logistics_route_settings(company_id,origin_mode,origin_latitude,origin_longitude,
+      origin_provenance,return_to_origin,version,updated_by) VALUES($1,$2,$3,$4,$5,$6,1,$7)
+      ON CONFLICT(company_id) DO UPDATE SET origin_mode=EXCLUDED.origin_mode,origin_latitude=EXCLUDED.origin_latitude,
+        origin_longitude=EXCLUDED.origin_longitude,origin_provenance=EXCLUDED.origin_provenance,return_to_origin=EXCLUDED.return_to_origin,
+        version=rotamoto.logistics_route_settings.version+1,updated_by=EXCLUDED.updated_by,updated_at=now()
+      WHERE rotamoto.logistics_route_settings.version=$8 RETURNING version,updated_at`,
+    [principal.company_id,input.originMode,latitude,longitude,provenance,input.returnToOrigin,principal.user_id,input.expectedVersion]);
+    if(!result.rowCount)throw Object.assign(new Error('Configuração alterada em outra sessão.'),{code:'REVISION_CONFLICT'});
+    await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
+      VALUES($1,$2,$3,'user','logistics.route_settings_updated','logistics_route_settings',$4,$5::jsonb)`,
+    [crypto.randomUUID(),principal.company_id,principal.user_id,String(principal.company_id),JSON.stringify({originMode:input.originMode,coordinatesConfigured:latitude!==null,
+      returnToOrigin:input.returnToOrigin,version:Number(result.rows[0].version)})]);
+    return readRouteSettings(client,principal);
+  }
   async function updateSettings(client, principal, input) {
     const normalized = normalizeSettings(input);
     if (typeof ensureInternalProvider !== 'function') throw new Error('Internal provider initializer unavailable.');
@@ -356,7 +443,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     const settings = await readSettings(client, principal.company_id);
     const fleetCapacity = await loadFleetCapacity(client,principal.company_id);
     const routeAssessment = await loadRouteSnapshot(client,principal.company_id,deliveryId,delivery.driverId||null);
-    await enrichRouteInsertions(routeAssessment,fleetCapacity,principal.company_id,deliveryId,delivery.status,settings.costModel);
+    await enrichRouteInsertions(client,routeAssessment,fleetCapacity,principal.company_id,deliveryId,delivery.status,settings.costModel);
     const internalResult = await client.query(`SELECT provider_id,enabled FROM rotamoto.logistics_providers
       WHERE company_id=$1 AND code='internal_fleet'`, [principal.company_id]);
     const alternatives = [];
@@ -370,7 +457,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
         ? driverCanAcceptNewRoute ? { ...cost, basis:'new_route_assumption', assumption:'explicitly available Driver with configured capacity; no active canonical Route observed; local-only Route may exist' }
           : { status:'insufficient_data',reason:hasUnknownActiveCapacity?'CAPACITY_UNKNOWN':'NO_DRIVER_WITH_KNOWN_CAPACITY' }
         : { status:'insufficient_data',reason:routeCandidate?'ROUTE_INSERTION_NOT_PROVEN':'ROUTE_STATE_NOT_COMPLETE' };
-      const decisionCost=selectedRouteMarginal ? {status:'insufficient_data',reason:'ROUTE_DISTANCE_SCOPE_INCOMPLETE'} : isolatedDecisionCost;
+      const decisionCost=selectedRouteMarginal?.status==='known' ? selectedRouteMarginal : isolatedDecisionCost;
       const internalEligible=fleetCapacity.byDriver.some(driver=>driver.active&&(driver.capacityStatus==='unknown'||driver.remainingSlots>0));
       alternatives.push({ id: `internal:${internalResult.rows[0].provider_id}`, mode: 'internal', providerId: internalResult.rows[0].provider_id,
         providerName: 'Frota própria', kind: 'configured_estimate', eligible: internalEligible,
@@ -378,8 +465,8 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
         etaAt: null, etaStatus: 'unknown', cost, decisionCost,
         marginalCost:selectedRouteMarginal||isolatedDecisionCost,
         fleetCapacity, routeAssessment,
-        reasons: [{ code: selectedRouteMarginal?'ROUTE_DISTANCE_SCOPE_INCOMPLETE':decisionCost.status==='known'?'CAPACITY_AND_COST_KNOWN':'CAPACITY_OR_ROUTE_UNKNOWN', message: selectedRouteMarginal ?
-          `Rota ${routeAssessment.bestInsertion.routeId}: delta entre destinos ${routeAssessment.bestInsertion.incrementalDistanceM} m e custo variável parcial ${selectedRouteMarginal.currency} ${selectedRouteMarginal.amountMinor}; origem/garagem, posição atual do Driver e retorno não são modelados, então o custo não compara alternativas. Proveniência ${routeAssessment.bestInsertion.distanceProvenance?.providerId||'informada'}.` : decisionCost.status==='known' ?
+        reasons: [{ code: selectedRouteMarginal?'FULL_ROUTE_MARGINAL_COST':decisionCost.status==='known'?'CAPACITY_AND_COST_KNOWN':'CAPACITY_OR_ROUTE_UNKNOWN', message: selectedRouteMarginal ?
+          `Rota ${routeAssessment.bestInsertion.routeId}: distância integral ${routeAssessment.bestInsertion.distanceAfterInsertionM} m, delta ${routeAssessment.bestInsertion.incrementalDistanceM} m e custo marginal ${selectedRouteMarginal.currency} ${selectedRouteMarginal.amountMinor}, incluindo início operacional e política de retorno. Proveniência ${routeAssessment.bestInsertion.distanceProvenance?.providerId||'informada'}.` : decisionCost.status==='known' ?
           'Há Driver explicitamente disponível, limite de entregas conhecido e slots restantes; o custo apresentado é isolado para uma nova rota.' :
           internalEligible?'Capacidade, ordem da Route, distância ou perfil de custo ainda não foram comprovados para recomendar a frota própria.':'Nenhum Driver ativo com capacidade conhecida disponível foi encontrado para a nova alocação.' }] });
     }
@@ -438,7 +525,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       meaning:'canonical Earning / driver payout record; not proof of payment or total operating cost' }));
     const recommendation = makeRecommendation(alternatives,policy);
     const routeDistanceLimitation=routeAssessment.status==='insertion_calculated'?
-      'Road distance covers only the supplied ordered destination points; depot/current Driver position and return leg are not modeled':
+      'Distância viária integral usa origem configurada ou posição interna confiável, sequência Route.deliveryIds e política de retorno vigente':
       routeAssessment.candidates?.some(candidate=>candidate.insertion?.status==='unavailable')?
         'Road distance is unavailable for one or more candidate sequences; no straight-line fallback is used':
         'Road distance could not be established for the observed route; straight-line coordinates are not used as road distance';
@@ -463,6 +550,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
           'quote and estimates are not realized charges', 'fixed and variable profile covers only the components explicitly configured',
           'driver records do not prove availability or spare capacity; the operator must confirm',
           routeDistanceLimitation,
+          ...(routeAssessment.origin?.known?[]:['Origem operacional sem coordenadas canônicas/confiáveis; custo marginal integral abstido']),
           'the recommendation never dispatches'] } };
   }
 
@@ -491,6 +579,23 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     ) SELECT COALESCE(jsonb_agg(to_jsonb(costs)),'[]'::jsonb) AS modes,(SELECT to_jsonb(earning) FROM earning) AS earning FROM costs`, [principal.company_id]);
     const settings = await readSettings(client,principal.company_id);
     const capacity = await loadFleetCapacity(client,principal.company_id);
+    const routeCoverageResult=await client.query(`SELECT count(*)::int AS evaluated,
+      count(*) FILTER(WHERE snapshot->'routeAssessment'->'origin'->>'known'='true')::int AS origin_known,
+      count(*) FILTER(WHERE snapshot->'routeAssessment'->>'status'='insertion_calculated')::int AS full_route_calculated,
+      count(*) FILTER(WHERE jsonb_typeof(snapshot->'routeAssessment'->'candidates')='array'
+        AND jsonb_array_length(snapshot->'routeAssessment'->'candidates')>0
+        AND snapshot->'routeAssessment'->>'status'<>'insertion_calculated')::int AS route_abstentions,
+      count(*) FILTER(WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(snapshot->'alternatives','[]'::jsonb)) a
+        WHERE a->>'id'=snapshot->'recommendation'->>'selectedAlternativeId' AND a->>'mode'='internal'
+          AND a->'decisionCost'->>'basis'='marginal_route_insertion'))::int AS marginal_cost_recommendations
+      FROM rotamoto.logistics_decisions WHERE company_id=$1`,[principal.company_id]);
+    const routeCoverage=routeCoverageResult.rows[0]||{};
+    const abstentionReasons=await client.query(`SELECT coalesce(candidate.value->>'reason',snapshot->'routeAssessment'->>'reason','UNKNOWN') AS reason,
+      count(*)::int AS count FROM rotamoto.logistics_decisions decision
+      CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(decision.snapshot->'routeAssessment'->'candidates')='array'
+        THEN decision.snapshot->'routeAssessment'->'candidates' ELSE '[]'::jsonb END) candidate(value)
+      WHERE decision.company_id=$1 AND decision.snapshot->'routeAssessment'->>'status'<>'insertion_calculated'
+      GROUP BY 1 ORDER BY count(*) DESC,reason LIMIT 5`,[principal.company_id]);
     const modes = result.rows[0]?.modes || [];
     const internalRows = modes.filter(item=>item.mode==='internal'), externalRows=modes.filter(item=>item.mode==='external');
     const summarize = rows => {
@@ -511,6 +616,12 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     const payouts=new Map(); for (const item of earning.payouts||[]) if(item.currency&&/^\d+$/u.test(String(item.amountMinor||''))) payouts.set(item.currency,(payouts.get(item.currency)||0n)+BigInt(item.amountMinor));
     const ownFleet=summarize(internalRows);
     return { settings, ownFleet, external:summarize(externalRows), capacity,
+      routeCoverage:{evaluated:Number(routeCoverage.evaluated||0),originKnown:Number(routeCoverage.origin_known||0),
+        fullRouteCalculated:Number(routeCoverage.full_route_calculated||0),routeAbstentions:Number(routeCoverage.route_abstentions||0),
+        marginalCostRecommendations:Number(routeCoverage.marginal_cost_recommendations||0),
+        abstentionReasons:abstentionReasons.rows.map(row=>({reason:row.reason,count:Number(row.count)})),
+        coverage:Number(routeCoverage.evaluated||0)?Number(routeCoverage.full_route_calculated||0)/Number(routeCoverage.evaluated):null,
+        note:'Cobertura baseada nos snapshots imutáveis de avaliação; origem e rota integral são conhecidas somente quando registradas no instante da decisão.'},
       driverPayout:{ deliveriesWithEarning:Number(earning.known||0),totalEligibleDeliveries:ownFleet.completed,
         coverage:ownFleet.completed?Number(earning.known||0)/ownFleet.completed:null,
         byCurrency:[...payouts.entries()].map(([currency,amount])=>({currency,amountMinor:amount.toString()})),
@@ -518,6 +629,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       comparisonNote:'Diferença entre estimativas não é economia gerada pelo RotaMoto: não existe baseline contrafactual de decisões alternativas.' };
   }
   return Object.freeze({ getIntelligenceSettings:getSettings, updateIntelligenceSettings:updateSettings,
+    getRouteSettings:readRouteSettings,updateRouteSettings,
     compareLogisticsAlternatives:compareDelivery, logisticsEconomicAnalytics:economicAnalytics });
 }
 

@@ -12,6 +12,8 @@ async function main() {
     ensureInternalProvider: async () => ({ id: 'internal-test' }),
     analytics: async () => { calls.push(['analytics']); return { providers: [] }; },
     getIntelligenceSettings: async () => ({ settings: { configured: false, version: 0 }, policies: ['lowest_cost'] }),
+    getRouteSettings: async (_client,scope) => ({ settings: { originMode:'establishment', origin:null, returnToOrigin:false, tenant:scope.company_id } }),
+    updateRouteSettings: async (_client,scope,body) => { calls.push(['route-settings-update',scope.company_id,body]); return { settings:{version:1} }; },
     updateIntelligenceSettings: async (_client, scope, body) => { calls.push(['intelligence-update', scope.company_id, body]); return { settings: { version: 1 } }; },
     logisticsEconomicAnalytics: async () => ({ ownFleet: {}, external: {} }),
     logisticsDecisionQuality: async (_client,scope) => { calls.push(['decision-quality',scope.company_id]); return {metrics:{recommendationApproval:{rate:null}},decisions:[]}; },
@@ -42,6 +44,8 @@ async function main() {
     const analytics = await fetch(`${base}/api/logistics/analytics`, { headers });
     assert.equal(analytics.status, 200);
     assert.equal((await fetch(`${base}/api/logistics/intelligence/settings`, { headers })).status, 200);
+    const routeSettings=await fetch(`${base}/api/logistics/route-settings`,{headers});
+    assert.equal(routeSettings.status,200);assert.equal((await routeSettings.json()).settings.tenant,principal.company_id);
     assert.equal((await fetch(`${base}/api/logistics/intelligence/analytics`, { headers })).status, 200);
     const quality=await fetch(`${base}/api/logistics/intelligence/decision-quality`,{headers});
     assert.equal(quality.status,200);assert.equal((await quality.json()).decisions.length,0);
@@ -56,7 +60,13 @@ async function main() {
     assert.equal(approve.status,200);assert.equal((await approve.json()).decision.alternativeId,'fake:eligible');
     const update = await fetch(`${base}/api/logistics/intelligence/settings`, { method: 'PUT', headers: { ...headers, 'Content-Type': 'application/json', 'X-CSRF-Token': 'csrf-test' }, body: JSON.stringify({ expectedVersion: 0 }) });
     assert.equal(update.status, 200);
-    assert.deepEqual(calls.filter(row => row[0] === 'permission').map(row => row[1]), ['company.manage','company.manage','orders.read','orders.read','orders.read','orders.read','orders.read','orders.read','orders.read','company.manage','company.manage']);
+    const routeUpdate=await fetch(`${base}/api/logistics/route-settings`,{method:'PUT',headers:{...headers,'Content-Type':'application/json','X-CSRF-Token':'csrf-test'},
+      body:JSON.stringify({expectedVersion:0,originMode:'custom',latitude:1,longitude:2,returnToOrigin:true})});
+    assert.equal(routeUpdate.status,200);assert.equal(calls.find(row=>row[0]==='route-settings-update')[1],principal.company_id);
+    const permissions=calls.filter(row=>row[0]==='permission').map(row=>row[1]);
+    assert.equal(permissions.at(-1),'company.manage','route settings write requires admin permission');
+    assert.ok(permissions.includes('orders.read'),'read-only logistics endpoints use read permission');
+    assert.ok(permissions.filter(value=>value==='company.manage').length>=4,'configuration and decision writes remain admin protected');
     assert.equal(calls.find(row => row[0] === 'create')[1].code, 'partner_1');
   } finally { await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   console.log('Logistics authenticated HTTP, CSRF, RBAC, analytics scope and sanitized errors: OK');

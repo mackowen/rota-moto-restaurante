@@ -49,6 +49,8 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
         AND NULLIF(payload->>'driverId','') IS NOT NULL ORDER BY record_id${lock}`, [companyId]);
     const settings = await client.query(`SELECT version,default_policy,fixed_cost_per_delivery_minor,variable_cost_per_km_minor,currency
       FROM rotamoto.logistics_intelligence_settings WHERE company_id=$1${lock}`, [companyId]);
+    const routeSettings = await client.query(`SELECT version,origin_mode,origin_latitude,origin_longitude,origin_provenance,return_to_origin
+      FROM rotamoto.logistics_route_settings WHERE company_id=$1${lock}`,[companyId]);
     const providerConfig = await client.query(`SELECT provider_id,version,enabled,integration_mode,api_enabled,capabilities
       FROM rotamoto.logistics_providers WHERE company_id=$1 ORDER BY provider_id${lock}`, [companyId]);
     const geoSnapshots = await client.query(`SELECT geo.delivery_id::text AS delivery_id,geo.version,geo.provenance,geo.accuracy_m,geo.resolved_at
@@ -59,9 +61,26 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
         WHERE route.company_id=$1 AND route.entity_type='Route' AND route.deleted_at IS NULL
           AND upper(coalesce(route.payload->>'status',''))=ANY(ARRAY['PLANNED','ACTIVE','IN_PROGRESS']::text[])
           AND stop_id.value=geo.delivery_id::text)) ORDER BY geo.delivery_id`,[companyId,deliveryId]);
+    const driverLocations=await client.query(`SELECT point.record_id::text AS point_id,point.version,point.payload->>'recordedAt' AS recorded_at,
+      point.payload->>'accuracyM' AS accuracy_m,point.updated_at,
+      CASE WHEN (point.payload->>'recordedAt') ~ '^\\d{4}-\\d{2}-\\d{2}T' AND
+        (point.payload->>'recordedAt')::timestamptz <= clock_timestamp()+interval '30 seconds' AND
+        (point.payload->>'recordedAt')::timestamptz >= clock_timestamp()-interval '120 seconds' AND
+        (point.payload->>'accuracyM') ~ '^\\d+(?:\\.\\d+)?$' AND (point.payload->>'accuracyM')::numeric BETWEEN 0 AND 100
+        THEN true ELSE false END AS fresh_valid
+      FROM rotamoto.domain_records point
+      WHERE point.company_id=$1 AND point.entity_type='LocationPoint' AND point.deleted_at IS NULL AND EXISTS(
+        SELECT 1 FROM rotamoto.domain_records delivery WHERE delivery.company_id=point.company_id AND delivery.record_id=point.related_record_id
+          AND delivery.entity_type='Delivery' AND delivery.deleted_at IS NULL AND upper(coalesce(delivery.payload->>'status',''))=ANY($2::text[])
+          AND EXISTS(SELECT 1 FROM rotamoto.domain_records route CROSS JOIN LATERAL jsonb_array_elements_text(
+            CASE WHEN jsonb_typeof(route.payload->'deliveryIds')='array' THEN route.payload->'deliveryIds' ELSE '[]'::jsonb END) stop_id(value)
+            WHERE route.company_id=delivery.company_id AND route.entity_type='Route' AND route.deleted_at IS NULL
+              AND upper(coalesce(route.payload->>'status',''))=ANY(ARRAY['ACTIVE','IN_PROGRESS']::text[]) AND stop_id.value=delivery.record_id::text))
+      ORDER BY point.updated_at DESC LIMIT 100`,[companyId,['ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED']]);
     const basis = { deliveryVersion: Number(delivery.rows[0].version), deliveryStatus: delivery.rows[0].status,
       fulfillment: fulfillment.rows[0] || null, quotes: quotes.rows, routes: routes.rows, drivers: capacity.rows, assignedDeliveries: assigned.rows,
-      settings: settings.rows[0] || null, providers: providerConfig.rows, geoSnapshots:geoSnapshots.rows, policy };
+      settings: settings.rows[0] || null, routeSettings:routeSettings.rows[0]||null, providers: providerConfig.rows,
+      geoSnapshots:geoSnapshots.rows,driverLocations:driverLocations.rows, policy };
     return { basis, fingerprint: digest(basis) };
   }
 
@@ -249,7 +268,7 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
         ...(alternative.decisionCost?.status==='known'?{estimatedCostMinor:alternative.decisionCost.amountMinor,estimatedCostCurrency:alternative.decisionCost.currency}:{})});
       if(routeCandidate){
         if(typeof assignDeliveryToRoute!=='function'||!routeCandidate||!Number.isSafeInteger(input.routePosition)||
-          input.routePosition!==routeCandidate.insertion.bestPosition||input.expectedRouteVersion!==routeCandidate.routeVersion)
+          input.routePosition!==(routeCandidate.insertion.bestRoutePosition??routeCandidate.insertion.bestPosition)||input.expectedRouteVersion!==routeCandidate.routeVersion)
           fail('REVISION_CONFLICT','Rota, posição ou serviço canônico de planejamento mudou; recalcule a decisão.');
         await assignDeliveryToRoute(client,principal,{routeId:routeCandidate.routeId,deliveryId:row.delivery_id,driverId:input.driverId,
           position:input.routePosition,expectedRouteVersion:input.expectedRouteVersion});

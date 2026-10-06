@@ -111,6 +111,19 @@ assert.equal(makeRecommendation([partialRouteCost,external],'lowest_cost').why.c
   assert.deepEqual(insertions.candidates.map(item=>item.incrementalDistanceM),[2500,1200,3000]);
   assert.equal(insertions.bestPosition,1,'the minimum incremental distance selects the middle insertion');
   assert.equal(insertions.provenance.kind,'test');
+  const fullSequences={
+    '__route_start_origin__>stop-a>stop-b>__route_end_origin__':12000,
+    '__route_start_origin__>stop-new>stop-a>stop-b>__route_end_origin__':13500,
+    '__route_start_origin__>stop-a>stop-new>stop-b>__route_end_origin__':12700,
+    '__route_start_origin__>stop-a>stop-b>stop-new>__route_end_origin__':14000
+  };
+  const fullRoute=await calculateInsertionOptions({companyId:'company-a',routeId:'route-a',deliveryIds:ids,newDeliveryId:newId,
+    capacity:{status:'known',remainingSlots:1},routeDistanceService:createRouteDistanceService({provider:createFakeRouteDistanceProvider({distances:fullSequences,companyId:'company-a'})}),
+    coordinatesByDeliveryId:{'stop-a':{latitude:1,longitude:2},'stop-b':{latitude:2,longitude:3},'stop-new':{latitude:3,longitude:4}},
+    startCoordinate:{latitude:0,longitude:1},endCoordinate:{latitude:0,longitude:1}});
+  assert.equal(fullRoute.routeDistance.distanceM,12000,'current route includes its configured origin and return leg');
+  assert.equal(fullRoute.bestPosition,1);
+  assert.equal(fullRoute.incrementalDistanceM,700,'all candidate positions compare complete, equal-scope routes');
   assert.equal((await calculateInsertionOptions({companyId:'company-a',routeId:'route-a',deliveryIds:ids,newDeliveryId:newId,
     capacity:{status:'known',remainingSlots:0},routeDistanceService:service})).reason,'CAPACITY_FULL');
   assert.equal((await calculateInsertionOptions({companyId:'company-a',routeId:'route-a',deliveryIds:ids,newDeliveryId:newId,
