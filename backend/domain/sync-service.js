@@ -456,6 +456,22 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         if (!relatedId) throw new SyncError('UNRESOLVED_REFERENCE', `Referência ${relatedType} ainda não possui ID canônico.`);
         canonical[referenceField] = relatedId;
       }
+      if (entityType === 'Earning' && relatedId) {
+        const completedDelivery = await client.query(`SELECT payload->>'status' AS status,payload->>'driverId' AS driver_id
+          FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' AND deleted_at IS NULL FOR UPDATE`,
+        [companyId, relatedId]);
+        if (!completedDelivery.rowCount || completedDelivery.rows[0].status !== 'DELIVERED') {
+          throw new SyncError('EARNING_REQUIRES_COMPLETED_DELIVERY', 'Earning só pode ser publicado depois da confirmação canônica de entrega concluída.');
+        }
+        if (canonical.driverId) {
+          const earningDriverId = await resolveReferencedAlias(client, companyId, 'Driver', canonical.driverId);
+          if (!earningDriverId) throw new SyncError('UNRESOLVED_REFERENCE', 'Earning.driverId ainda não possui ID canônico.');
+          canonical.driverId = earningDriverId;
+          if (completedDelivery.rows[0].driver_id && earningDriverId !== completedDelivery.rows[0].driver_id) {
+            throw new SyncError('EARNING_DRIVER_MISMATCH', 'Earning deve pertencer ao Driver da Delivery concluída.');
+          }
+        }
+      }
       if (['DeliveryEvent','LocationPoint','DeliveryProof'].includes(entityType) && relatedId) {
         await assertAssignedDriver(client, principal, appKey, relatedId);
       }

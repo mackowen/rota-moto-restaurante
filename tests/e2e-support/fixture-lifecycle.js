@@ -344,7 +344,14 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, authenticated: true, mfaVerified: true,
       ...(fixturePersisted ? { mediaDirectory } : {}) });
   } finally {
-    if (host) await new Promise(resolve => host.server.close(resolve));
+    if (host) {
+      // Browser E2E may leave keep-alive requests active while a tab or sync
+      // retry is closing. The fixture is transaction-scoped; terminate those
+      // test-only sockets so cleanup always reaches rollback and emits a final
+      // result instead of hanging in server.close().
+      host.server.closeAllConnections?.();
+      await new Promise(resolve => host.server.close(resolve));
+    }
     if (transactionOpen) {
       try { await runtime.query('ROLLBACK'); } catch (_) { /* retain original setup error */ }
     }

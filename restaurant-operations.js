@@ -75,9 +75,11 @@
       }
       const sourceData = safeSourceExtension(sourceValue);
       if (sourceData && typeof sourceData === 'object' && !Array.isArray(sourceData) && Object.keys(sourceData).length && JSON.stringify(sourceData).length <= 32768) {
-        record.extensions = { x_restaurante_source_data: sourceData };
+        record.extensions = { ...(record.extensions || {}), x_restaurante_source_data: sourceData };
       }
     }
+    const payout = driverPayoutSnapshot(order);
+    if (payout) record.extensions = { ...(record.extensions || {}), x_rotamoto_driver_payout: payout };
     if (order.deletedAt) record.deletedAt = timestamp(order.deletedAt);
     return record;
   }
@@ -210,6 +212,40 @@
     return Number.isSafeInteger(minor) ? minor : null;
   }
 
+  function driverPayoutSnapshot(order) {
+    const extension = order?.extensions?.x_rotamoto_driver_payout;
+    if (extension && Number.isSafeInteger(extension.amountMinor) && extension.amountMinor >= 0 &&
+      typeof extension.currency === 'string' && /^[A-Z]{3}$/u.test(extension.currency) &&
+      Array.isArray(extension.components) && extension.components.every(item => item && typeof item.code === 'string' && Number.isSafeInteger(item.amountMinor))) {
+      return { amountMinor: extension.amountMinor, currency: extension.currency,
+        ruleVersion: typeof extension.ruleVersion === 'string' ? extension.ruleVersion : 'payout-snapshot-v1',
+        components: extension.components.map(item => ({ code: item.code, amountMinor: item.amountMinor })),
+        ...(extension.rule && typeof extension.rule === 'object' ? { rule: extension.rule } : {}) };
+    }
+    if (!Object.prototype.hasOwnProperty.call(order || {}, 'motoboyEarnings') || !Number.isFinite(Number(order.motoboyEarnings))) return null;
+    const amountMinor = minorUnitsFromDecimal(order.motoboyEarnings);
+    if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) return null;
+    const currency = typeof order.payoutCurrency === 'string' && /^[A-Z]{3}$/u.test(order.payoutCurrency) ? order.payoutCurrency : 'BRL';
+    return { amountMinor, currency, ruleVersion: 'payout-snapshot-v1',
+      components: [{ code: 'driver_share', amountMinor }],
+      rule: { deliveryFeeModel: typeof order.deliveryFeeModel === 'string' ? order.deliveryFeeModel : null,
+        share: Number.isFinite(Number(order.motoboyEarningsShare)) ? Number(order.motoboyEarningsShare) : null } };
+  }
+
+  function canonicalEarningFromCompletedOrder(order, companyId) {
+    const status = String(order?.deliveryStatus || order?.canonicalStatus || order?.status || '').toUpperCase();
+    if (!['DELIVERED', 'FINALIZADA', 'ENTREGUE'].includes(status)) return null;
+    const payout = driverPayoutSnapshot(order);
+    if (!payout || !order?.deliveryId) return null;
+    const completedAt = timestamp(order.completedAt || order.deliveredAt || order.updatedAt);
+    const driverId = order.bikeId || order.driverId || null;
+    return { id: order.earningId || `earning:${order.id}`, companyId: order.companyId || companyId,
+      deliveryId: order.deliveryId, ...(driverId ? { driverId } : {}), amountMinor: payout.amountMinor,
+      currency: payout.currency, components: payout.components, ruleVersion: payout.ruleVersion,
+      ...(payout.rule ? { rule: payout.rule } : {}), createdAt: completedAt, updatedAt: completedAt,
+      version: Math.max(1, Number(order.version || order.sync?.version || 1)) };
+  }
+
   return Object.freeze({ canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, canonicalRoute,
-    validateRouteMembership, localIdForDelivery, findOrderForDeliveryId, minorUnitsFromDecimal });
+    validateRouteMembership, localIdForDelivery, findOrderForDeliveryId, minorUnitsFromDecimal, driverPayoutSnapshot, canonicalEarningFromCompletedOrder });
 });

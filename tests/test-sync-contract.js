@@ -45,8 +45,10 @@ if(appSource.includes("function recordDeliveryEvent(type,r,payload={}")){
     'Delivery uploads require an Order or Delivery changed in this installation');
   assert.match(builder,/filter\(isLocallyDirtyForSync\)/,
     'unchanged canonical Routes are not re-created by another installation');
-  assert.match(builder,/isLocallyDirtyForSync\(order\)/,
-    'Earning snapshots are not emitted from unchanged imported Orders');
+  assert.match(builder,/\(state\.earnings\|\|\[\]\)\.filter\(earning=>!earning\.deleted&&!earning\.deletedAt&&isLocallyDirtyForSync\(earning\)\)/,
+    'only explicit locally created completion Earnings are published');
+  assert.doesNotMatch(builder,/map\(order=>canonicalEarningFromOrder\(order,companyId\)\)/,
+    'an Order edit or assignment cannot create an Earning before Delivery completion');
 }
 const syncTransport=appSource.slice(appSource.indexOf('async function syncWithServer'),appSource.indexOf('async function persistSyncAck'));
 assert(syncTransport.indexOf('const ack=await send')<syncTransport.indexOf('persistSyncAck(queued.packet,ack.operationResults'),

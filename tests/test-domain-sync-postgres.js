@@ -118,8 +118,8 @@ async function main() {
       const text = await response.text();
       return { status: response.status, body: text ? JSON.parse(text) : null, headers: response.headers };
     };
-    const registerDevice = async (appKey, deviceId) => call(`/api/sync/installations/${appKey}`, {
-      method: 'POST', body: { deviceId }
+    const registerDevice = async (appKey, deviceId, options = {}) => call(`/api/sync/installations/${appKey}`, {
+      ...options, method: 'POST', body: { deviceId }
     });
     try {
       const badCsrf = await call('/api/sync/push', { method: 'POST', csrf: 'invalid', body: {} });
@@ -158,14 +158,12 @@ async function main() {
             createdAt: baseTime, updatedAt: baseTime, version: 1 }],
           drivers: [], routes: [], locationUpdates: [], deliveryEvents: [{ id: 'event-local-1', eventId: 'event-local-1',
             entity: 'order', entityId: 'order-local-1', type: 'ORDER_CREATED', occurredAt: baseTime, actor: { type: 'user' } }],
-          proofs: [], earnings: [{ id: 'earning-local-1', deliveryId: 'delivery-local-1', amount: 12.5,
-            currency: 'BRL', components: [{code:'delivery_fee',amountMinor:1250}], ruleVersion: 'fees-v1',
-            createdAt: baseTime, updatedAt: baseTime, version: 1 }], tombstones: [] } };
+          proofs: [], earnings: [], tombstones: [] } };
       const pushed = await call('/api/sync/push', { method: 'POST', body: packet });
       assert.equal(pushed.status, 200, JSON.stringify({ response: pushed.body, logs }));
       assert.equal(pushed.body.companyId, companyId, 'tenant comes from the authenticated session, not packet.companyId');
-      assert.equal(pushed.body.received, 4, JSON.stringify(pushed.body.operationResults));
-      assert.equal(pushed.body.operationResults.length, 4, 'ACK identifies each operation');
+      assert.equal(pushed.body.received, 3, JSON.stringify(pushed.body.operationResults));
+      assert.equal(pushed.body.operationResults.length, 3, 'ACK identifies each operation');
       assert(pushed.body.operationResults.every(result => result.status === 'accepted' && result.canonicalId && result.canonicalVersion === 1));
       const duplicate = await call('/api/sync/push', { method: 'POST', body: packet });
       assert.equal(duplicate.status, 200);
@@ -173,10 +171,8 @@ async function main() {
       assert(duplicate.body.operationResults.every(result => result.status === 'duplicate'));
       const orderId = pushed.body.aliases.find(alias => alias.entity === 'Order').canonicalId;
       const deliveryId = pushed.body.aliases.find(alias => alias.entity === 'Delivery').canonicalId;
-      const earningId = pushed.body.aliases.find(alias => alias.entity === 'Earning').canonicalId;
       assert.match(orderId, /^[0-9a-f-]{36}$/iu);
       assert.match(deliveryId, /^[0-9a-f-]{36}$/iu);
-      assert.match(earningId, /^[0-9a-f-]{36}$/iu);
       assert.notEqual(orderId, 'order-local-1');
       const capacityDriver={id:'driver-capacity-local',name:'Motorista capacidade',status:'DISPONÍVEL',capacity:{unit:'deliveries',limit:4},
         createdAt:baseTime,updatedAt:new Date().toISOString(),version:1};
@@ -241,13 +237,6 @@ async function main() {
       assert.equal(stored.rows[0].related_entity_type, 'Order');
       assert.equal(stored.rows[0].payload.orderId, orderId, 'references in payload use canonical IDs');
       assert.equal(stored.rows[0].payload.companyId, companyId, 'client tenant was overwritten by session tenant');
-      const storedEarning = await client.query("SELECT payload->>'amountMinor' AS amount_minor,payload->>'currency' AS currency,payload->>'deliveryId' AS delivery_id,payload->>'ruleVersion' AS rule_version,payload->'components' AS components,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'", [companyId, earningId]);
-      assert.equal(storedEarning.rows[0].amount_minor, '1250');
-      assert.equal(storedEarning.rows[0].currency, 'BRL');
-      assert.equal(storedEarning.rows[0].rule_version, 'fees-v1');
-      assert.deepEqual(storedEarning.rows[0].components, [{code:'delivery_fee',amountMinor:1250}]);
-      assert.equal(storedEarning.rows[0].delivery_id, deliveryId);
-      assert.equal(storedEarning.rows[0].related_record_id, deliveryId);
       const driverId=crypto.randomUUID(),otherDriverId=crypto.randomUUID(),driverNow=new Date().toISOString();
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,
         payload,version,created_at,updated_at) VALUES($1,$2,'Driver','restaurante',$3,$4::jsonb,1,$5,$5),
@@ -280,6 +269,41 @@ async function main() {
       assert.equal(unlinkedDomainRead.status,403);assert.equal(unlinkedDomainRead.body.error.code,'DRIVER_LINK_REQUIRED');
       const linkReaderDriver=await call(`/api/admin/memberships/${readOnlyMembershipId}/driver`,{method:'PUT',body:{driverId:otherDriverId}});
       assert.equal(linkReaderDriver.status,200,JSON.stringify(linkReaderDriver.body));
+      const earningOrderLocalId='earning-order-local',earningDeliveryLocalId='earning-delivery-local';
+      const earningOrder={id:earningOrderLocalId,customer:'Synthetic payout order',source:'manual',createdAt:baseTime,updatedAt:baseTime,version:1,
+        extensions:{x_rotamoto_driver_payout:{amountMinor:1250,currency:'BRL',ruleVersion:'fees-v1',components:[{code:'driver_share',amountMinor:1250}]}}};
+      const earningDelivery={id:earningDeliveryLocalId,orderId:earningOrderLocalId,driverId:otherDriverId,status:'ASSIGNED',createdAt:baseTime,updatedAt:baseTime,version:1};
+      const earningSetup=await call('/api/sync/push',{method:'POST',body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...packet.data,orders:[earningOrder],deliveries:[earningDelivery],drivers:[],routes:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[]}}});
+      assert(earningSetup.body.operationResults.every(row=>row.status==='accepted'),JSON.stringify(earningSetup.body.operationResults));
+      const earningDeliveryId=earningSetup.body.aliases.find(row=>row.entity==='Delivery').canonicalId;
+      const earningMotoDevice='moto-earning-test-device';
+      const earningMotoInstall=await registerDevice('motoboy',earningMotoDevice,{cookie:`${COOKIE_NAME}=${readOnlyToken}`,csrf:readOnlyCsrf});
+      assert.equal(earningMotoInstall.status,200,JSON.stringify(earningMotoInstall.body));
+      const pendingEarning={id:'earning-local-test',deliveryId:earningDeliveryId,driverId:otherDriverId,amountMinor:1250,currency:'BRL',
+        components:[{code:'driver_share',amountMinor:1250}],ruleVersion:'fees-v1',createdAt:baseTime,updatedAt:baseTime,version:1};
+      const prematureEarning=await call('/api/sync/push',{method:'POST',body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...packet.data,orders:[],deliveries:[],drivers:[],routes:[],deliveryEvents:[],locationUpdates:[],proofs:[],earnings:[pendingEarning],tombstones:[]}}});
+      assert.equal(prematureEarning.body.operationResults[0].status,'rejected');
+      assert.equal(prematureEarning.body.operationResults[0].error.code,'EARNING_REQUIRES_COMPLETED_DELIVERY');
+      let completionAt;
+      for(const [index,type] of ['DELIVERY_ACCEPTED','DELIVERY_PICKED_UP','DELIVERY_STARTED','DELIVERY_COMPLETED'].entries()){
+        completionAt=new Date(Date.now()+index*1000).toISOString();
+        const event={eventId:`earning-event-${index}`,entity:'delivery',entityId:earningDeliveryId,type,occurredAt:completionAt};
+        const eventPacket={...packet,deviceId:earningMotoDevice,source:{app:'Motoboy',deviceId:earningMotoDevice},packetId:`pkt_${crypto.randomUUID()}`,
+          data:{orders:[],deliveries:[],drivers:[],routes:[],locationUpdates:[],deliveryEvents:[event],proofs:[],earnings:[],tombstones:[]}};
+        const eventResult=await call('/api/sync/push',{method:'POST',cookie:`${COOKIE_NAME}=${readOnlyToken}`,csrf:readOnlyCsrf,body:eventPacket});
+        assert.equal(eventResult.body.operationResults[0].status,'accepted',JSON.stringify(eventResult.body.operationResults));
+      }
+      pendingEarning.createdAt=completionAt;pendingEarning.updatedAt=completionAt;
+      const completedEarning=await call('/api/sync/push',{method:'POST',body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...packet.data,orders:[],deliveries:[],drivers:[],routes:[],deliveryEvents:[],locationUpdates:[],proofs:[],earnings:[pendingEarning],tombstones:[]}}});
+      assert.equal(completedEarning.body.operationResults[0].status,'accepted',JSON.stringify(completedEarning.body.operationResults));
+      const earningId=completedEarning.body.aliases.find(row=>row.entity==='Earning').canonicalId;
+      const storedEarning=await client.query(`SELECT payload->>'amountMinor' AS amount_minor,payload->>'currency' AS currency,payload->>'deliveryId' AS delivery_id,payload->>'ruleVersion' AS rule_version,payload->'components' AS components,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'`,[companyId,earningId]);
+      assert.equal(storedEarning.rows[0].amount_minor,'1250');assert.equal(storedEarning.rows[0].currency,'BRL');
+      assert.equal(storedEarning.rows[0].rule_version,'fees-v1');assert.equal(storedEarning.rows[0].delivery_id,earningDeliveryId);
+      assert.equal(storedEarning.rows[0].related_record_id,earningDeliveryId);
       const riderInstall=await registerDevice('motoboy','moto-proof-test-device');
       assert.equal(riderInstall.status,200);
       const assignedDelivery={id:'delivery-local-1',orderId:'order-local-1',driverId,status:'ASSIGNED',operationNote:'preserve me',
