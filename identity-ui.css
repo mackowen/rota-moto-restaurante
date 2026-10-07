@@ -300,6 +300,12 @@
   background: var(--rm-id-surface);
 }
 .rm-integration-capability > strong { font-size: .84rem; }
+.rm-marketplace-orders { display:grid; gap:.65rem; margin-top:1rem; padding-top:.8rem; border-top:1px solid var(--rm-border,#dbe2ea); min-width:0; }
+.rm-marketplace-orders h4 { margin:0; }
+.rm-marketplace-order { display:grid; grid-template-columns:minmax(0,1fr); gap:.45rem; padding:.75rem; border:1px solid var(--rm-border,#dbe2ea); border-radius:.65rem; min-width:0; }
+.rm-marketplace-order p { margin:0; overflow-wrap:anywhere; }
+.rm-marketplace-order button { justify-self:start; max-width:100%; white-space:normal; }
+@media (max-width: 520px) { .rm-marketplace-order { padding:.6rem; } .rm-marketplace-order button { width:100%; } }
 .rm-integration-dimensions { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .rm-integration-dimensions > span {
   max-width: 100%;

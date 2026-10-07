@@ -33,7 +33,7 @@
     PROVIDER_CREDENTIALS_NOT_CONFIGURED: 'O administrador do servidor precisa configurar as credenciais oficiais do aplicativo.',
     MARKETPLACE_ACCOUNT_LIFECYCLE_UNAVAILABLE: 'A autorização ainda não está configurada neste servidor. Confira HTTPS, credenciais e role do resolver.',
     OAUTH_STATE_EXPIRED_OR_USED: 'Esta autorização expirou ou já foi usada. Inicie uma nova autorização.',
-    AUTHORIZED_MERCHANT_NOT_VISIBLE_YET: 'A loja ainda não apareceu na lista autorizada do fornecedor. Inicie uma nova autorização depois de confirmar o vínculo.',
+    AUTHORIZED_MERCHANT_NOT_VISIBLE_YET: 'Autorização concluída; a lista de lojas ainda está sincronizando. Use “Verificar lojas novamente” para retomar sem repetir o grant.',
     PROVIDER_BLOCKED_EXTERNAL: 'A 99Food exige acesso de onboarding e contrato oficial antes de habilitar a integração.'
   };
   const host = document.createElement('div');
@@ -190,6 +190,7 @@
         try {
           await request('/admin/integrations/keeta/complete', { method: 'POST', body: JSON.stringify(callback) });
           setStatus('Loja Keeta autorizada. Atualize Integrações para conferir a conta.');
+          if (current.permissions?.includes('company.manage')) await loadAdmin();
         } catch (error) { setStatus(message(error)); }
       }
       return session;
@@ -274,9 +275,10 @@
   async function loadAdmin({ appendDrivers = false } = {}) {
     const canReadMembers = current.permissions.includes('members.read');
     const canReadDrivers = current.permissions.includes('sync.pull');
-    const [company, members, roles, permissionResult, integrations] = await Promise.all([
+    const [company, members, roles, permissionResult, integrations, marketplaceOrders] = await Promise.all([
       request('/admin/company'), canReadMembers ? request('/admin/memberships?limit=100') : Promise.resolve({ members: [] }), request('/admin/roles'), request('/admin/permissions'),
-      current.permissions.includes('integrations.manage') ? request('/admin/integrations') : Promise.resolve(null)
+      current.permissions.includes('integrations.manage') ? request('/admin/integrations') : Promise.resolve(null),
+      current.permissions.includes('orders.read') ? request('/admin/marketplace/orders?limit=50').catch(() => ({orders:[]})) : Promise.resolve({orders:[]})
     ]);
     const driverPage = canReadDrivers ? await request(`/domain/drivers?limit=100${appendDrivers && driverCursor ? `&cursor=${encodeURIComponent(driverCursor)}` : ''}`) : { records: [], nextCursor: null };
     if (!appendDrivers) driverRows = [];
@@ -316,12 +318,15 @@
             const instructions = document.createElement('div'); instructions.className = 'rm-marketplace-auth';
             const text = document.createElement('p'); text.textContent = `Acesse o portal iFood e informe o código ${started.userCode}. Depois cole aqui o código de autorização recebido. Ele expira em ${started.expiresIn} segundos.`;
             const link = document.createElement('a'); link.href = started.verificationUrl; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Abrir autorização iFood';
-            const form = document.createElement('form'); form.innerHTML = '<label>Código de autorização<input name="authorizationCode" required maxlength="512" autocomplete="off"></label><button type="submit">Concluir autorização</button><p role="status"></p>';
+            const form = document.createElement('form'); form.innerHTML = '<label>Código de autorização<input name="authorizationCode" required maxlength="512" autocomplete="off"></label><button type="submit">Concluir autorização</button><button type="button" data-ifood-resume hidden>Verificar lojas novamente</button><p role="status"></p>';
+            const resume=form.querySelector('[data-ifood-resume]');
+            resume.addEventListener('click',async()=>{resume.disabled=true;try{await request('/admin/integrations/ifood/complete',{method:'POST',body:JSON.stringify({state:started.state})});form.querySelector('[role=status]').textContent='Conta vinculada. Atualize Integrações para conferir a sincronização.';resume.hidden=true;await loadAdmin();}
+              catch(error){form.querySelector('[role=status]').textContent=message(error);resume.disabled=false;}});
             form.addEventListener('submit', async event => {
               event.preventDefault(); const input = form.elements.authorizationCode; const button = form.querySelector('button');
               if (!input.value || button.disabled) return; button.disabled = true;
               try { await request('/admin/integrations/ifood/complete', { method: 'POST', body: JSON.stringify({ state: started.state, authorizationCode: input.value }) }); input.value = ''; form.querySelector('[role=status]').textContent = 'Autorização concluída. Atualize Integrações para conferir as lojas vinculadas.'; await loadAdmin(); }
-              catch (error) { input.value = ''; form.querySelector('[role=status]').textContent = message(error); button.disabled = false; }
+              catch (error) { input.value = ''; form.querySelector('[role=status]').textContent = message(error); if(error.code==='AUTHORIZED_MERCHANT_NOT_VISIBLE_YET')resume.hidden=false; button.disabled = false; }
             });
             instructions.append(text, link, form); row.append(instructions); connect.textContent = 'Autorização iniciada';
           } catch (error) { const note = document.createElement('p'); note.setAttribute('role','status'); note.textContent = message(error); row.append(note); connect.disabled = false; }
@@ -357,7 +362,38 @@
       const syncState = item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : 'indisponível; conta sem sincronização registrada';
       const notes = document.createElement('p'); notes.textContent = `${item.capabilityNotes || 'A conexão ainda não está ativa.'} Última sincronização: ${syncState}.`; row.append(notes);
       list.append(row);
-    }); }
+    });
+      const orderPanel=document.createElement('section');orderPanel.className='rm-marketplace-orders';
+      const orderHeading=document.createElement('h4');orderHeading.textContent='Pedidos de marketplace';orderPanel.append(orderHeading);
+      const orderRows=Array.isArray(marketplaceOrders.orders)?marketplaceOrders.orders:[];
+      const commandStates={queued:'Na fila',leased:'Em execução',pending:'Aguardando confirmação da plataforma',succeeded:'Confirmada pela plataforma',rejected:'Falhou',unknown_outcome:'Resultado incerto; reconciliação pendente',needs_review:'Precisa de revisão'};
+      if(!orderRows.length){const empty=document.createElement('p');empty.textContent='Nenhum pedido de marketplace sincronizado.';orderPanel.append(empty);}
+      orderRows.forEach(order=>{
+        const item=document.createElement('article');item.className='rm-marketplace-order';
+        const title=document.createElement('strong');title.textContent=`${order.provider==='ifood'?'iFood':'Keeta'} · ${order.displayId||order.domainOrderId} · ${order.providerStatus||'estado indisponível'}`;item.append(title);
+        const status=document.createElement('p');status.textContent=order.commandStatus?`${order.lastOperation}: ${commandStates[order.commandStatus]||'estado desconhecido'}${order.lastErrorCode?` (${order.lastErrorCode})`:''}`:'Nenhum comando enviado.';item.append(status);
+        const actions=[];
+        const raw=String(order.providerStatus||'').toUpperCase();
+        if(raw==='PLACED'||raw==='CREATED')actions.push(['CONFIRM','Confirmar pedido']);
+        if(order.provider==='ifood'&&raw==='CONFIRMED')actions.push(['START_PREPARATION','Iniciar preparo']);
+        if((order.provider==='ifood'&&['CONFIRMED','PREPARATION_STARTED','PREPARING'].includes(raw))||(order.provider==='keeta'&&['CONFIRMED','PREPARING'].includes(raw)))actions.push(['READY','Marcar pronto']);
+        if(['READY_TO_PICKUP','READY_FOR_PICKUP'].includes(raw))actions.push(['DISPATCH_MERCHANT','Despachar com entrega própria']);
+        if(!['CANCELLED','CANCELED','DELIVERED','CONCLUDED','COMPLETED'].includes(raw))actions.push(['CANCEL_ORDER','Solicitar cancelamento']);
+        if(order.provider==='ifood')actions.push(['SHIPPING_QUOTE','Consultar cotação iFood']);
+        if(order.provider==='ifood'&&order.quoteId)actions.push(['SHIPPING_REQUEST','Solicitar entrega iFood']);
+        if(order.provider==='ifood'&&order.shippingRequested)actions.push(['SHIPPING_CANCEL','Cancelar entrega iFood'],['SHIPPING_TRACKING','Consultar rastreamento iFood']);
+        actions.forEach(([operation,label])=>{const button=document.createElement('button');button.type='button';button.textContent=label;
+          button.addEventListener('click',async()=>{let commandData={};
+            if(operation==='CONFIRM'&&order.provider==='keeta'){const code=window.prompt('Informe o código do pedido exigido pela confirmação Keeta:');if(!code)return;commandData.orderExternalCode=code;}
+            if(operation==='CANCEL_ORDER'){const reason=window.prompt('Informe o motivo oficial do cancelamento:');if(!reason)return;commandData={reason};if(order.provider==='keeta'){const code=window.prompt('Informe o código oficial de cancelamento Keeta:');if(!code)return;commandData.code=code;}}
+            if(operation==='DISPATCH_MERCHANT'&&order.provider==='keeta'){const url=window.prompt('Link HTTPS de rastreamento da entrega própria:');if(!url)return;commandData.deliveryTrackingInfo={externalTrackingURL:url};}
+            button.disabled=true;try{const result=await request(`/admin/marketplace/orders/${encodeURIComponent(order.domainOrderId)}/commands`,{method:'POST',body:JSON.stringify({operation,idempotencyKey:crypto.randomUUID(),commandData})});
+              status.textContent=result.status==='pending'?'Comando aceito; aguardando confirmação da plataforma.':'Comando registrado para execução.';await loadAdmin();}
+            catch(error){button.disabled=false;status.textContent=message(error);}});item.append(button);});
+        orderPanel.append(item);
+      });
+      list.append(orderPanel);
+    }
     const roleSelect = $('[data-invite] select'); roleSelect.replaceChildren();
     const assignableRoles = roles.roles.filter(role => role.permissions.every(permission => current.permissions.includes(permission)));
     assignableRoles.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; roleSelect.append(option); });
