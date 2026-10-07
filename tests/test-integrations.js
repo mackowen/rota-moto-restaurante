@@ -13,7 +13,7 @@ const catalog = publicCatalog([{ provider: 'ifood', status: 'active', externalAc
 assert.equal(catalog.length, 3);
 assert(catalog.every(item => item.capability === 'blocked_external' && item.connectionVerified === false));
 assert(catalog.every(item => item.actions.connect === false && item.actions.reconnect === false));
-assert.equal(catalog[0].state, 'configuration_required', 'a persisted row is not proof of provider connectivity');
+assert.equal(catalog[0].state, 'authorized_unverified', 'an account link does not assert a successful provider health check');
 assert.equal(publicCatalog([{ provider: 'ifood', status: 'disabled' }])[0].state, 'disabled');
 assert.equal(JSON.stringify(catalog).includes('secret_ref'), false);
 assert.equal(JSON.stringify(catalog).includes('token'), false);
@@ -41,7 +41,7 @@ assert.deepEqual(sanitizeProviderError({ code: 'PROVIDER_ERROR', message: 'secre
   } }, 'tenant-id');
   assert.equal(adminCatalog.integrations.length, 3);
   assert.equal(adminCatalog.integrations.find(item => item.provider === '99food').connectionVerified, false);
-  assert.equal(adminCatalog.integrations.find(item => item.provider === '99food').state, 'configuration_required');
+  assert.equal(adminCatalog.integrations.find(item => item.provider === '99food').state, 'authorized_unverified');
   for (const provider of PROVIDERS) {
     const adapter = createBlockedAdapter(provider.key);
     assert.equal(adapter.diagnostics().connectionVerified, false);

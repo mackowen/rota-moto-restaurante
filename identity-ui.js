@@ -261,7 +261,16 @@
     $('[data-driver-access-note]').hidden = canReadDrivers;
     $('[data-company-name]').textContent = company.name;
     const integrationBox = $('[data-integrations]'); integrationBox.hidden = !integrations;
-    if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); integrations.integrations.forEach(item => { const row = document.createElement('p'); row.textContent = `${item.displayName || item.provider} · ${item.state || item.status} · ${item.connectionVerified ? 'conexão verificada' : 'sem conexão externa verificada'}${item.externalAccount ? ' · conta externa cadastrada, ainda não validada' : ''}`; list.append(row); }); }
+    if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); integrations.integrations.forEach(item => {
+      const row = document.createElement('section'); row.className = 'rm-integration-status';
+      const title = document.createElement('strong'); title.textContent = `${item.displayName || item.provider} · ${item.connectionVerified ? 'conectada' : 'sem conexão verificada'}`; row.append(title);
+      const account = document.createElement('p'); account.textContent = item.externalAccount ? `Conta: ${item.externalAccount.displayName || 'identificada'} · vínculo ${item.externalAccount.linkStatus === 'confirmed' ? 'confirmado' : item.externalAccount.linkStatus === 'revoked' ? 'revogado' : 'aguardando confirmação'}` : 'Conta: nenhuma loja autorizada vinculada.'; row.append(account);
+      const names = { account: 'autorização da conta', merchant: 'lojas/merchant', orders: 'pedidos', webhook: 'webhook', polling: 'consulta de eventos', selfDelivery: 'entrega própria', platformDelivery: 'entrega da plataforma', quote: 'cotação', dispatch: 'despacho', cancelOrder: 'cancelar pedido', cancelDelivery: 'cancelar entrega', tracking: 'rastreamento', sandbox: 'sandbox', homologation: 'homologação' };
+      const capabilityWords = { SUPPORTED: 'documentado', REQUIRES_PARTNERSHIP: 'depende de acesso da plataforma', NOT_PUBLICLY_DOCUMENTED: 'não documentado publicamente', NOT_SUPPORTED: 'indisponível' };
+      const cap = document.createElement('p'); cap.textContent = `Recursos: ${Object.entries(item.capabilities || {}).map(([key, value]) => `${names[key] || key}: ${capabilityWords[value] || 'indisponível'}`).join(' · ') || 'não verificados'}`; row.append(cap);
+      const notes = document.createElement('p'); notes.textContent = `${item.capabilityNotes || 'A conexão ainda não está ativa.'} Última sincronização: ${item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : 'ainda não realizada'}.`; row.append(notes);
+      list.append(row);
+    }); }
     const roleSelect = $('[data-invite] select'); roleSelect.replaceChildren();
     const assignableRoles = roles.roles.filter(role => role.permissions.every(permission => current.permissions.includes(permission)));
     assignableRoles.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; roleSelect.append(option); });

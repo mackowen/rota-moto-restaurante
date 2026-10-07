@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { createIfoodAdapter, ProviderError, quoteFromResponse, trackingFromResponse, verifyWebhookSignature, normalizeDeliveryEvent } = require('../backend/logistics/providers/ifood');
+const { createIfoodAdapter, ProviderError, quoteFromResponse, trackingFromResponse, verifyWebhookSignature, normalizeDeliveryEvent, normalizeOrder } = require('../backend/logistics/providers/ifood');
 
 const tenant = '4ef6ac65-7abd-4a4c-9c57-0119d6abecb9';
 const order = 'a3d1e832-b1bf-48b3-b832-59c9ebc9fb31';
@@ -36,6 +36,11 @@ assert.equal(trackingFromResponse({ latitude: null, longitude: null, pickupEtaSt
 assert.equal(normalizeDeliveryEvent({ id: 'evt-1', orderId: order, fullCode: 'ASSIGN_DRIVER' }).status, 'accepted');
 assert.equal(normalizeDeliveryEvent({ id: 'evt-2', orderId: order, fullCode: 'NEW_UNMAPPED_EVENT' }).status, 'unmapped');
 assert.throws(() => normalizeDeliveryEvent({ id: 'bad', orderId: 'not-uuid', fullCode: 'ASSIGN_DRIVER' }), error => error.code === 'INVALID_PROVIDER_EVENT');
+const normalized = normalizeOrder({ id: order, displayId: '1234', status: 'PLACED', createdAt: new Date().toISOString(), orderType: 'DELIVERY',
+  customer: { name: 'Cliente', phone: { number: '11999990000' } }, delivery: { deliveryAddress: { streetName: 'Rua A', streetNumber: '10' } }, items: [{ name: 'Prato', quantity: 2 }] });
+assert.equal(normalized.source, 'ifood');
+assert.equal(normalized.address, 'Rua A, 10');
+assert.throws(() => normalizeOrder({ id: order, items: [] }), error => error.code === 'INVALID_PROVIDER_ORDER');
 const raw = Buffer.from('{"id":"event"}');
 const sig = crypto.createHmac('sha256', 'webhook-secret').update(raw).digest('hex');
 assert.equal(verifyWebhookSignature(raw, sig, 'webhook-secret'), true);
@@ -61,8 +66,31 @@ assert.equal(verifyWebhookSignature(raw, sig, 'wrong-secret'), false);
   assert.equal(requests.some(request => request.url.includes('secret-test')), false);
   await assert.rejects(adapter.dispatch({ companyId: tenant, orderId: order, quoteId: quote }), error => error instanceof ProviderError && error.code === 'PROVIDER_UNAVAILABLE');
 
+  const orders = adapterFor([
+    response(200, { accessToken: 'order-token', expiresIn: 3600 }),
+    response(200, { events: [{ id: 'evt-1', orderId: order, code: 'PLACED', fullCode: 'ORDER_PLACED', createdAt: new Date().toISOString() }] }),
+    response(202, { status: 'ACCEPTED' }),
+    response(200, { id: order, status: 'PLACED', displayId: '1234', orderType: 'DELIVERY', customer: {}, delivery: {}, items: [] }),
+    response(200, [{ id: order, name: 'Loja teste' }]),
+    response(202, { status: 'ACCEPTED' }), response(202, { status: 'ACCEPTED' }),
+    response(202, { status: 'ACCEPTED' }), response(202, { status: 'ACCEPTED' }), response(202, { status: 'ACCEPTED' })
+  ]);
+  const events = await orders.adapter.pollEvents({ companyId: tenant });
+  assert.equal(events[0].orderId, order);
+  assert.equal((await orders.adapter.acknowledgeEvents({ companyId: tenant, eventIds: ['evt-1'] })).acknowledged, true);
+  assert.deepEqual(JSON.parse(orders.requests[2].options.body), { acknowledgedEventIds: ['evt-1'] });
+  assert.equal((await orders.adapter.order({ companyId: tenant, orderId: order })).source, 'ifood');
+  assert.equal((await orders.adapter.merchants({ companyId: tenant }))[0].name, 'Loja teste');
+  for (const action of ['confirmOrder', 'startPreparation', 'readyToPickup', 'dispatchMerchantDelivery', 'requestOrderCancellation']) {
+    const result = await orders.adapter[action]({ companyId: tenant, orderId: order, reason: 'Teste sintético' });
+    assert.deepEqual(result, { accepted: true, confirmation: 'pending' }, `${action} must preserve 202 as pending`);
+  }
+  assert.deepEqual(JSON.parse(orders.requests.at(-2).options.body), { deliveredBy: 'MERCHANT' });
+
   for (const [status, code, classification] of [[401, 'AUTH_EXPIRED', 'auth'], [403, 'AUTH_FORBIDDEN', 'auth'], [429, 'RATE_LIMITED', 'rate_limit'], [503, 'PROVIDER_TRANSIENT', 'transient'], [400, 'PROVIDER_REJECTED', 'permanent']]) {
-    const test = adapterFor([response(200, { accessToken: 't', expiresIn: 3600 }), response(status, {}, { 'retry-after': '4' })]);
+    const queue = [response(200, { accessToken: 't', expiresIn: 3600 }), response(status, {}, { 'retry-after': '4' })];
+    if (status === 401) queue.push(response(200, { accessToken: 't2', expiresIn: 3600 }), response(401, {}));
+    const test = adapterFor(queue);
     await assert.rejects(test.adapter.quote({ companyId: tenant, orderId: order }), error => error.code === code && error.classification === classification && error.message.includes('Falha'));
   }
   const timeout = adapterFor([Object.assign(new Error('socket secret'), { name: 'AbortError' })]);
@@ -80,5 +108,15 @@ assert.equal(verifyWebhookSignature(raw, sig, 'wrong-secret'), false);
   const tenantB = '8eb0f612-e039-49a8-b621-a5d3f03b0953';
   await scoped.adapter.quote({ companyId: tenantB, orderId: order });
   assert.deepEqual(tenantCalls, [tenant, tenantB]);
+
+  let fakeNow = Date.now(); let detailCalls = 0;
+  const detailRetry = createIfoodAdapter({ credentialResolver: async () => ({ clientId: 'id', clientSecret: 'secret' }), clock: () => fakeNow,
+    sleep: async ms => { fakeNow += ms; }, fetchImpl: async url => {
+      if (url.endsWith('/oauth/token')) return response(200, { accessToken: 'retry-token', expiresIn: 3600 });
+      detailCalls++;
+      return detailCalls === 1 ? response(404, {}) : response(200, { id: order, items: [], customer: {}, delivery: {} });
+    } });
+  assert.equal((await detailRetry.order({ companyId: tenant, orderId: order })).externalId, order);
+  assert.equal(detailCalls, 2, 'temporary detail 404 is retried for the documented order-availability window');
   console.log('iFood logistics adapter contract tests: OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

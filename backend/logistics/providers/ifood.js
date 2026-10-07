@@ -94,10 +94,34 @@ function normalizeDeliveryEvent(raw) {
     status: allowed.get(raw.fullCode) || 'unmapped', externalStatus: raw.fullCode });
 }
 
-function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, timeoutMs = 8000, clock = () => Date.now() } = {}) {
+function normalizeOrder(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !UUID.test(raw.id || '') || !raw.customer || !raw.delivery || !Array.isArray(raw.items)) fail('INVALID_PROVIDER_ORDER');
+  const address = raw.delivery.deliveryAddress || {};
+  const items = raw.items.map(item => {
+    if (!item || typeof item.name !== 'string' || !item.name || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) fail('INVALID_PROVIDER_ORDER');
+    return Object.freeze({ name: item.name.slice(0, 240), quantity: Number(item.quantity), ...(item.unitPrice?.value != null ? { unitPrice: item.unitPrice.value } : {}) });
+  });
+  const addressText = [address.streetName, address.streetNumber, address.complement, address.neighborhood, address.city, address.state, address.postalCode].filter(value => typeof value === 'string' && value.trim()).join(', ');
+  const customer = Object.freeze({ name: typeof raw.customer.name === 'string' ? raw.customer.name.slice(0, 160) : '',
+    phone: typeof raw.customer.phone?.number === 'string' ? raw.customer.phone.number.slice(0, 32) : '' });
+  return Object.freeze({ source: 'ifood', externalId: raw.id, externalDisplayId: typeof raw.displayId === 'string' ? raw.displayId.slice(0, 64) : null,
+    status: typeof raw.status === 'string' ? raw.status : null, customer, address: addressText.slice(0, 800), items: Object.freeze(items),
+    orderType: raw.orderType === 'TAKEOUT' ? 'TAKEOUT' : 'DELIVERY', createdAt: raw.createdAt ? timestamp(raw.createdAt, 'order_created_at') : null });
+}
+
+function normalizeOrderEvent(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || typeof raw.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(raw.id) ||
+      typeof raw.orderId !== 'string' || !UUID.test(raw.orderId) || typeof raw.fullCode !== 'string' || !/^[A-Z][A-Z0-9_]{1,63}$/u.test(raw.fullCode)) fail('INVALID_PROVIDER_EVENT');
+  const states = new Map([['ORDER_PLACED','placed'],['ORDER_CONFIRMED','confirmed'],['PREPARATION_STARTED','preparing'],['PREPARATION_ENDED','ready'],
+    ['ORDER_READY_TO_PICKUP','ready'],['ORDER_DISPATCHED','dispatched'],['ORDER_CONCLUDED','completed'],['ORDER_CANCELLED','cancelled'],['CANCELLATION_REQUESTED','cancellation_requested']]);
+  return Object.freeze({ provider: 'ifood', externalEventId: raw.id, externalOrderId: raw.orderId,
+    occurredAt: raw.createdAt ? timestamp(raw.createdAt, 'event_time') : null, status: states.get(raw.fullCode) || 'unmapped', externalStatus: raw.fullCode });
+}
+
+function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, timeoutMs = 8000, clock = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), orderDetailRetryWindowMs = 10 * 60 * 1000 } = {}) {
   if (typeof credentialResolver !== 'function' || typeof fetchImpl !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) throw new TypeError('Configuração de adapter iFood inválida.');
   const tokens = new Map();
-  async function request(path, { method = 'GET', body, credentials } = {}) {
+  async function request(path, { method = 'GET', body, credentials, authRetries = 0 } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -106,20 +130,29 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
         const credentialKey = crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}`).digest('hex');
         const cached = tokens.get(credentialKey);
         if (!cached || cached.expiresAt <= clock() + 60000) {
-          const form = new URLSearchParams({ grantType: 'client_credentials', clientId: credentials.clientId, clientSecret: credentials.clientSecret });
+          const grantType = credentials.refreshToken ? 'refresh_token' : credentials.authorizationCode ? 'authorization_code' : 'client_credentials';
+          const fields = { grantType, clientId: credentials.clientId };
+          if (grantType === 'refresh_token') fields.refreshToken = credentials.refreshToken;
+          else if (grantType === 'authorization_code') { fields.code = credentials.authorizationCode; if (credentials.redirectUri) fields.redirectUri = credentials.redirectUri; }
+          else fields.clientSecret = credentials.clientSecret;
+          const form = new URLSearchParams(fields);
           const auth = await fetchImpl(`${API}/authentication/v1.0/oauth/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: form, signal: controller.signal, redirect: 'error' });
           const authRaw = await readResponse(auth);
           if (auth.status === 401 || auth.status === 403) fail('AUTH_REJECTED', 'auth', auth.status);
           if (!auth.ok) fail('AUTH_SERVICE_ERROR', auth.status === 429 || auth.status >= 500 ? 'transient' : 'permanent', auth.status, retryAfter(auth));
           if (!authRaw || typeof authRaw.accessToken !== 'string' || authRaw.accessToken.length > 8000 || !Number.isInteger(authRaw.expiresIn) || authRaw.expiresIn < 60) fail('INVALID_AUTH_RESPONSE');
-          tokens.set(credentialKey, { value: authRaw.accessToken, expiresAt: clock() + authRaw.expiresIn * 1000 });
+          tokens.set(credentialKey, { value: authRaw.accessToken, refreshToken: authRaw.refreshToken || credentials.refreshToken || null, expiresAt: clock() + authRaw.expiresIn * 1000 });
         }
         headers.Authorization = `Bearer ${tokens.get(credentialKey).value}`;
       }
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       const response = await fetchImpl(`${API}${path}`, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}), signal: controller.signal, redirect: 'error' });
       const data = response.status === 204 ? null : await readResponse(response);
-      if (response.status === 401) { tokens.delete(crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}`).digest('hex')); fail('AUTH_EXPIRED', 'auth', 401); }
+      if (response.status === 401) {
+        tokens.delete(crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}`).digest('hex'));
+        if (authRetries < 1) return request(path, { method, body, credentials, authRetries: authRetries + 1 });
+        fail('AUTH_EXPIRED', 'auth', 401);
+      }
       if (response.status === 403) fail('AUTH_FORBIDDEN', 'auth', 403);
       if (response.status === 429) fail('RATE_LIMITED', 'rate_limit', 429, retryAfter(response));
       if (response.status === 408 || response.status >= 500) fail('PROVIDER_TRANSIENT', 'transient', response.status, retryAfter(response));
@@ -162,6 +195,62 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     return method(credentials);
   }
   return Object.freeze({ provider: 'ifood', capabilities: CAPABILITIES,
+    async pollEvents({ companyId, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
+      const result = await request('/order/v1.0/orders:polling', { credentials });
+      if (result.status === 204) return Object.freeze([]);
+      if (!Array.isArray(result.data?.events)) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze(result.data.events.map(event => Object.freeze({ id: event.id, code: event.code, fullCode: event.fullCode,
+        orderId: event.orderId, createdAt: event.createdAt, metadata: event.metadata || null })));
+    }, supplied); },
+    async acknowledgeEvents({ companyId, eventIds, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
+      if (!Array.isArray(eventIds) || eventIds.length < 1 || eventIds.length > 100 || eventIds.some(id => typeof id !== 'string' || id.length > 128)) fail('INVALID_EVENT_IDS');
+      const result = await request('/order/v1.0/orders:acknowledgment', { method: 'POST', body: { acknowledgedEventIds: eventIds }, credentials });
+      return Object.freeze({ acknowledged: result.status >= 200 && result.status < 300 });
+    }, supplied); },
+    async confirmOrder({ companyId, orderId, credentials: supplied } = {}) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
+      const result = await request(`/order/v1.0/orders/${orderId}/confirm`, { method: 'POST', credentials });
+      if (result.status !== 202) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze({ accepted: true, confirmation: 'pending' });
+    }, supplied); },
+    async startPreparation({ companyId, orderId, credentials: supplied } = {}) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
+      const result = await request(`/order/v1.0/orders/${orderId}/startPreparation`, { method: 'POST', credentials });
+      if (result.status !== 202) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze({ accepted: true, confirmation: 'pending' });
+    }, supplied); },
+    async readyToPickup({ companyId, orderId, credentials: supplied } = {}) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
+      const result = await request(`/order/v1.0/orders/${orderId}/readyToPickup`, { method: 'POST', credentials });
+      if (result.status !== 202) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze({ accepted: true, confirmation: 'pending' });
+    }, supplied); },
+    async dispatchMerchantDelivery({ companyId, orderId, credentials: supplied } = {}) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
+      const result = await request(`/order/v1.0/orders/${orderId}/dispatch`, { method: 'POST', body: { deliveredBy: 'MERCHANT' }, credentials });
+      if (result.status !== 202) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze({ accepted: true, confirmation: 'pending' });
+    }, supplied); },
+    async requestOrderCancellation({ companyId, orderId, reason, credentials: supplied } = {}) { uuid(orderId, 'order_id'); if (typeof reason !== 'string' || !reason.trim()) fail('INVALID_CANCELLATION_REASON'); return invoke(companyId, async credentials => {
+      const result = await request(`/order/v1.0/orders/${orderId}/requestCancellation`, { method: 'POST', body: { reason: reason.slice(0, 500) }, credentials });
+      if (result.status !== 202) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze({ accepted: true, confirmation: 'pending' });
+    }, supplied); },
+    async order({ companyId, orderId, credentials: supplied } = {}) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
+      const started = clock(); let attempt = 0;
+      while (true) {
+        try { const result = await request(`/order/v1.0/orders/${orderId}`, { credentials }); return normalizeOrder(result.data); }
+        catch (error) {
+          // iFood documents temporary 404 while the order detail is still being made available.
+          // Only this safe GET is retried, bounded to the documented ten-minute window.
+          if (error?.status !== 404 || clock() - started >= orderDetailRetryWindowMs) throw error;
+          const delay = Math.min(5000, 250 * (2 ** Math.min(attempt++, 4)), Math.max(0, orderDetailRetryWindowMs - (clock() - started)));
+          if (!delay) throw error;
+          await sleep(delay);
+        }
+      }
+    }, supplied); },
+    async merchants({ companyId, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
+      const result = await request('/merchant/v1.0/merchants', { credentials });
+      if (!Array.isArray(result.data)) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze(result.data.map(merchant => Object.freeze({ id: uuid(merchant.id, 'merchant_id'), name: typeof merchant.name === 'string' ? merchant.name.slice(0, 160) : '' })));
+    }, supplied); },
     async quote({ companyId, orderId, credentials: supplied }) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
       const result = await request(`/shipping/v1.0/orders/${orderId}/deliveryAvailabilities`, { credentials });
       return quoteFromResponse(result.data, clock());
@@ -181,8 +270,8 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       return trackingFromResponse(result.data);
     }, supplied); },
     verifyWebhook: verifyWebhookSignature,
-    normalizeDeliveryEvent
+    normalizeDeliveryEvent, normalizeOrderEvent
   });
 }
 
-module.exports = { API, CAPABILITIES, ProviderError, decimalToMinor, quoteFromResponse, trackingFromResponse, verifyWebhookSignature, normalizeDeliveryEvent, createIfoodAdapter };
+module.exports = { API, CAPABILITIES, ProviderError, decimalToMinor, quoteFromResponse, trackingFromResponse, verifyWebhookSignature, normalizeDeliveryEvent, normalizeOrderEvent, normalizeOrder, createIfoodAdapter };

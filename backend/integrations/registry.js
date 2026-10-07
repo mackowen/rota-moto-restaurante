@@ -2,11 +2,14 @@
 
 const PROVIDERS = Object.freeze([
   Object.freeze({ key: 'ifood', name: 'iFood', capability: 'blocked_external',
-    blockers: Object.freeze(['official_protocol_review', 'merchant_credentials', 'homologation']) }),
+    capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'SUPPORTED', quote: 'SUPPORTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'SUPPORTED', tracking: 'SUPPORTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
+    blockers: Object.freeze(['merchant_credentials', 'merchant_authorization', 'homologation', 'provider_worker_account_routing']) }),
   Object.freeze({ key: '99food', name: '99Food', capability: 'blocked_external',
-    blockers: Object.freeze(['official_protocol_review', 'partner_credentials', 'homologation']) }),
+    capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'REQUIRES_PARTNERSHIP', orders: 'REQUIRES_PARTNERSHIP', webhook: 'REQUIRES_PARTNERSHIP', polling: 'REQUIRES_PARTNERSHIP', selfDelivery: 'NOT_PUBLICLY_DOCUMENTED', platformDelivery: 'NOT_PUBLICLY_DOCUMENTED', quote: 'NOT_PUBLICLY_DOCUMENTED', dispatch: 'NOT_PUBLICLY_DOCUMENTED', cancelOrder: 'REQUIRES_PARTNERSHIP', cancelDelivery: 'NOT_PUBLICLY_DOCUMENTED', tracking: 'NOT_PUBLICLY_DOCUMENTED', sandbox: 'REQUIRES_PARTNERSHIP', homologation: 'REQUIRES_PARTNERSHIP' }),
+    blockers: Object.freeze(['certification', 'application_access', 'official_contract_validation', 'merchant_authorization']) }),
   Object.freeze({ key: 'keeta', name: 'Keeta', capability: 'blocked_external',
-    blockers: Object.freeze(['official_protocol_review', 'partner_credentials', 'homologation']) })
+    capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'SUPPORTED', quote: 'NOT_PUBLICLY_DOCUMENTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'NOT_PUBLICLY_DOCUMENTED', tracking: 'SUPPORTED', sandbox: 'REQUIRES_PARTNERSHIP', homologation: 'REQUIRES_PARTNERSHIP' }),
+    blockers: Object.freeze(['application_credentials', 'merchant_authorization', 'SIT_certification', 'provider_account_routing']) })
 ]);
 
 const RETRYABLE_HTTP = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -18,13 +21,20 @@ function publicCatalog(persisted = []) {
   return PROVIDERS.map(provider => {
     const row = byProvider.get(provider.key);
     const disabled = row?.status === 'disabled';
+    const accountConfirmed = row?.externalAccount?.linkStatus === 'confirmed';
+    // A confirmed account link is not a provider health check or proof that tokens work.
+    const connectionVerified = false;
     return {
       provider: provider.key,
       displayName: provider.name,
       capability: provider.capability,
-      state: disabled ? 'disabled' : row?.status === 'error' ? 'error' : 'configuration_required',
-      connectionVerified: false,
-      lastEventAt: null,
+      capabilities: { ...provider.capabilityMatrix },
+      capabilityNotes: provider.key === 'ifood' ? 'Pedidos, cancelamento de pedido e entrega são recursos diferentes. Ações de Shipping documentadas ainda exigem conta, autorização e worker para funcionar.' :
+        provider.key === '99food' ? 'A Open Platform anuncia pedidos e webhooks, mas exige acesso aos contratos detalhados e certificação antes de implementar transporte.' :
+          'Dispatch e tracking documentados são para entrega própria do merchant; cancelamento de pedido não cancela courier. Não há contratação avulsa de courier Keeta.' ,
+      state: disabled ? 'disabled' : row?.status === 'error' ? 'error' : row?.status === 'active' && accountConfirmed ? 'authorized_unverified' : 'configuration_required',
+      connectionVerified,
+      lastEventAt: row?.lastEventAt || null,
       externalAccount: row?.externalAccount ? {
         displayName: row.externalAccount.displayName,
         linkStatus: row.externalAccount.linkStatus,
