@@ -60,10 +60,8 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     const key = crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}\0${credentials.authId || ''}`).digest('hex');
     const cached = tokenCache.get(key);
     if (!force && cached && cached.expiresAt > clock() + 60_000) return cached.accessToken;
-    let body;
-    if (credentials.refreshToken) body = { client_id: credentials.clientId, grant_type: 'refresh_token', refresh_token: credentials.refreshToken };
-    else if (credentials.authorizationCode) body = { client_id: credentials.clientId, grant_type: 'shop_level_authorization_code', code: credentials.authorizationCode };
-    else body = { client_id: credentials.clientId, client_secret: credentials.clientSecret, grant_type: 'app_level_token' };
+    if (credentials.refreshToken || credentials.authorizationCode) throw new KeetaError('SHOP_LEVEL_TOKEN_FIELDS_UNVERIFIED', 'auth');
+    const body = { client_id: credentials.clientId, client_secret: credentials.clientSecret, grant_type: 'app_level_token' };
     const result = await fetchJson(`${API}/oauth/token`, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: canonicalJson(body) });
     if (typeof result.data?.access_token !== 'string' || !result.data.access_token || !Number.isInteger(result.data.expires_in) || result.data.expires_in < 30) throw new KeetaError('INVALID_AUTH_RESPONSE', 'auth');
     const value = { accessToken: result.data.access_token, refreshToken: result.data.refresh_token || credentials.refreshToken || null,
@@ -72,7 +70,7 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     await persistToken({ key, refreshToken: value.refreshToken, expiresAt: value.expiresAt });
     return value.accessToken;
   }
-  async function call(companyId, path, { method = 'GET', query = {}, body, headers = {}, safeRetryAuth = true } = {}) {
+  async function call(companyId, path, { method = 'GET', query = {}, body, headers = {} } = {}) {
     if (typeof companyId !== 'string' || !/^[0-9a-f-]{36}$/iu.test(companyId)) throw new KeetaError('INVALID_TENANT', 'permanent');
     let credentials;
     try { credentials = await credentialResolver(companyId, 'keeta'); } catch (_) { throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth'); }
@@ -122,26 +120,26 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     },
     async acknowledgeEvents({ companyId, events }) {
       if (!Array.isArray(events) || !events.length || events.length > 100 || events.some(event => !SAFE_ID.test(event?.id || '') || !SAFE_ID.test(event?.orderId || '') || typeof event?.eventType !== 'string')) throw new KeetaError('INVALID_EVENT_IDS', 'permanent');
-      const result = await call(companyId, '/v1/events/acknowledgment', { method: 'POST', body: events.map(({ id, orderId: oid, eventType }) => ({ id, orderId: oid, eventType })), safeRetryAuth: false });
+      const result = await call(companyId, '/v1/events/acknowledgment', { method: 'POST', body: events.map(({ id, orderId: oid, eventType }) => ({ id, orderId: oid, eventType })) });
       if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent');
       return Object.freeze({ accepted: true, confirmation: 'pending' });
     },
     async order({ companyId, id }) { return normalizeKeetaOrder((await call(companyId, `/v1/orders/${orderId(id)}`)).data); },
     async confirm({ companyId, id, orderExternalCode, createdAt, preparationTime }) {
       const body = { orderExternalCode, createdAt, ...(Number.isInteger(preparationTime) ? { preparationTime } : {}) };
-      const result = await call(companyId, `/v1/orders/${orderId(id)}/confirm`, { method: 'POST', body, safeRetryAuth: false });
+      const result = await call(companyId, `/v1/orders/${orderId(id)}/confirm`, { method: 'POST', body });
       return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' });
     },
-    async readyForPickup({ companyId, id }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/readyForPickup`, { method: 'POST', safeRetryAuth: false }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
+    async readyForPickup({ companyId, id }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/readyForPickup`, { method: 'POST' }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
     async requestCancellation({ companyId, id, reason, code, mode = 'MANUAL', outOfStockItems = [], invalidItems = [] }) {
       const allowed = new Set(['SYSTEMIC_ISSUES','DUPLICATE_APPLICATION','UNAVAILABLE_ITEM','RESTAURANT_WITHOUT_DELIVERY_PERSON','OUTDATED_MENU','ORDER_OUTSIDE_THE_DELIVERY_AREA','BLOCKED_CUSTOMER','OUTSIDE_DELIVERY_HOURS','INTERNAL_DIFFICULTIES_OF_THE_RESTAURANT','RISK_AREA']);
       if (typeof reason !== 'string' || !reason.trim() || !allowed.has(code) || !['AUTO','MANUAL'].includes(mode)) throw new KeetaError('INVALID_CANCELLATION', 'permanent');
-      const result = await call(companyId, `/v1/orders/${orderId(id)}/requestCancellation`, { method: 'POST', body: { reason: reason.slice(0, 500), code, mode, outOfStockItems: outOfStockItems.slice(0, 100), invalidItems: invalidItems.slice(0, 100) }, safeRetryAuth: false });
+      const result = await call(companyId, `/v1/orders/${orderId(id)}/requestCancellation`, { method: 'POST', body: { reason: reason.slice(0, 500), code, mode, outOfStockItems: outOfStockItems.slice(0, 100), invalidItems: invalidItems.slice(0, 100) } });
       return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' });
     },
-    async dispatchSelfDelivery({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/dispatch`, { method: 'POST', body: { deliveryTrackingInfo }, safeRetryAuth: false }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
-    async markDeliveredSelfDelivery({ companyId, id, body = {} }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/delivered`, { method: 'POST', body, safeRetryAuth: false }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
-    async sendSelfDeliveryTracking({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/tracking`, { method: 'POST', body: { deliveryTrackingInfo }, safeRetryAuth: false }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); }
+    async dispatchSelfDelivery({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/dispatch`, { method: 'POST', body: { deliveryTrackingInfo } }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
+    async markDeliveredSelfDelivery({ companyId, id, body = {} }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/delivered`, { method: 'POST', body }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
+    async sendSelfDeliveryTracking({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/tracking`, { method: 'POST', body: { deliveryTrackingInfo } }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); }
   });
 }
 
