@@ -14,6 +14,8 @@ function createAdminService({ repository }) {
     updateCompanyTimeZone(client, principal, timeZone) {
       return repository.updateCompanyTimeZone(client, principal, timeZone);
     },
+    updateCompanyProfile(client, principal, input) { return repository.updateCompanyProfile(client, principal, input); },
+    updateCompanyLocation(client, principal, input) { return repository.updateCompanyLocation(client, principal, input); },
     memberships(client, principal, query = {}) {
       if (Object.keys(query).some(key => !['limit', 'cursor'].includes(key))) {
         const error = new Error('Parâmetro de consulta não permitido.'); error.code = 'INVALID_INPUT'; throw error;

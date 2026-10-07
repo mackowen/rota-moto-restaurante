@@ -5,6 +5,8 @@ const { createRateLimiter } = require('../identity/http');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ROUTES = Object.freeze({
   '/api/admin/company': { method: 'GET', permission: 'company.manage', operation: 'company' },
+  '/api/admin/company/profile': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyProfile' },
+  '/api/admin/company/location': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyLocation' },
   '/api/admin/memberships': { method: 'GET', permission: 'members.read', operation: 'memberships' },
   '/api/admin/roles': { method: 'GET', permission: 'company.manage', operation: 'roles' },
   '/api/admin/permissions': { method: 'GET', permission: 'company.manage', operation: 'permissions' },
@@ -100,6 +102,22 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
             const value = body.timeZone;
             if (value !== null && (typeof value !== 'string' || !value.trim() || value.length > 128 || /^[+-]\d{2}:?\d{2}$/u.test(value) || !isIanaTimeZone(value))) throw error('INVALID_INPUT');
             return adminService.updateCompanyTimeZone(client, principal, value);
+          }
+          case 'updateCompanyLocation': {
+            exact(body, ['expectedVersion', 'address', 'latitude', 'longitude']);
+            if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 0 ||
+                body.address !== null && (typeof body.address !== 'string' || body.address.trim().length < 1 || Buffer.byteLength(body.address.trim(), 'utf8') > 500 || /[\u0000-\u001f\u007f]/u.test(body.address)) ||
+                body.latitude !== null && (typeof body.latitude !== 'number' || !Number.isFinite(body.latitude) || body.latitude < -90 || body.latitude > 90) ||
+                body.longitude !== null && (typeof body.longitude !== 'number' || !Number.isFinite(body.longitude) || body.longitude < -180 || body.longitude > 180) ||
+                (body.latitude === null) !== (body.longitude === null)) throw error('INVALID_INPUT');
+            return adminService.updateCompanyLocation(client, principal, {
+              expectedVersion: body.expectedVersion, address: body.address?.trim() || null,
+              latitude: body.latitude, longitude: body.longitude
+            });
+          }
+          case 'updateCompanyProfile': {
+            exact(body, ['expectedVersion', 'name', 'supportPhone']);
+            return adminService.updateCompanyProfile(client, principal, body);
           }
           case 'roles': return adminService.roles(client, principal);
           case 'permissions': return adminService.permissions(client, principal);

@@ -246,7 +246,8 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
     result.routes=routes;
     result.origin={mode:routeSettings.originMode,source:routeSettings.originMode==='custom'?'coordenada informada pelo administrador':'estabelecimento',
       known:routeSettings.origin?.latitude!=null&&routeSettings.origin?.longitude!=null,provenance:routeSettings.originProvenance,
-      version:routeSettings.version,returnToOrigin:routeSettings.returnToOrigin};
+      version:routeSettings.version,establishmentLocationVersion:routeSettings.establishmentLocationVersion,
+      returnToOrigin:routeSettings.returnToOrigin};
     const coordinatesByDeliveryId=Object.create(null);
     if(routeSettings.origin)coordinatesByDeliveryId.__route_origin__=routeSettings.origin;
     if(targetCoordinatesKnown)coordinatesByDeliveryId[deliveryId]={latitude:Number(target.latitude),longitude:Number(target.longitude)};
@@ -357,11 +358,20 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
   }
   async function getSettings(client, principal) { return { settings: await readSettings(client, principal.company_id), policies: POLICIES }; }
   async function getRouteSettings(client, companyId) {
-    const result=await client.query(`SELECT origin_mode,origin_latitude,origin_longitude,origin_provenance,return_to_origin,version,updated_at
-      FROM rotamoto.logistics_route_settings WHERE company_id=$1`,[companyId]);
+    const result=await client.query(`SELECT COALESCE(route.origin_mode,'establishment') AS origin_mode,
+        CASE WHEN COALESCE(route.origin_mode,'establishment')='custom' THEN route.origin_latitude ELSE company.operational_latitude END AS origin_latitude,
+        CASE WHEN COALESCE(route.origin_mode,'establishment')='custom' THEN route.origin_longitude ELSE company.operational_longitude END AS origin_longitude,
+        CASE WHEN COALESCE(route.origin_mode,'establishment')='custom' THEN route.origin_provenance ELSE company.operational_location_provenance END AS origin_provenance,
+        COALESCE(route.return_to_origin,false) AS return_to_origin,COALESCE(route.version,0) AS version,
+        COALESCE(company.operational_location_version,0) AS establishment_location_version,
+        COALESCE(route.updated_at,company.updated_at) AS updated_at,company.operational_address
+      FROM rotamoto.companies company LEFT JOIN rotamoto.logistics_route_settings route ON route.company_id=company.id
+      WHERE company.id=$1`,[companyId]);
     const row=result.rows[0];
-    return row?{originMode:row.origin_mode,origin:row.origin_latitude==null?null:{latitude:Number(row.origin_latitude),longitude:Number(row.origin_longitude)},
-      originProvenance:row.origin_provenance,returnToOrigin:row.return_to_origin,version:Number(row.version),updatedAt:row.updated_at}:
+    return row?{originMode:row.origin_mode,origin:row.origin_latitude==null?null:{latitude:Number(row.origin_latitude),longitude:Number(row.origin_longitude),
+        ...(row.origin_mode==='establishment'?{address:row.operational_address}: {})},
+      originProvenance:row.origin_provenance,returnToOrigin:row.return_to_origin,version:Number(row.version),
+      establishmentLocationVersion:Number(row.establishment_location_version),updatedAt:row.updated_at}:
       {originMode:'establishment',origin:null,originProvenance:null,returnToOrigin:false,version:0,updatedAt:null};
   }
   async function readRouteSettings(client,principal){return {settings:await getRouteSettings(client,principal.company_id),locationPolicy:{maxAgeSeconds:120,maxAccuracyM:100,

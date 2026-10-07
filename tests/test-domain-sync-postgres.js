@@ -319,6 +319,10 @@ async function main() {
       assert.equal(authorizedEvent.body.operationResults?.[0]?.status,'accepted',JSON.stringify(authorizedEvent.body));
       const scopedPull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device&driverId='+otherDriverId);
       assert.equal(scopedPull.status,200,JSON.stringify(scopedPull.body));
+      assert.equal(scopedPull.body.companySettings?.companyId,companyId,'the authenticated tenant, not client query, owns company settings snapshot');
+      assert.equal(scopedPull.body.companySettings?.authority,'restaurant');
+      assert.equal(scopedPull.body.companySettings?.revision,0);
+      assert.equal(JSON.stringify(scopedPull.body.companySettings).includes('secret_ref'),false,'company snapshot contains no secret references');
       assert(scopedPull.body.events.every(row=>row.entity!=='Delivery'||row.entityId!==otherDeliveryId),'client-supplied driverId cannot broaden pull scope');
       assert(scopedPull.body.events.some(row=>row.entity==='Delivery'&&row.entityId===deliveryId));
       const scopedList=await call('/api/domain/deliveries?limit=100');

@@ -198,21 +198,74 @@ function createAdminRepository() {
     return { membershipId, driverId: null, previousDriverId: driverId, changed: true };
   }
   async function company(client, companyId) {
-    const result = await client.query(`SELECT id::text,name,status,time_zone,created_at,updated_at
+    const result = await client.query(`SELECT id::text,name,status,time_zone,support_phone,operational_address,operational_latitude,
+        operational_longitude,operational_location_provenance,operational_location_version,company_settings_version,created_at,updated_at
       FROM rotamoto.companies WHERE id=$1`, [companyId]);
     if (!result.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
     const row = result.rows[0];
-    return { id: row.id, name: row.name, status: row.status, timeZone: row.time_zone, createdAt: row.created_at, updatedAt: row.updated_at };
+    return { id: row.id, name: row.name, status: row.status, timeZone: row.time_zone, supportPhone: row.support_phone,
+      operationalLocation: row.operational_latitude == null ? null : { address: row.operational_address,
+        latitude: Number(row.operational_latitude), longitude: Number(row.operational_longitude),
+        provenance: row.operational_location_provenance, version: Number(row.operational_location_version) },
+      operationalLocationVersion: Number(row.operational_location_version), settingsVersion: Number(row.company_settings_version), createdAt: row.created_at, updatedAt: row.updated_at };
   }
   async function updateCompanyTimeZone(client, principal, timeZone) {
     const current = await client.query(`SELECT time_zone FROM rotamoto.companies WHERE id=$1 FOR UPDATE`, [principal.company_id]);
     if (!current.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
     const previous = current.rows[0].time_zone;
-    const updated = await client.query(`UPDATE rotamoto.companies SET time_zone=$2,updated_at=now()
+    const updated = await client.query(`UPDATE rotamoto.companies SET time_zone=$2,company_settings_version=company_settings_version+1,updated_at=now()
       WHERE id=$1 RETURNING time_zone,updated_at`, [principal.company_id, timeZone]);
     await writeAudit(client, principal, 'company.time_zone.changed', 'company', principal.company_id,
       { previousTimeZone: previous, timeZone: updated.rows[0].time_zone });
     return { timeZone: updated.rows[0].time_zone, updatedAt: updated.rows[0].updated_at };
+  }
+  async function updateCompanyLocation(client, principal, input) {
+    if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 ||
+        (input.latitude == null) !== (input.longitude == null) ||
+        input.latitude != null && (!Number.isFinite(input.latitude) || input.latitude < -90 || input.latitude > 90 ||
+          !Number.isFinite(input.longitude) || input.longitude < -180 || input.longitude > 180)) {
+      const error = new Error('Localização inválida.'); error.code = 'INVALID_INPUT'; throw error;
+    }
+    const current = await client.query(`SELECT operational_location_version FROM rotamoto.companies WHERE id=$1 FOR UPDATE`, [principal.company_id]);
+    if (!current.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
+    if (Number(current.rows[0].operational_location_version) !== input.expectedVersion) {
+      const error = new Error('A localização mudou em outra sessão.'); error.code = 'REVISION_CONFLICT'; throw error;
+    }
+    const updated = await client.query(`UPDATE rotamoto.companies SET operational_address=$2,operational_latitude=$3,
+      operational_longitude=$4,operational_location_provenance=CASE WHEN $3::double precision IS NULL THEN NULL ELSE 'operator_confirmed' END,
+      operational_location_version=operational_location_version+1,company_settings_version=company_settings_version+1,updated_at=now()
+      WHERE id=$1 AND operational_location_version=$5
+      RETURNING operational_location_version,operational_address,operational_latitude,operational_longitude,operational_location_provenance`,
+    [principal.company_id, input.address, input.latitude, input.longitude, input.expectedVersion]);
+    if (!updated.rowCount) { const error = new Error('A localização mudou em outra sessão.'); error.code = 'REVISION_CONFLICT'; throw error; }
+    const row = updated.rows[0];
+    await writeAudit(client, principal, 'company.operational_location.changed', 'company', principal.company_id,
+      { configured: row.operational_latitude !== null, provenance: row.operational_location_provenance,
+        version: Number(row.operational_location_version) });
+    return { operationalLocation: row.operational_latitude == null ? null : { address: row.operational_address,
+      latitude: Number(row.operational_latitude), longitude: Number(row.operational_longitude),
+      provenance: row.operational_location_provenance, version: Number(row.operational_location_version) },
+      operationalLocationVersion: Number(row.operational_location_version) };
+  }
+  async function updateCompanyProfile(client, principal, input) {
+    if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 || typeof input.name !== 'string' ||
+        input.name.trim().length < 1 || Buffer.byteLength(input.name.trim(), 'utf8') > 160 ||
+        /[\u0000-\u001f\u007f]/u.test(input.name) || input.supportPhone !== null &&
+        (typeof input.supportPhone !== 'string' || input.supportPhone.trim().length < 1 || Buffer.byteLength(input.supportPhone.trim(), 'utf8') > 40 || /[\u0000-\u001f\u007f]/u.test(input.supportPhone))) {
+      const error = new Error('Dados de identidade inválidos.'); error.code = 'INVALID_INPUT'; throw error;
+    }
+    const updated = await client.query(`UPDATE rotamoto.companies SET name=$2,support_phone=$3,
+        company_settings_version=company_settings_version+1,updated_at=now()
+      WHERE id=$1 AND company_settings_version=$4
+      RETURNING name,support_phone,company_settings_version`,
+    [principal.company_id,input.name.trim(),input.supportPhone?.trim()||null,input.expectedVersion]);
+    if (!updated.rowCount) {
+      const exists = await client.query('SELECT 1 FROM rotamoto.companies WHERE id=$1',[principal.company_id]);
+      const error = new Error(exists.rowCount?'A identidade da empresa mudou em outra sessão.':'Empresa não encontrada.');
+      error.code = exists.rowCount?'REVISION_CONFLICT':'NOT_FOUND'; throw error;
+    }
+    await writeAudit(client,principal,'company.profile.changed','company',principal.company_id,{version:Number(updated.rows[0].company_settings_version)});
+    return { name:updated.rows[0].name,supportPhone:updated.rows[0].support_phone,settingsVersion:Number(updated.rows[0].company_settings_version) };
   }
   async function memberships(client, companyId, { limit, cursor }) {
     const after = decodeCursor(cursor);
@@ -261,7 +314,7 @@ function createAdminRepository() {
     return { integrations: publicCatalog(persisted) };
   }
   return Object.freeze({ company, memberships, roles, integrations, permissions, createRole, updateRole, updateMembership,
-    updateCompanyTimeZone, associateMembershipDriver, disassociateMembershipDriver });
+    updateCompanyTimeZone, updateCompanyLocation, updateCompanyProfile, associateMembershipDriver, disassociateMembershipDriver });
 }
 
 module.exports = { createAdminRepository, decodeCursor, encodeCursor };

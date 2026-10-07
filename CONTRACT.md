@@ -40,14 +40,15 @@ Dados sincronizáveis usam tombstone (`deletedAt`) em vez de remoção física i
 `appVersion`, `protocolVersion` e `schemaVersion` são independentes. Alterações incompatíveis exigem incremento de protocolo/schema e migração explícita.
 
 ## Autoridade de escrita e leitura
-- `Company`: identidade e servidor; nenhum cliente altera tenant, memberships ou identificadores canônicos. O registro pode expor `timeZone` IANA opcional e anulável, configurada por administrador autorizado no serviço; ausência permanece explícita e não é inferida do dispositivo.
+- `Company`: identidade e servidor; nenhum cliente altera tenant, memberships ou identificadores canônicos. O Restaurante é autoridade dos campos `name`, `supportPhone`, `timeZone` IANA e `operationalLocation` confirmado. A localização possui endereço opcional, latitude/longitude em par, provenance `operator_confirmed` e revisão; ausência permanece desconhecida e não é geocodificada pelo fluxo logístico. O Motoboy recebe snapshot read-only no envelope autenticado de `/sync/pull`, mantém a última revisão válida offline e rejeita tenant/revisão inválidos ou antigos.
 - `Order`: Restaurante escreve; Motoboy somente consome.
 - `Earning`: Restaurante calcula e escreve o valor canônico. Motoboy somente consulta. O Motoboy não publica Earnings; fatos logísticos necessários ao cálculo são sincronizados como execução da entrega.
 - `Delivery`: entidade compartilhada. Restaurante cria, atribui, planeja e pode cancelar administrativamente; Motoboy grava somente fatos/estados de execução autorizados pelo servidor. Campos comerciais e de planejamento não podem ser sobrescritos pelo Motoboy; campos de execução não podem ser reescritos pelo Restaurante.
 - `DeliveryEvent`: fato append-only, imutável e idempotente por `eventId`.
 - `LocationPoint` e `DeliveryProof`: Motoboy escreve; Restaurante lê.
 - `Route`: Restaurante planeja e escreve; Motoboy consome o planejamento e reporta execução em eventos/dados logísticos, sem reescrever a rota canônica.
-- `Driver`: cadastro/identidade e vínculo administrativo são controlados pelo Restaurante/servidor; o Motoboy não sincroniza alterações de cadastro. Dados próprios da execução do motorista permanecem eventos/dados logísticos.
+- `Driver`: cadastro/identidade e vínculo administrativo são controlados pelo Restaurante/servidor; o Motoboy consome o perfil canônico do próprio Driver como read-only e não publica alterações de cadastro. Dados próprios da execução do motorista permanecem eventos/dados logísticos.
+- Configuração recebida de Company/Driver no Motoboy não é gravada de volta em campos locais editáveis. O snapshot `companySettings` do pull é separado das preferências `DEVICE_LOCAL`; `revision` cresce em alteração da configuração da Company e o consumidor só aplica revisão mais nova para o tenant da sessão.
 - Preferências, ajustes e projeções de tela (incluindo `races`) são locais e não viram entidades canônicas sem definição explícita no contrato.
 
 ## Fatos de execução e projeção de Delivery

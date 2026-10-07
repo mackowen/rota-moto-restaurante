@@ -349,7 +349,7 @@ async function main() {
       'roles','role_permissions','memberships','sessions','integrations','external_accounts',
       'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens',
       'sync_installations','domain_records','proof_media_upload_intents','logistics_providers','delivery_fulfillments','dispatch_attempts','delivery_geo_snapshots',
-      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots','logistics_intelligence_settings','logistics_decisions'
+      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots','logistics_intelligence_settings','logistics_decisions','logistics_route_settings'
     ]));
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -361,6 +361,8 @@ async function main() {
       'economic settings are included in forced tenant RLS');
     assert(tenantTables.some(row=>row.relname==='logistics_decisions'&&row.relforcerowsecurity),
       'human decisions are tenant scoped with forced RLS');
+    assert(tenantTables.some(row=>row.relname==='logistics_route_settings'&&row.relforcerowsecurity),
+      'Route origin policy remains tenant scoped with forced RLS');
     assert(tenantTables.every(row => row.relforcerowsecurity), 'all tenant-scoped tables enforce RLS');
     const auditTenant = crypto.randomUUID();
     await migrationClient.query('BEGIN');
@@ -448,7 +450,16 @@ async function main() {
     [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);
     try {
       const appliedLedger = await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
-      if (['0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection'].includes(appliedLedger.rows[0]?.migration_id)) {
+      if (appliedLedger.rows[0]?.migration_id === '0033_company_operational_location') {
+        const configuredLocations=await migrationClient.query(`SELECT count(*)::int AS count FROM rotamoto.companies
+          WHERE operational_latitude IS NOT NULL OR operational_location_version<>0 OR company_settings_version<>0`);
+        assert.equal(configuredLocations.rows[0].count,0,'E2E migration rollback is attempted only before any operator setting exists');
+        const locationDown=runMigrationSync('down');
+        assert.notEqual(locationDown.status,0,'E2E migration runner refuses destructive rollback even when the additive location fields are empty');
+        assert.match(locationDown.stderr,/Uso: node backend\/postgres\/migrate\.js/u,'rollback denial is the runner guard, not an SQL failure');
+        const stillLatest=await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
+        assert.equal(stillLatest.rows[0].migration_id,'0033_company_operational_location','blocked rollback leaves the E2E schema at the approved latest migration');
+      } else if (['0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings'].includes(appliedLedger.rows[0]?.migration_id)) {
         assert.match(getMigrations().at(-1).down, /rollback bloqueado/u, 'provider integration data migrations explicitly block rollback');
         const blockedDown = runMigrationSync('down');
         assert.notEqual(blockedDown.status,0,'approved provider/decision persistence rollback stays blocked');

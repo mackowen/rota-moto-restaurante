@@ -49,8 +49,13 @@ function createHumanDecisionService({ clock = () => new Date(), compare, selectF
         AND NULLIF(payload->>'driverId','') IS NOT NULL ORDER BY record_id${lock}`, [companyId]);
     const settings = await client.query(`SELECT version,default_policy,fixed_cost_per_delivery_minor,variable_cost_per_km_minor,currency
       FROM rotamoto.logistics_intelligence_settings WHERE company_id=$1${lock}`, [companyId]);
-    const routeSettings = await client.query(`SELECT version,origin_mode,origin_latitude,origin_longitude,origin_provenance,return_to_origin
-      FROM rotamoto.logistics_route_settings WHERE company_id=$1${lock}`,[companyId]);
+    const routeSettings = await client.query(`SELECT COALESCE(route.version,0) AS version,COALESCE(route.origin_mode,'establishment') AS origin_mode,
+        route.origin_latitude,route.origin_longitude,route.origin_provenance,COALESCE(route.return_to_origin,false) AS return_to_origin,
+        company.operational_location_version,company.operational_latitude,company.operational_longitude,
+        company.operational_location_provenance
+      FROM rotamoto.companies company LEFT JOIN rotamoto.logistics_route_settings route ON route.company_id=company.id
+      WHERE company.id=$1${lock ? ' FOR UPDATE OF company' : ''}`,[companyId]);
+    if (lockCurrent) await client.query(`SELECT version FROM rotamoto.logistics_route_settings WHERE company_id=$1 FOR UPDATE`,[companyId]);
     const providerConfig = await client.query(`SELECT provider_id,version,enabled,integration_mode,api_enabled,capabilities
       FROM rotamoto.logistics_providers WHERE company_id=$1 ORDER BY provider_id${lock}`, [companyId]);
     const geoSnapshots = await client.query(`SELECT geo.delivery_id::text AS delivery_id,geo.version,geo.provenance,geo.accuracy_m,geo.resolved_at
