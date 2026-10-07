@@ -32,13 +32,13 @@ async function main(){
   const resolverPool=createPool({connectionString:resolverUrl,max:2,application_name:'marketplace-worker-e2e-resolver'});
   const row={company:id(),otherCompany:id(),integration:id(),account:id(),merchant:`synthetic-${id()}`,secretRef:`synthetic-${id()}`,
     secret:'synthetic-runtime-secret'},orderId=id();
-  let confirms=0,detailStatus='PLACED',seeded=false;
+  let confirms=0,confirmOutcome={accepted:true,confirmation:'pending'},detailStatus='PLACED',seeded=false;
   const secretProvider={async get(ref,context){assert.equal(ref,row.secretRef);assert.equal(context.name,`marketplace/ifood/${row.account}`);assert.equal(context.scope,'tenant');assert.equal(context.tenantId,row.company);
     return JSON.stringify({clientId:'synthetic-client',clientSecret:row.secret,accessToken:'synthetic-access',accountScope:row.account,companyId:row.company});}};
   const resolver=createMarketplaceAccountResolver({privilegedPool:resolverPool,secretProvider});
   const adapters={ifood:{async order(){return {source:'ifood',externalId:orderId,externalDisplayId:'E2E-WORKER',status:detailStatus,orderType:'DELIVERY',createdAt:new Date().toISOString(),
       customer:{name:'PII must not persist',phone:'+55000000000'},address:'Synthetic address',items:[{name:'Meal',quantity:1}]};},
-    async confirmOrder(){confirms++;return {accepted:true,confirmation:'pending'};},async pollEvents(){return [];},async acknowledgeEvents(){return {accepted:true};}}};
+    async confirmOrder(){confirms++;if(confirmOutcome instanceof Error)throw confirmOutcome;return confirmOutcome;},async pollEvents(){return [];},async acknowledgeEvents(){return {accepted:true};}}};
   const runtime=createMarketplaceRuntime({pool:app,adapters,accountResolver:resolver});
   const workerResolver=async(provider,accountId,companyId)=>resolver.byId(provider,accountId,companyId);
   workerResolver.byMerchant=(provider,merchantId)=>resolver.byMerchant(provider,merchantId);
@@ -49,9 +49,23 @@ async function main(){
     await assertRole(workerPool,'rotamoto_provider_worker');
     await assertRole(resolverPool,'rotamoto_provider_resolver');
     await assertRole(app,'rotamoto_app');
+    const roleCatalog=await migrator.query(`SELECT r.rolname,r.rolcanlogin,r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolinherit,r.rolreplication,r.rolbypassrls,
+      EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid OR m.roleid=r.oid) AS has_memberships
+      FROM pg_roles r WHERE r.rolname=ANY($1::text[]) ORDER BY r.rolname`,[['rotamoto_provider_resolver','rotamoto_provider_worker']]);
+    assert.deepEqual(roleCatalog.rows,[
+      {rolname:'rotamoto_provider_resolver',rolcanlogin:true,rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolinherit:false,rolreplication:false,rolbypassrls:false,has_memberships:false},
+      {rolname:'rotamoto_provider_worker',rolcanlogin:true,rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolinherit:false,rolreplication:false,rolbypassrls:false,has_memberships:false}
+    ],'dedicated roles retain least-privilege attributes and no memberships');
     const secretAcl=await workerPool.query(`SELECT has_column_privilege(current_user,'rotamoto.external_accounts','secret_ref','SELECT') AS secret_select,
       has_table_privilege(current_user,'rotamoto.marketplace_oauth_secrets','SELECT') AS oauth_select`);
     assert.deepEqual(secretAcl.rows[0],{secret_select:false,oauth_select:false},'worker must not read secret refs or OAuth verifier state');
+    const boundaryAcl=await resolverPool.query(`SELECT has_column_privilege(current_user,'rotamoto.external_accounts','secret_ref','SELECT') AS secret_ref_select,
+      has_table_privilege(current_user,'rotamoto.marketplace_oauth_secrets','SELECT') AS oauth_boundary_select,
+      has_table_privilege(current_user,'rotamoto.companies','SELECT') AS broad_company_select,
+      has_column_privilege('rotamoto_app','rotamoto.external_accounts','secret_ref','SELECT') AS app_secret_select,
+      has_column_privilege('rotamoto_app','rotamoto.external_accounts','secret_ref','UPDATE') AS app_secret_update`);
+    assert.deepEqual(boundaryAcl.rows[0],{secret_ref_select:true,oauth_boundary_select:true,broad_company_select:false,app_secret_select:false,app_secret_update:false},
+      'only resolver has its explicit secret boundary; app stays denied');
     await assert.equal(await resolver.byId('ifood',row.account,row.otherCompany),null,'account route must reject caller-selected cross-tenant context');
 
     await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
@@ -84,11 +98,74 @@ async function main(){
     assert.deepEqual(final.rows[0],{status:'succeeded',source:'ifood',customer_persisted:false,address_persisted:false});
     assert.equal(confirms,1,'event reconciliation never replays the side effect');await migrator.query('COMMIT');
 
+    const outsider=await workerPool.connect();
+    try{await outsider.query('BEGIN');await outsider.query("SELECT set_config('app.tenant_id',$1,true)",[row.otherCompany]);
+      const hidden=await outsider.query('SELECT company_id FROM rotamoto.marketplace_order_versions WHERE company_id=$1',[row.company]);
+      assert.equal(hidden.rowCount,0,'worker cannot cross tenant RLS even with a forged company filter');await outsider.query('COMMIT');
+    }catch(error){await outsider.query('ROLLBACK').catch(()=>{});throw error;}finally{outsider.release();}
+
+    async function enqueueAndRun(key,retryClass='reconcile_before_retry'){
+      return runtime.enqueueOrderCommand({companyId:row.company,domainOrderId:order.domainOrderId,operation:'CONFIRM',idempotencyKey:key.padEnd(16,'x'),commandData:{},retryClass});
+    }
+    async function commandState(commandId){
+      await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+      const result=await migrator.query('SELECT status,attempts,last_error_code FROM rotamoto.marketplace_command_outbox WHERE company_id=$1 AND command_id=$2',[row.company,commandId]);
+      await migrator.query('COMMIT');return result.rows[0];
+    }
+    confirmOutcome=Object.assign(new Error('synthetic unauthorized'),{code:'AUTH_EXPIRED',status:401});
+    const authCommand=await enqueueAndRun(`worker-401-${id()}`);await worker.runOnce();
+    assert.equal((await commandState(authCommand.command_id)).status,'needs_review','401 moves the command to reauthorization review');
+    await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    await migrator.query("UPDATE rotamoto.external_accounts SET account_status='active' WHERE company_id=$1 AND id=$2",[row.company,row.account]);await migrator.query('COMMIT');
+
+    confirmOutcome=Object.assign(new Error('synthetic forbidden'),{code:'FORBIDDEN',status:403});
+    const forbiddenCommand=await enqueueAndRun(`worker-403-${id()}`);await worker.runOnce();
+    assert.equal((await commandState(forbiddenCommand.command_id)).status,'needs_review','403 requires reauthorization and is never blindly retried');
+    await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    await migrator.query("UPDATE rotamoto.external_accounts SET account_status='active' WHERE company_id=$1 AND id=$2",[row.company,row.account]);await migrator.query('COMMIT');
+    confirmOutcome=Object.assign(new Error('synthetic rate limit'),{code:'RATE_LIMIT',status:429,retryAfterSeconds:60});
+    const limitedCommand=await enqueueAndRun(`worker-429-${id()}`,'safe_retry');await worker.runOnce();
+    assert.equal((await commandState(limitedCommand.command_id)).status,'queued','429 is retried only as an explicitly safe command');
+    confirmOutcome=Object.assign(new Error('synthetic upstream failure'),{code:'PROVIDER_SERVER_ERROR',status:503});
+    const serverCommand=await enqueueAndRun(`worker-503-${id()}`);await worker.runOnce();
+    assert.equal((await commandState(serverCommand.command_id)).status,'unknown_outcome','5xx side effect is not retried blindly');
+    const beforeReconciliation=confirms;detailStatus='CONFIRMED';
+    await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    await migrator.query("UPDATE rotamoto.marketplace_command_outbox SET created_at=now()-interval '70 seconds',updated_at=now()-interval '61 seconds' WHERE company_id=$1 AND command_id=$2",[row.company,serverCommand.command_id]);await migrator.query('COMMIT');
+    assert.equal(await worker.reconcileUnknown(row.company),true,'worker reconciles unknown side effect via provider detail');
+    assert.equal((await commandState(serverCommand.command_id)).status,'succeeded');assert.equal(confirms,beforeReconciliation,'reconciliation does not repeat confirm');
+    detailStatus='PLACED';confirmOutcome=Object.assign(new Error('synthetic timeout'),{code:'PROVIDER_TIMEOUT'});
+    const timeoutCommand=await enqueueAndRun(`worker-timeout-${id()}`);await worker.runOnce();
+    assert.equal((await commandState(timeoutCommand.command_id)).status,'unknown_outcome','timeout remains ambiguous');
+    await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    await migrator.query("UPDATE rotamoto.marketplace_command_outbox SET created_at=now()-interval '70 seconds',updated_at=now()-interval '61 seconds' WHERE company_id=$1 AND command_id=$2",[row.company,timeoutCommand.command_id]);await migrator.query('COMMIT');
+    assert.equal(await worker.reconcileUnknown(row.company),true);assert.equal((await commandState(timeoutCommand.command_id)).status,'unknown_outcome');
+
+    confirmOutcome={accepted:true,confirmation:'pending'};
+    const leaseCommand=await enqueueAndRun(`worker-lease-${id()}`);
+    const oldLease=crypto.randomUUID(),newLease=crypto.randomUUID();
+    const firstClaim=await workerPool.query('SELECT * FROM rotamoto.claim_marketplace_command($1,$2,$3)',[row.company,oldLease,10]);
+    assert.equal(firstClaim.rows[0]?.command_id,leaseCommand.command_id,'dedicated worker claims its command lease');
+    await workerPool.query('BEGIN');await workerPool.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    const expired=await workerPool.query("UPDATE rotamoto.marketplace_command_outbox SET lease_until=now()-interval '1 second' WHERE company_id=$1 AND command_id=$2 AND lease_token=$3",[row.company,leaseCommand.command_id,oldLease]);
+    assert.equal(expired.rowCount,1,'worker can only expire its own tenant-scoped lease');await workerPool.query('COMMIT');
+    const secondClaim=await workerPool.query('SELECT * FROM rotamoto.claim_marketplace_command($1,$2,$3)',[row.company,newLease,10]);
+    assert.equal(secondClaim.rowCount,0,'expired ambiguous side effect is not reclaimed for blind retry after restart');
+    assert.deepEqual(await commandState(leaseCommand.command_id),{status:'unknown_outcome',attempts:1,last_error_code:'WORKER_LEASE_EXPIRED'});
+    await workerPool.query('BEGIN');await workerPool.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    const staleFence=await workerPool.query("UPDATE rotamoto.marketplace_command_outbox SET status='succeeded' WHERE company_id=$1 AND command_id=$2 AND lease_token=$3",[row.company,leaseCommand.command_id,oldLease]);await workerPool.query('COMMIT');
+    assert.equal(staleFence.rowCount,0,'fenced old lease cannot settle the recovered command');
+
     await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
     await migrator.query("UPDATE rotamoto.external_accounts SET account_status='disabled' WHERE company_id=$1 AND id=$2",[row.company,row.account]);
     await migrator.query('COMMIT');
     assert.equal(await resolver.byMerchant('ifood',row.merchant),null,'disabled account cannot be resolved by worker');
-    process.stdout.write('Marketplace worker PostgreSQL E2E: PASS (authenticated worker/resolver roles, least-privilege secrets, producer→outbox→worker→synthetic adapter→event reconciliation)\n');
+    await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    await migrator.query("UPDATE rotamoto.external_accounts SET account_status='active' WHERE company_id=$1 AND id=$2",[row.company,row.account]);
+    await migrator.query('UPDATE rotamoto.marketplace_account_bindings SET authorized=false WHERE company_id=$1 AND external_account_id=$2',[row.company,row.account]);
+    await migrator.query('COMMIT');
+    assert.equal(await resolver.byMerchant('ifood',row.merchant),null,'revoked authorization cannot be resolved');
+    process.stdout.write('Marketplace worker PostgreSQL E2E: PASS (real resolver/worker identities, RLS isolation, 401/403/429/503/timeout, UNKNOWN_OUTCOME reconciliation, lease expiry/fencing, secret boundary)\n');
   }finally{
     if(seeded){
       await migrator.query('BEGIN').catch(()=>{});await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]).catch(()=>{});
@@ -104,5 +181,5 @@ async function main(){
     await Promise.all([app.end(),workerPool.end(),resolverPool.end(),migrator.end()]);
   }
 }
-if(require.main===module)main().catch(error=>{process.stderr.write(`Marketplace worker PostgreSQL E2E: FAIL (${error.code||error.stack||error})\n`);process.exitCode=1;});
+if(require.main===module)main().catch(error=>{process.stderr.write(`Marketplace worker PostgreSQL E2E: FAIL (${error.code||'ERROR'}: ${error.message||'operation failed'})\n${error.stack||''}\n`);process.exitCode=1;});
 module.exports={roleUrl,assertRole};
