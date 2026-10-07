@@ -237,7 +237,22 @@ async function main() {
         has_table_privilege('rotamoto_app',c.oid,'DELETE') AS runtime_delete FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname=$1 AND c.relname='logistics_route_settings'`,[from0022Schema]);
       assert.deepEqual(upgradedRouteSettings.rows[0],{relrowsecurity:true,relforcerowsecurity:true,owner:'rotamoto_migrator',runtime_delete:false},
-        'upgrade 0022→0032 creates tenant-scoped operational route configuration');
+        'clean install and upgrade 0022→latest creates tenant-scoped operational route configuration');
+      const companyLocationColumns=await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='companies'
+        AND column_name=ANY($2::text[]) ORDER BY column_name`,[from0022Schema,['support_phone','operational_address','operational_latitude','operational_longitude',
+        'operational_location_provenance','operational_location_version','company_settings_version']]);
+      assert.deepEqual(companyLocationColumns.rows.map(row=>row.column_name),['company_settings_version','operational_address','operational_latitude',
+        'operational_location_provenance','operational_location_version','operational_longitude','support_phone'],
+        'clean install and upgrade 0022→0033 contains the canonical Company identity and operational location contract');
+      const companyLocationSecurity=await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
+        has_column_privilege('rotamoto_app',c.oid,'operational_latitude','SELECT') AS location_read,
+        has_column_privilege('rotamoto_app',c.oid,'operational_latitude','UPDATE') AS location_update,
+        has_column_privilege('rotamoto_app',c.oid,'name','UPDATE') AS company_name_update,
+        EXISTS(SELECT 1 FROM pg_policies p WHERE p.schemaname=$1 AND p.tablename='companies' AND p.qual LIKE '%current_tenant_id%') AS tenant_policy
+        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname='companies'`,[from0022Schema]);
+      assert.deepEqual(companyLocationSecurity.rows[0],{relrowsecurity:true,relforcerowsecurity:true,owner:'rotamoto_migrator',
+        location_read:true,location_update:true,company_name_update:true,tenant_policy:true},
+        'Company location remains RLS/forced, migrator-owned, tenant-scoped and exposes only the authorized operational write fields');
     }finally{await client.query('ROLLBACK')}
     assert.equal((await client.query('SELECT 1 FROM pg_namespace WHERE nspname=$1',[from0022Schema])).rowCount,0,'0022 upgrade sandbox rolled back');
 
