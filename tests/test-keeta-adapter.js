@@ -10,6 +10,7 @@ const fetchImpl = async (url, options) => {
   if (url.includes('/v1/events:polling')) return response(200, [{ eventId: 'e1', eventType: 'CREATED', orderId: 'o1', orderURL: 'https://provider.invalid/o1', createdAt: '2026-01-01T00:00:00Z' }]);
   if (url.includes('/v1/events/acknowledgment')) return response(202, null);
   if (url.includes('/v1/orders/o1/confirm')) return response(202, null);
+  if (url.includes('/v1/orders/merchant%3A42%2Forder%3F1')) return response(200, { id: 'merchant:42/order?1', items: [{ name: 'Meal', quantity: 1 }] });
   if (url.includes('/v1/orders/o1')) return response(200, { id: 'o1', customer: { name: 'Client', phone: 'must-not-log', email: 'private' }, items: [{ name: 'Meal', quantity: 1 }] });
   return response(200, { merchantAuthorizationUrl: 'https://merchant.mykeeta.com/authorize' });
 };
@@ -20,18 +21,57 @@ async function main() {
     assert.equal(tenant, '00000000-0000-4000-8000-000000000001');
     return { clientId: 'client', clientSecret: 'secret' };
   }, fetchImpl, clock: () => now, persistToken: async () => {} });
-  const events = await adapter.pollEvents({ companyId: '00000000-0000-4000-8000-000000000001', merchantIds: ['merchant-1'], eventTypes: ['CREATED'] });
+  const events = await adapter.pollEvents({ companyId: '00000000-0000-4000-8000-000000000001', serviceMerchantIds: ['service-merchant-1'], eventTypes: ['CREATED'] });
   assert.equal(events[0].id, 'e1');
   assert.equal(calls[0].options.body, '{"client_id":"client","client_secret":"secret","grant_type":"app_level_token"}');
   assert.ok(calls[1].options.headers['X-App-Signature']);
-  assert.equal(calls[1].options.headers['x-polling-merchants'], 'merchant-1');
+  assert.equal(calls[1].options.headers['x-polling-merchants'], 'service-merchant-1');
+  assert.ok(calls[1].url.includes('eventType=CREATED'));
   assert.deepEqual(await adapter.acknowledgeEvents({ companyId: '00000000-0000-4000-8000-000000000001', events }), { accepted: true, confirmation: 'pending' });
   const order = await adapter.order({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1' });
   assert.equal(order.externalId, 'o1');
-  assert.equal(Object.hasOwn(order.customer || {}, 'phone'), false);
+  assert.equal((await adapter.order({ companyId: '00000000-0000-4000-8000-000000000001', id: 'merchant:42/order?1' })).externalId, 'merchant:42/order?1',
+    'documented opaque string IDs are URI-encoded instead of restricted to an invented character set');
+  assert.ok(calls.some(call => call.url.endsWith('/v1/orders/merchant%3A42%2Forder%3F1')));
+  assert.equal(Object.hasOwn(order, 'customer'), false);
+  assert.equal(Object.hasOwn(order, 'address'), false);
   assert.deepEqual(await adapter.confirm({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1', orderExternalCode: 'R1', createdAt: '2026-01-01T00:00:00Z' }), { accepted: true, confirmation: 'pending' });
   assert.equal(calls.some(call => JSON.stringify(call.options).includes('must-not-log')), false);
-  await assert.rejects(adapter.pollEvents({ companyId: '00000000-0000-4000-8000-000000000001', merchantIds: [] }), { code: 'INVALID_MERCHANTS' });
+  let authorizationRequest;
+  const bootstrap = createKeetaAdapter({ credentialResolver: async () => ({ clientId: 'client', clientSecret: 'secret' }),
+    fetchImpl: async (url, options) => { authorizationRequest = { url, options }; return response(200, { merchantAuthorizationUrl: 'https://merchant.mykeeta.com/authorize?scope=all' }); } });
+  assert.equal(await bootstrap.authorizationUrl({ companyId: '00000000-0000-4000-8000-000000000001',
+    redirectUri: 'https://rotamoto.example/keeta/callback', state: 'state-token-which-is-long-enough-123456' }),
+  'https://merchant.mykeeta.com/authorize?scope=all');
+  assert.match(authorizationRequest.url, /\/oauth\/authorization\/url\?clientId=client&redirectUri=/u);
+  assert.equal(Object.hasOwn(authorizationRequest.options.headers, 'Authorization'), false, 'authorization URL bootstrap does not require a token before merchant authorization');
+  assert.equal(Object.hasOwn(authorizationRequest.options.headers, 'X-App-Signature'), false, 'authorization URL is called using the documented unsigned contract');
+  const persisted = [];
+  const selfDeliveryCalls = [];
+  const appToken = createKeetaAdapter({ credentialResolver: async () => ({ clientId: 'client', clientSecret: 'secret' }),
+    fetchImpl: async (url, options) => { selfDeliveryCalls.push({ url, options }); return url.endsWith('/oauth/token') ? response(200, { access_token: 'app-token', token_type: 'bearer', expires_in: 3600 }) : response(202, null); },
+    persistToken: async record => persisted.push(record) });
+  await appToken.readyForPickup({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1' });
+  assert.deepEqual(Object.keys(persisted[0]).sort(), ['expiresAt', 'key'], 'app-level token persistence never invents/persists a refresh token');
+  await appToken.dispatchSelfDelivery({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1', deliveryTrackingInfo: { event: { type: 'DELIVERY_ONGOING' } } });
+  await appToken.markDeliveredSelfDelivery({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1' });
+  await appToken.sendSelfDeliveryTracking({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1', deliveryTrackingInfo: { event: { type: 'DELIVERY_ONGOING' } } });
+  await appToken.requestCancellation({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1', reason: 'Store unavailable', code: 'SYSTEMIC_ISSUES' });
+  assert(selfDeliveryCalls.some(call => call.url.endsWith('/v1/orders/o1/dispatch') && call.options.method === 'POST'));
+  assert(selfDeliveryCalls.some(call => call.url.endsWith('/v1/orders/o1/delivered') && call.options.method === 'POST'));
+  assert(selfDeliveryCalls.some(call => call.url.endsWith('/v1/orders/o1/tracking') && call.options.method === 'POST'));
+  assert(selfDeliveryCalls.some(call => call.url.endsWith('/v1/orders/o1/requestCancellation') && call.options.method === 'POST'));
+  const wrongAck = createKeetaAdapter({ credentialResolver: async () => ({ clientId: 'client', clientSecret: 'secret' }),
+    fetchImpl: async url => url.endsWith('/oauth/token') ? response(200, { access_token: 'app-token', expires_in: 3600 }) : response(200, null) });
+  await assert.rejects(wrongAck.readyForPickup({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1' }), { code: 'INVALID_PROVIDER_RESPONSE' });
+  const oversized = createKeetaAdapter({ credentialResolver: async () => ({ clientId: 'client', clientSecret: 'secret' }),
+    fetchImpl: async url => url.endsWith('/oauth/token') ? response(200, { access_token: 'app-token', expires_in: 3600 }) : ({
+      status: 200, ok: true, headers: { get: name => name === 'content-length' ? null : null },
+      body: { getReader: () => ({ read: async () => ({ done: false, value: Buffer.alloc(256 * 1024 + 1) }), cancel: async () => {}, releaseLock: () => {} }) }
+    }) });
+  await assert.rejects(oversized.readyForPickup({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1' }), { code: 'INVALID_PROVIDER_RESPONSE' },
+    'provider response size is enforced while streaming, before full buffering');
+  await assert.rejects(adapter.pollEvents({ companyId: '00000000-0000-4000-8000-000000000001', serviceMerchantIds: [] }), { code: 'INVALID_MERCHANTS' });
   const authCalls=[]; let tokenNumber=0;
   const expiring = createKeetaAdapter({ credentialResolver: async () => ({ clientId:'client', clientSecret:'secret' }),
     fetchImpl: async (url, options) => {

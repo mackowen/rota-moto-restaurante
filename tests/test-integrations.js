@@ -12,11 +12,16 @@ assert.deepEqual(PROVIDERS.map(provider => provider.key), ['ifood', '99food', 'k
 const catalog = publicCatalog([{ provider: 'ifood', status: 'active', externalAccount: { displayName: 'Conta', linkStatus: 'confirmed', confirmedAt: '2026-01-01' } }]);
 assert.equal(catalog.length, 3);
 assert(catalog.every(item => item.capability === 'blocked_external' && item.connectionVerified === false));
+assert.deepEqual(catalog[0].capabilities.orders, { DOCUMENTED: true, IMPLEMENTED: true, RUNTIME_WIRED: false, LOCAL_TESTED: true, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
+assert.equal(catalog[0].capabilityContract.orders, 'SUPPORTED', 'contract availability is separated from runtime connection');
+assert.deepEqual(catalog[0].capabilities.homologation, { DOCUMENTED: true, IMPLEMENTED: false, RUNTIME_WIRED: false, LOCAL_TESTED: false, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
+assert.deepEqual(catalog[2].capabilities.account, { DOCUMENTED: true, IMPLEMENTED: true, RUNTIME_WIRED: false, LOCAL_TESTED: true, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
+assert.equal(catalog[2].capabilityContract.platformDelivery, 'NOT_SUPPORTED', 'Keeta merchant fulfillment is not represented as a platform courier API');
 assert(catalog.every(item => item.actions.connect === false && item.actions.reconnect === false));
 assert.equal(catalog[0].state, 'authorized_unverified', 'an account link does not assert a successful provider health check');
 assert.equal(publicCatalog([{ provider: 'ifood', status: 'disabled' }])[0].state, 'disabled');
 assert.equal(JSON.stringify(catalog).includes('secret_ref'), false);
-assert.equal(JSON.stringify(catalog).includes('token'), false);
+assert.equal(/"(?:access_?token|refresh_?token|client_?secret|secret_ref)"\s*:/iu.test(JSON.stringify(catalog)), false);
 assert.equal(ADMIN_ROUTES['/api/admin/integrations'].permission, 'integrations.manage');
 
 assert.deepEqual(classifyProviderFailure({ status: 429, retryAfterSeconds: 5000 }), {
@@ -42,6 +47,7 @@ assert.deepEqual(sanitizeProviderError({ code: 'PROVIDER_ERROR', message: 'secre
   assert.equal(adminCatalog.integrations.length, 3);
   assert.equal(adminCatalog.integrations.find(item => item.provider === '99food').connectionVerified, false);
   assert.equal(adminCatalog.integrations.find(item => item.provider === '99food').state, 'authorized_unverified');
+  assert.equal(adminCatalog.integrations[0].lastEventAt, null, 'the current schema does not assert a provider synchronization timestamp');
   for (const provider of PROVIDERS) {
     const adapter = createBlockedAdapter(provider.key);
     assert.equal(adapter.diagnostics().connectionVerified, false);

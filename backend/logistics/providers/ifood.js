@@ -50,9 +50,9 @@ function quoteFromResponse(raw, now = Date.now()) {
   if (!raw.quote || typeof raw.quote !== 'object' || Array.isArray(raw.quote)) fail('INVALID_PROVIDER_RESPONSE');
   const gross = decimalToMinor(raw.quote.grossValue, 'gross_value');
   const discount = decimalToMinor(raw.quote.discount, 'discount');
-  const surcharge = decimalToMinor(raw.quote.raise, 'raise');
+  const surcharge = raw.quote.raise == null ? 0 : decimalToMinor(raw.quote.raise, 'raise');
   if (discount > gross) fail('INVALID_PROVIDER_RESPONSE');
-  const amountMinor = gross - discount + surcharge;
+  const amountMinor = raw.quote.netValue == null ? gross - discount + surcharge : decimalToMinor(raw.quote.netValue, 'net_value');
   if (!Number.isSafeInteger(amountMinor)) fail('INVALID_PROVIDER_RESPONSE');
   return Object.freeze({ provider: 'ifood', externalQuoteReference: uuid(raw.id, 'quote_id'), currency: 'BRL', amountMinor,
     createdAt, expiresAt, status: 'available', etaAt: null });
@@ -82,8 +82,8 @@ function verifyWebhookSignature(rawBody, signature, secret) {
 }
 
 function normalizeDeliveryEvent(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || typeof raw.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(raw.id) ||
-      typeof raw.orderId !== 'string' || !UUID.test(raw.orderId) || typeof raw.fullCode !== 'string' || !/^[A-Z][A-Z0-9_]{1,63}$/u.test(raw.fullCode)) fail('INVALID_PROVIDER_EVENT');
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || typeof raw.id !== 'string' || raw.id.length < 1 || raw.id.length > 128 || /[\u0000-\u001f\u007f]/u.test(raw.id) ||
+      typeof raw.orderId !== 'string' || !UUID.test(raw.orderId) || typeof raw.fullCode !== 'string' || raw.fullCode.length < 1 || raw.fullCode.length > 128 || /[\u0000-\u001f\u007f]/u.test(raw.fullCode)) fail('INVALID_PROVIDER_EVENT');
   const allowed = new Map([
     ['REQUEST_DRIVER_SUCCESS', 'accepted'], ['ASSIGN_DRIVER', 'accepted'], ['DELIVERY_CANCELLATION_REQUEST_ACCEPTED', 'cancelled'],
     ['DELIVERY_CANCELLATION_REQUEST_REJECTED', 'cancel_rejected'], ['REQUEST_DRIVER_FAILED', 'failed'], ['DELIVERY_IN_TRANSIT', 'in_progress'],
@@ -110,10 +110,12 @@ function normalizeOrder(raw) {
 }
 
 function normalizeOrderEvent(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || typeof raw.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(raw.id) ||
-      typeof raw.orderId !== 'string' || !UUID.test(raw.orderId) || typeof raw.fullCode !== 'string' || !/^[A-Z][A-Z0-9_]{1,63}$/u.test(raw.fullCode)) fail('INVALID_PROVIDER_EVENT');
-  const states = new Map([['ORDER_PLACED','placed'],['ORDER_CONFIRMED','confirmed'],['PREPARATION_STARTED','preparing'],['PREPARATION_ENDED','ready'],
-    ['ORDER_READY_TO_PICKUP','ready'],['ORDER_DISPATCHED','dispatched'],['ORDER_CONCLUDED','completed'],['ORDER_CANCELLED','cancelled'],['CANCELLATION_REQUESTED','cancellation_requested']]);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || typeof raw.id !== 'string' || raw.id.length < 1 || raw.id.length > 128 || /[\u0000-\u001f\u007f]/u.test(raw.id) ||
+      typeof raw.orderId !== 'string' || !UUID.test(raw.orderId) || typeof raw.fullCode !== 'string' || raw.fullCode.length < 1 || raw.fullCode.length > 128 || /[\u0000-\u001f\u007f]/u.test(raw.fullCode)) fail('INVALID_PROVIDER_EVENT');
+  const states = new Map([['PLACED','placed'],['ORDER_PLACED','placed'],['CONFIRMED','confirmed'],['ORDER_CONFIRMED','confirmed'],
+    ['PREPARATION_STARTED','preparing'],['PREPARATION_ENDED','ready'],['SEPARATION_ENDED','ready'],['READY_TO_PICKUP','ready'],['ORDER_READY_TO_PICKUP','ready'],
+    ['DISPATCHED','dispatched'],['ORDER_DISPATCHED','dispatched'],['CONCLUDED','completed'],['ORDER_CONCLUDED','completed'],
+    ['CANCELLED','cancelled'],['ORDER_CANCELLED','cancelled'],['CANCELLATION_REQUESTED','cancellation_requested'],['ORDER_PATCHED','modified']]);
   return Object.freeze({ provider: 'ifood', externalEventId: raw.id, externalOrderId: raw.orderId,
     occurredAt: raw.createdAt ? timestamp(raw.createdAt, 'event_time') : null, status: states.get(raw.fullCode) || 'unmapped', externalStatus: raw.fullCode });
 }
@@ -121,27 +123,29 @@ function normalizeOrderEvent(raw) {
 function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, timeoutMs = 8000, clock = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), orderDetailRetryWindowMs = 10 * 60 * 1000 } = {}) {
   if (typeof credentialResolver !== 'function' || typeof fetchImpl !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) throw new TypeError('Configuração de adapter iFood inválida.');
   const tokens = new Map();
+  const trackingRequests = new Map();
   async function request(path, { method = 'GET', body, credentials, authRetries = 0 } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers = { Accept: 'application/json' };
       if (credentials) {
-        const credentialKey = crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}`).digest('hex');
+        const credentialKey = crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}\0${credentials.accountScope || ''}`).digest('hex');
         const cached = tokens.get(credentialKey);
         if (!cached || cached.expiresAt <= clock() + 60000) {
-          const grantType = credentials.refreshToken ? 'refresh_token' : credentials.authorizationCode ? 'authorization_code' : 'client_credentials';
-          const fields = { grantType, clientId: credentials.clientId };
-          if (grantType === 'refresh_token') fields.refreshToken = credentials.refreshToken;
-          else if (grantType === 'authorization_code') { fields.code = credentials.authorizationCode; if (credentials.redirectUri) fields.redirectUri = credentials.redirectUri; }
-          else fields.clientSecret = credentials.clientSecret;
+          const refreshToken = cached?.refreshToken || credentials.refreshToken;
+          const grantType = refreshToken ? 'refresh_token' : credentials.authorizationCode ? 'authorization_code' : 'client_credentials';
+          if (grantType === 'authorization_code' && (typeof credentials.authorizationCodeVerifier !== 'string' || !credentials.authorizationCodeVerifier)) fail('AUTHORIZATION_VERIFIER_REQUIRED', 'auth');
+          const fields = { grantType, clientId: credentials.clientId, clientSecret: credentials.clientSecret };
+          if (grantType === 'refresh_token') fields.refreshToken = refreshToken;
+          else if (grantType === 'authorization_code') { fields.authorizationCode = credentials.authorizationCode; fields.authorizationCodeVerifier = credentials.authorizationCodeVerifier; }
           const form = new URLSearchParams(fields);
           const auth = await fetchImpl(`${API}/authentication/v1.0/oauth/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: form, signal: controller.signal, redirect: 'error' });
           const authRaw = await readResponse(auth);
           if (auth.status === 401 || auth.status === 403) fail('AUTH_REJECTED', 'auth', auth.status);
           if (!auth.ok) fail('AUTH_SERVICE_ERROR', auth.status === 429 || auth.status >= 500 ? 'transient' : 'permanent', auth.status, retryAfter(auth));
           if (!authRaw || typeof authRaw.accessToken !== 'string' || authRaw.accessToken.length > 8000 || !Number.isInteger(authRaw.expiresIn) || authRaw.expiresIn < 60) fail('INVALID_AUTH_RESPONSE');
-          tokens.set(credentialKey, { value: authRaw.accessToken, refreshToken: authRaw.refreshToken || credentials.refreshToken || null, expiresAt: clock() + authRaw.expiresIn * 1000 });
+          tokens.set(credentialKey, { value: authRaw.accessToken, refreshToken: authRaw.refreshToken || refreshToken || null, expiresAt: clock() + authRaw.expiresIn * 1000 });
         }
         headers.Authorization = `Bearer ${tokens.get(credentialKey).value}`;
       }
@@ -149,7 +153,10 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       const response = await fetchImpl(`${API}${path}`, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}), signal: controller.signal, redirect: 'error' });
       const data = response.status === 204 ? null : await readResponse(response);
       if (response.status === 401) {
-        tokens.delete(crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}`).digest('hex'));
+        const credentialKey = crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}\0${credentials.accountScope || ''}`).digest('hex');
+        const previous = tokens.get(credentialKey);
+        if (previous?.refreshToken) credentials.refreshToken = previous.refreshToken;
+        tokens.delete(credentialKey);
         if (authRetries < 1) return request(path, { method, body, credentials, authRetries: authRetries + 1 });
         fail('AUTH_EXPIRED', 'auth', 401);
       }
@@ -192,7 +199,7 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     let credentials = suppliedCredentials;
     if (!credentials) { try { credentials = await credentialResolver(companyId, 'ifood'); } catch (_) { fail('CREDENTIALS_UNAVAILABLE', 'auth'); } }
     if (!credentials || typeof credentials.clientId !== 'string' || !credentials.clientId || typeof credentials.clientSecret !== 'string' || !credentials.clientSecret) fail('CREDENTIALS_UNAVAILABLE', 'auth');
-    return method(credentials);
+    return method({ ...credentials, accountScope: companyId });
   }
   return Object.freeze({ provider: 'ifood', capabilities: CAPABILITIES,
     async pollEvents({ companyId, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
@@ -200,12 +207,13 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       if (result.status === 204) return Object.freeze([]);
       if (!Array.isArray(result.data?.events)) fail('INVALID_PROVIDER_RESPONSE');
       return Object.freeze(result.data.events.map(event => Object.freeze({ id: event.id, code: event.code, fullCode: event.fullCode,
-        orderId: event.orderId, createdAt: event.createdAt, metadata: event.metadata || null })));
+        orderId: event.orderId, createdAt: event.createdAt })));
     }, supplied); },
     async acknowledgeEvents({ companyId, eventIds, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
-      if (!Array.isArray(eventIds) || eventIds.length < 1 || eventIds.length > 100 || eventIds.some(id => typeof id !== 'string' || id.length > 128)) fail('INVALID_EVENT_IDS');
+      if (!Array.isArray(eventIds) || eventIds.length < 1 || eventIds.length > 100 || eventIds.some(id => typeof id !== 'string' || id.length < 1 || id.length > 128 || /[\u0000-\u001f\u007f]/u.test(id))) fail('INVALID_EVENT_IDS');
       const result = await request('/order/v1.0/orders:acknowledgment', { method: 'POST', body: { acknowledgedEventIds: eventIds }, credentials });
-      return Object.freeze({ acknowledged: result.status >= 200 && result.status < 300 });
+      if (result.status !== 202) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze({ acknowledged: true, confirmation: 'pending' });
     }, supplied); },
     async confirmOrder({ companyId, orderId, credentials: supplied } = {}) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
       const result = await request(`/order/v1.0/orders/${orderId}/confirm`, { method: 'POST', credentials });
@@ -227,8 +235,16 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       if (result.status !== 202) fail('INVALID_PROVIDER_RESPONSE');
       return Object.freeze({ accepted: true, confirmation: 'pending' });
     }, supplied); },
-    async requestOrderCancellation({ companyId, orderId, reason, credentials: supplied } = {}) { uuid(orderId, 'order_id'); if (typeof reason !== 'string' || !reason.trim()) fail('INVALID_CANCELLATION_REASON'); return invoke(companyId, async credentials => {
-      const result = await request(`/order/v1.0/orders/${orderId}/requestCancellation`, { method: 'POST', body: { reason: reason.slice(0, 500) }, credentials });
+    async cancellationReasons({ companyId, orderId, credentials: supplied } = {}) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
+      const result = await request(`/order/v1.0/orders/${orderId}/cancellationReasons`, { credentials });
+      if (!Array.isArray(result.data?.reasons)) fail('INVALID_PROVIDER_RESPONSE');
+      return Object.freeze(result.data.reasons.map(item => {
+        if (!item || typeof item.code !== 'string' || !item.code || typeof item.description !== 'string') fail('INVALID_PROVIDER_RESPONSE');
+        return Object.freeze({ code: item.code, description: item.description.slice(0, 160) });
+      }));
+    }, supplied); },
+    async requestOrderCancellation({ companyId, orderId, reason, credentials: supplied } = {}) { uuid(orderId, 'order_id'); if (typeof reason !== 'string' || !reason.trim() || reason.length > 64 || /[\u0000-\u001f\u007f]/u.test(reason)) fail('INVALID_CANCELLATION_REASON'); return invoke(companyId, async credentials => {
+      const result = await request(`/order/v1.0/orders/${orderId}/requestCancellation`, { method: 'POST', body: { reason }, credentials });
       if (result.status !== 202) fail('INVALID_PROVIDER_RESPONSE');
       return Object.freeze({ accepted: true, confirmation: 'pending' });
     }, supplied); },
@@ -266,6 +282,11 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       return Object.freeze({ provider: 'ifood', status: 'requested', confirmation: 'pending' });
     }, supplied); },
     async tracking({ companyId, orderId, credentials: supplied }) { uuid(orderId, 'order_id'); return invoke(companyId, async credentials => {
+      const trackingKey = `${companyId}:${orderId}`;
+      const previous = trackingRequests.get(trackingKey);
+      const elapsed = previous == null ? Infinity : clock() - previous;
+      if (elapsed < 30_000) fail('TRACKING_RATE_LIMITED', 'rate_limit', 429, Math.ceil((30_000 - elapsed) / 1000));
+      trackingRequests.set(trackingKey, clock());
       const result = await request(`/shipping/v1.0/orders/${orderId}/tracking`, { credentials });
       return trackingFromResponse(result.data);
     }, supplied); },

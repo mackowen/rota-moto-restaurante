@@ -28,6 +28,9 @@ assert.equal(quoteFromResponse({ id: quote, createdAt: new Date().toISOString(),
 assert.equal(quoteFromResponse({ id: quote, createdAt: new Date().toISOString(), expirationAt: future,
   quote: { grossValue: 12.5, discount: 1, raise: 0 }, preparationTime: 600 }).etaAt, null,
   'preparation time is not misrepresented as delivery ETA');
+assert.equal(quoteFromResponse({ id: quote, createdAt: new Date().toISOString(), expirationAt: future,
+  quote: { grossValue: 7.99, discount: 0, netValue: 7.99 } }).amountMinor, 799,
+  'official quote schema for existing iFood orders uses netValue and may omit raise');
 assert.throws(() => quoteFromResponse({ id: quote, createdAt: new Date().toISOString(), expirationAt: new Date(Date.now() - 1).toISOString(), quote: { grossValue: 5, discount: 0, raise: 0 } }), error => error.code === 'QUOTE_EXPIRED');
 assert.throws(() => quoteFromResponse({ id: quote, createdAt: new Date().toISOString(), expirationAt: future, quote: { grossValue: 5, discount: 6, raise: 0 } }), error => error.code === 'INVALID_PROVIDER_RESPONSE');
 assert.throws(() => trackingFromResponse({ latitude: 91, longitude: 0 }), error => error.code === 'INVALID_LATITUDE');
@@ -47,6 +50,14 @@ assert.equal(verifyWebhookSignature(raw, sig, 'webhook-secret'), true);
 assert.equal(verifyWebhookSignature(raw, sig.toUpperCase(), 'webhook-secret'), true);
 assert.equal(verifyWebhookSignature(Buffer.from('{ "id":"event"}'), sig, 'webhook-secret'), false);
 assert.equal(verifyWebhookSignature(raw, sig, 'wrong-secret'), false);
+const officialWebhookBody = Buffer.from('{"code":"PLC","createdAt":"2023-02-20T18:19:03.20162269Z","fullCode":"PLACED","id":"a38ba215-f949-4b2c-982a-0582a9d0c10e","merchantId":"cad65e8f-6fc6-438a-b159-e64a902a6b9a","orderId":"2c97e104-35ed-4c18-85d7-854a40b6b9e3"}');
+assert.equal(verifyWebhookSignature(officialWebhookBody, '6f9ed23a7b505a3b6907c5f6eb2ad1b056fbf35a643d365a9a072ed7aabca153', 'dummysecret'), true,
+  'official iFood HMAC vector validates against preserved raw bytes');
+const { normalizeOrderEvent } = require('../backend/logistics/providers/ifood');
+assert.equal(normalizeOrderEvent({ id: 'a38ba215-f949-4b2c-982a-0582a9d0c10e', orderId: order, fullCode: 'PLACED' }).status, 'placed');
+assert.equal(normalizeOrderEvent({ id: 'event-1', orderId: order, fullCode: 'DISPATCHED' }).status, 'dispatched');
+assert.equal(normalizeOrderEvent({ id: 'event:opaque/1', orderId: order, fullCode: 'NEW-CODE' }).status, 'unmapped',
+  'unknown future string event codes are retained for reconciliation instead of rejected by an invented enum regex');
 
 (async () => {
   const { adapter, requests } = adapterFor([
@@ -60,6 +71,8 @@ assert.equal(verifyWebhookSignature(raw, sig, 'wrong-secret'), false);
   assert.equal(priced.currency, 'BRL');
   assert.equal((await adapter.dispatch({ companyId: tenant, orderId: order, quoteId: quote })).confirmation, 'pending');
   assert.equal((await adapter.tracking({ companyId: tenant, orderId: order })).deliveryEtaEndSeconds, 300);
+  await assert.rejects(adapter.tracking({ companyId: tenant, orderId: order }), error => error.code === 'TRACKING_RATE_LIMITED' && error.retryAfterSeconds === 30,
+    'tracking requests respect documented per-order 30 second interval');
   assert.equal(requests.filter(request => request.url.endsWith('/oauth/token')).length, 1, 'token is reused until near expiry');
   assert.equal(requests[1].options.headers.Authorization, 'Bearer synthetic-token');
   assert.equal(requests[2].options.body, JSON.stringify({ quoteId: quote }));
@@ -68,24 +81,43 @@ assert.equal(verifyWebhookSignature(raw, sig, 'wrong-secret'), false);
 
   const orders = adapterFor([
     response(200, { accessToken: 'order-token', expiresIn: 3600 }),
-    response(200, { events: [{ id: 'evt-1', orderId: order, code: 'PLACED', fullCode: 'ORDER_PLACED', createdAt: new Date().toISOString() }] }),
+    response(200, { events: [{ id: 'evt-1', orderId: order, code: 'PLACED', fullCode: 'ORDER_PLACED', createdAt: new Date().toISOString(), metadata: { customer: { phone: 'sensitive fixture' } } }] }),
     response(202, { status: 'ACCEPTED' }),
     response(200, { id: order, status: 'PLACED', displayId: '1234', orderType: 'DELIVERY', customer: {}, delivery: {}, items: [] }),
     response(200, [{ id: order, name: 'Loja teste' }]),
+    response(200, { reasons: [{ code: '503', description: 'Item unavailable' }] }),
     response(202, { status: 'ACCEPTED' }), response(202, { status: 'ACCEPTED' }),
     response(202, { status: 'ACCEPTED' }), response(202, { status: 'ACCEPTED' }), response(202, { status: 'ACCEPTED' })
   ]);
   const events = await orders.adapter.pollEvents({ companyId: tenant });
   assert.equal(events[0].orderId, order);
+  assert.equal(Object.hasOwn(events[0], 'metadata'), false, 'event PII payload is not copied into the durable inbox projection');
   assert.equal((await orders.adapter.acknowledgeEvents({ companyId: tenant, eventIds: ['evt-1'] })).acknowledged, true);
   assert.deepEqual(JSON.parse(orders.requests[2].options.body), { acknowledgedEventIds: ['evt-1'] });
   assert.equal((await orders.adapter.order({ companyId: tenant, orderId: order })).source, 'ifood');
   assert.equal((await orders.adapter.merchants({ companyId: tenant }))[0].name, 'Loja teste');
+  assert.deepEqual(await orders.adapter.cancellationReasons({ companyId: tenant, orderId: order }), [{ code: '503', description: 'Item unavailable' }]);
   for (const action of ['confirmOrder', 'startPreparation', 'readyToPickup', 'dispatchMerchantDelivery', 'requestOrderCancellation']) {
-    const result = await orders.adapter[action]({ companyId: tenant, orderId: order, reason: 'Teste sintético' });
+    const result = await orders.adapter[action]({ companyId: tenant, orderId: order, reason: '503' });
     assert.deepEqual(result, { accepted: true, confirmation: 'pending' }, `${action} must preserve 202 as pending`);
   }
   assert.deepEqual(JSON.parse(orders.requests.at(-2).options.body), { deliveredBy: 'MERCHANT' });
+  const dynamicCancellation = adapterFor([response(200, { accessToken: 'order-token', expiresIn: 3600 }), response(202, { status: 'ACCEPTED' })]);
+  await dynamicCancellation.adapter.requestOrderCancellation({ companyId: tenant, orderId: order, reason: 'provider-returned-code' });
+  assert.deepEqual(JSON.parse(dynamicCancellation.requests.at(-1).options.body), { reason: 'provider-returned-code' },
+    'cancellation code remains an opaque string returned by the documented reason list');
+
+  let authorizationFields;
+  const authorizationFlow = createIfoodAdapter({ credentialResolver: async () => ({ clientId: 'distributed-client', clientSecret: 'distributed-secret',
+    authorizationCode: 'synthetic-code', authorizationCodeVerifier: 'synthetic-verifier' }), fetchImpl: async (url, options) => {
+    if (url.endsWith('/oauth/token')) { authorizationFields = options.body; return response(200, { accessToken: 'distributed-token', expiresIn: 3600 }); }
+    return response(200, []);
+  } });
+  await authorizationFlow.merchants({ companyId: tenant });
+  assert.equal(authorizationFields.get('grantType'), 'authorization_code');
+  assert.equal(authorizationFields.get('authorizationCode'), 'synthetic-code');
+  assert.equal(authorizationFields.get('authorizationCodeVerifier'), 'synthetic-verifier');
+  assert.equal(authorizationFields.get('code'), null, 'iFood OAuth uses documented authorizationCode, not generic code');
 
   for (const [status, code, classification] of [[401, 'AUTH_EXPIRED', 'auth'], [403, 'AUTH_FORBIDDEN', 'auth'], [429, 'RATE_LIMITED', 'rate_limit'], [503, 'PROVIDER_TRANSIENT', 'transient'], [400, 'PROVIDER_REJECTED', 'permanent']]) {
     const queue = [response(200, { accessToken: 't', expiresIn: 3600 }), response(status, {}, { 'retry-after': '4' })];
@@ -108,6 +140,14 @@ assert.equal(verifyWebhookSignature(raw, sig, 'wrong-secret'), false);
   const tenantB = '8eb0f612-e039-49a8-b621-a5d3f03b0953';
   await scoped.adapter.quote({ companyId: tenantB, orderId: order });
   assert.deepEqual(tenantCalls, [tenant, tenantB]);
+
+  const sharedCredentials = adapterFor([
+    response(200, { accessToken: 'tenant-a-token', expiresIn: 3600 }), response(200, { id: quote, createdAt: new Date().toISOString(), expirationAt: future, quote: { grossValue: 1, discount: 0, raise: 0 } }),
+    response(200, { accessToken: 'tenant-b-token', expiresIn: 3600 }), response(200, { id: quote, createdAt: new Date().toISOString(), expirationAt: future, quote: { grossValue: 1, discount: 0, raise: 0 } })
+  ], async () => ({ clientId: 'shared-client', clientSecret: 'shared-secret' }));
+  await sharedCredentials.adapter.quote({ companyId: tenant, orderId: order });
+  await sharedCredentials.adapter.quote({ companyId: tenantB, orderId: order });
+  assert.equal(sharedCredentials.requests[3].options.headers.Authorization, 'Bearer tenant-b-token', 'account token cache is tenant scoped even when app credentials are shared');
 
   let fakeNow = Date.now(); let detailCalls = 0;
   const detailRetry = createIfoodAdapter({ credentialResolver: async () => ({ clientId: 'id', clientSecret: 'secret' }), clock: () => fakeNow,

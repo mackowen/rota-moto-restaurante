@@ -2,19 +2,46 @@
 
 const PROVIDERS = Object.freeze([
   Object.freeze({ key: 'ifood', name: 'iFood', capability: 'blocked_external',
-    capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'SUPPORTED', quote: 'SUPPORTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'SUPPORTED', tracking: 'SUPPORTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
+    capabilityMatrix: Object.freeze({ account: 'SUPPORTED', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'SUPPORTED', quote: 'SUPPORTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'SUPPORTED', tracking: 'SUPPORTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
     blockers: Object.freeze(['merchant_credentials', 'merchant_authorization', 'homologation', 'provider_worker_account_routing']) }),
   Object.freeze({ key: '99food', name: '99Food', capability: 'blocked_external',
     capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'REQUIRES_PARTNERSHIP', orders: 'REQUIRES_PARTNERSHIP', webhook: 'REQUIRES_PARTNERSHIP', polling: 'REQUIRES_PARTNERSHIP', selfDelivery: 'NOT_PUBLICLY_DOCUMENTED', platformDelivery: 'NOT_PUBLICLY_DOCUMENTED', quote: 'NOT_PUBLICLY_DOCUMENTED', dispatch: 'NOT_PUBLICLY_DOCUMENTED', cancelOrder: 'NOT_PUBLICLY_DOCUMENTED', cancelDelivery: 'NOT_PUBLICLY_DOCUMENTED', tracking: 'NOT_PUBLICLY_DOCUMENTED', sandbox: 'REQUIRES_PARTNERSHIP', homologation: 'REQUIRES_PARTNERSHIP' }),
     blockers: Object.freeze(['certification', 'application_access', 'official_contract_validation', 'merchant_authorization']) }),
   Object.freeze({ key: 'keeta', name: 'Keeta', capability: 'blocked_external',
-    capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'SUPPORTED', quote: 'NOT_PUBLICLY_DOCUMENTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'NOT_PUBLICLY_DOCUMENTED', tracking: 'SUPPORTED', sandbox: 'REQUIRES_PARTNERSHIP', homologation: 'REQUIRES_PARTNERSHIP' }),
+    capabilityMatrix: Object.freeze({ account: 'SUPPORTED', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'NOT_SUPPORTED', quote: 'NOT_PUBLICLY_DOCUMENTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'NOT_PUBLICLY_DOCUMENTED', tracking: 'SUPPORTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
     blockers: Object.freeze(['application_credentials', 'merchant_authorization', 'SIT_certification', 'provider_account_routing']) })
 ]);
 
 const RETRYABLE_HTTP = new Set([408, 425, 429, 500, 502, 503, 504]);
 const MAX_RETRY_AFTER_SECONDS = 3600;
 const MAX_RETRY_ATTEMPTS = 8;
+
+const PUBLICLY_DOCUMENTED = Object.freeze({
+  ifood: new Set(['account','merchant','orders','webhook','polling','selfDelivery','platformDelivery','quote','dispatch','cancelOrder','cancelDelivery','tracking','sandbox','homologation']),
+  '99food': new Set(),
+  keeta: new Set(['account','merchant','orders','webhook','polling','selfDelivery','dispatch','cancelOrder','tracking','sandbox'])
+});
+const LOCAL_ADAPTERS = Object.freeze({
+  ifood: new Set(['merchant', 'orders', 'webhook', 'polling', 'selfDelivery', 'platformDelivery', 'quote', 'dispatch', 'cancelOrder', 'cancelDelivery', 'tracking']),
+  '99food': new Set(),
+  keeta: new Set(['account', 'merchant', 'orders', 'webhook', 'polling', 'selfDelivery', 'dispatch', 'cancelOrder', 'tracking'])
+});
+const LOCALLY_TESTED = Object.freeze({
+  ifood: new Set(['merchant', 'orders', 'webhook', 'polling', 'selfDelivery', 'platformDelivery', 'quote', 'dispatch', 'cancelOrder', 'cancelDelivery', 'tracking']),
+  '99food': new Set(),
+  keeta: new Set(['account', 'orders', 'webhook', 'polling', 'selfDelivery', 'dispatch', 'cancelOrder', 'tracking'])
+});
+
+function auditedCapabilities(provider) {
+  return Object.fromEntries(Object.entries(provider.capabilityMatrix).map(([name, contract]) => [name, Object.freeze({
+    DOCUMENTED: PUBLICLY_DOCUMENTED[provider.key].has(name),
+    IMPLEMENTED: LOCAL_ADAPTERS[provider.key].has(name),
+    RUNTIME_WIRED: false,
+    LOCAL_TESTED: LOCALLY_TESTED[provider.key].has(name),
+    SANDBOX_TESTED: false,
+    PRODUCTION_AUTHORIZED: false
+  })]));
+}
 
 function publicCatalog(persisted = []) {
   const byProvider = new Map(persisted.map(row => [row.provider, row]));
@@ -28,10 +55,11 @@ function publicCatalog(persisted = []) {
       provider: provider.key,
       displayName: provider.name,
       capability: provider.capability,
-      capabilities: { ...provider.capabilityMatrix },
+      capabilityContract: { ...provider.capabilityMatrix },
+      capabilities: auditedCapabilities(provider),
       capabilityNotes: provider.key === 'ifood' ? 'Pedidos, cancelamento de pedido e entrega são recursos diferentes. Ações de Shipping documentadas ainda exigem conta, autorização e worker para funcionar.' :
         provider.key === '99food' ? 'A Open Platform anuncia pedidos e webhooks, mas exige acesso aos contratos detalhados e certificação antes de implementar transporte.' :
-          'Dispatch e tracking documentados são para entrega própria do merchant; cancelamento de pedido não cancela courier. Não há contratação avulsa de courier Keeta.' ,
+          'App token e URL de autorização têm adapter local; callback, vínculo da loja e grant shop-level não estão ligados ao runtime. Dados PII protegidos não são desencriptados nem formam Order canônico. Dispatch e tracking são para entrega própria; não existe contratação avulsa de courier Keeta.' ,
       state: disabled ? 'disabled' : row?.status === 'error' ? 'error' : row?.status === 'active' && accountConfirmed ? 'authorized_unverified' : 'configuration_required',
       connectionVerified,
       lastEventAt: row?.lastEventAt || null,

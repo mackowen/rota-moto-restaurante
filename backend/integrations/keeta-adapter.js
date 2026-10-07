@@ -1,24 +1,21 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { API, signRequest, canonicalJson } = require('./keeta-protocol');
-
-const SAFE_ID = /^[A-Za-z0-9_-]{1,128}$/u;
+const { API, signRequest, canonicalJson, opaqueId } = require('./keeta-protocol');
 const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 function normalizeKeetaOrder(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !SAFE_ID.test(String(raw.id || '')) || !Array.isArray(raw.items)) throw new KeetaError('INVALID_PROVIDER_ORDER', 'permanent');
-  const addr = raw.delivery?.deliveryAddress || {};
-  const address = [addr.street, addr.number, addr.complement, addr.district, addr.city, addr.state, addr.postalCode]
-    .filter(value => typeof value === 'string' && value.trim()).join(', ').slice(0, 800);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !opaqueId(raw.id) || !Array.isArray(raw.items)) throw new KeetaError('INVALID_PROVIDER_ORDER', 'permanent');
+  // Customer/address details may be encrypted or desensitized by Keeta. Keep the
+  // adapter projection free of PII; a future fulfillment boundary must decrypt
+  // only when contractually required and must not persist the result here.
   const items = raw.items.map(item => {
     if (!item || typeof item.name !== 'string' || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) throw new KeetaError('INVALID_PROVIDER_ORDER', 'permanent');
     return Object.freeze({ name: item.name.slice(0, 240), quantity: Number(item.quantity) });
   });
   return Object.freeze({ source: 'keeta', externalId: String(raw.id), externalDisplayId: typeof raw.displayId === 'string' ? raw.displayId.slice(0, 64) : null,
     status: typeof raw.lastEvent === 'string' ? raw.lastEvent : null, orderType: ['DELIVERY','TAKEOUT','INDOOR'].includes(raw.type) ? raw.type : null,
-    createdAt: raw.createdAt || null, customer: raw.customer && typeof raw.customer.name === 'string' ? Object.freeze({ name: raw.customer.name.slice(0, 160) }) : null,
-    address, items: Object.freeze(items) });
+    createdAt: raw.createdAt || null, items: Object.freeze(items) });
 }
 
 class KeetaError extends Error {
@@ -32,7 +29,21 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
   if (typeof credentialResolver !== 'function' || typeof fetchImpl !== 'function') throw new TypeError('Resolver de credenciais Keeta obrigatório.');
   const tokenCache = new Map();
   async function read(response) {
-    const text = await response.text();
+    const declared = Number(response.headers?.get?.('content-length'));
+    if (Number.isFinite(declared) && declared > 256 * 1024) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent');
+    let text;
+    if (response.body?.getReader) {
+      const reader = response.body.getReader(); const chunks = []; let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read(); if (done) break;
+          size += value.byteLength;
+          if (size > 256 * 1024) { await reader.cancel().catch(() => {}); throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent'); }
+          chunks.push(Buffer.from(value));
+        }
+      } finally { reader.releaseLock?.(); }
+      text = Buffer.concat(chunks).toString('utf8');
+    } else text = await response.text();
     if (Buffer.byteLength(text, 'utf8') > 256 * 1024) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent');
     if (!text) return null;
     try { return JSON.parse(text); } catch (_) { throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent'); }
@@ -64,10 +75,9 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     const body = { client_id: credentials.clientId, client_secret: credentials.clientSecret, grant_type: 'app_level_token' };
     const result = await fetchJson(`${API}/oauth/token`, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: canonicalJson(body) });
     if (typeof result.data?.access_token !== 'string' || !result.data.access_token || !Number.isInteger(result.data.expires_in) || result.data.expires_in < 30) throw new KeetaError('INVALID_AUTH_RESPONSE', 'auth');
-    const value = { accessToken: result.data.access_token, refreshToken: result.data.refresh_token || credentials.refreshToken || null,
-      expiresAt: clock() + result.data.expires_in * 1000 };
+    const value = { accessToken: result.data.access_token, expiresAt: clock() + result.data.expires_in * 1000 };
     tokenCache.set(key, value);
-    await persistToken({ key, refreshToken: value.refreshToken, expiresAt: value.expiresAt });
+    await persistToken({ key, expiresAt: value.expiresAt });
     return value.accessToken;
   }
   async function call(companyId, path, { method = 'GET', query = {}, body, headers = {} } = {}) {
@@ -94,7 +104,7 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     }
     throw new KeetaError('AUTH_EXPIRED', 'auth', 401);
   }
-  function orderId(id) { if (typeof id !== 'string' || !SAFE_ID.test(id)) throw new KeetaError('INVALID_ORDER_ID', 'permanent'); return encodeURIComponent(id); }
+  function orderId(id) { if (!opaqueId(id)) throw new KeetaError('INVALID_ORDER_ID', 'permanent'); return encodeURIComponent(id); }
   return Object.freeze({ provider: 'keeta',
     async authorizationUrl({ companyId, redirectUri, state }) {
       if (typeof state !== 'string' || !/^[A-Za-z0-9_-]{24,128}$/u.test(state)) throw new KeetaError('INVALID_OAUTH_STATE', 'permanent');
@@ -102,24 +112,39 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       try { callback = new URL(redirectUri); } catch (_) { throw new KeetaError('INVALID_CALLBACK_URL', 'permanent'); }
       if (callback.protocol !== 'https:' || callback.username || callback.password) throw new KeetaError('INVALID_CALLBACK_URL', 'permanent');
       callback.searchParams.set('state', state);
-      const c = await credentialResolver(companyId, 'keeta'); const query = { clientId: c.clientId, redirectUri: callback.toString() };
-      return (await call(companyId, '/oauth/authorization/url', { query })).data?.merchantAuthorizationUrl || null;
+      let c;
+      try { c = await credentialResolver(companyId, 'keeta'); } catch (_) { throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth'); }
+      if (!c || typeof c.clientId !== 'string' || !c.clientId) throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth');
+      // The documented authorization URL is the bootstrap step and has no OAuth
+      // security requirement. It must remain callable before any merchant has
+      // authorized the app (when an app-level token may not yet be obtainable).
+      const query = new URLSearchParams({ clientId: c.clientId, redirectUri: callback.toString() });
+      const response = await fetchJson(`${API}/oauth/authorization/url?${query}`, { method: 'GET', headers: { Accept: 'application/json' } });
+      const authorization = response.data?.merchantAuthorizationUrl;
+      if (typeof authorization !== 'string') throw new KeetaError('INVALID_AUTH_RESPONSE', 'auth');
+      let destination;
+      try { destination = new URL(authorization); } catch (_) { throw new KeetaError('INVALID_AUTH_RESPONSE', 'auth'); }
+      if (destination.protocol !== 'https:' || destination.hostname !== 'merchant.mykeeta.com') throw new KeetaError('INVALID_AUTH_RESPONSE', 'auth');
+      return destination.toString();
     },
-    async merchantInfo({ companyId, authId }) { if (!SAFE_ID.test(authId || '')) throw new KeetaError('INVALID_AUTH_ID', 'permanent'); return (await call(companyId, `/oauth/authorized/${encodeURIComponent(authId)}/merchantInfo`)).data; },
-    async pollEvents({ companyId, merchantIds, eventTypes }) {
-      if (!Array.isArray(merchantIds) || !merchantIds.length || merchantIds.length > 100 || merchantIds.some(id => !SAFE_ID.test(id))) throw new KeetaError('INVALID_MERCHANTS', 'permanent');
-      if (eventTypes && (!Array.isArray(eventTypes) || !eventTypes.length || eventTypes.length > 13)) throw new KeetaError('INVALID_EVENT_TYPES', 'permanent');
+    async merchantInfo({ companyId, authId }) { if (!opaqueId(authId)) throw new KeetaError('INVALID_AUTH_ID', 'permanent'); return (await call(companyId, `/oauth/authorized/${encodeURIComponent(authId)}/merchantInfo`)).data; },
+    async pollEvents({ companyId, serviceMerchantIds, eventTypes }) {
+      // Keeta's contract expects IDs assigned by the Software Service for each
+      // mapped store, not the Keeta merchant ID. The runtime must resolve these
+      // from its trusted account binding before polling.
+      if (!Array.isArray(serviceMerchantIds) || !serviceMerchantIds.length || serviceMerchantIds.length > 100 || serviceMerchantIds.some(id => !opaqueId(id) || id.includes(','))) throw new KeetaError('INVALID_MERCHANTS', 'permanent');
+      if (eventTypes && (!Array.isArray(eventTypes) || !eventTypes.length || eventTypes.length > 13 || eventTypes.some(type => !opaqueId(type) || type.includes(',')))) throw new KeetaError('INVALID_EVENT_TYPES', 'permanent');
       const query = eventTypes ? { eventType: eventTypes.join(',') } : {};
-      const result = await call(companyId, '/v1/events:polling', { query, headers: { 'x-polling-merchants': merchantIds.join(',') } });
+      const result = await call(companyId, '/v1/events:polling', { query, headers: { 'x-polling-merchants': serviceMerchantIds.join(',') } });
       if (result.status === 204) return Object.freeze([]);
       if (!Array.isArray(result.data)) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent');
       return Object.freeze(result.data.map(event => {
-        if (!SAFE_ID.test(String(event.eventId || '')) || !SAFE_ID.test(String(event.orderId || '')) || typeof event.eventType !== 'string') throw new KeetaError('INVALID_PROVIDER_EVENT', 'permanent');
-        return Object.freeze({ id: String(event.eventId), orderId: String(event.orderId), eventType: event.eventType, createdAt: event.createdAt, orderURL: event.orderURL });
+        if (!opaqueId(event.eventId) || !opaqueId(event.orderId) || typeof event.eventType !== 'string' || !opaqueId(event.eventType)) throw new KeetaError('INVALID_PROVIDER_EVENT', 'permanent');
+        return Object.freeze({ id: String(event.eventId), orderId: String(event.orderId), eventType: event.eventType, createdAt: event.createdAt });
       }));
     },
     async acknowledgeEvents({ companyId, events }) {
-      if (!Array.isArray(events) || !events.length || events.length > 100 || events.some(event => !SAFE_ID.test(event?.id || '') || !SAFE_ID.test(event?.orderId || '') || typeof event?.eventType !== 'string')) throw new KeetaError('INVALID_EVENT_IDS', 'permanent');
+      if (!Array.isArray(events) || !events.length || events.length > 100 || events.some(event => !opaqueId(event?.id) || !opaqueId(event?.orderId) || !opaqueId(event?.eventType))) throw new KeetaError('INVALID_EVENT_IDS', 'permanent');
       const result = await call(companyId, '/v1/events/acknowledgment', { method: 'POST', body: events.map(({ id, orderId: oid, eventType }) => ({ id, orderId: oid, eventType })) });
       if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent');
       return Object.freeze({ accepted: true, confirmation: 'pending' });
@@ -128,18 +153,20 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     async confirm({ companyId, id, orderExternalCode, createdAt, preparationTime }) {
       const body = { orderExternalCode, createdAt, ...(Number.isInteger(preparationTime) ? { preparationTime } : {}) };
       const result = await call(companyId, `/v1/orders/${orderId(id)}/confirm`, { method: 'POST', body });
-      return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' });
+      if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status);
+      return Object.freeze({ accepted: true, confirmation: 'pending' });
     },
-    async readyForPickup({ companyId, id }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/readyForPickup`, { method: 'POST' }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
+    async readyForPickup({ companyId, id }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/readyForPickup`, { method: 'POST' }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
     async requestCancellation({ companyId, id, reason, code, mode = 'MANUAL', outOfStockItems = [], invalidItems = [] }) {
-      const allowed = new Set(['SYSTEMIC_ISSUES','DUPLICATE_APPLICATION','UNAVAILABLE_ITEM','RESTAURANT_WITHOUT_DELIVERY_PERSON','OUTDATED_MENU','ORDER_OUTSIDE_THE_DELIVERY_AREA','BLOCKED_CUSTOMER','OUTSIDE_DELIVERY_HOURS','INTERNAL_DIFFICULTIES_OF_THE_RESTAURANT','RISK_AREA']);
+      const allowed = new Set(['SYSTEMIC_ISSUES','DUPLICATE_APPLICATION','UNAVAILABLE_ITEM','RESTAURANT_WITHOUT_DELIVERY_PERSON','OUTDATED_MENU','ORDER_OUTSIDE_THE_DELIVERY_AREA','BLOCKED_CUSTOMER','OUTSIDE_DELIVERY_HOURS','INTERNAL_DIFFICULTIES_OF_THE_RESTAURANT','RISK_AREA','DELIVERY_PROBLEM']);
       if (typeof reason !== 'string' || !reason.trim() || !allowed.has(code) || !['AUTO','MANUAL'].includes(mode)) throw new KeetaError('INVALID_CANCELLATION', 'permanent');
       const result = await call(companyId, `/v1/orders/${orderId(id)}/requestCancellation`, { method: 'POST', body: { reason: reason.slice(0, 500), code, mode, outOfStockItems: outOfStockItems.slice(0, 100), invalidItems: invalidItems.slice(0, 100) } });
-      return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' });
+      if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status);
+      return Object.freeze({ accepted: true, confirmation: 'pending' });
     },
-    async dispatchSelfDelivery({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/dispatch`, { method: 'POST', body: { deliveryTrackingInfo } }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
-    async markDeliveredSelfDelivery({ companyId, id, body = {} }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/delivered`, { method: 'POST', body }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); },
-    async sendSelfDeliveryTracking({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/tracking`, { method: 'POST', body: { deliveryTrackingInfo } }); return Object.freeze({ accepted: result.status === 202, confirmation: 'pending' }); }
+    async dispatchSelfDelivery({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/dispatch`, { method: 'POST', body: { deliveryTrackingInfo } }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
+    async markDeliveredSelfDelivery({ companyId, id, body = {} }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/delivered`, { method: 'POST', body }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
+    async sendSelfDeliveryTracking({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/tracking`, { method: 'POST', body: { deliveryTrackingInfo } }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); }
   });
 }
 
