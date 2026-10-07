@@ -235,12 +235,13 @@ async function main() {
     const integrationPrivileges = await runtimeClient.query(`SELECT
       has_table_privilege(current_user,'rotamoto.integrations','SELECT') AS integrations_read,
       has_table_privilege(current_user,'rotamoto.integrations','INSERT') AS integrations_insert,
+      has_table_privilege(current_user,'rotamoto.integrations','UPDATE') AS integrations_update,
       has_table_privilege(current_user,'rotamoto.external_accounts','SELECT') AS accounts_read,
       has_column_privilege(current_user,'rotamoto.external_accounts','display_name','SELECT') AS account_display_read,
       has_column_privilege(current_user,'rotamoto.external_accounts','secret_ref','SELECT') AS account_secret_read,
       has_column_privilege(current_user,'rotamoto.external_accounts','secret_ref','UPDATE') AS account_secret_update,
       has_table_privilege(current_user,'rotamoto.external_accounts','UPDATE') AS accounts_update`);
-    assert.deepEqual(integrationPrivileges.rows[0], { integrations_read: true, integrations_insert: false,
+    assert.deepEqual(integrationPrivileges.rows[0], { integrations_read: true, integrations_insert: true, integrations_update: true,
       accounts_read: false, account_display_read: true, account_secret_read: false, account_secret_update: false,
       accounts_update: false }, 'runtime gets column-scoped integration metadata access without credential references');
     const lifecyclePrivileges = await runtimeClient.query(`SELECT
@@ -290,7 +291,8 @@ async function main() {
       NOT EXISTS (SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
         WHERE d.defaclrole='rotamoto_migrator'::regrole AND d.defaclobjtype='f'
           AND a.grantee=0 AND a.privilege_type='EXECUTE') AS no_public_execute_default`);
-    assert.equal(ownership.rows[0].owned_routines, 7);
+    assert.equal(ownership.rows[0].owned_routines, 11,
+      'migrator owns the seven prior routines plus four marketplace claim/route routines');
     assert.equal(ownership.rows[0].migrator_ledger, 1);
     assert.equal(ownership.rows[0].intelligence_settings_protected, true,
       'new economic settings table is owned by migrator and enforces RLS and FORCE RLS');
@@ -349,7 +351,9 @@ async function main() {
       'roles','role_permissions','memberships','sessions','integrations','external_accounts',
       'local_id_maps','audit_log','sync_inbox','sync_outbox','provisioning_requests','identity_tokens',
       'sync_installations','domain_records','proof_media_upload_intents','logistics_providers','delivery_fulfillments','dispatch_attempts','delivery_geo_snapshots',
-      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots','logistics_intelligence_settings','logistics_decisions','logistics_route_settings'
+      'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots','logistics_intelligence_settings','logistics_decisions','logistics_route_settings',
+      'marketplace_account_bindings','marketplace_account_routes','marketplace_authorization_events','marketplace_command_outbox',
+      'marketplace_event_inbox','marketplace_oauth_secrets','marketplace_oauth_states','marketplace_order_versions'
     ]));
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -460,7 +464,8 @@ async function main() {
         assert.match(locationDown.stderr,/Uso: node backend\/postgres\/migrate\.js/u,'rollback denial is the runner guard, not an SQL failure');
         const stillLatest=await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
         assert.equal(stillLatest.rows[0].migration_id,appliedLedger.rows[0].migration_id,'blocked rollback leaves the E2E schema at the approved latest migration');
-      } else if (['0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings'].includes(appliedLedger.rows[0]?.migration_id)) {
+      } else if (['0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings',
+        '0035_marketplace_runtime','0036_marketplace_lifecycle_hardening','0037_marketplace_worker_secret_boundary','0038_marketplace_resolver_lifecycle_grants'].includes(appliedLedger.rows[0]?.migration_id)) {
         assert.match(getMigrations().at(-1).down, /rollback bloqueado/u, 'provider integration data migrations explicitly block rollback');
         const blockedDown = runMigrationSync('down');
         assert.notEqual(blockedDown.status,0,'approved provider/decision persistence rollback stays blocked');
