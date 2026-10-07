@@ -151,14 +151,14 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       }
       return Object.freeze({...first,authorizedShops:Object.freeze(authorizedShops)});
     },
-    async pollEvents({ companyId, serviceMerchantIds, eventTypes }) {
+    async pollEvents({ companyId, serviceMerchantIds, eventTypes, credentials: supplied }) {
       // Keeta's contract expects IDs assigned by the Software Service for each
       // mapped store, not the Keeta merchant ID. The runtime must resolve these
       // from its trusted account binding before polling.
       if (!Array.isArray(serviceMerchantIds) || !serviceMerchantIds.length || serviceMerchantIds.length > 100 || serviceMerchantIds.some(id => !opaqueId(id) || id.includes(','))) throw new KeetaError('INVALID_MERCHANTS', 'permanent');
       if (eventTypes && (!Array.isArray(eventTypes) || !eventTypes.length || eventTypes.length > 13 || eventTypes.some(type => !opaqueId(type) || type.includes(',')))) throw new KeetaError('INVALID_EVENT_TYPES', 'permanent');
       const query = eventTypes ? { eventType: eventTypes.join(',') } : {};
-      const result = await call(companyId, '/v1/events:polling', { query, headers: { 'x-polling-merchants': serviceMerchantIds.join(',') } });
+      const result = await call(companyId, '/v1/events:polling', { query, headers: { 'x-polling-merchants': serviceMerchantIds.join(',') }, credentials:supplied });
       if (result.status === 204) return Object.freeze([]);
       if (!Array.isArray(result.data)) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent');
       return Object.freeze(result.data.map(event => {
@@ -166,30 +166,30 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
         return Object.freeze({ id: String(event.eventId), orderId: String(event.orderId), eventType: event.eventType, createdAt: event.createdAt });
       }));
     },
-    async acknowledgeEvents({ companyId, events }) {
+    async acknowledgeEvents({ companyId, events, credentials: supplied }) {
       if (!Array.isArray(events) || !events.length || events.length > 100 || events.some(event => !opaqueId(event?.id) || !opaqueId(event?.orderId) || !opaqueId(event?.eventType))) throw new KeetaError('INVALID_EVENT_IDS', 'permanent');
-      const result = await call(companyId, '/v1/events/acknowledgment', { method: 'POST', body: events.map(({ id, orderId: oid, eventType }) => ({ id, orderId: oid, eventType })) });
+      const result = await call(companyId, '/v1/events/acknowledgment', { method: 'POST', body: events.map(({ id, orderId: oid, eventType }) => ({ id, orderId: oid, eventType })), credentials:supplied });
       if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent');
       return Object.freeze({ accepted: true, confirmation: 'pending' });
     },
-    async order({ companyId, id }) { return normalizeKeetaOrder((await call(companyId, `/v1/orders/${orderId(id)}`)).data); },
-    async confirm({ companyId, id, orderExternalCode, createdAt, preparationTime }) {
+    async order({ companyId, id, credentials: supplied }) { return normalizeKeetaOrder((await call(companyId, `/v1/orders/${orderId(id)}`,{credentials:supplied})).data); },
+    async confirm({ companyId, id, orderExternalCode, createdAt, preparationTime, credentials: supplied }) {
       const body = { orderExternalCode, createdAt, ...(Number.isInteger(preparationTime) ? { preparationTime } : {}) };
-      const result = await call(companyId, `/v1/orders/${orderId(id)}/confirm`, { method: 'POST', body });
+      const result = await call(companyId, `/v1/orders/${orderId(id)}/confirm`, { method: 'POST', body, credentials:supplied });
       if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status);
       return Object.freeze({ accepted: true, confirmation: 'pending' });
     },
-    async readyForPickup({ companyId, id }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/readyForPickup`, { method: 'POST' }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
-    async requestCancellation({ companyId, id, reason, code, mode = 'MANUAL', outOfStockItems = [], invalidItems = [] }) {
+    async readyForPickup({ companyId, id, credentials: supplied }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/readyForPickup`, { method: 'POST', credentials:supplied }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
+    async requestCancellation({ companyId, id, reason, code, mode = 'MANUAL', outOfStockItems = [], invalidItems = [], credentials: supplied }) {
       const allowed = new Set(['SYSTEMIC_ISSUES','DUPLICATE_APPLICATION','UNAVAILABLE_ITEM','RESTAURANT_WITHOUT_DELIVERY_PERSON','OUTDATED_MENU','ORDER_OUTSIDE_THE_DELIVERY_AREA','BLOCKED_CUSTOMER','OUTSIDE_DELIVERY_HOURS','INTERNAL_DIFFICULTIES_OF_THE_RESTAURANT','RISK_AREA','DELIVERY_PROBLEM']);
       if (typeof reason !== 'string' || !reason.trim() || !allowed.has(code) || !['AUTO','MANUAL'].includes(mode)) throw new KeetaError('INVALID_CANCELLATION', 'permanent');
-      const result = await call(companyId, `/v1/orders/${orderId(id)}/requestCancellation`, { method: 'POST', body: { reason: reason.slice(0, 500), code, mode, outOfStockItems: outOfStockItems.slice(0, 100), invalidItems: invalidItems.slice(0, 100) } });
+      const result = await call(companyId, `/v1/orders/${orderId(id)}/requestCancellation`, { method: 'POST', body: { reason: reason.slice(0, 500), code, mode, outOfStockItems: outOfStockItems.slice(0, 100), invalidItems: invalidItems.slice(0, 100) }, credentials:supplied });
       if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status);
       return Object.freeze({ accepted: true, confirmation: 'pending' });
     },
-    async dispatchSelfDelivery({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/dispatch`, { method: 'POST', body: { deliveryTrackingInfo } }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
-    async markDeliveredSelfDelivery({ companyId, id, body = {} }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/delivered`, { method: 'POST', body }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
-    async sendSelfDeliveryTracking({ companyId, id, deliveryTrackingInfo }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/tracking`, { method: 'POST', body: { deliveryTrackingInfo } }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); }
+    async dispatchSelfDelivery({ companyId, id, deliveryTrackingInfo, credentials: supplied }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/dispatch`, { method: 'POST', body: { deliveryTrackingInfo }, credentials:supplied }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
+    async markDeliveredSelfDelivery({ companyId, id, body = {}, credentials: supplied }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/delivered`, { method: 'POST', body, credentials:supplied }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); },
+    async sendSelfDeliveryTracking({ companyId, id, deliveryTrackingInfo, credentials: supplied }) { const result = await call(companyId, `/v1/orders/${orderId(id)}/tracking`, { method: 'POST', body: { deliveryTrackingInfo }, credentials:supplied }); if (result.status !== 202) throw new KeetaError('INVALID_PROVIDER_RESPONSE', 'permanent', result.status); return Object.freeze({ accepted: true, confirmation: 'pending' }); }
   });
 }
 

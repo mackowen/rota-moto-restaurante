@@ -337,6 +337,9 @@ function createAdminRepository() {
       FROM rotamoto.integrations i WHERE ea.company_id=$1 AND ea.id=$2 AND ea.integration_id=i.id AND i.company_id=ea.company_id AND i.provider=$3
       RETURNING ea.id::text,ea.account_status,ea.last_sync_at`,[companyId,accountId,provider]);
     if(!result.rowCount)throw Object.assign(new Error('Marketplace account not found.'),{code:'NOT_FOUND'});
+    await client.query(`UPDATE rotamoto.marketplace_command_outbox SET status='needs_review',lease_token=NULL,lease_until=NULL,
+      completed_at=now(),last_error_code='ACCOUNT_DISABLED',updated_at=now() WHERE company_id=$1 AND external_account_id=$2
+        AND status IN ('queued','leased','pending','unknown_outcome')`,[companyId,accountId]);
     return {account:{id:result.rows[0].id,status:result.rows[0].account_status,lastSyncAt:result.rows[0].last_sync_at}};
   }
   return Object.freeze({ company, memberships, roles, integrations, disableIntegrationAccount, permissions, createRole, updateRole, updateMembership,

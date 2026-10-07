@@ -41,6 +41,7 @@ const {createKeetaAdapter}=require('./backend/integrations/keeta-adapter');
 const {createMarketplaceAccountWriter}=require('./backend/integrations/marketplace-account-writer');
 const {createMarketplaceAccountService,validPublicUrl}=require('./backend/integrations/marketplace-account-service');
 const {createMarketplaceAdminHandler}=require('./backend/integrations/marketplace-admin-http');
+const {createMarketplaceRuntime}=require('./backend/integrations/marketplace-runtime');
 
 function bootstrapFailure(error){
   if(require.main===module){process.stderr.write(`${JSON.stringify({event:'http.bootstrap_failed',code:/^ROTAMOTO_CONFIG_/u.test(error?.code||'')?error.code:'STARTUP_CONFIGURATION_INVALID'})}\n`);process.exit(1)}
@@ -85,21 +86,23 @@ async function getMarketplaceHttp(){
     const writer=createMarketplaceAccountWriter({privilegedPool:marketplaceResolverPool,secretProvider:secrets});
     const ifood=createIfoodAdapter({credentialResolver:async companyId=>accounts.credentials('ifood',companyId),persistToken:record=>writer.persistTokens(record)});
     const keeta=createKeetaAdapter({credentialResolver:async companyId=>accounts.credentials('keeta',companyId)});
-    const webhook=createMarketplaceHttpHandler({pool:identityPool,adapters:{ifood,keeta},accountResolver:accounts,logger:requestLogger});
+    const applicationCredentials=async provider=>{
+      const key=provider==='ifood'?'IFOOD':'KEETA';
+      const clientId=process.env[`ROTAMOTO_${key}_CLIENT_ID`],secretRef=process.env[`ROTAMOTO_${key}_CLIENT_SECRET_REF`];
+      if(!clientId||!secretRef)throw Object.assign(new Error('Provider application credentials are not configured.'),{code:'PROVIDER_CREDENTIALS_NOT_CONFIGURED',status:503});
+      const clientSecret=await secrets.get(secretRef,{name:`marketplace/${provider}/client-secret`,scope:'installation'});
+      return {clientId,clientSecret};
+    };
+    const webhook=createMarketplaceHttpHandler({pool:identityPool,adapters:{ifood,keeta},accountResolver:accounts,accountWriter:writer,
+      keetaApplicationCredentials:()=>applicationCredentials('keeta'),logger:requestLogger});
     const base=process.env.PUBLIC_BASE_URL;
     const callback=validPublicUrl(base?new URL('/?marketplace=keeta',base).toString():null);
     const keetaWebhookBase=validPublicUrl(base?new URL('/api/marketplace/keeta/webhooks/',base).toString():null);
     let admin=null;
     if(callback){
-      const applicationCredentials=async provider=>{
-        const key=provider==='ifood'?'IFOOD':'KEETA';
-        const clientId=process.env[`ROTAMOTO_${key}_CLIENT_ID`],secretRef=process.env[`ROTAMOTO_${key}_CLIENT_SECRET_REF`];
-        if(!clientId||!secretRef)throw Object.assign(new Error('Provider application credentials are not configured.'),{code:'PROVIDER_CREDENTIALS_NOT_CONFIGURED',status:503});
-        const clientSecret=await secrets.get(secretRef,{name:`marketplace/${provider}/client-secret`,scope:'installation'});
-        return {clientId,clientSecret};
-      };
       const accountService=createMarketplaceAccountService({pool:identityPool,accountWriter:writer,secretProvider:secrets,adapters:{ifood,keeta},applicationCredentials,publicCallbackUrl:callback,keetaWebhookBaseUrl:keetaWebhookBase});
-      admin=createMarketplaceAdminHandler({identityService,accountService,adminService,logger:requestLogger,allowedOrigin:ALLOWED_ORIGINS});
+      const marketplaceRuntime=createMarketplaceRuntime({pool:identityPool,adapters:{ifood,keeta},accountResolver:accounts,logger:requestLogger});
+      admin=createMarketplaceAdminHandler({identityService,accountService,adminService,marketplaceRuntime,accountWriter:writer,logger:requestLogger,allowedOrigin:ALLOWED_ORIGINS});
     }
     return {webhook,admin};
   })();

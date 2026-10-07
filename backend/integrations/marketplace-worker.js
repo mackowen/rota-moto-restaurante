@@ -41,7 +41,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
       if(account?.status==='active'&&account.companyId===companyId&&account.provider===command.provider) {
         const order=command.provider==='ifood'
           ? await adapters.ifood.order({companyId,orderId:command.external_order_id,credentials:account.credentials})
-          : await adapters.keeta.order({companyId,id:command.external_order_id});
+          : await adapters.keeta.order({companyId,id:command.external_order_id,credentials:account.credentials});
         const state=String(order.status||'').toUpperCase();
         const expected={CONFIRM:['CONFIRMED'],START_PREPARATION:['PREPARATION_STARTED'],READY:['READY_TO_PICKUP','READY_FOR_PICKUP'],
           DISPATCH_MERCHANT:['DISPATCHED'],CANCEL_ORDER:['CANCELLED']}[command.operation]||[];
@@ -67,7 +67,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
     const adapter = adapters[command.provider];
     const common = command.provider === 'ifood'
       ? { companyId: command.company_id, orderId: command.external_order_id, credentials: account.credentials }
-      : { companyId: command.company_id, id: command.external_order_id };
+      : { companyId: command.company_id, id: command.external_order_id, credentials: account.credentials };
     switch (command.operation) {
       case 'CONFIRM': return command.provider === 'ifood' ? adapter.confirmOrder(common) : adapter.confirm({ ...common, ...command.command_data });
       case 'START_PREPARATION': if (command.provider !== 'ifood') throw Object.assign(new Error('Unsupported command.'),{code:'UNSUPPORTED_OPERATION'}); return adapter.startPreparation(common);
@@ -89,14 +89,18 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
       await client.query("SELECT set_config('app.tenant_id',$1,true)",[command.company_id]);
       if (outcome.ok) {
         const pending = outcome.value?.confirmation === 'pending' || outcome.value?.status === 'pending';
+        const resultData=command.operation==='SHIPPING_QUOTE'&&outcome.value?{
+          externalQuoteReference:outcome.value.externalQuoteReference,amountMinor:outcome.value.amountMinor,currency:outcome.value.currency,expiresAt:outcome.value.expiresAt
+        }:{};
         await client.query(`UPDATE rotamoto.marketplace_command_outbox SET status=$4,lease_token=NULL,lease_until=NULL,
-          completed_at=CASE WHEN $4='succeeded' THEN now() ELSE NULL END,last_error_code=NULL,updated_at=now()
+          completed_at=CASE WHEN $4='succeeded' THEN now() ELSE NULL END,last_error_code=NULL,result_data=$5::jsonb,updated_at=now()
           WHERE company_id=$1 AND command_id=$2 AND lease_token=$3`,
-        [command.company_id,command.command_id,command.lease_token,pending?'pending':'succeeded']);
+        [command.company_id,command.command_id,command.lease_token,pending?'pending':'succeeded',JSON.stringify(resultData)]);
       } else {
         const failure = sanitizedError(outcome.error);
-        const unknown = outcome.error?.code === 'PROVIDER_TIMEOUT' || outcome.error?.classification === 'unknown' ||
-          (SIDE_EFFECTS.has(command.operation) && Number(outcome.error?.status)>=500);
+        const safeRead=['SHIPPING_QUOTE','SHIPPING_TRACKING'].includes(command.operation);
+        const unknown = !safeRead&&(outcome.error?.code === 'PROVIDER_TIMEOUT' || outcome.error?.classification === 'unknown' ||
+          (SIDE_EFFECTS.has(command.operation) && Number(outcome.error?.status)>=500));
         const retrySafe = ['safe_retry','idempotent'].includes(command.retry_class);
         const explicitRateLimit=Number(outcome.error?.status)===429;
         const delay = !unknown && (retrySafe||explicitRateLimit) ? retryDelayMs({status:outcome.error?.status,retryAfterSeconds:outcome.error?.retryAfterSeconds,
@@ -145,7 +149,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
             const adapter=adapters[provider];
             const events=provider==='ifood'
               ? await adapter.pollEvents({companyId,credentials:account.credentials})
-              : await adapter.pollEvents({companyId,serviceMerchantIds:[account.serviceMerchantId]});
+              : await adapter.pollEvents({companyId,serviceMerchantIds:[account.serviceMerchantId],credentials:account.credentials});
             await runtime.ingestPolled(account,events);
           } catch(error) {
             const failure=sanitizedError(error);

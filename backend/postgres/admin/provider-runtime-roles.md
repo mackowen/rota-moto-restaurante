@@ -17,7 +17,7 @@ Depois de criar as roles, reaplique os grants mínimos usando uma conexão admin
 psql -X -v ON_ERROR_STOP=1 -d rotamoto -f backend/postgres/admin/provider-runtime-grants.sql
 ```
 
-Migration 0023 aplica esses grants condicionalmente quando as roles já existem e revoga o claim de `rotamoto_app`. Se o schema já está em 0023 e as roles foram criadas depois, o arquivo acima reaplica as permissões. Confira as ACLs por coluna/função antes de ligar o worker.
+As migrations 0023 e 0035–0038 aplicam grants condicionalmente quando as roles já existem. Crie as roles antes das migrations e reaplique `provider-runtime-grants.sql` depois delas; o arquivo cobre tanto logistics quanto marketplace. O worker não pode ler `external_accounts.secret_ref` nem tabelas de verifier OAuth. O resolver é o único runtime que lê/escreve referências de segredo e limpa os verifiers one-shot. Confira as ACLs por coluna/função antes de ligar os serviços.
 
 O worker exige `ROTAMOTO_PROVIDER_WORKER_ENABLED=true`, URLs sem senha para as roles dedicadas, refs de senha no secret provider e allowlist tenant explícita. O resolver abre transação, define `app.tenant_id`, verifica `current_user=rotamoto_provider_resolver`, lê somente o `secret_ref` do provider ativo e resolve o conteúdo no secret provider. O app HTTP nunca recebe a conexão resolver.
 

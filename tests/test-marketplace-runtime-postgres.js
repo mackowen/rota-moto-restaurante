@@ -65,6 +65,42 @@ async function main() {
     assert.equal(domain.rows[0].entity_type,'Order');
     assert.equal(domain.rows[0].payload.source,'ifood');
     assert.equal(domain.rows[0].payload.logistics,null);
+    assert.equal(Object.hasOwn(domain.rows[0].payload,'customer'),false,'customer name and phone from provider detail are not projected');
+    assert.equal(Object.hasOwn(domain.rows[0].payload,'address'),false,'delivery address is not retained without a domain need');
+    const idempotencyKey=`browser-command-${id()}`;
+    const command=await runtime.enqueueOrderCommand({companyId:a.company,domainOrderId:version.rows[0].domain_order_id,
+      operation:'CONFIRM',idempotencyKey,commandData:{}});
+    assert.equal(command.duplicate,false,'authenticated tenant producer inserts durable marketplace command');
+    const replay=await runtime.enqueueOrderCommand({companyId:a.company,domainOrderId:version.rows[0].domain_order_id,
+      operation:'CONFIRM',idempotencyKey,commandData:{}});
+    assert.equal(replay.duplicate,true,'command producer is idempotent for client replay');
+    await assert.rejects(runtime.enqueueOrderCommand({companyId:b.company,domainOrderId:version.rows[0].domain_order_id,
+      operation:'CONFIRM',idempotencyKey:`cross-tenant-${id()}`,commandData:{}}),error=>error.code==='NOT_FOUND',
+      'domain order UUID from another tenant cannot be used to enqueue a provider command');
+    const persistedCommand=await migrator.query('SELECT status,retry_class,command_data FROM rotamoto.marketplace_command_outbox WHERE command_id=$1',[command.command_id]);
+    assert.equal(persistedCommand.rows[0].status,'queued');
+    assert.equal(persistedCommand.rows[0].retry_class,'reconcile_before_retry');
+    assert.deepEqual(persistedCommand.rows[0].command_data,{});
+    await migrator.query('COMMIT');await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[a.company]);
+    const sideEffectLease=id();
+    const eligibilityCheck=await migrator.query(`SELECT c.status,c.attempts,c.retry_class,a.account_status,a.link_status,i.status AS integration_status
+      FROM rotamoto.marketplace_command_outbox c JOIN rotamoto.external_accounts a ON a.id=c.external_account_id AND a.company_id=c.company_id
+      JOIN rotamoto.integrations i ON i.id=a.integration_id AND i.company_id=a.company_id WHERE c.company_id=$1 AND c.command_id=$2`,[a.company,command.command_id]);
+    const claimedSideEffect=await migrator.query('SELECT * FROM rotamoto.claim_marketplace_command($1,$2,$3)',[a.company,sideEffectLease,30]);
+    assert.equal(claimedSideEffect.rows[0]?.command_id,command.command_id,`worker claim uses durable command lease; eligible=${JSON.stringify(eligibilityCheck.rows)} claim=${JSON.stringify(claimedSideEffect.rows)}`);
+    await migrator.query(`UPDATE rotamoto.marketplace_command_outbox SET lease_until=now()-interval '1 second' WHERE company_id=$1 AND command_id=$2`,[a.company,command.command_id]);
+    const afterWorkerCrash=await migrator.query('SELECT * FROM rotamoto.claim_marketplace_command($1,$2,$3)',[a.company,id(),30]);
+    assert.equal(afterWorkerCrash.rowCount,0,'expired side-effect lease is not handed to another worker blindly');
+    const uncertain=await migrator.query('SELECT status,last_error_code FROM rotamoto.marketplace_command_outbox WHERE company_id=$1 AND command_id=$2',[a.company,command.command_id]);
+    assert.equal(uncertain.rows[0].status,'unknown_outcome');assert.equal(uncertain.rows[0].last_error_code,'WORKER_LEASE_EXPIRED');
+    const readCommand=await runtime.enqueueOrderCommand({companyId:a.company,domainOrderId:version.rows[0].domain_order_id,
+      operation:'SHIPPING_QUOTE',idempotencyKey:`safe-read-${id()}`,commandData:{}});
+    await migrator.query('COMMIT');await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[a.company]);
+    const firstReadLease=await migrator.query('SELECT * FROM rotamoto.claim_marketplace_command($1,$2,$3)',[a.company,id(),30]);
+    assert.equal(firstReadLease.rows[0]?.command_id,readCommand.command_id,'safe read command may be claimed');
+    await migrator.query(`UPDATE rotamoto.marketplace_command_outbox SET lease_until=now()-interval '1 second' WHERE company_id=$1 AND command_id=$2`,[a.company,readCommand.command_id]);
+    const restartedRead=await migrator.query('SELECT * FROM rotamoto.claim_marketplace_command($1,$2,$3)',[a.company,id(),30]);
+    assert.equal(restartedRead.rows[0]?.command_id,readCommand.command_id,'read-only command is reclaimable after worker restart');
     assert.equal((await migrator.query('SELECT count(*)::int AS count FROM rotamoto.marketplace_event_inbox WHERE external_event_id=$1',[eventId])).rows[0].count,1);
     const denied = await assert.rejects(runtime.ingest({provider:'ifood',accountId:b.account,rawBody:raw,signature}), error => error.code === 'INVALID_SIGNATURE');
     assert.equal(denied,undefined);
@@ -110,6 +146,7 @@ async function main() {
       await migrator.query('BEGIN').catch(()=>{});
       await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]).catch(()=>{});
       await migrator.query('DELETE FROM rotamoto.marketplace_order_versions WHERE company_id=$1',[row.company]).catch(()=>{});
+      await migrator.query('DELETE FROM rotamoto.marketplace_command_outbox WHERE company_id=$1',[row.company]).catch(()=>{});
       await migrator.query('DELETE FROM rotamoto.marketplace_event_inbox WHERE company_id=$1',[row.company]).catch(()=>{});
       await migrator.query('DELETE FROM rotamoto.marketplace_account_bindings WHERE company_id=$1',[row.company]).catch(()=>{});
       await migrator.query('DELETE FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type=\'Order\' AND source_installation_id IN (SELECT id FROM rotamoto.sync_installations WHERE company_id=$1 AND local_device_id LIKE \'marketplace-%\')',[row.company]).catch(()=>{});
