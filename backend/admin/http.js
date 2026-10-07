@@ -73,6 +73,8 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
       if (!config && (match = /^\/api\/admin\/memberships\/([0-9a-f-]{36})\/driver$/iu.exec(url.pathname)))
         config = { method: req.method === 'DELETE' ? 'DELETE' : 'PUT', permission: 'company.manage',
           operation: req.method === 'DELETE' ? 'disassociateMembershipDriver' : 'associateMembershipDriver', id: match[1] };
+      if (!config && (match = /^\/api\/admin\/integrations\/(ifood|99food|keeta)\/accounts\/([0-9a-f-]{36})\/disable$/iu.exec(url.pathname)))
+        config={method:'POST',permission:'integrations.manage',operation:'disableIntegrationAccount',provider:match[1].toLowerCase(),id:match[2]};
       if (!config) throw error('NOT_FOUND');
       if (config.id && !UUID.test(config.id)) throw error('INVALID_INPUT');
       if (req.method !== config.method) { status = 405; send(res, status, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' }, requestId }, { Allow: config.method }); return true; }
@@ -129,6 +131,7 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
           case 'roles': return adminService.roles(client, principal);
           case 'permissions': return adminService.permissions(client, principal);
           case 'integrations': return adminService.integrations(client, principal);
+          case 'disableIntegrationAccount': exact(body,[]); return adminService.disableIntegrationAccount(client,principal,config.provider,config.id);
           case 'createRole': return adminService.createRole(client, principal, validateRole(body, true));
           case 'updateRole': return adminService.updateRole(client, principal, config.id, validateRole(body, false));
           case 'updateMembership': return adminService.updateMembership(client, principal, config.id, validateMembership(body));

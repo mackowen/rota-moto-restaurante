@@ -80,10 +80,10 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     await persistToken({ key, expiresAt: value.expiresAt });
     return value.accessToken;
   }
-  async function call(companyId, path, { method = 'GET', query = {}, body, headers = {} } = {}) {
+  async function call(companyId, path, { method = 'GET', query = {}, body, headers = {}, credentials: supplied = null } = {}) {
     if (typeof companyId !== 'string' || !/^[0-9a-f-]{36}$/iu.test(companyId)) throw new KeetaError('INVALID_TENANT', 'permanent');
-    let credentials;
-    try { credentials = await credentialResolver(companyId, 'keeta'); } catch (_) { throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth'); }
+    let credentials=supplied;
+    if(!credentials)try { credentials = await credentialResolver(companyId, 'keeta'); } catch (_) { throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth'); }
     if (!credentials || typeof credentials.clientId !== 'string' || typeof credentials.clientSecret !== 'string' || !credentials.clientId || !credentials.clientSecret) throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth');
     const credentialKey = crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}\0${credentials.authId || ''}`).digest('hex');
     const queryText = Object.keys(query).sort().map(k => `${encodeURIComponent(k)}=${encodeURIComponent(query[k] == null ? '' : String(query[k]))}`).join('&');
@@ -106,14 +106,24 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
   }
   function orderId(id) { if (!opaqueId(id)) throw new KeetaError('INVALID_ORDER_ID', 'permanent'); return encodeURIComponent(id); }
   return Object.freeze({ provider: 'keeta',
-    async authorizationUrl({ companyId, redirectUri, state }) {
+    async onboardMerchant({ companyId, merchantId, keetaMerchantId, ordersWebhookURL, credentials: supplied }) {
+      if (!opaqueId(merchantId) || !Number.isSafeInteger(keetaMerchantId) || keetaMerchantId < 1 || typeof ordersWebhookURL !== 'string')
+        throw new KeetaError('INVALID_MERCHANT_BINDING','permanent');
+      let url;try{url=new URL(ordersWebhookURL);}catch(_){throw new KeetaError('INVALID_WEBHOOK_URL','permanent');}
+      if(url.protocol!=='https:'||url.username||url.password||url.hash)throw new KeetaError('INVALID_WEBHOOK_URL','permanent');
+      const result=await call(companyId,'/v1/merchantOnboarding',{method:'PUT',query:{merchantId},
+        body:{ordersWebhookURL:url.toString(),keetaMerchantId},credentials:supplied});
+      if(result.status!==201)throw new KeetaError('INVALID_PROVIDER_RESPONSE','permanent',result.status);
+      return Object.freeze({registered:true});
+    },
+    async authorizationUrl({ companyId, redirectUri, state, credentials: supplied }) {
       if (typeof state !== 'string' || !/^[A-Za-z0-9_-]{24,128}$/u.test(state)) throw new KeetaError('INVALID_OAUTH_STATE', 'permanent');
       let callback;
       try { callback = new URL(redirectUri); } catch (_) { throw new KeetaError('INVALID_CALLBACK_URL', 'permanent'); }
       if (callback.protocol !== 'https:' || callback.username || callback.password) throw new KeetaError('INVALID_CALLBACK_URL', 'permanent');
       callback.searchParams.set('state', state);
-      let c;
-      try { c = await credentialResolver(companyId, 'keeta'); } catch (_) { throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth'); }
+      let c=supplied;
+      if(!c)try { c = await credentialResolver(companyId, 'keeta'); } catch (_) { throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth'); }
       if (!c || typeof c.clientId !== 'string' || !c.clientId) throw new KeetaError('CREDENTIALS_UNAVAILABLE', 'auth');
       // The documented authorization URL is the bootstrap step and has no OAuth
       // security requirement. It must remain callable before any merchant has
@@ -127,7 +137,20 @@ function createKeetaAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       if (destination.protocol !== 'https:' || destination.hostname !== 'merchant.mykeeta.com') throw new KeetaError('INVALID_AUTH_RESPONSE', 'auth');
       return destination.toString();
     },
-    async merchantInfo({ companyId, authId }) { if (!opaqueId(authId)) throw new KeetaError('INVALID_AUTH_ID', 'permanent'); return (await call(companyId, `/oauth/authorized/${encodeURIComponent(authId)}/merchantInfo`)).data; },
+    async merchantInfo({ companyId, authId, credentials: supplied }) {
+      if (!opaqueId(authId)) throw new KeetaError('INVALID_AUTH_ID', 'permanent');
+      const authorizedShops=[]; let first=null; let totalPages=1;
+      for(let pageNum=1;pageNum<=totalPages;pageNum++) {
+        const result=(await call(companyId,`/oauth/authorized/${encodeURIComponent(authId)}/merchantInfo`,{query:{pageNum,pageSize:100},credentials:supplied})).data;
+        if(!result||!Array.isArray(result.authorizedShops)||!result.page||!Number.isInteger(result.page.totalPage)||result.page.totalPage<1||result.page.totalPage>1000||result.page.pageNum!==pageNum)
+          throw new KeetaError('INVALID_PROVIDER_RESPONSE','permanent');
+        if(first===null)first={...result};
+        totalPages=result.page.totalPage;
+        authorizedShops.push(...result.authorizedShops);
+        if(authorizedShops.length>100000)throw new KeetaError('INVALID_PROVIDER_RESPONSE','permanent');
+      }
+      return Object.freeze({...first,authorizedShops:Object.freeze(authorizedShops)});
+    },
     async pollEvents({ companyId, serviceMerchantIds, eventTypes }) {
       // Keeta's contract expects IDs assigned by the Software Service for each
       // mapped store, not the Keeta merchant ID. The runtime must resolve these

@@ -46,11 +46,29 @@ async function main() {
   assert.match(authorizationRequest.url, /\/oauth\/authorization\/url\?clientId=client&redirectUri=/u);
   assert.equal(Object.hasOwn(authorizationRequest.options.headers, 'Authorization'), false, 'authorization URL bootstrap does not require a token before merchant authorization');
   assert.equal(Object.hasOwn(authorizationRequest.options.headers, 'X-App-Signature'), false, 'authorization URL is called using the documented unsigned contract');
+  const merchantPages=[];
+  const paginated=createKeetaAdapter({credentialResolver:async()=>({clientId:'client',clientSecret:'secret'}),fetchImpl:async(url,options)=>{
+    merchantPages.push({url,options});
+    if(url.endsWith('/oauth/token'))return response(200,{access_token:'page-token',expires_in:3600});
+    const pageNum=Number(new URL(url).searchParams.get('pageNum'));
+    return response(200,{userId:1,brandId:2,brandName:'Synthetic',authorizedShops:[{shopId:pageNum,shopName:`Shop ${pageNum}`}],page:{pageNum,pageSize:100,totalPage:2,totalCount:2}});
+  }});
+  const shops=await paginated.merchantInfo({companyId:'00000000-0000-4000-8000-000000000001',authId:'auth-opaque'});
+  assert.deepEqual(shops.authorizedShops.map(shop=>shop.shopId),[1,2]);
+  assert.equal(merchantPages.filter(call=>call.url.includes('/merchantInfo')).length,2,'merchantInfo follows documented pageNum/pageSize pagination');
+  assert.equal(merchantPages.some(call=>call.url.includes('pageSize=100')),true);
   const persisted = [];
   const selfDeliveryCalls = [];
   const appToken = createKeetaAdapter({ credentialResolver: async () => ({ clientId: 'client', clientSecret: 'secret' }),
-    fetchImpl: async (url, options) => { selfDeliveryCalls.push({ url, options }); return url.endsWith('/oauth/token') ? response(200, { access_token: 'app-token', token_type: 'bearer', expires_in: 3600 }) : response(202, null); },
+    fetchImpl: async (url, options) => { selfDeliveryCalls.push({ url, options }); return url.endsWith('/oauth/token') ? response(200, { access_token: 'app-token', token_type: 'bearer', expires_in: 3600 }) : url.includes('/merchantOnboarding') ? response(201,{}) : response(202, null); },
     persistToken: async record => persisted.push(record) });
+  await appToken.onboardMerchant({companyId:'00000000-0000-4000-8000-000000000001',merchantId:'00000000-0000-4000-8000-000000000002',
+    keetaMerchantId:478268,ordersWebhookURL:'https://rotamoto.example/api/marketplace/keeta/webhooks/00000000-0000-4000-8000-000000000003'});
+  const onboarding=selfDeliveryCalls.find(call=>call.url.includes('/merchantOnboarding'));
+  assert.equal(new URL(onboarding.url).searchParams.get('merchantId'),'00000000-0000-4000-8000-000000000002');
+  assert.equal(onboarding.options.method,'PUT');
+  assert.deepEqual(JSON.parse(onboarding.options.body),{ordersWebhookURL:'https://rotamoto.example/api/marketplace/keeta/webhooks/00000000-0000-4000-8000-000000000003',keetaMerchantId:478268});
+  assert.ok(onboarding.options.headers['X-App-Signature'],'merchant onboarding is signed with the documented request mechanism');
   await appToken.readyForPickup({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1' });
   assert.deepEqual(Object.keys(persisted[0]).sort(), ['expiresAt', 'key'], 'app-level token persistence never invents/persists a refresh token');
   await appToken.dispatchSelfDelivery({ companyId: '00000000-0000-4000-8000-000000000001', id: 'o1', deliveryTrackingInfo: { event: { type: 'DELIVERY_ONGOING' } } });

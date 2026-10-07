@@ -319,17 +319,27 @@ function createAdminRepository() {
   }
   async function integrations(client, companyId) {
     const result = await client.query(`SELECT i.id::text,i.provider,i.status,i.created_at,i.updated_at,
-        ea.display_name,ea.link_status,ea.confirmed_at
+        ea.id::text AS external_account_key,ea.external_account_id,ea.display_name,ea.link_status,ea.confirmed_at,
+        ea.account_status,ea.last_sync_at,ea.last_error_code,ea.token_expires_at
       FROM rotamoto.integrations i LEFT JOIN rotamoto.external_accounts ea
         ON ea.company_id=i.company_id AND ea.integration_id=i.id
       WHERE i.company_id=$1 ORDER BY i.provider,ea.created_at,ea.id`, [companyId]);
     const persisted = result.rows.map(row => ({ provider: row.provider, status: row.status,
-      externalAccount: row.display_name === null ? null : { displayName: row.display_name,
-        linkStatus: row.link_status, confirmedAt: row.confirmed_at },
+      externalAccount: row.external_account_key === null ? null : { id:row.external_account_key,externalId:row.external_account_id,
+        displayName: row.display_name,linkStatus: row.link_status,accountStatus:row.account_status,
+        tokenExpiresAt:row.token_expires_at,lastSyncAt:row.last_sync_at,lastErrorCode:row.last_error_code,confirmedAt: row.confirmed_at },
       createdAt: row.created_at, updatedAt: row.updated_at }));
     return { integrations: publicCatalog(persisted) };
   }
-  return Object.freeze({ company, memberships, roles, integrations, permissions, createRole, updateRole, updateMembership,
+  async function disableIntegrationAccount(client,companyId,provider,accountId){
+    if(!['ifood','keeta','99food'].includes(provider))throw Object.assign(new Error('Unsupported provider.'),{code:'INVALID_INPUT'});
+    const result=await client.query(`UPDATE rotamoto.external_accounts ea SET account_status='disabled',last_error_code=NULL,updated_at=now()
+      FROM rotamoto.integrations i WHERE ea.company_id=$1 AND ea.id=$2 AND ea.integration_id=i.id AND i.company_id=ea.company_id AND i.provider=$3
+      RETURNING ea.id::text,ea.account_status,ea.last_sync_at`,[companyId,accountId,provider]);
+    if(!result.rowCount)throw Object.assign(new Error('Marketplace account not found.'),{code:'NOT_FOUND'});
+    return {account:{id:result.rows[0].id,status:result.rows[0].account_status,lastSyncAt:result.rows[0].last_sync_at}};
+  }
+  return Object.freeze({ company, memberships, roles, integrations, disableIntegrationAccount, permissions, createRole, updateRole, updateMembership,
     updateCompanyTimeZone, updateCompanyLocation, updateCompanyProfile, updateCompanyRouteGrouping, associateMembershipDriver, disassociateMembershipDriver });
 }
 

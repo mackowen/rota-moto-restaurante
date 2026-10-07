@@ -31,12 +31,17 @@ const LOCALLY_TESTED = Object.freeze({
   '99food': new Set(),
   keeta: new Set(['account', 'orders', 'webhook', 'polling', 'selfDelivery', 'dispatch', 'cancelOrder', 'tracking'])
 });
+const RUNTIME_WIRED = Object.freeze({
+  ifood: new Set(['merchant','orders','webhook','polling','selfDelivery','platformDelivery','quote','dispatch','cancelOrder','cancelDelivery','tracking']),
+  '99food': new Set(),
+  keeta: new Set(['account','merchant','orders','webhook','polling','selfDelivery','dispatch','cancelOrder'])
+});
 
 function auditedCapabilities(provider) {
   return Object.fromEntries(Object.entries(provider.capabilityMatrix).map(([name, contract]) => [name, Object.freeze({
     DOCUMENTED: PUBLICLY_DOCUMENTED[provider.key].has(name),
     IMPLEMENTED: LOCAL_ADAPTERS[provider.key].has(name),
-    RUNTIME_WIRED: false,
+    RUNTIME_WIRED: RUNTIME_WIRED[provider.key].has(name),
     LOCAL_TESTED: LOCALLY_TESTED[provider.key].has(name),
     SANDBOX_TESTED: false,
     PRODUCTION_AUTHORIZED: false
@@ -44,11 +49,15 @@ function auditedCapabilities(provider) {
 }
 
 function publicCatalog(persisted = []) {
-  const byProvider = new Map(persisted.map(row => [row.provider, row]));
+  const byProvider = new Map();
+  for(const row of persisted){if(!byProvider.has(row.provider))byProvider.set(row.provider,[]);byProvider.get(row.provider).push(row);}
   return PROVIDERS.map(provider => {
-    const row = byProvider.get(provider.key);
-    const disabled = row?.status === 'disabled';
-    const accountConfirmed = row?.externalAccount?.linkStatus === 'confirmed';
+    const rows = byProvider.get(provider.key)||[];
+    const row = rows[0];
+    const accounts = rows.map(item=>item.externalAccount).filter(Boolean);
+    const disabled = row?.status === 'disabled' || (accounts.length>0&&accounts.every(account=>account.accountStatus==='disabled'));
+    const accountConfirmed = accounts.some(account=>account.linkStatus === 'confirmed'&&
+      !['disabled','revoked','reauthorization_required','error'].includes(account.accountStatus));
     // A confirmed account link is not a provider health check or proof that tokens work.
     const connectionVerified = false;
     return {
@@ -57,18 +66,17 @@ function publicCatalog(persisted = []) {
       capability: provider.capability,
       capabilityContract: { ...provider.capabilityMatrix },
       capabilities: auditedCapabilities(provider),
-      capabilityNotes: provider.key === 'ifood' ? 'Pedidos, cancelamento de pedido e entrega são recursos diferentes. Ações de Shipping documentadas ainda exigem conta, autorização e worker para funcionar.' :
+      capabilityNotes: provider.key === 'ifood' ? 'A autorização e o worker estão disponíveis quando o servidor tem credenciais e roles configuradas. Contas listadas ainda precisam sincronizar para confirmar conexão; 202 permanece pendente.' :
         provider.key === '99food' ? 'A Open Platform anuncia pedidos e webhooks, mas exige acesso aos contratos detalhados e certificação antes de implementar transporte.' :
-          'App token e URL de autorização têm adapter local; callback, vínculo da loja e grant shop-level não estão ligados ao runtime. Dados PII protegidos não são desencriptados nem formam Order canônico. Dispatch e tracking são para entrega própria; não existe contratação avulsa de courier Keeta.' ,
+          'OAuth, vínculo da loja, pedidos e worker estão disponíveis quando credenciais e roles estão configuradas. O grant shop-level e a decifragem de PII permanecem fechados sem validação externa. Dispatch e tracking são para entrega própria; não existe contratação avulsa de courier Keeta.' ,
       state: disabled ? 'disabled' : row?.status === 'error' ? 'error' : row?.status === 'active' && accountConfirmed ? 'authorized_unverified' : 'configuration_required',
       connectionVerified,
-      lastEventAt: row?.lastEventAt || null,
-      externalAccount: row?.externalAccount ? {
-        displayName: row.externalAccount.displayName,
-        linkStatus: row.externalAccount.linkStatus,
-        confirmedAt: row.externalAccount.confirmedAt
-      } : null,
-      actions: Object.freeze({ connect: false, reconnect: false, disable: false }),
+      lastEventAt: accounts.map(account=>account.lastSyncAt).filter(Boolean).sort().at(-1)||null,
+      externalAccounts: accounts.map(account=>({id:account.id,externalId:account.externalId,displayName:account.displayName,
+        linkStatus:account.linkStatus,accountStatus:account.accountStatus,tokenExpiresAt:account.tokenExpiresAt,
+        lastSyncAt:account.lastSyncAt,lastErrorCode:account.lastErrorCode,confirmedAt:account.confirmedAt})),
+      externalAccount: accounts[0] ? {displayName:accounts[0].displayName,linkStatus:accounts[0].linkStatus,confirmedAt:accounts[0].confirmedAt} : null,
+      actions: Object.freeze({ connect: ['ifood','keeta'].includes(provider.key), reconnect: ['ifood','keeta'].includes(provider.key), disable: accounts.some(account=>account.accountStatus==='active') }),
       blockers: [...provider.blockers]
     };
   });

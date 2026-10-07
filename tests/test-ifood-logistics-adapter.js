@@ -119,6 +119,24 @@ assert.equal(normalizeOrderEvent({ id: 'event:opaque/1', orderId: order, fullCod
   assert.equal(authorizationFields.get('authorizationCodeVerifier'), 'synthetic-verifier');
   assert.equal(authorizationFields.get('code'), null, 'iFood OAuth uses documented authorizationCode, not generic code');
 
+  const userCodeFlow=adapterFor([
+    response(200,{userCode:'ABCD-EFGH',authorizationCodeVerifier:'synthetic-verifier',verificationUrl:'https://portal.ifood.com.br/apps/code',
+      verificationUrlComplete:'https://portal.ifood.com.br/apps/code?c=ABCD-EFGH',expiresIn:600}),
+    response(200,{accessToken:'oauth-access',refreshToken:'oauth-refresh',expiresIn:21600})
+  ]);
+  const userCode=await userCodeFlow.adapter.requestUserCode({companyId:tenant});
+  assert.equal(userCode.userCode,'ABCD-EFGH');
+  assert.equal(userCode.authorizationCodeVerifier,'synthetic-verifier');
+  assert.equal(userCodeFlow.requests[0].url.endsWith('/authentication/v1.0/oauth/userCode'),true);
+  assert.deepEqual(Object.fromEntries(userCodeFlow.requests[0].options.body.entries()),{clientId:'client-test'});
+  const exchanged=await userCodeFlow.adapter.exchangeAuthorizationCode({companyId:tenant,authorizationCode:'synthetic-auth-code',
+    authorizationCodeVerifier:userCode.authorizationCodeVerifier});
+  assert.equal(exchanged.refreshToken,'oauth-refresh');
+  assert.equal(userCodeFlow.requests[1].url.endsWith('/authentication/v1.0/oauth/token'),true);
+  assert.equal(userCodeFlow.requests[1].options.body.get('grantType'),'authorization_code');
+  assert.equal(userCodeFlow.requests[1].options.body.get('authorizationCode'),'synthetic-auth-code');
+  assert.equal(userCodeFlow.requests[1].options.body.get('authorizationCodeVerifier'),'synthetic-verifier');
+
   for (const [status, code, classification] of [[401, 'AUTH_EXPIRED', 'auth'], [403, 'AUTH_FORBIDDEN', 'auth'], [429, 'RATE_LIMITED', 'rate_limit'], [503, 'PROVIDER_TRANSIENT', 'transient'], [400, 'PROVIDER_REJECTED', 'permanent']]) {
     const queue = [response(200, { accessToken: 't', expiresIn: 3600 }), response(status, {}, { 'retry-after': '4' })];
     if (status === 401) queue.push(response(200, { accessToken: 't2', expiresIn: 3600 }), response(401, {}));
@@ -140,6 +158,14 @@ assert.equal(normalizeOrderEvent({ id: 'event:opaque/1', orderId: order, fullCod
   const tenantB = '8eb0f612-e039-49a8-b621-a5d3f03b0953';
   await scoped.adapter.quote({ companyId: tenantB, orderId: order });
   assert.deepEqual(tenantCalls, [tenant, tenantB]);
+
+  const persistedScopes=[];
+  const accountScoped=createIfoodAdapter({ credentialResolver:async()=>({clientId:'account-client',clientSecret:'account-secret',accountScope:'5b6d3972-80c7-4db9-8f0c-cbd6db79a093',refreshToken:'refresh'}),
+    persistToken:async value=>persistedScopes.push(value.accountScope),fetchImpl:async url=>url.endsWith('/oauth/token')
+      ? response(200,{accessToken:'account-token',refreshToken:'rotated-refresh',expiresIn:3600})
+      : response(200,{id:quote,createdAt:new Date().toISOString(),expirationAt:future,quote:{grossValue:1,discount:0,raise:0}}) });
+  await accountScoped.quote({companyId:tenant,orderId:order});
+  assert.deepEqual(persistedScopes,['5b6d3972-80c7-4db9-8f0c-cbd6db79a093'],'rotated tokens persist against external account, not tenant');
 
   const sharedCredentials = adapterFor([
     response(200, { accessToken: 'tenant-a-token', expiresIn: 3600 }), response(200, { id: quote, createdAt: new Date().toISOString(), expirationAt: future, quote: { grossValue: 1, discount: 0, raise: 0 } }),

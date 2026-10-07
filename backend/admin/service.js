@@ -39,7 +39,8 @@ function createAdminService({ repository }) {
     disassociateMembershipDriver(client, principal, membershipId) {
       return repository.disassociateMembershipDriver(client, principal, membershipId);
     },
-    integrations: (client, principal) => repository.integrations(client, principal.company_id)
+    integrations: (client, principal) => repository.integrations(client, principal.company_id),
+    disableIntegrationAccount(client,principal,provider,accountId){return repository.disableIntegrationAccount(client,principal.company_id,provider,accountId);}
   });
 }
 

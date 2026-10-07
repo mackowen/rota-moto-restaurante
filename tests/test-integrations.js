@@ -12,12 +12,13 @@ assert.deepEqual(PROVIDERS.map(provider => provider.key), ['ifood', '99food', 'k
 const catalog = publicCatalog([{ provider: 'ifood', status: 'active', externalAccount: { displayName: 'Conta', linkStatus: 'confirmed', confirmedAt: '2026-01-01' } }]);
 assert.equal(catalog.length, 3);
 assert(catalog.every(item => item.capability === 'blocked_external' && item.connectionVerified === false));
-assert.deepEqual(catalog[0].capabilities.orders, { DOCUMENTED: true, IMPLEMENTED: true, RUNTIME_WIRED: false, LOCAL_TESTED: true, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
+assert.deepEqual(catalog[0].capabilities.orders, { DOCUMENTED: true, IMPLEMENTED: true, RUNTIME_WIRED: true, LOCAL_TESTED: true, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
 assert.equal(catalog[0].capabilityContract.orders, 'SUPPORTED', 'contract availability is separated from runtime connection');
 assert.deepEqual(catalog[0].capabilities.homologation, { DOCUMENTED: true, IMPLEMENTED: false, RUNTIME_WIRED: false, LOCAL_TESTED: false, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
-assert.deepEqual(catalog[2].capabilities.account, { DOCUMENTED: true, IMPLEMENTED: true, RUNTIME_WIRED: false, LOCAL_TESTED: true, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
+assert.deepEqual(catalog[2].capabilities.account, { DOCUMENTED: true, IMPLEMENTED: true, RUNTIME_WIRED: true, LOCAL_TESTED: true, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
 assert.equal(catalog[2].capabilityContract.platformDelivery, 'NOT_SUPPORTED', 'Keeta merchant fulfillment is not represented as a platform courier API');
-assert(catalog.every(item => item.actions.connect === false && item.actions.reconnect === false));
+assert.equal(catalog[0].actions.connect,true); assert.equal(catalog[0].actions.reconnect,true);
+assert.equal(catalog[1].actions.connect,false); assert.equal(catalog[2].actions.connect,true);
 assert.equal(catalog[0].state, 'authorized_unverified', 'an account link does not assert a successful provider health check');
 assert.equal(publicCatalog([{ provider: 'ifood', status: 'disabled' }])[0].state, 'disabled');
 assert.equal(JSON.stringify(catalog).includes('secret_ref'), false);

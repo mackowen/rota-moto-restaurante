@@ -33,7 +33,7 @@ assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog
 assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
 assert.match(appSource, /Escopo dos ajustes[\s\S]{0,300}timezone operacional da Company é configuração canônica/u, 'settings distinguish local preferences from the canonical Company timezone');
 assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed');
-assert.match(source, /sincronização ainda não está conectada ao runtime/u, 'missing sync metadata is not described as a completed connection or a known never-run sync');
+assert.match(source, /Última sincronização:|conexão ainda não está ativa/u, 'integration state distinguishes account authorization from an active connection and records sync time');
 assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');
 assert.match(source, /function expireSession/u, 'an HTTP 401 also clears the authenticated UI state');
 assert.match(source, /response\.status === 401 && path !== '\/identity\/session'\) expireSession\(\)/u, 'session restoration applies its own generation check before changing identity');

@@ -23,7 +23,7 @@ async function main(){
   assert.equal(CONFIG.trustProxy,false,'forwarded headers are not trusted');
   const readinessResult=values=>({async connect(){return{async query(sql){if(sql==='BEGIN'||sql==='COMMIT'||sql.startsWith('SET LOCAL'))return{rows:[]};return{rows:[values]};},release(){}};}});
   const readySchema={role:'rotamoto_app',domain_ready:true,sync_installations_ready:true,mfa_schema_ready:true,
-    membership_driver_ready:true,logistics_schema_ready:true,territorial_analytics_schema_ready:true};
+    membership_driver_ready:true,logistics_schema_ready:true,territorial_analytics_schema_ready:true,marketplace_schema_ready:true};
   assert.equal(await databaseReadiness(readinessResult({...readySchema,territorial_analytics_schema_ready:false})),false,
     'readiness stays fail-closed if any required schema capability is absent');
   assert.equal(await databaseReadiness(readinessResult(readySchema)),true,'readiness accepts the full required schema');

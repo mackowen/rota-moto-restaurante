@@ -10,6 +10,17 @@
   let driverRows = [];
   let driverCursor = null;
   let previousFocus = null;
+  let marketplaceCallback = null;
+  try {
+    const callbackUrl = new URL(location.href);
+    const callbackState = callbackUrl.searchParams.get('state');
+    const authId = callbackUrl.searchParams.get('authId');
+    if (callbackUrl.searchParams.get('marketplace') === 'keeta' && callbackState && authId && callbackState.length <= 64 && authId.length <= 128) {
+      marketplaceCallback = { state: callbackState, authId };
+      callbackUrl.searchParams.delete('state'); callbackUrl.searchParams.delete('authId'); callbackUrl.searchParams.delete('marketplace');
+      history.replaceState(null, '', callbackUrl.pathname + callbackUrl.search + callbackUrl.hash);
+    }
+  } catch (_) {}
   const codeMessages = {
     INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta exige verificação MFA. Se o autenticador seguro ainda não estiver configurado, o acesso permanece bloqueado.', MFA_PROVIDER_UNAVAILABLE: 'A verificação MFA está temporariamente indisponível. Tente novamente mais tarde.',
     UNAUTHENTICATED: 'Sua sessão expirou. Entre novamente.', EMAIL_PROVIDER_NOT_CONFIGURED: 'Convites e recuperação ainda dependem da configuração segura de entrega de email.',
@@ -18,7 +29,12 @@
     DRIVER_NOT_FOUND: 'Motorista não encontrado nesta empresa.', DRIVER_ALREADY_LINKED: 'Este motorista já está associado a outra conta.',
     MEMBERSHIP_DRIVER_CONFLICT: 'Desvincule o motorista atual antes de trocar a associação.',
     INVALID_STATE_TRANSITION: 'Esta mudança de estado não é permitida.', EMAIL_DELIVERY_FAILED: 'Não foi possível entregar o convite. Nenhum link utilizável foi enviado.', AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar este convite.', CONFLICT: 'A conta já possui um vínculo ou estado incompatível.',
-    RATE_LIMITED: 'Muitas tentativas. Aguarde antes de tentar novamente.', NETWORK: 'Servidor indisponível. O modo local continua disponível.'
+    RATE_LIMITED: 'Muitas tentativas. Aguarde antes de tentar novamente.', NETWORK: 'Servidor indisponível. O modo local continua disponível.',
+    PROVIDER_CREDENTIALS_NOT_CONFIGURED: 'O administrador do servidor precisa configurar as credenciais oficiais do aplicativo.',
+    MARKETPLACE_ACCOUNT_LIFECYCLE_UNAVAILABLE: 'A autorização ainda não está configurada neste servidor. Confira HTTPS, credenciais e role do resolver.',
+    OAUTH_STATE_EXPIRED_OR_USED: 'Esta autorização expirou ou já foi usada. Inicie uma nova autorização.',
+    AUTHORIZED_MERCHANT_NOT_VISIBLE_YET: 'A loja ainda não apareceu na lista autorizada do fornecedor. Inicie uma nova autorização depois de confirmar o vínculo.',
+    PROVIDER_BLOCKED_EXTERNAL: 'A 99Food exige acesso de onboarding e contrato oficial antes de habilitar a integração.'
   };
   const host = document.createElement('div');
   host.id = 'rmIdentityRoot';
@@ -168,7 +184,15 @@
         : await request('/identity/session');
       if (!sessionReadGuard.isCurrent(readVersion)) return current;
       if (typeof session.csrfToken !== 'string') throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
-      csrf = session.csrfToken; window.RotaMotoSessionGuard?.setCsrfToken(csrf); showSession(session); return session;
+      csrf = session.csrfToken; window.RotaMotoSessionGuard?.setCsrfToken(csrf); showSession(session);
+      if (marketplaceCallback && session.permissions?.includes('integrations.manage') && !session.mfaEnrollmentRequired) {
+        const callback = marketplaceCallback; marketplaceCallback = null;
+        try {
+          await request('/admin/integrations/keeta/complete', { method: 'POST', body: JSON.stringify(callback) });
+          setStatus('Loja Keeta autorizada. Atualize Integrações para conferir a conta.');
+        } catch (error) { setStatus(message(error)); }
+      }
+      return session;
     } catch (error) {
       if (!sessionReadGuard.isCurrent(readVersion)) return current;
       csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; showSession(null);
@@ -264,7 +288,49 @@
     if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); integrations.integrations.forEach(item => {
       const row = document.createElement('section'); row.className = 'rm-integration-status';
       const title = document.createElement('strong'); title.textContent = `${item.displayName || item.provider} · ${item.connectionVerified ? 'conectada' : 'sem conexão verificada'}`; row.append(title);
-      const account = document.createElement('p'); account.textContent = item.externalAccount ? `Conta: ${item.externalAccount.displayName || 'identificada'} · vínculo ${item.externalAccount.linkStatus === 'confirmed' ? 'confirmado' : item.externalAccount.linkStatus === 'revoked' ? 'revogado' : 'aguardando confirmação'}` : 'Conta: nenhuma loja autorizada vinculada.'; row.append(account);
+      const accounts = document.createElement('div'); accounts.className='rm-integration-accounts';
+      const accountStates={active:'autorizada; conexão ainda não verificada',pending:'autorização pendente',disabled:'desativada localmente',revoked:'autorização revogada',reauthorization_required:'precisa reautorizar',error:'erro na conta'};
+      const accountErrors={AUTH_EXPIRED:'A autorização expirou. Reautorize a conta.',AUTH_REJECTED:'A plataforma recusou a autorização. Reautorize a conta.',ACCOUNT_UNAVAILABLE:'Conta inativa ou sem vínculo válido.',MARKETPLACE_EVENT_PENDING:'Evento recebido e será processado novamente.',
+        PROVIDER_TIMEOUT:'O cadastro pode ter sido recebido sem resposta. Confira o estado no fornecedor antes de reiniciar a autorização.',PROVIDER_TRANSIENT:'O fornecedor está temporariamente indisponível. Tente novamente mais tarde.',
+        PROVIDER_REJECTED:'O fornecedor rejeitou o cadastro. Confira o vínculo da loja e os dados de onboarding.',KEETA_ONBOARDING_FAILED:'Não foi possível registrar o vínculo da loja na Keeta. Confira o ID de loja e tente reautorizar.'};
+      const accountRows=item.externalAccounts||[];
+      if(!accountRows.length){const account=document.createElement('p');account.textContent='Conta: nenhuma loja autorizada vinculada.';accounts.append(account);}
+      accountRows.forEach(accountRow=>{
+        const account=document.createElement('section');account.className='rm-integration-account';
+        const name=document.createElement('strong');name.textContent=`Loja: ${accountRow.displayName||'identificada'} · ${accountStates[accountRow.accountStatus]||'estado não verificado'}`;account.append(name);
+        const sync=document.createElement('p');sync.textContent=`Última sincronização: ${accountRow.lastSyncAt?new Date(accountRow.lastSyncAt).toLocaleString():'ainda indisponível'}`;account.append(sync);
+        if(accountRow.lastErrorCode){const issue=document.createElement('p');issue.setAttribute('role','status');issue.textContent=accountErrors[accountRow.lastErrorCode]||'A conta registrou um erro. Verifique a autorização e o acesso do fornecedor.';account.append(issue);}
+        if(accountRow.accountStatus==='active'&&accountRow.id){const disable=document.createElement('button');disable.type='button';disable.textContent='Desativar localmente';
+          disable.addEventListener('click',async()=>{disable.disabled=true;try{await request(`/admin/integrations/${encodeURIComponent(item.provider)}/accounts/${encodeURIComponent(accountRow.id)}/disable`,{method:'POST',body:'{}'});await loadAdmin();}
+            catch(error){disable.disabled=false;const issue=document.createElement('p');issue.setAttribute('role','status');issue.textContent=message(error);account.append(issue);}});account.append(disable);}
+        accounts.append(account);
+      });
+      if (['ifood','keeta'].includes(item.provider)) {
+        const connect = document.createElement('button'); connect.type = 'button';
+        connect.textContent = accountRows.some(account => ['disabled','revoked','reauthorization_required','error'].includes(account.accountStatus)) ? 'Reautorizar conta' : 'Conectar conta';
+        connect.addEventListener('click', async () => {
+          connect.disabled = true;
+          try {
+            const started = await request(`/admin/integrations/${item.provider}/authorize`, { method: 'POST', body: '{}' });
+            if (item.provider === 'keeta') { location.assign(started.authorizationUrl); return; }
+            const instructions = document.createElement('div'); instructions.className = 'rm-marketplace-auth';
+            const text = document.createElement('p'); text.textContent = `Acesse o portal iFood e informe o código ${started.userCode}. Depois cole aqui o código de autorização recebido. Ele expira em ${started.expiresIn} segundos.`;
+            const link = document.createElement('a'); link.href = started.verificationUrl; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = 'Abrir autorização iFood';
+            const form = document.createElement('form'); form.innerHTML = '<label>Código de autorização<input name="authorizationCode" required maxlength="512" autocomplete="off"></label><button type="submit">Concluir autorização</button><p role="status"></p>';
+            form.addEventListener('submit', async event => {
+              event.preventDefault(); const input = form.elements.authorizationCode; const button = form.querySelector('button');
+              if (!input.value || button.disabled) return; button.disabled = true;
+              try { await request('/admin/integrations/ifood/complete', { method: 'POST', body: JSON.stringify({ state: started.state, authorizationCode: input.value }) }); input.value = ''; form.querySelector('[role=status]').textContent = 'Autorização concluída. Atualize Integrações para conferir as lojas vinculadas.'; await loadAdmin(); }
+              catch (error) { input.value = ''; form.querySelector('[role=status]').textContent = message(error); button.disabled = false; }
+            });
+            instructions.append(text, link, form); row.append(instructions); connect.textContent = 'Autorização iniciada';
+          } catch (error) { const note = document.createElement('p'); note.setAttribute('role','status'); note.textContent = message(error); row.append(note); connect.disabled = false; }
+        });
+        row.append(connect);
+      } else {
+        const blocked = document.createElement('p'); blocked.textContent = 'Conexão indisponível: a 99Food ainda não forneceu o contrato/API e o acesso de onboarding necessários.'; row.append(blocked);
+      }
+      row.append(accounts);
       const names = { account: 'autorização da conta', merchant: 'lojas/merchant', orders: 'pedidos', webhook: 'webhook', polling: 'consulta de eventos', selfDelivery: 'entrega própria', platformDelivery: 'entrega da plataforma', quote: 'cotação', dispatch: 'despacho', cancelOrder: 'cancelar pedido', cancelDelivery: 'cancelar entrega', tracking: 'rastreamento', sandbox: 'sandbox', homologation: 'homologação' };
       const dimensionLabels = [
         ['DOCUMENTED', 'Contrato público'], ['IMPLEMENTED', 'Adapter'], ['RUNTIME_WIRED', 'Runtime'],
@@ -288,7 +354,7 @@
       });
       if (!Object.keys(item.capabilities || {}).length) capabilities.append(document.createTextNode('Capacidades ainda não verificadas.'));
       row.append(capabilities);
-      const syncState = item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : 'indisponível; sincronização ainda não está conectada ao runtime';
+      const syncState = item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : 'indisponível; conta sem sincronização registrada';
       const notes = document.createElement('p'); notes.textContent = `${item.capabilityNotes || 'A conexão ainda não está ativa.'} Última sincronização: ${syncState}.`; row.append(notes);
       list.append(row);
     }); }

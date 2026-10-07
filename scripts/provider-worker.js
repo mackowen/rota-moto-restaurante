@@ -6,6 +6,10 @@ const { loadSecretProvider, loadLocalSecretProvider } = require('../backend/runt
 const { createIfoodAdapter } = require('../backend/logistics/providers/ifood');
 const { createLogisticsProviderAdapterRegistry } = require('../backend/logistics/provider-adapters');
 const { createProviderCredentialResolver, createProviderWorker } = require('../backend/logistics/provider-worker');
+const { createMarketplaceAccountResolver } = require('../backend/integrations/marketplace-account-resolver');
+const { createMarketplaceWorker } = require('../backend/integrations/marketplace-worker');
+const { createKeetaAdapter } = require('../backend/integrations/keeta-adapter');
+const { createMarketplaceAccountWriter } = require('../backend/integrations/marketplace-account-writer');
 
 function providerTenantIds(value) {
   if (typeof value !== 'string' || !value.trim()) throw new Error('ROTAMOTO_PROVIDER_WORKER_TENANTS precisa listar tenants autorizados.');
@@ -48,15 +52,25 @@ async function main(env = process.env) {
   const resolverPool = createPool({ connectionString: resolverUrl, password: resolverPassword,
     ...(config.databaseTlsCaFile ? { ssl: { ca: require('node:fs').readFileSync(config.databaseTlsCaFile, 'utf8'), rejectUnauthorized: true } } : {}),
     max: 2, connectionTimeoutMillis: 3000, application_name: 'rotamoto-provider-credential-resolver', idleTimeoutMillis: 10000 });
-  const credentialResolver = createProviderCredentialResolver({ privilegedPool: resolverPool, secretProvider: await secretProvider });
+  const secrets=await secretProvider;
+  const credentialResolver = createProviderCredentialResolver({ privilegedPool: resolverPool, secretProvider: secrets });
+  const marketplaceAccounts=createMarketplaceAccountResolver({privilegedPool:resolverPool,secretProvider:secrets});
+  const marketplaceAccountWriter=createMarketplaceAccountWriter({privilegedPool:resolverPool,secretProvider:secrets});
   const ifood = createIfoodAdapter({ credentialResolver });
+  const marketplaceIfood=createIfoodAdapter({credentialResolver:async companyId=>marketplaceAccounts.credentials('ifood',companyId),
+    persistToken:record=>marketplaceAccountWriter.persistTokens(record)});
+  const keeta=createKeetaAdapter({credentialResolver:async companyId=>marketplaceAccounts.credentials('keeta',companyId)});
   const worker = createProviderWorker({ pool, adapterRegistry: createLogisticsProviderAdapterRegistry({ ifoodAdapter: ifood }),
     credentialResolver, tenantResolver: async () => tenants,
     logger: event => process.stdout.write(`${JSON.stringify(event)}\n`) });
+  const marketAccountResolver=async(provider,accountId,companyId)=>marketplaceAccounts.byId(provider,accountId,companyId);
+  marketAccountResolver.byMerchant=marketplaceAccounts.byMerchant;
+  const marketplaceWorker=createMarketplaceWorker({pool,companyIds:tenants,adapters:{ifood:marketplaceIfood,keeta},accountResolver:marketAccountResolver,
+    logger:event=>process.stdout.write(`${JSON.stringify(event)}\n`)});
   let stopping = false;
-  const shutdown = () => { if (stopping) return; stopping = true; worker.stop(); };
+  const shutdown = () => { if (stopping) return; stopping = true; worker.stop(); marketplaceWorker.stop(); };
   process.once('SIGTERM', shutdown); process.once('SIGINT', shutdown);
-  try { await worker.run({ pollIntervalMs: 1000 }); }
+  try { await Promise.all([worker.run({ pollIntervalMs: 1000 }),marketplaceWorker.start()]); }
   finally { process.removeListener('SIGTERM', shutdown); process.removeListener('SIGINT', shutdown); await Promise.all([pool.end(), resolverPool.end()]); }
 }
 

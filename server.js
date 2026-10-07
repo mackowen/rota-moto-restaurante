@@ -34,6 +34,13 @@ const {PROVIDERS}=require('./backend/integrations/registry');
 const {loadRuntimeConfig,hostAllowed,resolveClientAddress}=require('./backend/runtime/config');
 const {loadSecretProvider,loadLocalSecretProvider}=require('./backend/runtime/secret-provider');
 const {gracefulShutdown}=require('./backend/runtime/lifecycle');
+const {createMarketplaceAccountResolver}=require('./backend/integrations/marketplace-account-resolver');
+const {createMarketplaceHttpHandler}=require('./backend/integrations/marketplace-http');
+const {createIfoodAdapter}=require('./backend/logistics/providers/ifood');
+const {createKeetaAdapter}=require('./backend/integrations/keeta-adapter');
+const {createMarketplaceAccountWriter}=require('./backend/integrations/marketplace-account-writer');
+const {createMarketplaceAccountService,validPublicUrl}=require('./backend/integrations/marketplace-account-service');
+const {createMarketplaceAdminHandler}=require('./backend/integrations/marketplace-admin-http');
 
 function bootstrapFailure(error){
   if(require.main===module){process.stderr.write(`${JSON.stringify({event:'http.bootstrap_failed',code:/^ROTAMOTO_CONFIG_/u.test(error?.code||'')?error.code:'STARTUP_CONFIGURATION_INVALID'})}\n`);process.exit(1)}
@@ -55,6 +62,49 @@ function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
 }
 const identityPool=createPool({connectionString:runtimeDatabaseConnectionString(),...(secretProvider?{password:async()=>{const provider=await secretProvider;return provider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
 identityPool.on('error',error=>console.error(JSON.stringify({event:'postgres.pool.error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'DATABASE_ERROR'})));
+let marketplaceResolverPool=null;
+const marketplaceResolverUrl=process.env.ROTAMOTO_PROVIDER_RESOLVER_DATABASE_URL;
+const marketplaceResolverPasswordRef=process.env.ROTAMOTO_PROVIDER_RESOLVER_PASSWORD_REF;
+if(Boolean(marketplaceResolverUrl)!==Boolean(marketplaceResolverPasswordRef))bootstrapFailure(new Error('Marketplace resolver requires dedicated URL and password reference.'));
+if(marketplaceResolverUrl){
+  try{
+    const parsed=new URL(marketplaceResolverUrl);
+    if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!=='rotamoto_provider_resolver'||parsed.password||parsed.pathname!=='/rotamoto'||parsed.hash||
+      [...parsed.searchParams.keys()].some(key=>key!=='sslmode')||CONFIG.production&&(parsed.searchParams.get('sslmode')!=='verify-full'||['127.0.0.1','::1','localhost'].includes(parsed.hostname))||
+      !CONFIG.production&&parsed.searchParams.has('sslmode'))throw new Error('Marketplace resolver URL is invalid.');
+    marketplaceResolverPool=createPool({connectionString:marketplaceResolverUrl,password:async()=>{if(!secretProvider)throw new Error('Secret provider required.');return(await secretProvider).get(marketplaceResolverPasswordRef,{name:'database/provider-resolver',scope:'installation'});},
+      ...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:3,connectionTimeoutMillis:3000,application_name:'rotamoto-marketplace-resolver',statement_timeout:5000,idleTimeoutMillis:10000});
+  }catch(error){bootstrapFailure(error);}
+}
+let marketplaceHttpPromise=null;
+async function getMarketplaceHttp(){
+  if(!marketplaceResolverPool||!secretProvider)return null;
+  if(!marketplaceHttpPromise)marketplaceHttpPromise=(async()=>{
+    const secrets=await secretProvider;
+    const accounts=createMarketplaceAccountResolver({privilegedPool:marketplaceResolverPool,secretProvider:secrets});
+    const writer=createMarketplaceAccountWriter({privilegedPool:marketplaceResolverPool,secretProvider:secrets});
+    const ifood=createIfoodAdapter({credentialResolver:async companyId=>accounts.credentials('ifood',companyId),persistToken:record=>writer.persistTokens(record)});
+    const keeta=createKeetaAdapter({credentialResolver:async companyId=>accounts.credentials('keeta',companyId)});
+    const webhook=createMarketplaceHttpHandler({pool:identityPool,adapters:{ifood,keeta},accountResolver:accounts,logger:requestLogger});
+    const base=process.env.PUBLIC_BASE_URL;
+    const callback=validPublicUrl(base?new URL('/?marketplace=keeta',base).toString():null);
+    const keetaWebhookBase=validPublicUrl(base?new URL('/api/marketplace/keeta/webhooks/',base).toString():null);
+    let admin=null;
+    if(callback){
+      const applicationCredentials=async provider=>{
+        const key=provider==='ifood'?'IFOOD':'KEETA';
+        const clientId=process.env[`ROTAMOTO_${key}_CLIENT_ID`],secretRef=process.env[`ROTAMOTO_${key}_CLIENT_SECRET_REF`];
+        if(!clientId||!secretRef)throw Object.assign(new Error('Provider application credentials are not configured.'),{code:'PROVIDER_CREDENTIALS_NOT_CONFIGURED',status:503});
+        const clientSecret=await secrets.get(secretRef,{name:`marketplace/${provider}/client-secret`,scope:'installation'});
+        return {clientId,clientSecret};
+      };
+      const accountService=createMarketplaceAccountService({pool:identityPool,accountWriter:writer,secretProvider:secrets,adapters:{ifood,keeta},applicationCredentials,publicCallbackUrl:callback,keetaWebhookBaseUrl:keetaWebhookBase});
+      admin=createMarketplaceAdminHandler({identityService,accountService,adminService,logger:requestLogger,allowedOrigin:ALLOWED_ORIGINS});
+    }
+    return {webhook,admin};
+  })();
+  return marketplaceHttpPromise;
+}
 let smtpProviderPromise=null;
 const emailProvider=CONFIG.smtp?.host?{async send(message){if(!smtpProviderPromise)smtpProviderPromise=(async()=>{const secrets=await secretProvider;if(!secrets)throw new Error('Secret provider indisponível.');const password=await secrets.get(CONFIG.smtp.passwordRef,{name:'smtp/password',scope:'installation'});return createSmtpMailProvider({...CONFIG.smtp,password})})();return (await smtpProviderPromise).send(message)}}:null;
 let nativeMfaPromise=null;
@@ -101,9 +151,10 @@ async function databaseReadiness(pool=identityPool){
       EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.memberships') AND attname='driver_id' AND NOT attisdropped) AS membership_driver_ready,
       to_regclass('rotamoto.logistics_providers') IS NOT NULL AND to_regclass('rotamoto.delivery_fulfillments') IS NOT NULL
         AND to_regclass('rotamoto.dispatch_attempts') IS NOT NULL AS logistics_schema_ready,
-      to_regclass('rotamoto.delivery_geo_snapshots') IS NOT NULL AS territorial_analytics_schema_ready`);
+      to_regclass('rotamoto.delivery_geo_snapshots') IS NOT NULL AS territorial_analytics_schema_ready,
+      to_regclass('rotamoto.marketplace_event_inbox') IS NOT NULL AND to_regclass('rotamoto.marketplace_account_routes') IS NOT NULL AS marketplace_schema_ready`);
     await client.query('COMMIT');
-    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true&&result.rows[0]?.logistics_schema_ready===true&&result.rows[0]?.territorial_analytics_schema_ready===true;
+    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true&&result.rows[0]?.logistics_schema_ready===true&&result.rows[0]?.territorial_analytics_schema_ready===true&&result.rows[0]?.marketplace_schema_ready===true;
   }catch(error){try{await client.query('ROLLBACK')}catch(_){}throw error}
   finally{client.release()}
 }
@@ -127,7 +178,17 @@ async function route(req,res){
     }
     if(shuttingDown&&u.pathname!=='/health/live')return json(res,503,{status:'shutting_down',requestId:req.requestId});
     if(await identityHttp(req,res))return;
+    if(u.pathname.startsWith('/api/admin/integrations/')){
+      const handlers=await getMarketplaceHttp();
+      if(handlers?.admin&&await handlers.admin(req,res))return;
+      if(/\/(?:authorize|complete|accounts\/[^/]+\/disable)$/u.test(u.pathname))return json(res,503,{error:{code:'MARKETPLACE_ACCOUNT_LIFECYCLE_UNAVAILABLE',message:'Configure HTTPS público, credenciais do aplicativo e o resolver privilegiado para conectar contas.'},requestId:req.requestId});
+    }
     if(await adminHttp(req,res))return;
+    if(u.pathname.startsWith('/api/marketplace/')){
+      const handlers=await getMarketplaceHttp();
+      if(handlers?.webhook&&await handlers.webhook(req,res))return;
+      return json(res,503,{error:{code:'MARKETPLACE_RUNTIME_UNAVAILABLE',message:'A integração ainda não está configurada neste servidor.'},requestId:req.requestId});
+    }
     if(await proofMediaHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
     if(await deliveryQrHttp(req,res))return;
@@ -161,7 +222,7 @@ async function startServer({pool=identityPool,config=CONFIG,logger=entry=>consol
     shuttingDown=true;logger({event:'http.shutdown_started',signal});
     closing=gracefulShutdown({server,pool,timeoutMs:config.shutdownTimeoutMs,onTimeout:()=>logger({event:'http.shutdown_timeout'})})
       .then(()=>logger({event:'http.stopped'}),error=>{logger({event:'http.shutdown_error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'SHUTDOWN_ERROR'});process.exitCode=1})
-      .finally(()=>{process.removeListener('SIGTERM',onSigterm);process.removeListener('SIGINT',onSigint)});
+      .finally(async()=>{process.removeListener('SIGTERM',onSigterm);process.removeListener('SIGINT',onSigint);await marketplaceResolverPool?.end().catch(()=>{})});
     return closing;
   };
   const onSigterm=()=>{void shutdown('SIGTERM')};const onSigint=()=>{void shutdown('SIGINT')};

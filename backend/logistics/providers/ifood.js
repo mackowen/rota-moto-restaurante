@@ -117,10 +117,11 @@ function normalizeOrderEvent(raw) {
     ['DISPATCHED','dispatched'],['ORDER_DISPATCHED','dispatched'],['CONCLUDED','completed'],['ORDER_CONCLUDED','completed'],
     ['CANCELLED','cancelled'],['ORDER_CANCELLED','cancelled'],['CANCELLATION_REQUESTED','cancellation_requested'],['ORDER_PATCHED','modified']]);
   return Object.freeze({ provider: 'ifood', externalEventId: raw.id, externalOrderId: raw.orderId,
+    merchantId: typeof raw.merchantId === 'string' ? raw.merchantId : null,
     occurredAt: raw.createdAt ? timestamp(raw.createdAt, 'event_time') : null, status: states.get(raw.fullCode) || 'unmapped', externalStatus: raw.fullCode });
 }
 
-function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, timeoutMs = 8000, clock = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), orderDetailRetryWindowMs = 10 * 60 * 1000 } = {}) {
+function createIfoodAdapter({ credentialResolver, persistToken = async () => {}, fetchImpl = globalThis.fetch, timeoutMs = 8000, clock = () => Date.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), orderDetailRetryWindowMs = 10 * 60 * 1000 } = {}) {
   if (typeof credentialResolver !== 'function' || typeof fetchImpl !== 'function' || !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) throw new TypeError('Configuração de adapter iFood inválida.');
   const tokens = new Map();
   const trackingRequests = new Map();
@@ -131,7 +132,11 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       const headers = { Accept: 'application/json' };
       if (credentials) {
         const credentialKey = crypto.createHash('sha256').update(`${credentials.clientId}\0${credentials.clientSecret}\0${credentials.accountScope || ''}`).digest('hex');
-        const cached = tokens.get(credentialKey);
+        let cached = tokens.get(credentialKey);
+        if(!cached&&typeof credentials.accessToken==='string'&&credentials.accessToken){
+          cached={value:credentials.accessToken,refreshToken:credentials.refreshToken||null,expiresAt:Number.isFinite(credentials.tokenExpiresAt)?credentials.tokenExpiresAt:clock()+60_000};
+          tokens.set(credentialKey,cached);
+        }
         if (!cached || cached.expiresAt <= clock() + 60000) {
           const refreshToken = cached?.refreshToken || credentials.refreshToken;
           const grantType = refreshToken ? 'refresh_token' : credentials.authorizationCode ? 'authorization_code' : 'client_credentials';
@@ -145,7 +150,10 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
           if (auth.status === 401 || auth.status === 403) fail('AUTH_REJECTED', 'auth', auth.status);
           if (!auth.ok) fail('AUTH_SERVICE_ERROR', auth.status === 429 || auth.status >= 500 ? 'transient' : 'permanent', auth.status, retryAfter(auth));
           if (!authRaw || typeof authRaw.accessToken !== 'string' || authRaw.accessToken.length > 8000 || !Number.isInteger(authRaw.expiresIn) || authRaw.expiresIn < 60) fail('INVALID_AUTH_RESPONSE');
-          tokens.set(credentialKey, { value: authRaw.accessToken, refreshToken: authRaw.refreshToken || refreshToken || null, expiresAt: clock() + authRaw.expiresIn * 1000 });
+          cached={ value: authRaw.accessToken, refreshToken: authRaw.refreshToken || refreshToken || null, expiresAt: clock() + authRaw.expiresIn * 1000 };
+          tokens.set(credentialKey,cached);
+          await persistToken({companyId:credentials.companyId||null,accountScope:credentials.accountScope||null,
+            accessToken:cached.value,refreshToken:cached.refreshToken,expiresAt:cached.expiresAt});
         }
         headers.Authorization = `Bearer ${tokens.get(credentialKey).value}`;
       }
@@ -199,7 +207,10 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
     let credentials = suppliedCredentials;
     if (!credentials) { try { credentials = await credentialResolver(companyId, 'ifood'); } catch (_) { fail('CREDENTIALS_UNAVAILABLE', 'auth'); } }
     if (!credentials || typeof credentials.clientId !== 'string' || !credentials.clientId || typeof credentials.clientSecret !== 'string' || !credentials.clientSecret) fail('CREDENTIALS_UNAVAILABLE', 'auth');
-    return method({ ...credentials, accountScope: companyId });
+    // Marketplace credentials are scoped to the external account so refresh
+    // rotation is persisted against the account that owns the grant. Legacy
+    // logistics callers still fall back to their tenant scope.
+    return method({ ...credentials, accountScope: credentials.accountScope || companyId });
   }
   return Object.freeze({ provider: 'ifood', capabilities: CAPABILITIES,
     async pollEvents({ companyId, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
@@ -207,8 +218,43 @@ function createIfoodAdapter({ credentialResolver, fetchImpl = globalThis.fetch, 
       if (result.status === 204) return Object.freeze([]);
       if (!Array.isArray(result.data?.events)) fail('INVALID_PROVIDER_RESPONSE');
       return Object.freeze(result.data.events.map(event => Object.freeze({ id: event.id, code: event.code, fullCode: event.fullCode,
-        orderId: event.orderId, createdAt: event.createdAt })));
+        orderId: event.orderId, merchantId: event.merchantId, createdAt: event.createdAt })));
     }, supplied); },
+    async requestUserCode({ companyId, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
+      const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetchImpl(`${API}/authentication/v1.0/oauth/userCode`, {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+          body: new URLSearchParams({ clientId: credentials.clientId }), signal: controller.signal, redirect: 'error'
+        });
+        const data = await readResponse(response);
+        if (response.status === 401 || response.status === 403) fail('AUTH_REJECTED','auth',response.status);
+        if (!response.ok) fail('AUTH_SERVICE_ERROR',response.status===429||response.status>=500?'transient':'permanent',response.status,retryAfter(response));
+        const url = value => { try { const parsed=new URL(value); return parsed.protocol==='https:'&&parsed.hostname==='portal.ifood.com.br'&&!parsed.username&&!parsed.password ? parsed.toString():null; } catch (_) { return null; } };
+        if (!data || typeof data.userCode!=='string' || data.userCode.length>32 || typeof data.authorizationCodeVerifier!=='string' ||
+            data.authorizationCodeVerifier.length>512 || !Number.isInteger(data.expiresIn) || data.expiresIn<1 || data.expiresIn>600 ||
+            !url(data.verificationUrl) || !url(data.verificationUrlComplete)) fail('INVALID_AUTH_RESPONSE','auth');
+        return Object.freeze({ userCode:data.userCode, verificationUrl:url(data.verificationUrl),
+          verificationUrlComplete:url(data.verificationUrlComplete), expiresIn:data.expiresIn,
+          authorizationCodeVerifier:data.authorizationCodeVerifier });
+      } catch(error) { if(error instanceof ProviderError)throw error; fail(error?.name==='AbortError'?'PROVIDER_TIMEOUT':'PROVIDER_UNAVAILABLE','unknown'); }
+      finally { clearTimeout(timer); }
+    },supplied); },
+    async exchangeAuthorizationCode({ companyId, authorizationCode, authorizationCodeVerifier, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
+      if(typeof authorizationCode!=='string'||!authorizationCode.trim()||authorizationCode.length>512||typeof authorizationCodeVerifier!=='string'||!authorizationCodeVerifier) fail('INVALID_AUTHORIZATION_CODE','auth');
+      const form=new URLSearchParams({grantType:'authorization_code',clientId:credentials.clientId,clientSecret:credentials.clientSecret,
+        authorizationCode,authorizationCodeVerifier});
+      const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeoutMs);
+      try {
+        const response=await fetchImpl(`${API}/authentication/v1.0/oauth/token`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:form,signal:controller.signal,redirect:'error'});
+        const data=await readResponse(response);
+        if(response.status===401||response.status===403)fail('AUTH_REJECTED','auth',response.status);
+        if(!response.ok)fail('AUTH_SERVICE_ERROR',response.status===429||response.status>=500?'transient':'permanent',response.status,retryAfter(response));
+        if(!data||typeof data.accessToken!=='string'||data.accessToken.length>8000||!Number.isInteger(data.expiresIn)||data.expiresIn<60||typeof data.refreshToken!=='string'||!data.refreshToken)fail('INVALID_AUTH_RESPONSE','auth');
+        return Object.freeze({accessToken:data.accessToken,refreshToken:data.refreshToken,expiresIn:data.expiresIn});
+      }catch(error){if(error instanceof ProviderError)throw error;fail(error?.name==='AbortError'?'PROVIDER_TIMEOUT':'PROVIDER_UNAVAILABLE','unknown');}
+      finally{clearTimeout(timer);}
+    },supplied); },
     async acknowledgeEvents({ companyId, eventIds, credentials: supplied } = {}) { return invoke(companyId, async credentials => {
       if (!Array.isArray(eventIds) || eventIds.length < 1 || eventIds.length > 100 || eventIds.some(id => typeof id !== 'string' || id.length < 1 || id.length > 128 || /[\u0000-\u001f\u007f]/u.test(id))) fail('INVALID_EVENT_IDS');
       const result = await request('/order/v1.0/orders:acknowledgment', { method: 'POST', body: { acknowledgedEventIds: eventIds }, credentials });
