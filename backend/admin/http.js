@@ -6,6 +6,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const ROUTES = Object.freeze({
   '/api/admin/company': { method: 'GET', permission: 'company.manage', operation: 'company' },
   '/api/admin/company/profile': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyProfile' },
+  '/api/admin/company/route-grouping': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyRouteGrouping' },
   '/api/admin/company/location': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyLocation' },
   '/api/admin/memberships': { method: 'GET', permission: 'members.read', operation: 'memberships' },
   '/api/admin/roles': { method: 'GET', permission: 'company.manage', operation: 'roles' },
@@ -118,6 +119,12 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
           case 'updateCompanyProfile': {
             exact(body, ['expectedVersion', 'name', 'supportPhone']);
             return adminService.updateCompanyProfile(client, principal, body);
+          }
+          case 'updateCompanyRouteGrouping': {
+            exact(body, ['expectedVersion', 'policy']);
+            if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 0 ||
+                !['nearest_extension', 'nearest_origin_round_robin'].includes(body.policy)) throw error('INVALID_INPUT');
+            return adminService.updateCompanyRouteGrouping(client, principal, body);
           }
           case 'roles': return adminService.roles(client, principal);
           case 'permissions': return adminService.permissions(client, principal);

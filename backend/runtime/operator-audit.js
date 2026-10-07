@@ -3,7 +3,12 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 async function appendOperatorAudit(action, details = {}) {
   const file = process.env.ROTAMOTO_OPERATOR_AUDIT_LOG, actorRef = process.env.ROTAMOTO_OPERATOR_ACTOR_REF;
-  if (!file || !path.isAbsolute(file) || !actorRef || !/^[A-Za-z0-9_.:@/-]{1,128}$/u.test(actorRef) || !/^[a-z][a-z0-9_.-]{2,63}$/u.test(action)) throw new Error('Identidade e arquivo privado de auditoria do operador são obrigatórios.');
+  if (!file || !path.isAbsolute(file) || !actorRef || !/^[A-Za-z0-9_.:@/-]{1,128}$/u.test(actorRef) || !/^[a-z][a-z0-9_.-]{2,63}$/u.test(action)) {
+    const error = new Error('Identidade e arquivo privado de auditoria do operador são obrigatórios.');
+    error.code = 'OPERATOR_AUDIT_CONFIGURATION_REQUIRED';
+    error.safeDiagnostic = 'Configure identificador do operador e arquivo privado absoluto de auditoria';
+    throw error;
+  }
   const flags = require('node:fs').constants.O_CREAT | require('node:fs').constants.O_APPEND | require('node:fs').constants.O_WRONLY | (require('node:fs').constants.O_NOFOLLOW || 0);
   const handle = await fs.open(file, flags, 0o600);
   try {

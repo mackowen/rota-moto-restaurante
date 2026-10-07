@@ -848,12 +848,13 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
     let companySettings = null;
     if (installation.app_key === 'motoboy') {
       const company = await client.query(`SELECT id::text AS company_id,name,support_phone,time_zone,operational_address,
-          operational_latitude,operational_longitude,operational_location_provenance,operational_location_version,company_settings_version
+          operational_latitude,operational_longitude,operational_location_provenance,operational_location_version,company_settings_version,route_grouping_policy
         FROM rotamoto.companies WHERE id=$1 AND status='active'`, [principal.company_id]);
       if (company.rowCount) {
         const row = company.rows[0];
         companySettings = { companyId: row.company_id, authority: 'restaurant', revision: Number(row.company_settings_version),
           name: row.name, supportPhone: row.support_phone || null, timeZone: row.time_zone || null,
+          routeGroupingPolicy: row.route_grouping_policy,
           operationalLocation: row.operational_latitude == null ? null : { address: row.operational_address,
             latitude: Number(row.operational_latitude), longitude: Number(row.operational_longitude),
             provenance: row.operational_location_provenance, version: Number(row.operational_location_version) } };

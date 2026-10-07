@@ -26,10 +26,10 @@ async function main() {
       (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass`)).rows[0];
     assert.deepEqual(identity, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', bypass: false });
     const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations
-      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings')
+      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings','0033_company_operational_location','0034_company_route_grouping_policy')
       ORDER BY migration_id`);
     assert.deepEqual(migration.rows.map(row => row.migration_id), [
-      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings'
+      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings','0033_company_operational_location','0034_company_route_grouping_policy'
     ], 'E2E schema includes the tested logistics, geography and least-privilege migrations');
     const catalog = await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
       has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,
@@ -240,10 +240,16 @@ async function main() {
         'clean install and upgrade 0022→latest creates tenant-scoped operational route configuration');
       const companyLocationColumns=await client.query(`SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='companies'
         AND column_name=ANY($2::text[]) ORDER BY column_name`,[from0022Schema,['support_phone','operational_address','operational_latitude','operational_longitude',
-        'operational_location_provenance','operational_location_version','company_settings_version']]);
+        'operational_location_provenance','operational_location_version','company_settings_version','route_grouping_policy']]);
       assert.deepEqual(companyLocationColumns.rows.map(row=>row.column_name),['company_settings_version','operational_address','operational_latitude',
-        'operational_location_provenance','operational_location_version','operational_longitude','support_phone'],
-        'clean install and upgrade 0022→0033 contains the canonical Company identity and operational location contract');
+        'operational_location_provenance','operational_location_version','operational_longitude','route_grouping_policy','support_phone'],
+        'clean install and upgrade 0022→0034 contains canonical Company identity, location and route grouping');
+      const groupingDefault=await client.query(`SELECT column_default,
+        has_column_privilege('rotamoto_app',$1||'.companies','route_grouping_policy','SELECT') AS runtime_read,
+        has_column_privilege('rotamoto_app',$1||'.companies','route_grouping_policy','UPDATE') AS runtime_update
+        FROM information_schema.columns WHERE table_schema=$1 AND table_name='companies' AND column_name='route_grouping_policy'`,[from0022Schema]);
+      assert.deepEqual(groupingDefault.rows[0],{column_default:"'nearest_extension'::text",runtime_read:true,runtime_update:true},
+        'route grouping has a semantic default and narrow runtime column grants');
       const companyLocationSecurity=await client.query(`SELECT c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
         has_column_privilege('rotamoto_app',c.oid,'operational_latitude','SELECT') AS location_read,
         has_column_privilege('rotamoto_app',c.oid,'operational_latitude','UPDATE') AS location_update,

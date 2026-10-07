@@ -322,9 +322,17 @@ async function main() {
       assert.equal(scopedPull.body.companySettings?.companyId,companyId,'the authenticated tenant, not client query, owns company settings snapshot');
       assert.equal(scopedPull.body.companySettings?.authority,'restaurant');
       assert.equal(scopedPull.body.companySettings?.revision,0);
+      assert.equal(scopedPull.body.companySettings?.routeGroupingPolicy,'nearest_extension','new tenants use the deterministic grouping default');
       assert.equal(JSON.stringify(scopedPull.body.companySettings).includes('secret_ref'),false,'company snapshot contains no secret references');
       assert(scopedPull.body.events.every(row=>row.entity!=='Delivery'||row.entityId!==otherDeliveryId),'client-supplied driverId cannot broaden pull scope');
       assert(scopedPull.body.events.some(row=>row.entity==='Delivery'&&row.entityId===deliveryId));
+      const groupingUpdate=await call('/api/admin/company/route-grouping',{method:'PUT',body:{expectedVersion:0,policy:'nearest_origin_round_robin'}});
+      assert.equal(groupingUpdate.status,200,JSON.stringify(groupingUpdate.body));
+      assert.equal(groupingUpdate.body.routeGroupingPolicy,'nearest_origin_round_robin');
+      assert.equal(groupingUpdate.body.settingsVersion,1);
+      const revisedCompanyPull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device');
+      assert.equal(revisedCompanyPull.body.companySettings.revision,1,'Company policy publication advances the monotonic snapshot revision');
+      assert.equal(revisedCompanyPull.body.companySettings.routeGroupingPolicy,'nearest_origin_round_robin','Motoboy receives the Restaurant-owned policy through canonical sync');
       const scopedList=await call('/api/domain/deliveries?limit=100');
       assert.equal(scopedList.status,200);assert(scopedList.body.records.some(row=>row.id===deliveryId));
       assert(scopedList.body.records.some(row=>row.id===otherDeliveryId),'company administrator keeps tenant-wide read authority');

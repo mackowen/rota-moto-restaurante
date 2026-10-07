@@ -450,15 +450,16 @@ async function main() {
     [rollbackGuardDigest, crypto.randomBytes(32), rollbackGuardId, rollbackGuardUserId]);
     try {
       const appliedLedger = await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
-      if (appliedLedger.rows[0]?.migration_id === '0033_company_operational_location') {
+      if (['0033_company_operational_location','0034_company_route_grouping_policy'].includes(appliedLedger.rows[0]?.migration_id)) {
+        const hasRouteGrouping=appliedLedger.rows[0].migration_id==='0034_company_route_grouping_policy';
         const configuredLocations=await migrationClient.query(`SELECT count(*)::int AS count FROM rotamoto.companies
-          WHERE operational_latitude IS NOT NULL OR operational_location_version<>0 OR company_settings_version<>0`);
+          WHERE operational_latitude IS NOT NULL OR operational_location_version<>0 OR company_settings_version<>0${hasRouteGrouping?" OR route_grouping_policy<>'nearest_extension'":''}`);
         assert.equal(configuredLocations.rows[0].count,0,'E2E migration rollback is attempted only before any operator setting exists');
         const locationDown=runMigrationSync('down');
         assert.notEqual(locationDown.status,0,'E2E migration runner refuses destructive rollback even when the additive location fields are empty');
         assert.match(locationDown.stderr,/Uso: node backend\/postgres\/migrate\.js/u,'rollback denial is the runner guard, not an SQL failure');
         const stillLatest=await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
-        assert.equal(stillLatest.rows[0].migration_id,'0033_company_operational_location','blocked rollback leaves the E2E schema at the approved latest migration');
+        assert.equal(stillLatest.rows[0].migration_id,appliedLedger.rows[0].migration_id,'blocked rollback leaves the E2E schema at the approved latest migration');
       } else if (['0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings'].includes(appliedLedger.rows[0]?.migration_id)) {
         assert.match(getMigrations().at(-1).down, /rollback bloqueado/u, 'provider integration data migrations explicitly block rollback');
         const blockedDown = runMigrationSync('down');

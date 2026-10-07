@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const read=name=>fs.readFileSync(path.join(__dirname,'..',name),'utf8');
+const app=read('app.js'),html=read('index.html'),server=read('server.js'),sw=read('sw.js'),logisticsUI=read('logistics-ui.js');
+assert.equal((html.match(/leaflet@1\.9\.4\/dist\/leaflet\.(?:js|css)/gu)||[]).length,2,'single Leaflet renderer assets');
+assert.equal((app.match(/L\.tileLayer\(/gu)||[]).length,2,'restaurant maps share the same tile renderer');
+assert.equal((app.match(/https:\/\/tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png/gu)||[]).length,2,'all maps use canonical OSM tile endpoint');
+assert.match(app,/OpenStreetMap contributors/u);assert.match(server,/Referrer-Policy','strict-origin-when-cross-origin/u,'tile policy receives origin referrer without full page URL');assert.match(html,/name="referrer" content="strict-origin-when-cross-origin"/u);
+assert.match(logisticsUI,/value="establishment"/u,'Route origin defaults to the canonical Company location');assert.match(app,/restaurantLocationStale/u,'unconfirmed address change does not silently become coordinates');
+assert.match(read('backend/logistics/osrm-route-distance.js'),/provider|provenance/u,'road routing remains a backend boundary');
+assert.doesNotMatch(sw,/tile\.openstreetmap\.org|leaflet@/u,'map CDN and tiles are not claimed as offline assets');
+assert.match(app,/nominatim\.openstreetmap\.org/u,'geocoder use is explicit and documented for privacy review');
+console.log('Restaurant cartography renderer, attribution, offline and provenance contract: PASS');

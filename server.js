@@ -113,7 +113,7 @@ async function route(req,res){
   res.req=req;
   req.clientIp=resolveClientAddress(req,CONFIG);
   if(!hostAllowed(req.headers.host,CONFIG.allowedHosts,CONFIG.production)){requestLogger({event:'http.rejected_host',requestId:req.requestId});return json(res,421,{error:{code:'HOST_INVALID',message:'Host não permitido.'},requestId:req.requestId});}
-  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
   if(CONFIG.production)res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');
   if(ALLOWED_ORIGINS.includes(req.headers.origin)){res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin')}
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`);

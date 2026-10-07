@@ -199,7 +199,7 @@ function createAdminRepository() {
   }
   async function company(client, companyId) {
     const result = await client.query(`SELECT id::text,name,status,time_zone,support_phone,operational_address,operational_latitude,
-        operational_longitude,operational_location_provenance,operational_location_version,company_settings_version,created_at,updated_at
+        operational_longitude,operational_location_provenance,operational_location_version,company_settings_version,route_grouping_policy,created_at,updated_at
       FROM rotamoto.companies WHERE id=$1`, [companyId]);
     if (!result.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
     const row = result.rows[0];
@@ -207,7 +207,8 @@ function createAdminRepository() {
       operationalLocation: row.operational_latitude == null ? null : { address: row.operational_address,
         latitude: Number(row.operational_latitude), longitude: Number(row.operational_longitude),
         provenance: row.operational_location_provenance, version: Number(row.operational_location_version) },
-      operationalLocationVersion: Number(row.operational_location_version), settingsVersion: Number(row.company_settings_version), createdAt: row.created_at, updatedAt: row.updated_at };
+      operationalLocationVersion: Number(row.operational_location_version), settingsVersion: Number(row.company_settings_version),
+      routeGroupingPolicy: row.route_grouping_policy, createdAt: row.created_at, updatedAt: row.updated_at };
   }
   async function updateCompanyTimeZone(client, principal, timeZone) {
     const current = await client.query(`SELECT time_zone FROM rotamoto.companies WHERE id=$1 FOR UPDATE`, [principal.company_id]);
@@ -267,6 +268,21 @@ function createAdminRepository() {
     await writeAudit(client,principal,'company.profile.changed','company',principal.company_id,{version:Number(updated.rows[0].company_settings_version)});
     return { name:updated.rows[0].name,supportPhone:updated.rows[0].support_phone,settingsVersion:Number(updated.rows[0].company_settings_version) };
   }
+  async function updateCompanyRouteGrouping(client, principal, input) {
+    const updated = await client.query(`UPDATE rotamoto.companies SET route_grouping_policy=$2,
+        company_settings_version=company_settings_version+1,updated_at=now()
+      WHERE id=$1 AND company_settings_version=$3
+      RETURNING route_grouping_policy,company_settings_version`,
+    [principal.company_id,input.policy,input.expectedVersion]);
+    if (!updated.rowCount) {
+      const exists = await client.query('SELECT 1 FROM rotamoto.companies WHERE id=$1',[principal.company_id]);
+      const error = new Error(exists.rowCount?'A configuração mudou em outra sessão.':'Empresa não encontrada.');
+      error.code = exists.rowCount?'REVISION_CONFLICT':'NOT_FOUND'; throw error;
+    }
+    await writeAudit(client,principal,'company.route_grouping.changed','company',principal.company_id,
+      { policy:updated.rows[0].route_grouping_policy,version:Number(updated.rows[0].company_settings_version) });
+    return { routeGroupingPolicy:updated.rows[0].route_grouping_policy,settingsVersion:Number(updated.rows[0].company_settings_version) };
+  }
   async function memberships(client, companyId, { limit, cursor }) {
     const after = decodeCursor(cursor);
     const params = [companyId];
@@ -314,7 +330,7 @@ function createAdminRepository() {
     return { integrations: publicCatalog(persisted) };
   }
   return Object.freeze({ company, memberships, roles, integrations, permissions, createRole, updateRole, updateMembership,
-    updateCompanyTimeZone, updateCompanyLocation, updateCompanyProfile, associateMembershipDriver, disassociateMembershipDriver });
+    updateCompanyTimeZone, updateCompanyLocation, updateCompanyProfile, updateCompanyRouteGrouping, associateMembershipDriver, disassociateMembershipDriver });
 }
 
 module.exports = { createAdminRepository, decodeCursor, encodeCursor };

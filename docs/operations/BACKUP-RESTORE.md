@@ -44,6 +44,9 @@ são parte de uma recuperação válida.
   do PostgreSQL. Preserve cópia offline protegida da chave e teste recuperação.
 - `ROTAMOTO_BACKUP_DIRECTORY` e `ROTAMOTO_MEDIA_DIRECTORY` são absolutos,
   separados, privados e acessíveis ao operador.
+- `ROTAMOTO_OPERATOR_AUDIT_LOG` é arquivo absoluto privado (modo 0600) em diretório
+  privado (0700); `ROTAMOTO_OPERATOR_ACTOR_REF` é identificador operacional sem PII.
+  Ambos são obrigatórios para comandos mutáveis do CLI; ausência gera erro de configuração sanitizado.
 
 ```sh
 umask 077
@@ -52,6 +55,8 @@ BACKUP_DATABASE_URL=postgresql://rotamoto_backup@db.internal:5432/rotamoto \
 ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key \
 ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto \
 ROTAMOTO_MEDIA_DIRECTORY=/var/lib/rotamoto/media \
+ROTAMOTO_OPERATOR_AUDIT_LOG=/var/log/rotamoto/operator-audit.jsonl \
+ROTAMOTO_OPERATOR_ACTOR_REF=operator:backup-scheduler \
 ROTAMOTO_BACKUP_RETENTION_DAYS=30 npm run backup:create
 ```
 
@@ -60,6 +65,8 @@ ROTAMOTO_BACKUP_RETENTION_DAYS=30 npm run backup:create
 ```sh
 ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto \
 ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key \
+ROTAMOTO_OPERATOR_AUDIT_LOG=/var/log/rotamoto/operator-audit.jsonl \
+ROTAMOTO_OPERATOR_ACTOR_REF=operator:backup-verifier \
   npm run backup:verify -- <uuid-do-conjunto>
 ```
 
@@ -78,7 +85,7 @@ pgpass privados e envie stdout/stderr ao journal com acesso restrito. Exemplo de
 entrada diária (horário, frequência, retenção e alertas são decisões do operador):
 
 ```cron
-17 2 * * * cd /opt/rotamoto && BACKUP_DATABASE_URL=postgresql://rotamoto_backup@127.0.0.1:5432/rotamoto ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto ROTAMOTO_MEDIA_DIRECTORY=/var/lib/rotamoto/media ROTAMOTO_BACKUP_RETENTION_DAYS=30 npm run backup:create
+17 2 * * * cd /opt/rotamoto && BACKUP_DATABASE_URL=postgresql://rotamoto_backup@127.0.0.1:5432/rotamoto ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto ROTAMOTO_MEDIA_DIRECTORY=/var/lib/rotamoto/media ROTAMOTO_OPERATOR_AUDIT_LOG=/var/log/rotamoto/operator-audit.jsonl ROTAMOTO_OPERATOR_ACTOR_REF=operator:backup-scheduler ROTAMOTO_BACKUP_RETENTION_DAYS=30 npm run backup:create
 ```
 
 Uma cópia offsite cifrada é opcional, mas necessária para tolerar perda do host.
