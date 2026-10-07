@@ -55,7 +55,7 @@ function createMarketplaceAccountResolver({ privilegedPool, secretProvider } = {
     })();
     const findCompany=companyId||route;
     if(!findCompany||route&&route!==findCompany)return null;
-    return lookup({companyId:findCompany,sql:'ea.id=$2 AND b.provider=$3'},[findCompany,accountId,provider]);
+    return lookup({companyId:findCompany,sql:'ea.company_id=$1 AND ea.id=$2 AND b.provider=$3'},[findCompany,accountId,provider]);
   }
   async function byMerchant(provider,merchantId) {
     if(typeof merchantId!=='string'||!merchantId||merchantId.length>255)return null;
@@ -64,7 +64,7 @@ function createMarketplaceAccountResolver({ privilegedPool, secretProvider } = {
     try{const result=await client.query(`SELECT company_id::text FROM rotamoto.marketplace_account_routes
       WHERE provider=$1 AND route_kind='merchant' AND route_key=$2`,[provider,merchantId]);companyId=result.rows.length===1?result.rows[0].company_id:null;}
     finally{client.release();}
-    return companyId?lookup({companyId,sql:'b.provider=$2 AND b.merchant_id=$3'},[companyId,provider,merchantId]):null;
+    return companyId?lookup({companyId,sql:'b.company_id=$1 AND b.provider=$2 AND b.merchant_id=$3'},[companyId,provider,merchantId]):null;
   }
   async function list(companyId,provider) {
     const rows=await withTenant(companyId,async client=>(await client.query(`SELECT ea.id::text FROM rotamoto.external_accounts ea
