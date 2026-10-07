@@ -35,7 +35,7 @@ installed.then(async () => {
   assert.ok(added.includes('/index.html'));
   assert.ok(added.includes('/ticket-renderer.js?v=1'));
   assert.ok(added.includes('/browser-printer-provider.js?v=1'));
-  assert.ok(added.includes('/app.js?v=40.2'));
+  assert.ok(added.includes('/app.js?v=40.3'));
   assert.match(html, /serviceWorker\.register\('\/sw\.js'/);
 
   let activated;

@@ -9,7 +9,7 @@ const APP_SHELL = Object.freeze([
   '/indexeddb-schema.js?v=2', '/order-money.js?v=1', '/ticket-renderer.js?v=1',
   '/browser-printer-provider.js?v=1', '/restaurant-operations.js?v=2',
   '/analytics.js?v=2', '/analytics-view.js?v=1', '/logistics-ui.js?v=1',
-  '/identity-session-guard.js', '/app.js?v=40.2', '/identity-ui.js'
+  '/identity-session-guard.js', '/app.js?v=40.3', '/identity-ui.js'
 ]);
 
 self.addEventListener('install', event => {

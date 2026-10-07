@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const source=fs.readFileSync('app.js','utf8'),Money=require('../order-money');
+const match=source.match(/function knownDeliveryFeeBRL\(order\)\{[\s\S]*?\n\}/u);assert(match,'dashboard has canonical fee projection');
+const context={window:{RotaMotoOrderMoney:Money}};vm.runInNewContext(`${match[0]}\nthis.project=knownDeliveryFeeBRL;`,context);
+assert.equal(context.project({money:{currency:'BRL',completeness:'partial',provenance:{kind:'manual'},components:{deliveryFeeMinor:0}}}),0,'known zero fee remains zero');
+assert.equal(context.project({money:{currency:'USD',completeness:'partial',provenance:{kind:'external'},components:{deliveryFeeMinor:500}}}),null,'foreign currency is not summed into BRL');
+assert.equal(context.project({sourceId:'ifood',value:45}),null,'external total is not mistaken for a delivery fee');
+assert.equal(context.project({sourceId:'manual',value:4.5}),4.5,'known legacy local delivery-fee semantics remain supported');
+assert.doesNotMatch(source,/doneToday\.reduce\(\(a,o\)=>a\+Number\(o\.value\|\|0\)/u,'dashboard never sums Order.value as delivery revenue');
+assert.doesNotMatch(source,/kpi\('Motoboys ativos',state\.bikes\.filter\(b=>b\.status!=='OFFLINE'\)/u,'a cadastro is not treated as evidence of current availability');
+assert.match(source,/BRL conhecido em \$\{feeRows\.length\} de \$\{doneToday\.length\}/u,'dashboard exposes fee coverage');
+console.log('Dashboard delivery-fee currency and missing-value semantics: PASS');
