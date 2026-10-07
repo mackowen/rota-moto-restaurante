@@ -1,6 +1,15 @@
 \set ON_ERROR_STOP on
 
+-- This file is run separately against each application database. Runtime
+-- roles have no PUBLIC CONNECT here, so grant only the current database.
+DO $database_connect$
+BEGIN
+  EXECUTE format('GRANT CONNECT ON DATABASE %I TO rotamoto_provider_worker, rotamoto_provider_resolver',current_database());
+END
+$database_connect$;
+
 GRANT USAGE ON SCHEMA rotamoto TO rotamoto_provider_worker, rotamoto_provider_resolver;
+GRANT EXECUTE ON FUNCTION rotamoto.current_tenant_id() TO rotamoto_provider_worker, rotamoto_provider_resolver;
 GRANT SELECT (company_id,provider_id,code,display_name,provider_class,enabled,capabilities,configuration,version,integration_mode,api_enabled)
   ON rotamoto.logistics_providers TO rotamoto_provider_worker;
 GRANT SELECT ON rotamoto.provider_command_outbox TO rotamoto_provider_worker;
@@ -18,6 +27,9 @@ GRANT UPDATE (status,processed_at) ON rotamoto.provider_event_inbox TO rotamoto_
 GRANT SELECT (company_id,fulfillment_id,delivery_id,provider_id,mode,status,revision,selected_by,updated_by)
   ON rotamoto.delivery_fulfillments TO rotamoto_provider_worker;
 GRANT UPDATE (status,revision,updated_by,updated_at) ON rotamoto.delivery_fulfillments TO rotamoto_provider_worker;
+GRANT SELECT (company_id,decision_id,delivery_id,status,execution_result,version)
+  ON rotamoto.logistics_decisions TO rotamoto_provider_worker;
+GRANT UPDATE (status,version,updated_at) ON rotamoto.logistics_decisions TO rotamoto_provider_worker;
 GRANT EXECUTE ON FUNCTION rotamoto.claim_provider_command(uuid,uuid,integer) TO rotamoto_provider_worker;
 GRANT SELECT (company_id,provider_id,code,api_enabled,secret_ref)
   ON rotamoto.logistics_providers TO rotamoto_provider_resolver;
@@ -38,6 +50,7 @@ GRANT SELECT (id,company_id,integration_id,external_account_id,display_name,link
   ON rotamoto.external_accounts TO rotamoto_provider_worker;
 GRANT UPDATE (poll_next_at,poll_lease_token,poll_lease_until,last_sync_at,last_error_code,updated_at)
   ON rotamoto.external_accounts TO rotamoto_provider_worker;
+GRANT UPDATE (account_status,last_error_code,updated_at) ON rotamoto.external_accounts TO rotamoto_provider_worker;
 GRANT SELECT ON rotamoto.integrations TO rotamoto_provider_worker;
 GRANT SELECT,INSERT,UPDATE ON rotamoto.domain_records,rotamoto.sync_installations TO rotamoto_provider_worker;
 GRANT EXECUTE ON FUNCTION rotamoto.claim_marketplace_event(uuid,uuid,integer) TO rotamoto_provider_worker;
