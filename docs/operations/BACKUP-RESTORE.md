@@ -47,6 +47,9 @@ são parte de uma recuperação válida.
 - `ROTAMOTO_OPERATOR_AUDIT_LOG` é arquivo absoluto privado (modo 0600) em diretório
   privado (0700); `ROTAMOTO_OPERATOR_ACTOR_REF` é identificador operacional sem PII.
   Ambos são obrigatórios para comandos mutáveis do CLI; ausência gera erro de configuração sanitizado.
+- `PUBLIC_BASE_URL` não é dependência de `backup:create`, `backup:verify` nem do
+  migration runner local. É exigida quando deployment publica callbacks OAuth/webhook
+  ou fluxos de identidade/e-mail que dependam de endereço HTTPS alcançável.
 
 ```sh
 umask 077

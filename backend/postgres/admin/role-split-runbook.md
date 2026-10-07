@@ -6,6 +6,23 @@ preparado após auditoria read-only do PostgreSQL oficial 18.6 em
 `u0_a436`, mas o comando não inclui senha. O backend HTTP continua conectando
 como `rotamoto_app`; `rotamoto_migrator` é somente para migrations e DDL.
 
+### Estado observado em 2026-10-07 (read-only)
+
+No cluster Termux atual, o serviço PostgreSQL roda como UID Android/Termux
+`u0_a436`; `pg_roles` confirma a role `u0_a436` como superuser, login e owner do
+database `rotamoto`. O schema `rotamoto` e seus objetos/ledger pertencem a
+`rotamoto_migrator`; `rotamoto_e2e` pertence ao migrator. A role `postgres` não
+existe nesse cluster. Isso corrige a interpretação antiga do inventário abaixo:
+ele descreve o estado **pré-role-split**, não o catálogo atual, e não deve ser
+usado para decidir owners atuais sem consulta.
+
+A sessão DBA `u0_a436` não pôde ser autenticada nesta campanha: `pg_hba.conf`
+exige `scram-sha-256` para socket e loopback TCP, e o `.pgpass` 0600 não tem
+entrada para `u0_a436`. Consultas disponíveis autenticaram como
+`rotamoto_app`, `rotamoto_backup` e `rotamoto_migrator`; catálogo confirmou que
+app/migrator não têm `CREATEROLE` ou `BYPASSRLS`. Não afrouxar HBA, resetar senha
+ou substituir a sessão DBA por migrator.
+
 ## Inventário observado
 
 - Database `rotamoto`: owner atual `rotamoto_app`, ACL nula (ACL padrão); a
