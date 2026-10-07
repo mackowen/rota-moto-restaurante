@@ -73,7 +73,7 @@ async function start(handler) {
 }
 
 async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
-  persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [] } = {}) {
+  persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false } = {}) {
   if (env.NODE_ENV !== 'test' || typeof extraHttpHandlers !== 'function') throw new Error('Handlers extras do fixture só são aceitos no modo test.');
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
   const disposableCampaign = clients.migrator ? env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' : false;
@@ -228,13 +228,41 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const orderDelivery = await call('/api/sync/push', { method: 'POST', cookie: sessionCookie, csrf, body: {
       protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId: `pkt_${crypto.randomUUID()}`,
       deviceId: restaurantDevice, source: { deviceId: restaurantDevice }, createdAt: now,
-      data: { orders: [{ id: orderLocalId, customer: 'Cliente E2E', source: 'ifood', externalId: crypto.randomUUID(), status: 'CREATED', createdAt: now, updatedAt: now, version: 1 }],
+      data: { orders: [{ id: orderLocalId, customer: 'Cliente E2E', source: 'ifood', externalId: crypto.randomUUID(), status: 'CREATED', createdAt: now, updatedAt: now, version: 1,
+          ...(navigationFixture ? { extensions: { x_rotamoto_navigation_coordinates: { latitude: -23.50, longitude: -46.60, provenance: 'restaurant_order_coordinates' } } } : {}) }],
         deliveries: [{ id: deliveryLocalId, orderId: orderLocalId, driverId, status: 'ASSIGNED', createdAt: now, updatedAt: now, version: 1 }] }
     } });
     assert.equal(orderDelivery.status, 200, JSON.stringify(orderDelivery.body));
     assert(orderDelivery.body.operationResults.every(result => result.status === 'accepted'), JSON.stringify(orderDelivery.body.operationResults));
     const orderId = orderDelivery.body.aliases.find(row => row.entity === 'Order').canonicalId;
     const deliveryId = orderDelivery.body.aliases.find(row => row.entity === 'Delivery').canonicalId;
+    let navigationRouteId = null, navigationDeliveryIds = [];
+    if (navigationFixture) {
+      const localOrders = Array.from({ length: 5 }, (_, index) => ({ id: crypto.randomUUID(), companyId,
+        customer: `QA parada ${index + 2}`, source: index % 2 ? 'whatsapp' : 'manual', number: String(index + 2),
+        createdAt: now, updatedAt: now, version: 1,
+        extensions: { x_rotamoto_navigation_coordinates: { latitude: -23.50 - (index + 1) * 0.002,
+          longitude: -46.60 - (index + 1) * 0.002, provenance: 'restaurant_order_coordinates' } } }));
+      const localDeliveries = localOrders.map(order => ({ id: crypto.randomUUID(), companyId, orderId: order.id,
+        driverId, status: 'ASSIGNED', createdAt: now, updatedAt: now, version: 1 }));
+      const stopsPush = await call('/api/sync/push', { method: 'POST', cookie: sessionCookie, csrf, body: {
+        protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId: `pkt_${crypto.randomUUID()}`,
+        deviceId: restaurantDevice, source: { deviceId: restaurantDevice }, createdAt: now,
+        data: { orders: localOrders, deliveries: localDeliveries }
+      } });
+      assert.equal(stopsPush.status, 200, JSON.stringify(stopsPush.body));
+      assert(stopsPush.body.operationResults.every(result => result.status === 'accepted'), JSON.stringify(stopsPush.body.operationResults));
+      navigationDeliveryIds = [deliveryId, ...stopsPush.body.aliases.filter(row => row.entity === 'Delivery').map(row => row.canonicalId)];
+      navigationRouteId = crypto.randomUUID();
+      const routePush = await call('/api/sync/push', { method: 'POST', cookie: sessionCookie, csrf, body: {
+        protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId: `pkt_${crypto.randomUUID()}`,
+        deviceId: restaurantDevice, source: { deviceId: restaurantDevice }, createdAt: now,
+        data: { routes: [{ id: navigationRouteId, companyId, deliveryIds: navigationDeliveryIds, status: 'PLANNED', createdAt: now, updatedAt: now, version: 1 }] }
+      } });
+      assert.equal(routePush.status, 200, JSON.stringify(routePush.body));
+      assert(routePush.body.operationResults.every(result => result.status === 'accepted'), JSON.stringify(routePush.body.operationResults));
+      navigationRouteId = routePush.body.aliases.find(row => row.entity === 'Route').canonicalId;
+    }
     const delivery = await call(`/api/domain/deliveries/${deliveryId}`, { cookie: sessionCookie });
     assert.equal(delivery.status, 200, JSON.stringify(delivery.body));
     assert.equal(delivery.body.record.orderId, orderId);
@@ -296,7 +324,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       cookie: options.cookie || sessionCookie, csrf: options.csrf === undefined ? csrf : options.csrf });
     const browserMfaCode = codeAt(enrollment.body.secret, Math.floor(Date.now() / 30000) + 1);
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
-      driverId, orderId, deliveryId, email, password, mfaCode: browserMfaCode,
+      driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, email, password, mfaCode: browserMfaCode,
       browserSessionCookie: sessionCookie, apiOrigin: host.base, runtime, call, authenticatedCall }));
     const recoveryRequest = await call('/api/identity/recovery', { method: 'POST', body: { email } });
     assert.equal(recoveryRequest.status, 202, JSON.stringify(recoveryRequest.body));
@@ -313,7 +341,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       await runtime.query('COMMIT'); transactionOpen = false; fixturePersisted = true;
     }
     return Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
-      driverId, orderId, deliveryId, authenticated: true, mfaVerified: true,
+      driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, authenticated: true, mfaVerified: true,
       ...(fixturePersisted ? { mediaDirectory } : {}) });
   } finally {
     if (host) await new Promise(resolve => host.server.close(resolve));

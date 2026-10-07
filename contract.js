@@ -108,9 +108,10 @@
   function raceFromDelivery(delivery={},order={},current={}){
     const status=delivery.status||'ASSIGNED';
     const localStatus={CREATED:'open',ASSIGNED:'open',ACCEPTED:'open',PICKED_UP:'route',OUT_FOR_DELIVERY:'route',ARRIVED:'arrived',DELIVERED:'done',CANCELLED:'cancelled',FAILED:'issue',RETURNED:'issue',REDELIVERY:'open'}[status]||'open';
-    const coords=Array.isArray(order.coords)?order.coords:null;
-    const lat=order.latitude??order.lat??coords?.[0]??current.lat;
-    const lng=order.longitude??order.lng??coords?.[1]??current.lng;
+    const coords=Array.isArray(order.coords)?order.coords:null,shared=order.extensions?.x_rotamoto_navigation_coordinates;
+    const sharedValid=shared&&shared.provenance==='restaurant_order_coordinates'&&Number.isFinite(Number(shared.latitude))&&Math.abs(Number(shared.latitude))<=90&&Number.isFinite(Number(shared.longitude))&&Math.abs(Number(shared.longitude))<=180;
+    const lat=order.latitude??order.lat??coords?.[0]??(sharedValid?shared.latitude:undefined)??current.lat;
+    const lng=order.longitude??order.lng??coords?.[1]??(sharedValid?shared.longitude:undefined)??current.lng;
     return {...current,id:current.id||delivery.id,deliveryId:delivery.id,companyId:delivery.companyId||order.companyId||current.companyId,
       orderId:delivery.orderId||order.id||current.orderId||null,driverId:delivery.driverId||current.driverId||null,
       status:localStatus,canonicalStatus:status,version:Number(delivery.version||delivery.sync?.version||1),updatedAt:new Date(timestampMs(delivery.updatedAt)||Date.now()).toISOString(),createdAt:current.createdAt||delivery.createdAt||now(),

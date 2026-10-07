@@ -43,6 +43,10 @@ assert.equal(order.accessToken, undefined);
 assert.equal(order.extensions.x_restaurante_source_data.orderId, 'external-1');
 assert.equal(order.extensions.x_restaurante_source_data.password, undefined);
 assert.equal(order.extensions.x_restaurante_source_data.items[0].token, undefined);
+const geoOrder=Operations.canonicalOrder({id:'geo-order',createdAt,updatedAt:createdAt,coords:[-23.5,-46.6]},'company_1');
+assert.deepEqual(geoOrder.extensions.x_rotamoto_navigation_coordinates,{latitude:-23.5,longitude:-46.6,provenance:'restaurant_order_coordinates'});
+assert.equal(Operations.canonicalOrder({id:'bad-geo-order',createdAt,updatedAt:createdAt,coords:[91,181]},'company_1').extensions,undefined,
+  'invalid coordinates are not published as navigation points');
 assert.equal(Operations.canonicalOrder({ id: 'o2', createdAt, updatedAt: createdAt, sourceData: '{\"password\":\"raw-secret\"}' }, 'company_1').extensions, undefined);
 assert.equal(Contract.validateEntity('Order', order).valid, true);
 

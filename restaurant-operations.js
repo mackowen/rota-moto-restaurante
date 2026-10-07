@@ -60,6 +60,14 @@
     if (Array.isArray(order.payments)) record.payments = order.payments;
     if (Number.isSafeInteger(order.amountMinor)) record.amountMinor = order.amountMinor;
     if (typeof order.currency === 'string' && /^[A-Z]{3}$/u.test(order.currency)) record.currency = order.currency;
+    const coordinates = Array.isArray(order.coords) ? order.coords : null;
+    const latitude = Number(order.latitude ?? order.lat ?? coordinates?.[0]);
+    const longitude = Number(order.longitude ?? order.lng ?? coordinates?.[1]);
+    if (Number.isFinite(latitude) && Math.abs(latitude) <= 90 && Number.isFinite(longitude) && Math.abs(longitude) <= 180) {
+      record.extensions = { ...(record.extensions || {}), x_rotamoto_navigation_coordinates: {
+        latitude, longitude, provenance: 'restaurant_order_coordinates'
+      } };
+    }
     if (order.sourceData !== undefined && order.sourceData !== null) {
       let sourceValue = order.sourceData;
       if (typeof sourceValue === 'string') {
