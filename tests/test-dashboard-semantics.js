@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const source=fs.readFileSync('app.js','utf8'),Money=require('../order-money');
+const source=fs.readFileSync('app.js','utf8'),styles=fs.readFileSync('styles.css','utf8'),Money=require('../order-money');
 const match=source.match(/function knownDeliveryFeeBRL\(order\)\{[\s\S]*?\n\}/u);assert(match,'dashboard has canonical fee projection');
 const context={window:{RotaMotoOrderMoney:Money}};vm.runInNewContext(`${match[0]}\nthis.project=knownDeliveryFeeBRL;`,context);
 assert.equal(context.project({money:{currency:'BRL',completeness:'partial',provenance:{kind:'manual'},components:{deliveryFeeMinor:0}}}),0,'known zero fee remains zero');
@@ -14,4 +14,7 @@ assert.match(dashboard,/report\.coverage\.actualDistance/u,'distance coverage is
 assert.match(dashboard,/Canal de venda, separado do responsável logístico/u,'commercial source is kept separate from logistics provider');
 assert.doesNotMatch(dashboard,/doneToday\.reduce\(\(a,o\)=>a\+Number\(o\.value\|\|0\)/u,'dashboard never sums Order.value as delivery revenue');
 assert.doesNotMatch(dashboard,/kpi\('Motoboys ativos',state\.bikes\.filter\(b=>b\.status!=='OFFLINE'\)/u,'a cadastro is not treated as evidence of current availability');
+assert.match(source,/data-label="Pedido"/u,'delivery rows expose semantic labels for the responsive card layout');
+assert.match(styles,/\.table thead\{display:none\}/u,'responsive tables hide desktop headings when rows become cards');
+assert.doesNotMatch(styles,/\.table thead\{display:table-header-group\}/u,'no later mobile rule restores squeezed desktop table headings');
 console.log('Command Center canonical analytics and metric semantics: PASS');

@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'rotamoto-restaurante-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v2`;
+const CACHE_NAME = `${CACHE_PREFIX}v3`;
 const APP_SHELL = Object.freeze([
   '/', '/index.html', '/styles.css', '/identity-ui.css', '/favicon.svg',
   '/qr-local.js', '/ifood-integration.js', '/keeta-integration.js', '/99food-integration.js',
@@ -9,7 +9,7 @@ const APP_SHELL = Object.freeze([
   '/indexeddb-schema.js?v=2', '/order-money.js?v=1', '/ticket-renderer.js?v=1',
   '/browser-printer-provider.js?v=1', '/restaurant-operations.js?v=2',
   '/analytics.js?v=2', '/analytics-view.js?v=1', '/logistics-ui.js?v=1',
-  '/identity-session-guard.js', '/app.js?v=40.3', '/identity-ui.js',
+  '/identity-session-guard.js', '/app.js?v=40.4', '/identity-ui.js',
   '/vendor/leaflet/leaflet.css', '/vendor/leaflet/leaflet.js'
 ]);
 
