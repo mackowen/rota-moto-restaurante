@@ -100,7 +100,7 @@
   }
   function placeTrigger() {
     const app = document.querySelector('#app');
-    const anchor = current || offlineMode ? app?.querySelector('.top-actions, .top') : null;
+    const anchor = current || offlineMode ? app?.querySelector('.pilot-command-head .pilot-head-actions, .top-actions, .top') : null;
     const parent = anchor || host;
     if (trigger.parentElement !== parent) parent.append(trigger);
     trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));

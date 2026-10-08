@@ -12,6 +12,7 @@ assert.match(dashboard,/RotaMotoAnalytics\.aggregate/u,'Command Center reuses th
 assert.match(dashboard,/report\.dailyVolume/u,'daily trend uses the canonical cohort series');
 assert.match(dashboard,/report\.coverage\.actualDistance/u,'distance coverage is explicit');
 assert.match(dashboard,/Canal de venda, separado do responsável logístico/u,'commercial source is kept separate from logistics provider');
+assert.match(dashboard,/report\.coverage\.earning\.available/u,'canonical earning coverage remains visible');
 assert.doesNotMatch(dashboard,/doneToday\.reduce\(\(a,o\)=>a\+Number\(o\.value\|\|0\)/u,'dashboard never sums Order.value as delivery revenue');
 assert.doesNotMatch(dashboard,/kpi\('Motoboys ativos',state\.bikes\.filter\(b=>b\.status!=='OFFLINE'\)/u,'a cadastro is not treated as evidence of current availability');
 assert.match(source,/data-label="Pedido"/u,'delivery rows expose semantic labels for the responsive card layout');
