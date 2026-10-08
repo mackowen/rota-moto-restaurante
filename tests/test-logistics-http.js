@@ -13,6 +13,7 @@ async function main() {
     analytics: async () => { calls.push(['analytics']); return { providers: [] }; },
     getIntelligenceSettings: async () => ({ settings: { configured: false, version: 0 }, policies: ['lowest_cost'] }),
     getRouteSettings: async (_client,scope) => ({ settings: { originMode:'establishment', origin:null, returnToOrigin:false, tenant:scope.company_id } }),
+    getPlannedRouteGeometry: async (_client,scope,id) => ({status:'unavailable',reason:'ROUTE_GEOMETRY_PROVIDER_NOT_CONFIGURED',tenant:scope.company_id,routeId:id}),
     updateRouteSettings: async (_client,scope,body) => { calls.push(['route-settings-update',scope.company_id,body]); return { settings:{version:1} }; },
     updateIntelligenceSettings: async (_client, scope, body) => { calls.push(['intelligence-update', scope.company_id, body]); return { settings: { version: 1 } }; },
     logisticsEconomicAnalytics: async () => ({ ownFleet: {}, external: {} }),
@@ -46,6 +47,9 @@ async function main() {
     assert.equal((await fetch(`${base}/api/logistics/intelligence/settings`, { headers })).status, 200);
     const routeSettings=await fetch(`${base}/api/logistics/route-settings`,{headers});
     assert.equal(routeSettings.status,200);assert.equal((await routeSettings.json()).settings.tenant,principal.company_id);
+    const routeId='00000000-0000-4000-8000-000000000002';
+    const routeGeometry=await fetch(`${base}/api/logistics/routes/${routeId}/geometry`,{headers});
+    assert.equal(routeGeometry.status,200);assert.equal((await routeGeometry.json()).tenant,principal.company_id);
     assert.equal((await fetch(`${base}/api/logistics/intelligence/analytics`, { headers })).status, 200);
     const quality=await fetch(`${base}/api/logistics/intelligence/decision-quality`,{headers});
     assert.equal(quality.status,200);assert.equal((await quality.json()).decisions.length,0);

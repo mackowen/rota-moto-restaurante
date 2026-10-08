@@ -376,6 +376,45 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
   }
   async function readRouteSettings(client,principal){return {settings:await getRouteSettings(client,principal.company_id),locationPolicy:{maxAgeSeconds:120,maxAccuracyM:100,
     activeRouteStart:'fresh internal Driver LocationPoint only; no fallback to establishment origin'}};}
+  async function getPlannedRouteGeometry(client,principal,routeId){
+    D.uuid(routeId,'routeId');
+    const routeResult=await client.query(`SELECT version,payload->>'status' AS status,
+      CASE WHEN jsonb_typeof(payload->'deliveryIds')='array' THEN payload->'deliveryIds' ELSE '[]'::jsonb END AS delivery_ids
+      FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Route' AND deleted_at IS NULL`,[principal.company_id,routeId]);
+    if(!routeResult.rowCount)throw Object.assign(new Error('Planejamento de rota não encontrado.'),{code:'NOT_FOUND'});
+    const status=String(routeResult.rows[0].status||'').toUpperCase(),deliveryIds=routeResult.rows[0].delivery_ids;
+    if(!ACTIVE_ROUTE_STATES.has(status)||!Array.isArray(deliveryIds)||deliveryIds.length<1||deliveryIds.length>62||
+      deliveryIds.some(id=>typeof id!=='string'||!D.UUID.test(id))||new Set(deliveryIds).size!==deliveryIds.length)
+      return {status:'unavailable',reason:'ROUTE_PLAN_INVALID',geometry:null,deliveryIds:[]};
+    const routeSettings=await getRouteSettings(client,principal.company_id);
+    if(!routeSettings.origin||!Number.isFinite(routeSettings.origin.latitude)||!Number.isFinite(routeSettings.origin.longitude))
+      return {status:'unavailable',reason:'ROUTE_ORIGIN_UNKNOWN',geometry:null,deliveryIds};
+    const stops=await client.query(`SELECT stop.record_id::text AS delivery_id,stop.payload->>'driverId' AS driver_id,
+      geo.provenance,geo.accuracy_m,geo.latitude,geo.longitude
+      FROM unnest($2::uuid[]) WITH ORDINALITY planned(delivery_id,position)
+      LEFT JOIN rotamoto.domain_records stop ON stop.company_id=$1 AND stop.record_id=planned.delivery_id
+        AND stop.entity_type='Delivery' AND stop.deleted_at IS NULL
+      LEFT JOIN rotamoto.delivery_geo_snapshots geo ON geo.company_id=$1 AND geo.delivery_id=stop.record_id
+      ORDER BY planned.position`,[principal.company_id,deliveryIds]);
+    const drivers=new Set(stops.rows.map(row=>row.driver_id).filter(Boolean));
+    if(stops.rows.length!==deliveryIds.length||stops.rows.some(row=>!row.delivery_id)||drivers.size!==1||stops.rows.some(row=>!row.driver_id))
+      return {status:'unavailable',reason:'ROUTE_DRIVER_OR_DELIVERY_INCOMPLETE',geometry:null,deliveryIds};
+    if(principal.driver_id&&!drivers.has(String(principal.driver_id)))throw Object.assign(new Error('Planejamento de rota não encontrado.'),{code:'NOT_FOUND'});
+    const coordinatesByDeliveryId=Object.create(null),sequence=['__route_origin__',...deliveryIds];
+    coordinatesByDeliveryId.__route_origin__=routeSettings.origin;
+    for(const row of stops.rows){
+      if(!['manual','customer_destination'].includes(row.provenance)||!Number.isFinite(Number(row.accuracy_m))||Number(row.accuracy_m)<0||Number(row.accuracy_m)>100||
+        !Number.isFinite(Number(row.latitude))||!Number.isFinite(Number(row.longitude)))
+        return {status:'unavailable',reason:'ROUTE_STOP_COORDINATES_INCOMPLETE',geometry:null,deliveryIds};
+      coordinatesByDeliveryId[row.delivery_id]={latitude:Number(row.latitude),longitude:Number(row.longitude)};
+    }
+    if(routeSettings.returnToOrigin)sequence.push('__route_origin__');
+    if(!routeDistanceProvider||typeof routeDistanceProvider.calculateGeometry!=='function')
+      return {status:'unavailable',reason:'ROUTE_GEOMETRY_PROVIDER_NOT_CONFIGURED',geometry:null,deliveryIds};
+    const result=await routeDistanceProvider.calculateGeometry({companyId:principal.company_id,deliveryIds:sequence,coordinatesByDeliveryId});
+    return {...result,deliveryIds,routeId,routeVersion:Number(routeResult.rows[0].version),routeStatus:status,returnToOrigin:routeSettings.returnToOrigin,
+      startSource:routeSettings.originMode==='custom'?'origem operacional configurada':'endereço do estabelecimento'};
+  }
   async function updateRouteSettings(client,principal,input){
     const allowed=new Set(['expectedVersion','originMode','latitude','longitude','returnToOrigin']);
     if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!allowed.has(key))||
@@ -639,7 +678,7 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       comparisonNote:'Diferença entre estimativas não é economia gerada pelo RotaMoto: não existe baseline contrafactual de decisões alternativas.' };
   }
   return Object.freeze({ getIntelligenceSettings:getSettings, updateIntelligenceSettings:updateSettings,
-    getRouteSettings:readRouteSettings,updateRouteSettings,
+    getRouteSettings:readRouteSettings,updateRouteSettings,getPlannedRouteGeometry,
     compareLogisticsAlternatives:compareDelivery, logisticsEconomicAnalytics:economicAnalytics });
 }
 

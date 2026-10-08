@@ -66,7 +66,35 @@ function createOsrmRouteDistanceProvider({ baseUrl, version = null, timeoutMs = 
   const result = (status, distanceM = null, reason = null, providerVersion = configVersion) => ({ status, distanceM,
     provenance: { kind: 'canonical', providerId, ...(providerVersion ? { version: providerVersion } : {}),
       ...(configuration ? { configuration } : {}), evaluatedAt: clock().toISOString() }, reason });
-  return Object.freeze({ providerId, async calculateDistance(input) {
+  async function calculateGeometry(input) {
+    if (!endpoint) return { status:'unavailable',geometry:null,distanceM:null,reason:'ROUTE_DISTANCE_PROVIDER_NOT_CONFIGURED',provenance:null };
+    const points=normalizedCoordinates(input);
+    if(!points)return { status:'unknown',geometry:null,distanceM:null,reason:'ROUTE_DISTANCE_COORDINATES_INVALID',provenance:null };
+    const coordinates=points.map(([lon,lat])=>`${lon},${lat}`).join(';');
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);timer.unref?.();
+    try{
+      const response=await fetchImpl(`${endpoint}/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false&alternatives=false`,
+        {method:'GET',headers:{accept:'application/json'},redirect:'error',signal:controller.signal});
+      if(!response)return {status:'unavailable',geometry:null,distanceM:null,reason:'ROUTE_DISTANCE_PROVIDER_UNAVAILABLE',provenance:null};
+      const parsed=await readBoundedJson(response),body=parsed.body;
+      if(!response.ok)return {status:'unavailable',geometry:null,distanceM:null,reason:response.status===429?'ROUTE_DISTANCE_RATE_LIMITED':
+        response.status>=500?'ROUTE_DISTANCE_HTTP_SERVER_ERROR':body?.code==='NoRoute'?'ROUTE_DISTANCE_UNREACHABLE':'ROUTE_DISTANCE_HTTP_ERROR',provenance:null};
+      if(parsed.reason)return {status:'unknown',geometry:null,distanceM:null,reason:parsed.reason,provenance:null};
+      const route=body?.routes?.length===1?body.routes[0]:null,coords=route?.geometry?.coordinates;
+      if(body?.code!=='Ok'||!route||!Number.isFinite(route.distance)||route.distance<0||route.distance>MAX_DISTANCE_M||
+        route.geometry?.type!=='LineString'||!Array.isArray(route.legs)||route.legs.length!==points.length-1||
+        !Array.isArray(coords)||coords.length<2||coords.length>20_000||coords.some(point=>!Array.isArray(point)||point.length!==2||
+          !Number.isFinite(point[0])||point[0]<-180||point[0]>180||!Number.isFinite(point[1])||point[1]<-90||point[1]>90))
+        return {status:'unknown',geometry:null,distanceM:null,reason:'ROUTE_GEOMETRY_SCHEMA_INVALID',provenance:null};
+      if(body.data_version!==undefined&&(typeof body.data_version!=='string'||body.data_version.length>40||Number.isNaN(Date.parse(body.data_version))))
+        return {status:'unknown',geometry:null,distanceM:null,reason:'ROUTE_GEOMETRY_SCHEMA_INVALID',provenance:null};
+      return {status:'known',geometry:{type:'LineString',coordinates:coords.map(point=>[Number(point[0].toFixed(6)),Number(point[1].toFixed(6))])},
+        distanceM:Math.round(route.distance),reason:null,provenance:{kind:'canonical',providerId,version:body.data_version||configVersion||null,
+          configuration,evaluatedAt:clock().toISOString()}};
+    }catch(_){return {status:'unavailable',geometry:null,distanceM:null,reason:'ROUTE_DISTANCE_PROVIDER_UNAVAILABLE',provenance:null}}
+    finally{clearTimeout(timer)}
+  }
+  return Object.freeze({ providerId, calculateGeometry, async calculateDistance(input) {
     if (!endpoint) return result('unavailable', null, 'ROUTE_DISTANCE_PROVIDER_NOT_CONFIGURED');
     const points = normalizedCoordinates(input);
     if (!points) return result('unknown', null, 'ROUTE_DISTANCE_COORDINATES_INVALID');

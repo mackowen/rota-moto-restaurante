@@ -11,12 +11,15 @@ assert.match(logisticsUI,/value="establishment"/u,'Route origin defaults to the 
 assert.match(app,/latestDriverLocation=new Map\(\)/u,'fleet markers use the latest canonical LocationPoint per assigned Driver');
 assert.match(app,/row\.sync\?\.canonicalId===point\.deliveryId/u,'LocationPoint delivery aliases resolve back to the canonical assigned Driver');
 assert.match(app,/routeLayer=L\.layerGroup\(\)\.addTo\(map\)/u,'route geometry is an independent operational overlay');
-assert.match(app,/L\.polyline\(points,/u,'route overlays follow the canonical planned stop order');
-assert.match(app,/não representam ruas nem ETA/u,'direct segments are disclosed without claiming road routing');
+assert.match(app,/L\.polyline\(points,/u,'route overlays render provider-supplied road geometry');
+assert.match(app,/\/logistics\/routes\/\$\{encodeURIComponent\(id\)\}\/geometry/u,'planned geometry is loaded through the authenticated server boundary');
+assert.doesNotMatch(app,/segmentos diretos|não representam ruas/u,'straight segments are never presented as planned routes');
 assert.match(logisticsUI,/decisionHeadline=decision\.status==='proposed'&&!recommendation\?'Análise gerada · nenhuma alternativa elegível; decisão manual necessária'/u,
   'Decision UX must not label an abstention as a recommendation');
 assert.match(app,/clearTimeout\(window\.__restaurantSettingsMapResizeTimer\)[\s\S]*window\.__restaurantSettingsMap===map&&el\.isConnected/u,'resizing a replaced settings map is guarded against stale timers');
 assert.match(read('backend/logistics/osrm-route-distance.js'),/provider|provenance/u,'road routing remains a backend boundary');
+assert.match(read('backend/logistics/osrm-route-distance.js'),/overview=full&geometries=geojson/u,'OSRM returns routable road geometry only when explicitly configured');
+assert.match(read('backend/logistics/intelligence.js'),/getPlannedRouteGeometry/u,'geometry resolves the tenant-owned Route and canonical ordered stops');
 assert.match(sw,/vendor\/leaflet\/leaflet\.js/u,'renderer is part of the offline app shell');
 assert.doesNotMatch(sw,/tile\.openstreetmap\.org/u,'external cartography tiles are not copied or cached');
 assert.match(app,/nominatim\.openstreetmap\.org/u,'geocoder use is explicit and documented for privacy review');

@@ -23,7 +23,7 @@
     "delivery-qr:key-init": "node scripts/rotamoto-operator.js delivery-qr-key-init",
     "storage:gc": "node scripts/proof-media-gc.js",
     "test:delivery-qr": "node tests/test-delivery-qr.js",
-    "test:logistics": "node tests/test-logistics-domain.js && node tests/test-logistics-http.js && node tests/test-logistics-decision-quality.js",
+    "test:logistics": "node tests/test-logistics-domain.js && node tests/test-logistics-http.js && node tests/test-logistics-decision-quality.js && node tests/test-planned-route-geometry.js",
     "test:logistics-intelligence": "node tests/test-logistics-intelligence.js && node tests/test-osrm-route-distance.js",
     "test:keeta-protocol": "node tests/test-keeta-protocol.js && node tests/test-keeta-adapter.js",
     "test:logistics-postgres": "NODE_ENV=test node tests/test-logistics-e2e-postgres.js",

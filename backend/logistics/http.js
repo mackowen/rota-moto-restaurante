@@ -52,6 +52,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         'Content-Length': Buffer.byteLength(text), ...extra }); res.end(text); };
     try {
       const routes = [
+        { re: new RegExp(`^/api/logistics/routes/(${UUID})/geometry$`, 'u'), methods: ['GET'] },
         { re: /^\/api\/logistics\/providers$/u, methods: ['GET','POST'] },
         { re: /^\/api\/logistics\/internal-provider$/u, methods: ['POST'] },
         { re: new RegExp(`^/api/logistics/providers/(${UUID})$`, 'u'), methods: ['PATCH'] },
@@ -81,6 +82,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
       const write = !['GET','HEAD'].includes(req.method);
       if (write) sameOrigin(req, allowedOrigin);
       const permission = ['/api/logistics/analytics','/api/logistics/intelligence/analytics','/api/logistics/intelligence/decision-quality'].includes(url.pathname) ||
+        /^\/api\/logistics\/routes\/[0-9a-f-]+\/geometry$/iu.test(url.pathname) ||
         /\/(comparison|decisions)$/u.test(url.pathname) || ['/api/logistics/intelligence/settings','/api/logistics/route-settings'].includes(url.pathname) && req.method === 'GET'
         ? 'orders.read' : 'company.manage';
       const result = await identityService.withAuthenticatedTenant(token, async (client, principal) => {
@@ -101,6 +103,8 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
           ? logisticsService.getIntelligenceSettings(client,principal) : logisticsService.updateIntelligenceSettings(client,principal,body);
         if (path === '/api/logistics/route-settings') return req.method==='GET'
           ? logisticsService.getRouteSettings(client,principal):logisticsService.updateRouteSettings(client,principal,body);
+        match = new RegExp(`^/api/logistics/routes/(${UUID})/geometry$`, 'u').exec(path);
+        if (match) return logisticsService.getPlannedRouteGeometry(client,principal,match[1]);
         if (path === '/api/logistics/intelligence/analytics') return logisticsService.logisticsEconomicAnalytics(client,principal);
         if (path === '/api/logistics/intelligence/decision-quality') return logisticsService.logisticsDecisionQuality(client,principal);
         match = new RegExp(`^/api/logistics/deliveries/(${UUID})/comparison$`, 'u').exec(path);

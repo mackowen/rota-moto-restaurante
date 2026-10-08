@@ -3,9 +3,9 @@
 ## Responsabilidades
 
 - **Dados cartográficos:** OpenStreetMap (OSM) é o projeto/conjunto de dados; os mapas embutidos usam tiles raster do servidor público `tile.openstreetmap.org` com Leaflet 1.9.4 como renderer comum. OsmAnd é um aplicativo Android separado, não um renderer web nem sinônimo de OSM.
-- **Renderer web:** Leaflet é carregado via CDN (`unpkg.com`) nos dois aplicativos. Tiles OSM são carregados pela rede; a atribuição visível aponta para os contribuidores. Nenhum tile ou biblioteca Leaflet é precacheado pelo service worker.
+- **Renderer web:** Leaflet 1.9.4 é servido localmente nos dois aplicativos. Tiles OSM são carregados pela rede; a atribuição visível aponta para os contribuidores. Nenhum tile ou biblioteca Leaflet é precacheado pelo service worker.
 - **Geocoding:** buscas de endereço usam Nominatim público em certos fluxos, inclusive seleção/localização do estabelecimento e consultas de endereço. Isso pode transmitir texto de endereço a um terceiro; não é geocoder self-hosted nem fonte canônica de coordenadas. A localização confirmada do estabelecimento permanece em Company; alterações sem confirmação não viram coordenadas canônicas.
-- **Routing econômico/operacional:** o cálculo viário do Restaurante é uma boundary backend OSRM configurável e fail-closed. Não usa duração como ETA/SLA automaticamente. O Motoboy não chama serviços públicos de routing nem atualiza distância/tempo de Route; esses dados operacionais vêm do Restaurante/sync.
+- **Routing econômico/operacional:** o backend OSRM configurável e fail-closed calcula distância para decisões e geometria planejada pela sequência canônica de `Route.deliveryIds`. Só coordenadas verificadas por provenance/accuracy entram no motor; origem e eventual retorno seguem a configuração operacional. Não usa duração como ETA/SLA automaticamente. O Motoboy não chama serviços públicos de routing nem atualiza distância/tempo de Route; esses dados operacionais vêm do Restaurante/sync.
 - **Navegação:** o Motoboy abre Google Maps, Waze ou OsmAnd por escolha do usuário/preferência persistida no aparelho. As URLs/intents enviam somente coordenadas validadas do destino; nunca nome, telefone, endereço textual ou observações. Navegação não é autoridade para Route, distância econômica, ETA, tracking ou LocationPoint.
 - **Localização/tracking:** GPS do aparelho pode ser lido pelo navegador mediante permissão. Localização de Driver e tracking interno mantêm proveniência própria; tracking externo de provider não é convertido em LocationPoint/Driver.
 
@@ -20,6 +20,7 @@ A baseline do Motoboy fazia chamadas a endpoints públicos de roteamento OSRM/op
 
 ## Offline, fallback e privacidade
 
+- A geometria planejada vem do endpoint autenticado do backend e nunca é substituída por segmentos retos. Quando o motor ou a cobertura de coordenadas falha, o mapa mantém markers e bounds disponíveis e informa que a rota viária não está disponível. A trilha GPS permanece uma camada operacional distinta.
 - Local-first, IndexedDB e telas operacionais já persistidas podem continuar sem rede; tiles e Leaflet CDN não são armazenados offline. Um mapa web pode aparecer vazio/incompleto quando os tiles ou CDN falham. Não declarar mapas web offline.
 - GPS depende de permissão e disponibilidade do dispositivo; sincronização pode ficar pendente offline. O motor OSRM depende do serviço configurado e retorna indisponível quando ausente/falha, sem haversine silencioso.
 - OsmAnd pode navegar offline somente se o app estiver instalado e o usuário tiver baixado os mapas adequados. Isso não habilita mapas web offline. Intents Android e funcionamento físico não foram exercitados pelo Chromium.

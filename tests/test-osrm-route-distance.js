@@ -16,13 +16,14 @@ const {createRouteDistanceService,calculateInsertionOptions}=require('../backend
     if(mode==='bad-distance'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({code:'Ok',routes:[{distance:Infinity}]}));return;}
     if(mode==='overflow'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({code:'Ok',routes:[{distance:5_000_001}]}));return;}
     if(mode==='invalid-version'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({code:'Ok',data_version:42,routes:[{distance:10}]}));return;}
+    if(mode==='invalid-geometry'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({code:'Ok',routes:[{distance:10,legs:[{}],geometry:{type:'LineString',coordinates:[[181,0],[0,1]]}}]}));return;}
     if(mode==='unreachable'){res.writeHead(400,{'content-type':'application/json'});res.end(JSON.stringify({code:'NoRoute'}));return;}
     if(mode==='4xx'||mode==='5xx'){res.writeHead(mode==='4xx'?400:503,{'content-type':'application/json'});res.end('{}');return;}
     res.writeHead(200,{'content-type':'application/json'});
     const sequence=new URL(req.url,'http://local').pathname.split('/').at(-1);
     const nums=sequence.split(';').map(point=>Number(point.split(',')[0]));
     const distance=nums.join(',')==='0,1'?10000:nums.join(',')==='2,0,1'?12500:nums.join(',')==='0,2,1'?11200:nums.join(',')==='0,1,2'?13000:nums.length*1000;
-    res.end(JSON.stringify({code:'Ok',data_version:'2026-10-01T00:00:00Z',routes:[{distance,duration:999999}]}));
+    res.end(JSON.stringify({code:'Ok',data_version:'2026-10-01T00:00:00Z',routes:[{distance,duration:999999,legs:Array.from({length:nums.length-1},()=>({})),geometry:{type:'LineString',coordinates:[[0,1],[0.5,1.5],[1,2]]}}]}));
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const endpoint=`http://127.0.0.1:${server.address().port}`;
@@ -50,6 +51,13 @@ const {createRouteDistanceService,calculateInsertionOptions}=require('../backend
     assert.equal(insertion.status,'known');assert.deepEqual(insertion.candidates.map(row=>row.position),[0,1,2]);
     assert.deepEqual(insertion.candidates.map(row=>row.incrementalDistanceM),[2500,1200,3000]);assert.equal(insertion.bestPosition,1);
     assert.equal(Object.hasOwn(before,'duration'),false,'OSRM duration is not promoted into ETA');
+    const road=await provider.calculateGeometry({companyId:'tenant-a',deliveryIds:['a','b'],coordinatesByDeliveryId});
+    assert.equal(road.status,'known');assert.equal(road.geometry.type,'LineString');assert.deepEqual(road.geometry.coordinates,[[0,1],[0.5,1.5],[1,2]]);
+    assert.equal(road.distanceM,10000);assert.match(requests.at(-1).url,/overview=full&geometries=geojson/u);
+    assert.equal(Object.hasOwn(road,'duration'),false,'road duration remains distinct from operational ETA');
+    mode='invalid-geometry';const malformedRoad=await provider.calculateGeometry({companyId:'tenant-a',deliveryIds:['a','b'],coordinatesByDeliveryId});
+    assert.equal(malformedRoad.status,'unknown');assert.equal(malformedRoad.reason,'ROUTE_GEOMETRY_SCHEMA_INVALID');
+    mode='ok';assert.equal((await createOsrmRouteDistanceProvider().calculateGeometry({})).reason,'ROUTE_DISTANCE_PROVIDER_NOT_CONFIGURED');
     for(const [current,expected,reason] of [['unreachable','unavailable','ROUTE_DISTANCE_UNREACHABLE'],['4xx','unavailable','ROUTE_DISTANCE_HTTP_ERROR'],
       ['5xx','unavailable','ROUTE_DISTANCE_HTTP_SERVER_ERROR'],['invalid-json','unknown','ROUTE_DISTANCE_JSON_INVALID'],
       ['bad-distance','unknown','ROUTE_DISTANCE_SCHEMA_INVALID'],['overflow','unknown','ROUTE_DISTANCE_SCHEMA_INVALID'],
