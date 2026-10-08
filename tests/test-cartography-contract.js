@@ -2,13 +2,22 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const read=name=>fs.readFileSync(path.join(__dirname,'..',name),'utf8');
 const app=read('app.js'),html=read('index.html'),server=read('server.js'),sw=read('sw.js'),logisticsUI=read('logistics-ui.js');
-assert.equal((html.match(/leaflet@1\.9\.4\/dist\/leaflet\.(?:js|css)/gu)||[]).length,2,'single Leaflet renderer assets');
+assert.equal((html.match(/vendor\/leaflet\/leaflet\.(?:js|css)/gu)||[]).length,2,'renderer loads from local vendored assets');
+assert.match(read('vendor/leaflet/LICENSE'),/BSD 2-Clause/u,'Leaflet license accompanies the vendored renderer');
 assert.equal((app.match(/L\.tileLayer\(/gu)||[]).length,2,'restaurant maps share the same tile renderer');
 assert.equal((app.match(/https:\/\/tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png/gu)||[]).length,2,'all maps use canonical OSM tile endpoint');
 assert.match(app,/OpenStreetMap contributors/u);assert.match(server,/Referrer-Policy','strict-origin-when-cross-origin/u,'tile policy receives origin referrer without full page URL');assert.match(html,/name="referrer" content="strict-origin-when-cross-origin"/u);
 assert.match(logisticsUI,/value="establishment"/u,'Route origin defaults to the canonical Company location');assert.match(app,/restaurantLocationStale/u,'unconfirmed address change does not silently become coordinates');
+assert.match(app,/latestDriverLocation=new Map\(\)/u,'fleet markers use the latest canonical LocationPoint per assigned Driver');
+assert.match(app,/row\.sync\?\.canonicalId===point\.deliveryId/u,'LocationPoint delivery aliases resolve back to the canonical assigned Driver');
+assert.match(app,/routeLayer=L\.layerGroup\(\)\.addTo\(map\)/u,'route geometry is an independent operational overlay');
+assert.match(app,/L\.polyline\(points,/u,'route overlays follow the canonical planned stop order');
+assert.match(app,/não representam ruas nem ETA/u,'direct segments are disclosed without claiming road routing');
+assert.match(logisticsUI,/decisionHeadline=decision\.status==='proposed'&&!recommendation\?'Análise gerada · nenhuma alternativa elegível; decisão manual necessária'/u,
+  'Decision UX must not label an abstention as a recommendation');
 assert.match(app,/clearTimeout\(window\.__restaurantSettingsMapResizeTimer\)[\s\S]*window\.__restaurantSettingsMap===map&&el\.isConnected/u,'resizing a replaced settings map is guarded against stale timers');
 assert.match(read('backend/logistics/osrm-route-distance.js'),/provider|provenance/u,'road routing remains a backend boundary');
-assert.doesNotMatch(sw,/tile\.openstreetmap\.org|leaflet@/u,'map CDN and tiles are not claimed as offline assets');
+assert.match(sw,/vendor\/leaflet\/leaflet\.js/u,'renderer is part of the offline app shell');
+assert.doesNotMatch(sw,/tile\.openstreetmap\.org/u,'external cartography tiles are not copied or cached');
 assert.match(app,/nominatim\.openstreetmap\.org/u,'geocoder use is explicit and documented for privacy review');
 console.log('Restaurant cartography renderer, attribution, offline and provenance contract: PASS');

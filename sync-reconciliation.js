@@ -17,6 +17,8 @@
   return tombstone?'tombstone':'apply';
  }
  function statusFromAck(status){return ['accepted','duplicate','rejected','conflict'].includes(status)?status:'invalid'}
+ function hasCurrentCanonicalAck(record,canonicalId,operation){return !!record&&!!operation&&['accepted','duplicate'].includes(operation.status)&&
+  String(operation.canonicalId||'')===String(canonicalId||'')&&Number(operation.sourceVersion)===Number(record.sync?.version||record.version||1)}
  function shouldRetry(status,changed){return status==='pending'||(['accepted','duplicate'].includes(status)&&changed)||(['rejected','conflict'].includes(status)&&changed)}
  function findCanonicalFact(rows,canonicalId,syncMap,operationKey){return (rows||[]).find(row=>(row.eventId||row.id)===canonicalId||syncMap?.get(operationKey(row))?.canonicalId===canonicalId)||null}
  function compactInbox(rows,{keep=1500}={}){
@@ -53,5 +55,5 @@
   return result;
  }
  function createCoordinator({locks,lockName='rotamoto-sync'}={}){let active=null;return Object.freeze({run(task){if(typeof task!=='function')return Promise.reject(new TypeError('Tarefa de sync inválida.'));if(active)return active;const execute=()=>Promise.resolve().then(task);active=locks?.request?locks.request(lockName,{mode:'exclusive'},execute):execute();return active.finally(()=>{active=null})}})}
- return Object.freeze({canonicalEvent,decide,statusFromAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery});
+ return Object.freeze({canonicalEvent,decide,statusFromAck,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery});
 });

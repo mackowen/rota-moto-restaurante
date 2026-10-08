@@ -152,7 +152,8 @@ assert.match(html, /Volume por hora\/dia indisponível/);
 assert.match(html, /Tipos de entrega/);
 assert.match(html, /Endereços mais recorrentes/);
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-assert.match(appSource, /kpi\('Taxas de entrega hoje'/);
+assert.match(appSource, /function dashboard\(\)[\s\S]*?RotaMotoAnalytics\.aggregate/u, 'Command Center reuses canonical analytics aggregation');
+assert.match(appSource, /function dashboard\(\)[\s\S]*?report\.driverPayout/u, 'Command Center reports canonical payout coverage');
 assert.doesNotMatch(appSource, /kpi\('Faturamento hoje'/);
 assert.match(appSource, /Taxa de entrega conhecida \(BRL\)/, 'CSV names the known fee semantics explicitly');
 

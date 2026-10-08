@@ -5,9 +5,19 @@ const contractSource=fs.readFileSync(path.join(root,'contract.js'),'utf8');
 const appSource=fs.readFileSync(path.join(root,'app.js'),'utf8');
 const ctx={crypto:{randomUUID:()=> '00000000-0000-4000-8000-000000000001'},globalThis:null};ctx.globalThis=ctx;vm.runInNewContext(contractSource,ctx);
 const C=ctx.RotaMotoContract;
+const reconciliationContext={globalThis:null};reconciliationContext.globalThis=reconciliationContext;vm.runInNewContext(fs.readFileSync(path.join(root,'sync-reconciliation.js'),'utf8'),reconciliationContext);
+const Reconciliation=reconciliationContext.RotaMotoSyncReconciliation;
+const confirmedRecord={id:'local-1',sync:{state:'local',version:3,canonicalId:'canonical-1'}};
+assert(Reconciliation.hasCurrentCanonicalAck(confirmedRecord,'canonical-1',{status:'accepted',canonicalId:'canonical-1',sourceVersion:3}),
+  'a matching server ACK confirms the exact local version even if an older local state marker remains');
+assert(!Reconciliation.hasCurrentCanonicalAck(confirmedRecord,'canonical-1',{status:'accepted',canonicalId:'canonical-1',sourceVersion:2}),
+  'an ACK for an older local version must not suppress a newer pending edit');
+assert(!Reconciliation.hasCurrentCanonicalAck(confirmedRecord,'canonical-1',{status:'conflict',canonicalId:'canonical-1',sourceVersion:3}),
+  'a conflicting ACK must remain pending');
 assert.equal(C.PROTOCOL_VERSION,1);assert.equal(C.SCHEMA_VERSION,1);
 assert(C.canTransition('CREATED','ASSIGNED'));assert(C.canTransition('ARRIVED','DELIVERED'));assert(!C.canTransition('DELIVERED','ARRIVED'));
 assert.equal(C.normalizeDeliveryStatus('EM_ROTA','restaurante'),'OUT_FOR_DELIVERY');
+assert.equal(C.normalizeDeliveryStatus('EM ROTA','restaurante'),'OUT_FOR_DELIVERY');
 assert.equal(C.normalizeDeliveryStatus('route','motoboy'),'OUT_FOR_DELIVERY');
 assert.equal(C.WRITE_AUTHORITY.Order,'restaurante');assert.equal(C.WRITE_AUTHORITY.Earning,'restaurante');
 assert.equal(C.WRITE_AUTHORITY.Delivery,'shared');assert.equal(C.WRITE_AUTHORITY.DeliveryEvent,'shared');
@@ -18,7 +28,13 @@ const packet=C.packet({companyId:'c1',deviceId:'dev_rest',app:'RotaMoto Restaura
 assert.equal(packet.protocol,'rotamoto-sync');assert.equal(packet.companyId,'c1');assert.equal(packet.data.deliveries.length,1);assert(packet.packetId);
 assert.match(appSource,/loginToServer:loginToSyncServer/);assert.match(appSource,/syncWithServer/);
 assert.match(appSource,/sync-packet:/);assert.match(appSource,/operationResults/);
-assert.match(appSource,/canonical:\$\{event\.entity\}:\$\{event\.entityId\}/);
+  assert.match(appSource,/canonical:\$\{event\.entity\}:\$\{event\.entityId\}/);
+assert.match(appSource,/hasCurrentCanonicalAck\(local,event\.entityId,operation\)/,
+    'canonical pull must distinguish a current accepted local write from an unacknowledged edit');
+assert.match(appSource,/findLocalByCanonical\(data\.deliveries,payload\.deliveryId,'Delivery',syncMap\)/,
+  'canonical Earnings reconcile to the local Delivery alias');
+assert.match(appSource,/item\.deliveryId===localDeliveryId/,
+  'canonical Earning updates the existing per-delivery projection instead of duplicating it');
 assert.match(appSource,/multiStoreTransaction\(\[\.\.\.localStores,'inbox','syncState'\]/);
 assert.match(appSource,/function multiStoreTransaction\(storeNames,mode,work\)/,'multi-store persistence helper used by sync is defined');
 assert.match(appSource,/X-CSRF-Token/);
@@ -35,13 +51,15 @@ if(appSource.includes("function recordDeliveryEvent(type,r,payload={}")){
     'unchanged canonical Drivers pulled from the server are not re-created by another installation');
   assert.match(appSource,/function isLocallyDirtyForSync\(record\)\{return record\?\.sync\?\.state==='local'\|\|!record\?\.sync\?\.canonicalId\}/,
     'only locally changed or not-yet-canonical records can be uploaded');
+  assert.match(appSource,/if\(!isLocallyDirtyForSync\(record\)&&!operation\)continue/,
+    'canonical pull rows without local writes do not count as pending sync');
   assert.match(builder,/if\(orderChangedHere\)orders\.push/,
     'unchanged canonical Orders pulled from another installation are not uploaded again');
   assert.match(builder,/if\(!order\.deliveryId&&orderChangedHere\)\{order\.deliveryId=deliveryId;await put\('orders',order\)\}/,
     'derived Delivery links on imported canonical Orders do not mark the Order dirty');
   assert.match(builder,/deliveryFromOrder\(order\.deliveryId\?order:\{\.\.\.order,deliveryId\}/,
     'packet construction can project a Delivery without mutating an imported Order');
-  assert.match(builder,/if\(\(orderChangedHere\|\|deliveryChangedHere\)/,
+assert.match(builder,/if\(\(orderChangedHere\|\|deliveryChangedHere\)/,
     'Delivery uploads require an Order or Delivery changed in this installation');
   assert.match(builder,/filter\(isLocallyDirtyForSync\)/,
     'unchanged canonical Routes are not re-created by another installation');
@@ -51,6 +69,10 @@ if(appSource.includes("function recordDeliveryEvent(type,r,payload={}")){
     'an Order edit or assignment cannot create an Earning before Delivery completion');
 }
 const syncTransport=appSource.slice(appSource.indexOf('async function syncWithServer'),appSource.indexOf('async function persistSyncAck'));
+const preflight=syncTransport.indexOf('prePulled=0');
+const packetBuild=syncTransport.indexOf('buildRestaurantSyncPacket()');
+assert(preflight>=0&&packetBuild>preflight&&syncTransport.slice(preflight,packetBuild).includes('reconcileRestaurantPullPage(page)'),
+  'Restaurant reconciles newer canonical facts before building an upload packet');
 assert(syncTransport.indexOf('const ack=await send')<syncTransport.indexOf('persistSyncAck(queued.packet,ack.operationResults'),
   'local ACK state is written only after a successful HTTP response');
 assert(syncTransport.includes('sync-packet:')&&syncTransport.includes('status:\'pending\''),

@@ -73,7 +73,8 @@ async function start(handler) {
 }
 
 async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
-  persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false } = {}) {
+  persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false,
+  businessFixture = true } = {}) {
   if (env.NODE_ENV !== 'test' || typeof extraHttpHandlers !== 'function') throw new Error('Handlers extras do fixture só são aceitos no modo test.');
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
   const disposableCampaign = clients.migrator ? env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' : false;
@@ -130,7 +131,9 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       queryService: createDomainQueryService({ repository: createDomainQueryRepository() }), logger: () => {}, rateLimiter: limiter });
     const testHandlers = await extraHttpHandlers(Object.freeze({ identityService, runtime, pool }));
     if (!Array.isArray(testHandlers) || testHandlers.some(handler => typeof handler !== 'function')) throw new Error('Handlers E2E inválidos.');
-    host = await start([identityHttp, adminHttp, proofHttp, syncHttp, queryHttp, ...testHandlers]);
+    // Test-only domain adapters must run before the broad /api/admin handler so
+    // mounted marketplace/admin subdomains can use their canonical routes.
+    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, syncHttp, queryHttp]);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {} } = {}) => {
       const response = await fetch(`${host.base}${path}`, { method, headers: { Origin: allowedOrigins[0] || host.base,
@@ -223,6 +226,9 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       body: { deviceId: motoboyDevice } });
     assert.equal(motoboyRegistration.status, 200, JSON.stringify(motoboyRegistration.body));
 
+    let orderId = null, deliveryId = null, navigationRouteId = null;
+    let navigationDeliveryIds = [];
+    if (businessFixture) {
     const orderLocalId = `order-${crypto.randomUUID()}`;
     const deliveryLocalId = `delivery-${crypto.randomUUID()}`;
     const orderDelivery = await call('/api/sync/push', { method: 'POST', cookie: sessionCookie, csrf, body: {
@@ -234,9 +240,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     } });
     assert.equal(orderDelivery.status, 200, JSON.stringify(orderDelivery.body));
     assert(orderDelivery.body.operationResults.every(result => result.status === 'accepted'), JSON.stringify(orderDelivery.body.operationResults));
-    const orderId = orderDelivery.body.aliases.find(row => row.entity === 'Order').canonicalId;
-    const deliveryId = orderDelivery.body.aliases.find(row => row.entity === 'Delivery').canonicalId;
-    let navigationRouteId = null, navigationDeliveryIds = [];
+    orderId = orderDelivery.body.aliases.find(row => row.entity === 'Order').canonicalId;
+    deliveryId = orderDelivery.body.aliases.find(row => row.entity === 'Delivery').canonicalId;
     if (navigationFixture) {
       const localOrders = Array.from({ length: 5 }, (_, index) => ({ id: crypto.randomUUID(), companyId,
         customer: `QA parada ${index + 2}`, source: index % 2 ? 'whatsapp' : 'manual', number: String(index + 2),
@@ -263,6 +268,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       assert(routePush.body.operationResults.every(result => result.status === 'accepted'), JSON.stringify(routePush.body.operationResults));
       navigationRouteId = routePush.body.aliases.find(row => row.entity === 'Route').canonicalId;
     }
+    }
+    if (businessFixture) {
     const delivery = await call(`/api/domain/deliveries/${deliveryId}`, { cookie: sessionCookie });
     assert.equal(delivery.status, 200, JSON.stringify(delivery.body));
     assert.equal(delivery.body.record.orderId, orderId);
@@ -319,6 +326,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       headers: { Origin: allowedOrigins[0] || host.base, Cookie: sessionCookie } });
     assert.equal(proofRead.status, 200, await proofRead.clone().text());
     assert.equal(Buffer.from(await proofRead.arrayBuffer()).toString('hex'), png.toString('hex'));
+    }
 
     const authenticatedCall = (path, options = {}) => call(path, { ...options,
       cookie: options.cookie || sessionCookie, csrf: options.csrf === undefined ? csrf : options.csrf });

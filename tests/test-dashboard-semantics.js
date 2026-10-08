@@ -7,7 +7,11 @@ assert.equal(context.project({money:{currency:'BRL',completeness:'partial',prove
 assert.equal(context.project({money:{currency:'USD',completeness:'partial',provenance:{kind:'external'},components:{deliveryFeeMinor:500}}}),null,'foreign currency is not summed into BRL');
 assert.equal(context.project({sourceId:'ifood',value:45}),null,'external total is not mistaken for a delivery fee');
 assert.equal(context.project({sourceId:'manual',value:4.5}),4.5,'known legacy local delivery-fee semantics remain supported');
-assert.doesNotMatch(source,/doneToday\.reduce\(\(a,o\)=>a\+Number\(o\.value\|\|0\)/u,'dashboard never sums Order.value as delivery revenue');
-assert.doesNotMatch(source,/kpi\('Motoboys ativos',state\.bikes\.filter\(b=>b\.status!=='OFFLINE'\)/u,'a cadastro is not treated as evidence of current availability');
-assert.match(source,/BRL conhecido em \$\{feeRows\.length\} de \$\{doneToday\.length\}/u,'dashboard exposes fee coverage');
-console.log('Dashboard delivery-fee currency and missing-value semantics: PASS');
+const dashboard=source.match(/function dashboard\(\)\{[\s\S]*?\n\}/u)?.[0]||'';
+assert.match(dashboard,/RotaMotoAnalytics\.aggregate/u,'Command Center reuses the canonical analytics projection');
+assert.match(dashboard,/report\.dailyVolume/u,'daily trend uses the canonical cohort series');
+assert.match(dashboard,/report\.coverage\.actualDistance/u,'distance coverage is explicit');
+assert.match(dashboard,/Canal de venda, separado do responsável logístico/u,'commercial source is kept separate from logistics provider');
+assert.doesNotMatch(dashboard,/doneToday\.reduce\(\(a,o\)=>a\+Number\(o\.value\|\|0\)/u,'dashboard never sums Order.value as delivery revenue');
+assert.doesNotMatch(dashboard,/kpi\('Motoboys ativos',state\.bikes\.filter\(b=>b\.status!=='OFFLINE'\)/u,'a cadastro is not treated as evidence of current availability');
+console.log('Command Center canonical analytics and metric semantics: PASS');
