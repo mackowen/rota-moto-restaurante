@@ -9,6 +9,9 @@ const MIGRATION_DIR = path.join(__dirname, 'migrations');
 const MIGRATION_TABLE = 'rotamoto.schema_migrations';
 const LOCK_KEY_1 = 1380790868;
 const LOCK_KEY_2 = 2;
+const OFFICIAL_0116_MIGRATION_ID = '0040_restaurant_driver_queue';
+const OFFICIAL_0116_CHECKSUM_0039 = 'e581cecf955381968548d5cb65b6f937d105cf5a1beace779d078a3100047494';
+const OFFICIAL_0116_CHECKSUM_0040 = '58a6e6b0da458b97fdc2553b8dcf066eb14abeb6efeb93ddc6d24713ea951f85';
 
 function getMigrations() {
   return fs.readdirSync(MIGRATION_DIR)
@@ -104,22 +107,69 @@ function disposable0115MigrationConnectionString(env = process.env) {
   return value;
 }
 
-function assert0115RehearsalState(applied, migrations) {
+function disposable0116MigrationConnectionString(env = process.env) {
+  if (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0116') {
+    throw new Error('Migration de ensaio 0116 exige NODE_ENV=test e ROTAMOTO_DISPOSABLE_CAMPAIGN=0116.');
+  }
+  const value = env.ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL;
+  let parsed;
+  try { parsed = new URL(value); } catch (_) { throw new Error('URL descartável 0116 inválida.'); }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || decodeURIComponent(parsed.username) !== 'rotamoto_migrator' ||
+      parsed.password || parsed.hostname !== '127.0.0.1' || (parsed.port || '5432') !== '5432' ||
+      !/^\/rotamoto_disposable_0116_[a-z0-9_]{1,40}$/u.test(parsed.pathname) || parsed.search || parsed.hash) {
+    throw new Error('Migration 0116 aceita somente rotamoto_migrator em database rotamoto_disposable_0116_* via loopback.');
+  }
+  return value;
+}
+
+function official0116MigrationConnectionString(env = process.env) {
+  if (env.NODE_ENV !== 'production' || env.ROTAMOTO_OFFICIAL_MIGRATION_CAMPAIGN !== '0116' ||
+      env.ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE !== 'rotamoto' ||
+      env.ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_MIGRATION !== OFFICIAL_0116_MIGRATION_ID) {
+    throw new Error('Operação oficial 0116 exige NODE_ENV=production e confirmações explícitas de campanha, banco e migration.');
+  }
+  const value = migrationConnectionString(env);
+  const parsed = new URL(value);
+  if (parsed.search || parsed.hash) throw new Error('Operação oficial 0116 não aceita parâmetros adicionais na URL.');
+  return value;
+}
+
+function assertOfficial0116State(applied, migrations, { allowApplied = false } = {}) {
+  const index = migrations.findIndex(migration => migration.id === OFFICIAL_0116_MIGRATION_ID);
+  if (index !== 39 || index !== migrations.length - 1 || migrations[index].checksum !== OFFICIAL_0116_CHECKSUM_0040 ||
+      migrations[38]?.id !== '0039_driver_operational_availability' ||
+      migrations[38]?.checksum !== OFFICIAL_0116_CHECKSUM_0039) {
+    throw new Error('Gate oficial 0116 exige 0039/0040 íntegrias e 0040 como única migration final conhecida.');
+  }
+  const expectedPrior = migrations.slice(0, index);
+  const targetApplied = applied.get(OFFICIAL_0116_MIGRATION_ID) === OFFICIAL_0116_CHECKSUM_0040;
+  const expectedSize = expectedPrior.length + (targetApplied ? 1 : 0);
+  if (applied.size !== expectedSize || targetApplied && !allowApplied ||
+      !expectedPrior.every(migration => applied.get(migration.id) === migration.checksum) ||
+      [...applied.keys()].some(id => id !== OFFICIAL_0116_MIGRATION_ID && !expectedPrior.some(migration => migration.id === id))) {
+    throw new Error('Gate oficial 0116 exige ledger íntegro 0001–0039 e somente 0040 pendente/aplicada.');
+  }
+  return targetApplied ? 'applied' : 'pending';
+}
+
+function assertQueueRehearsalState(applied, migrations, campaign) {
   const id = '0040_restaurant_driver_queue';
   const index = migrations.findIndex(migration => migration.id === id);
   if (index < 0 || index !== migrations.length - 1) {
-    throw new Error('Ensaio 0115 exige 0040 como última migration conhecida.');
+    throw new Error(`Ensaio ${campaign} exige 0040 como última migration conhecida.`);
   }
   const expected = migrations.slice(0, index);
   if (applied.size !== expected.length && applied.size !== expected.length + (applied.has(id) ? 1 : 0)) {
-    throw new Error('Ensaio 0115 exige ledger exato 0001–0039 e somente 0040 pendente/aplicada.');
+    throw new Error(`Ensaio ${campaign} exige ledger exato 0001–0039 e somente 0040 pendente/aplicada.`);
   }
   if (!expected.every(migration => applied.get(migration.id) === migration.checksum) ||
       [...applied.keys()].some(migrationId => !expected.some(migration => migration.id === migrationId) && migrationId !== id)) {
-    throw new Error('Ensaio 0115 exige ledger íntegro 0001–0039.');
+    throw new Error(`Ensaio ${campaign} exige ledger íntegro 0001–0039.`);
   }
   return applied.has(id) ? null : id;
 }
+function assert0115RehearsalState(applied, migrations) { return assertQueueRehearsalState(applied, migrations, '0115'); }
+function assert0116RehearsalState(applied, migrations) { return assertQueueRehearsalState(applied, migrations, '0116'); }
 
 function assert0110RehearsalState(applied, migrations) {
   const id = '0039_driver_operational_availability';
@@ -141,24 +191,33 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
   const disposableCampaign = args.length === 2 && args[1] === '--campaign-0068-source';
   const rehearsal0110 = args.length === 2 && args[1] === '--rehearsal-0110';
   const rehearsal0115 = args.length === 2 && args[1] === '--rehearsal-0115';
+  const rehearsal0116 = args.length === 2 && args[1] === '--rehearsal-0116';
+  const verifyOfficial0116 = args.length === 2 && args[1] === '--verify-0116';
+  const applyOfficial0116 = args.length === 2 && args[1] === '--apply-0116';
   const throughMatch = args.length === 2 ? /^--through=(\d{4}_[a-z0-9_]+)$/u.exec(args[1]) : null;
   const throughId = throughMatch?.[1] || null;
   if (!['up', 'down', 'status'].includes(command) ||
-      (args.length > 1 && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !throughId) || args.length > 2 ||
+      (args.length > 1 && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !throughId) || args.length > 2 ||
       (throughId && (command !== 'up' || !getMigrations().some(migration => migration.id === throughId))) ||
-      (throughId && (e2e || disposableCampaign || rehearsal0110 || rehearsal0115)) ||
-      ((rehearsal0110 || rehearsal0115) && command === 'down') ||
+      (throughId && (e2e || disposableCampaign || rehearsal0110 || rehearsal0115 || rehearsal0116 || verifyOfficial0116 || applyOfficial0116)) ||
+      ((rehearsal0110 || rehearsal0115 || rehearsal0116) && command === 'down') ||
+      (verifyOfficial0116 && command !== 'status') ||
+      (applyOfficial0116 && command !== 'up') ||
       ((e2e || disposableCampaign) && command === 'down')) {
-    throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e|--campaign-0068-source|--rehearsal-0110|--rehearsal-0115|--through=<migration conhecida>]');
+    throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e|--campaign-0068-source|--rehearsal-0110|--rehearsal-0115|--rehearsal-0116|--verify-0116|--apply-0116|--through=<migration conhecida>]');
   }
-  if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && command !== 'status') {
+  if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && command !== 'status') {
     throw new Error('Migrations mutáveis em NODE_ENV=test exigem --e2e e rotamoto_e2e.');
   }
-  return { command, ...(throughId ? { throughId } : {}), connectionString: disposableCampaign ? disposableCampaignMigrationConnectionString(env)
+  return { command, ...(throughId ? { throughId } : {}), connectionString: applyOfficial0116 || verifyOfficial0116 ? official0116MigrationConnectionString(env)
+    : disposableCampaign ? disposableCampaignMigrationConnectionString(env)
     : rehearsal0110 ? disposable0110MigrationConnectionString(env)
     : rehearsal0115 ? disposable0115MigrationConnectionString(env)
+    : rehearsal0116 ? disposable0116MigrationConnectionString(env)
     : e2e ? e2eMigrationConnectionString(env) : migrationConnectionString(env),
-    ...(rehearsal0110 ? { rehearsal0110: true } : {}), ...(rehearsal0115 ? { rehearsal0115: true } : {}) };
+    ...(rehearsal0110 ? { rehearsal0110: true } : {}), ...(rehearsal0115 ? { rehearsal0115: true } : {}),
+    ...(rehearsal0116 ? { rehearsal0116: true } : {}),
+    ...(verifyOfficial0116 ? { verifyOfficial0116: true } : {}), ...(applyOfficial0116 ? { applyOfficial0116: true } : {}) };
 }
 
 async function ensureMetadata(client) {
@@ -222,6 +281,16 @@ async function migrateUp(client, migrations) {
   if (migrations.every(migration => applied.has(migration.id))) console.log('schema atualizado');
 }
 
+async function applyMigration(client, migration) {
+  await withTransaction(client, async () => {
+    await client.query(migration.up);
+    await client.query(
+      `INSERT INTO ${MIGRATION_TABLE} (migration_id, checksum_sha256) VALUES ($1, $2)`,
+      [migration.id, migration.checksum]
+    );
+  });
+}
+
 async function migrateDown(client, migrations) {
   const applied = await assertChecksums(client, migrations);
   const migration = [...migrations].reverse().find(item => applied.has(item.id));
@@ -245,16 +314,21 @@ async function status(client, migrations) {
 }
 
 async function main() {
-  const { command, connectionString, throughId, rehearsal0110, rehearsal0115 } = resolveMigrationInvocation();
+  const { command, connectionString, throughId, rehearsal0110, rehearsal0115, rehearsal0116, verifyOfficial0116, applyOfficial0116 } = resolveMigrationInvocation();
   const client = createClient({ connectionString, connectionTimeoutMillis: 5000 });
   let lockHeld = false;
   try {
     await client.connect();
-    const identity = await client.query('SELECT current_user AS role');
+    const identity = await client.query(`SELECT current_database() AS database,current_user AS role,
+      inet_server_addr()::text AS server_address,current_setting('server_version_num')::integer AS version_num`);
     if (identity.rows[0]?.role !== 'rotamoto_migrator') {
       throw new Error('A conexão de migration não autenticou como rotamoto_migrator.');
     }
-    if (rehearsal0115) {
+    if ((verifyOfficial0116 || applyOfficial0116) && (identity.rows[0].database !== 'rotamoto' ||
+        identity.rows[0].server_address !== '127.0.0.1/32' || identity.rows[0].version_num < 180000 || identity.rows[0].version_num >= 190000)) {
+      throw new Error('Gate oficial 0116 exige current_database=rotamoto, loopback e PostgreSQL 18.');
+    }
+    if (rehearsal0115 || rehearsal0116) {
       const database = decodeURIComponent(new URL(connectionString).pathname.slice(1));
       const target = await client.query(`SELECT current_database() AS name,pg_get_userbyid(d.datdba) AS owner,
         current_setting('server_version_num')::integer AS version_num
@@ -263,35 +337,87 @@ async function main() {
       if (!target.rowCount || target.rows[0].name !== database || target.rows[0].owner !== 'rotamoto_restore' ||
           target.rows[0].version_num < 180000 || target.rows[0].version_num >= 190000 ||
           !role.rowCount || role.rows[0].rolsuper || role.rows[0].rolcreatedb || role.rows[0].rolcreaterole || role.rows[0].rolbypassrls) {
-        throw new Error('Identidade do ensaio 0115 inválida: exige PostgreSQL 18, owner rotamoto_restore e migrator sem privilégios elevados.');
+        throw new Error(`Identidade do ensaio ${rehearsal0116 ? '0116' : '0115'} inválida: exige PostgreSQL 18, owner rotamoto_restore e migrator sem privilégios elevados.`);
       }
     }
     await client.query('SELECT pg_advisory_lock($1, $2)', [LOCK_KEY_1, LOCK_KEY_2]);
     lockHeld = true;
-    if (rehearsal0110 || rehearsal0115) {
+    if (rehearsal0110 || rehearsal0115 || rehearsal0116 || verifyOfficial0116 || applyOfficial0116) {
       const metadata = await client.query("SELECT to_regclass('rotamoto.schema_migrations') IS NOT NULL AS available");
-      if (!metadata.rows[0]?.available) throw new Error(`Ensaio ${rehearsal0115 ? '0115' : '0110'} exige ledger restaurado; metadados não são criados neste modo.`);
+      if (!metadata.rows[0]?.available) throw new Error('Modo restrito exige ledger existente; metadados não são criados.');
     } else await ensureMetadata(client);
     const allMigrations = getMigrations();
     if (rehearsal0110 && command === 'up') {
       const applied = await assertChecksums(client, allMigrations);
       assert0110RehearsalState(applied, allMigrations);
     }
-    if (rehearsal0115) {
+    if (rehearsal0115 || rehearsal0116) {
       const applied = await assertChecksums(client, allMigrations);
-      assert0115RehearsalState(applied, allMigrations);
+      (rehearsal0116 ? assert0116RehearsalState : assert0115RehearsalState)(applied, allMigrations);
     }
-    const effectiveThroughId=rehearsal0110?'0039_driver_operational_availability':rehearsal0115?'0040_restaurant_driver_queue':throughId;
+    if (verifyOfficial0116 || applyOfficial0116) {
+      const applied = await assertChecksums(client, allMigrations);
+      const state = assertOfficial0116State(applied, allMigrations, { allowApplied: true });
+      if (verifyOfficial0116) {
+        await client.query('BEGIN READ ONLY');
+        try {
+          const pending = await client.query(`SELECT count(*)::integer AS count FROM pg_stat_activity
+            WHERE datname=current_database() AND pid<>pg_backend_pid()`);
+          const locks = await client.query(`SELECT count(*)::integer AS count FROM pg_locks
+            WHERE database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND NOT granted`);
+          console.log(JSON.stringify({ event: 'migration.official.0116.verified', database: 'rotamoto', state,
+            migrationId: OFFICIAL_0116_MIGRATION_ID, checksum: OFFICIAL_0116_CHECKSUM_0040,
+            externalSessions: pending.rows[0].count, waitingLocks: locks.rows[0].count }));
+        } finally { await client.query('ROLLBACK'); }
+        return;
+      }
+      if (state !== 'pending') {
+        console.log(JSON.stringify({ event: 'migration.official.0116.already_applied', database: 'rotamoto',
+          migrationId: OFFICIAL_0116_MIGRATION_ID, checksum: OFFICIAL_0116_CHECKSUM_0040 }));
+        return;
+      }
+      const databaseOwner = await client.query(`SELECT pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname=current_database()`);
+      const schemaPrivileges = await client.query(`SELECT pg_get_userbyid(nspowner) AS owner,
+        has_schema_privilege(current_user,'rotamoto','USAGE') AS schema_usage,
+        has_schema_privilege(current_user,'rotamoto','CREATE') AS schema_create,
+        has_table_privilege(current_user,'rotamoto.schema_migrations','SELECT') AS ledger_select,
+        has_table_privilege(current_user,'rotamoto.schema_migrations','INSERT') AS ledger_insert
+        FROM pg_namespace WHERE nspname='rotamoto'`);
+      const role = await client.query(`SELECT rolsuper,rolcreatedb,rolcreaterole,rolbypassrls FROM pg_roles WHERE rolname=current_user`);
+      const activity = await client.query(`SELECT count(*)::integer AS sessions,
+        count(*) FILTER(WHERE xact_start IS NOT NULL)::integer AS transactions
+        FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()`);
+      const waiters = await client.query(`SELECT count(*)::integer AS count FROM pg_locks
+        WHERE database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND NOT granted`);
+      if (!databaseOwner.rowCount || !databaseOwner.rows[0].owner || !schemaPrivileges.rowCount ||
+          schemaPrivileges.rows[0].owner !== 'rotamoto_migrator' || !schemaPrivileges.rows[0].schema_usage ||
+          !schemaPrivileges.rows[0].schema_create || !schemaPrivileges.rows[0].ledger_select ||
+          !schemaPrivileges.rows[0].ledger_insert || !role.rowCount || role.rows[0].rolsuper ||
+          role.rows[0].rolcreatedb || role.rows[0].rolcreaterole || role.rows[0].rolbypassrls ||
+          Number(activity.rows[0].sessions) !== 0 || Number(activity.rows[0].transactions) !== 0 || Number(waiters.rows[0].count) !== 0) {
+        throw new Error('Gate oficial 0116 recusado: role, owner, sessões, transações ou locks não estão no estado esperado.');
+      }
+      await client.query("SET lock_timeout='5s'");
+      await client.query("SET statement_timeout='60s'");
+      await applyMigration(client, allMigrations.at(-1));
+      const after = await assertChecksums(client, allMigrations);
+      assertOfficial0116State(after, allMigrations, { allowApplied: true });
+      console.log(JSON.stringify({ event: 'migration.official.0116.applied', database: 'rotamoto',
+        migrationId: OFFICIAL_0116_MIGRATION_ID, checksum: OFFICIAL_0116_CHECKSUM_0040,
+        databaseOwner: databaseOwner.rows[0].owner, transactional: true }));
+      return;
+    }
+    const effectiveThroughId=rehearsal0110?'0039_driver_operational_availability':rehearsal0115||rehearsal0116?'0040_restaurant_driver_queue':throughId;
     const throughIndex = effectiveThroughId ? allMigrations.findIndex(migration => migration.id === effectiveThroughId) : -1;
     if (effectiveThroughId && throughIndex < 0) throw new Error('Migration checkpoint desconhecido.');
     const migrations = effectiveThroughId ? allMigrations.slice(0, throughIndex + 1) : allMigrations;
     if (command === 'up') await migrateUp(client, migrations);
     else if (command === 'down') await migrateDown(client, migrations);
     else await status(client, migrations);
-    if (rehearsal0115) {
+    if (rehearsal0115 || rehearsal0116) {
       const target = migrations.find(migration => migration.id === '0040_restaurant_driver_queue');
       const applied = await appliedMigrations(client);
-      console.log(JSON.stringify({ event: 'migration.rehearsal.0115.completed', database: decodeURIComponent(new URL(connectionString).pathname.slice(1)),
+      console.log(JSON.stringify({ event: `migration.rehearsal.${rehearsal0116 ? '0116' : '0115'}.completed`, database: decodeURIComponent(new URL(connectionString).pathname.slice(1)),
         command, migrationId: target.id, checksum: target.checksum, applied: applied.has(target.id) }));
     }
   } catch (error) {
@@ -313,4 +439,5 @@ if (require.main === module) main().catch(error => {
 });
 module.exports = { getMigrations, assertChecksums, withTransaction, migrationConnectionString,
   e2eMigrationConnectionString, disposableCampaignMigrationConnectionString, disposable0110MigrationConnectionString,
-  disposable0115MigrationConnectionString, assert0110RehearsalState, assert0115RehearsalState, resolveMigrationInvocation };
+  disposable0115MigrationConnectionString, disposable0116MigrationConnectionString, official0116MigrationConnectionString, assertOfficial0116State,
+  assert0110RehearsalState, assert0115RehearsalState, assert0116RehearsalState, resolveMigrationInvocation };
