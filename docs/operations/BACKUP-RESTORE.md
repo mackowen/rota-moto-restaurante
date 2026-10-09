@@ -122,6 +122,25 @@ falhar, o database descartável pode conter o restore; preserve o diagnóstico,
 não use o alvo operacional e refaça somente após reset DBA autorizado do
  descartável. Nunca restaurar sobre `rotamoto` ou `rotamoto_e2e`.
 
+## Ensaio de migration 0110 em restore descartável
+
+Depois de restaurar um recovery set em um database novo `rotamoto_disposable_0110_*`, o runner oferece `--rehearsal-0110`. O modo exige `NODE_ENV=test`, `ROTAMOTO_DISPOSABLE_CAMPAIGN=0110`, URL sem senha para `rotamoto_migrator` em `127.0.0.1:5432` e o prefixo descartável exato. Ele não aceita `rotamoto`, `rotamoto_e2e`, outro prefixo ou `down`; não cria o schema/ledger ausente. Antes de `up`, verifica checksums e exige as migrations 0001–0038 aplicadas, com 0039 como única pendente. Após 0039, uma nova execução é no-op.
+
+Como o restore descartável usa `--no-owner --no-acl`, o database/objetos restaurados pertencem a `rotamoto_restore`. Se o ensaio usar o migrator, conceda somente no clone: `USAGE, CREATE` no schema `rotamoto`, `SELECT, INSERT` no ledger e `REFERENCES` em `companies`, `domain_records` e `users`. Nunca replique essas concessões no oficial; nele o migrator mantém a propriedade/grants estabelecidos pelas migrations oficiais. Use pgpass restrito para o nome descartável exato e elimine o arquivo temporário depois do ensaio.
+
+Exemplo, substituindo o sufixo por um identificador novo e verificando que o database foi criado vazio pelo operador:
+
+```sh
+NODE_ENV=test ROTAMOTO_DISPOSABLE_CAMPAIGN=0110 \
+ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_disposable_0110_<id> \
+  node backend/postgres/migrate.js status --rehearsal-0110
+NODE_ENV=test ROTAMOTO_DISPOSABLE_CAMPAIGN=0110 \
+ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_disposable_0110_<id> \
+  node backend/postgres/migrate.js up --rehearsal-0110
+```
+
+O checkpoint de rehearsal é específico para 0110 e não substitui `MIGRATOR_DATABASE_URL` oficial. Para a aplicação oficial, use somente o runner normal após backup/restauração comprovados e janela segura, com `--through=0039_driver_operational_availability` quando 0039 for a única migration pendente.
+
 ## RPO/RTO e recovery
 
 Frequência/retention devem seguir o RPO que o operador aprovar; não há prazo
