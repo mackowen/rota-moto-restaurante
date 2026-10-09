@@ -345,6 +345,8 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       let seenKey = null;
       let ackCanonicalId = null;
       let ackVersion = null;
+      let restaurantRedeliveryRequested = false;
+      let automaticRedeliveryAssigned = false;
       try {
       if (!record || typeof record !== 'object' || Array.isArray(record)) invalid(`${entityType} inválido.`);
       const operationLocalId = boundedText(localId, `${entityType}.id`);
@@ -499,9 +501,12 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         related_entity_type,related_record_id::text
         FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 FOR UPDATE`, [companyId, canonicalId]);
       if (existing.rowCount && existing.rows[0].entity_type !== entityType) throw new SyncError('SYNC_CONFLICT', 'ID canônico já pertence a outro tipo de entidade.');
+      restaurantRedeliveryRequested = entityType === 'Delivery' && appKey === 'restaurante' && canonical.status === 'REDELIVERY' &&
+        existing.rowCount > 0 && ['DELIVERED','FAILED','RETURNED'].includes(existing.rows[0].payload.status);
       if (entityType === 'Delivery' && appKey === 'restaurante' && !canonical.driverId && ['CREATED','REDELIVERY'].includes(canonical.status) && restaurantDriverQueue && await restaurantDriverQueue.schemaReady(client) &&
           (!existing.rowCount && canonical.status === 'CREATED' || existing.rowCount && existing.rows[0].payload.status !== 'REDELIVERY' && canonical.status === 'REDELIVERY')) {
         const result = await restaurantDriverQueue.assignForNewDelivery(client, companyId, canonical);
+        automaticRedeliveryAssigned = restaurantRedeliveryRequested && result.assigned === true;
         canonical = result.delivery;
       }
       if(entityType==='Route'&&record.deliveryIds!==undefined){
@@ -547,8 +552,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
             !['ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','DELIVERED','FAILED','RETURNED'].includes(canonical.status)) {
           throw new SyncError('FORBIDDEN_FIELD', 'O Motoboy pode registrar somente estados derivados da execução.');
         }
-        const restaurantRedelivery = appKey === 'restaurante' && canonical.status === 'REDELIVERY' &&
-          ['DELIVERED','FAILED','RETURNED'].includes(old.payload.status);
+        const restaurantRedelivery = restaurantRedeliveryRequested;
         if (entityType === 'Delivery' && appKey === 'restaurante' && old.payload.status !== canonical.status &&
             !['ASSIGNED','CANCELLED'].includes(canonical.status) && !restaurantRedelivery) {
           throw new SyncError('FORBIDDEN_FIELD', 'O Restaurante pode atribuir, cancelar ou solicitar reentrega após falha/retorno/conclusão; estados de execução pertencem ao Motoboy.');
@@ -564,8 +568,10 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
               stableJson(record[key]) !== stableJson(old.payload[key]))) {
           throw new SyncError('FORBIDDEN_FIELD', 'O Restaurante não pode sobrescrever campos de execução da entrega.');
         }
+        const automaticRedeliveryTransition = automaticRedeliveryAssigned && canonical.status === 'ASSIGNED' &&
+          TRANSITIONS[old.payload.status]?.includes('REDELIVERY') && TRANSITIONS.REDELIVERY.includes('ASSIGNED');
         if (entityType === 'Delivery' && old.payload.status !== canonical.status &&
-            !TRANSITIONS[old.payload.status]?.includes(canonical.status)) {
+            !TRANSITIONS[old.payload.status]?.includes(canonical.status) && !automaticRedeliveryTransition) {
           throw new SyncError('INVALID_TRANSITION', `Transição de entrega inválida: ${old.payload.status} → ${canonical.status}.`);
         }
         if (entityType === 'Delivery' && appKey === 'motoboy' && canonical.status === 'CANCELLED') {
@@ -578,7 +584,8 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         }
         canonicalVersion = Number(old.version) + 1;
         if (entityType === 'Delivery' && appKey === 'restaurante' && old.payload.driverId &&
-            old.payload.driverId !== canonical.driverId) {
+            old.payload.driverId !== canonical.driverId &&
+            ['CREATED','ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY'].includes(old.payload.status)) {
           assignmentRevocations.push({ deliveryId: canonicalId, driverId: old.payload.driverId,
             version: canonicalVersion, updatedAt: now.toISOString() });
         }
@@ -640,11 +647,11 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           WHERE company_id=$1 AND proof_id=$2::uuid AND object_key=$3`,
         [companyId, resolved.localId, canonical.media.storageRef.objectKey]);
       }
-      if (entityType === 'Delivery' && appKey === 'restaurante' && canonical.status === 'REDELIVERY' && existing.rowCount) {
+      if (entityType === 'Delivery' && appKey === 'restaurante' && restaurantRedeliveryRequested) {
         await client.query(`INSERT INTO rotamoto.audit_log
           (id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
           VALUES($1,$2,$3,'user','delivery.redelivery.requested','Delivery',$4,$5::jsonb)`,
-        [uuidV7(now.getTime()),companyId,userId,canonicalId,JSON.stringify({from:existing.rows[0].payload.status,to:'REDELIVERY'})]);
+        [uuidV7(now.getTime()),companyId,userId,canonicalId,JSON.stringify({from:existing.rows[0].payload.status,to:'REDELIVERY',assignedAutomatically:automaticRedeliveryAssigned})]);
       }
       if(entityType==='Route'&&routeMembershipChange&&(routeMembershipChange.added.length||routeMembershipChange.removed.length)){
         await client.query(`INSERT INTO rotamoto.audit_log

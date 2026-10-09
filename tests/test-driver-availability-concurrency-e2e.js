@@ -195,12 +195,12 @@ async function seedFixture(client, schema, f) {
   }
 }
 
-function assignmentPacket(f, deliveryIndex, { status = 'ASSIGNED', packetId = `pkt_${UUID()}` } = {}) {
+function assignmentPacket(f, deliveryIndex, { status = 'ASSIGNED', driverId = f.driverId, packetId = `pkt_${UUID()}` } = {}) {
   const base = deliveryRecord(f, f.deliveries[deliveryIndex].id, f.deliveries[deliveryIndex].orderId,
     status === 'REDELIVERY' ? 'FAILED' : 'CREATED', status === 'REDELIVERY' ? f.driverId : null);
   const now = new Date().toISOString();
   const prior = JSON.parse(base[7]);
-  const delivery = { ...prior, status, driverId: f.driverId, assignedAt: now, updatedAt: now,
+  const delivery = { ...prior, status, driverId, ...(driverId ? { assignedAt: now } : {}), updatedAt: now,
     version: 2, baseVersion: 1 };
   return { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId,
     deviceId: 'campaign-0112-restaurante', source: { deviceId: 'campaign-0112-restaurante' }, createdAt: now,
@@ -215,12 +215,42 @@ function readyDeliveryPacket(f) {
   return {deliveryId,packet:{protocol:'rotamoto-sync',protocolVersion:1,schemaVersion:1,packetId:`pkt_${UUID()}`,deviceId:'campaign-0112-restaurante',source:{deviceId:'campaign-0112-restaurante'},createdAt:now,
     data:{orders:[order],drivers:[],deliveries:[delivery],routes:[],deliveryEvents:[],locationUpdates:[],proofs:[],earnings:[],tombstones:[]}}};
 }
-function deliveryExecutionPacket(f,deliveryId,type){
+function deliveryExecutionPacket(f,deliveryId,type,driverId=f.driverId){
   const at=new Date().toISOString(),eventId=UUID();
   const event={id:eventId,eventId,companyId:f.companyId,entity:'Delivery',entityId:deliveryId,type,occurredAt:at,
-    actor:{type:'driver',id:f.driverId},payload:{},protocolVersion:1,version:1,createdAt:at,updatedAt:at};
+    actor:{type:'driver',id:driverId},payload:{},protocolVersion:1,version:1,createdAt:at,updatedAt:at};
   return {protocol:'rotamoto-sync',protocolVersion:1,schemaVersion:1,packetId:`pkt_${UUID()}`,deviceId:'campaign-0112-motoboy',source:{deviceId:'campaign-0112-motoboy'},createdAt:at,
     data:{orders:[],drivers:[],deliveries:[],routes:[],deliveryEvents:[event],locationUpdates:[],proofs:[],earnings:[],tombstones:[]}};
+}
+
+function unassignedRedeliveryPacket(f, fixture, packetId=`pkt_${UUID()}`){
+  const now=new Date().toISOString();
+  const delivery={id:fixture.deliveryId,companyId:f.companyId,orderId:fixture.orderId,driverId:null,status:'REDELIVERY',
+    version:2,baseVersion:1,createdAt:f.now,updatedAt:now};
+  return {protocol:'rotamoto-sync',protocolVersion:1,schemaVersion:1,packetId,deviceId:'campaign-0112-restaurante',
+    source:{deviceId:'campaign-0112-restaurante'},createdAt:now,
+    data:{orders:[],drivers:[],deliveries:[delivery],routes:[],deliveryEvents:[],locationUpdates:[],proofs:[],earnings:[],tombstones:[]}};
+}
+
+async function seedRedeliveryFixture(client,schema,f){
+  const orderId=UUID(),deliveryId=UUID(),eventId=UUID(),now=new Date().toISOString();
+  const order=orderRecord(f,f.companyId,orderId,f.restaurantInstallId);
+  const delivery=deliveryRecord(f,deliveryId,orderId,'FAILED',f.driverId);
+  const eventPayload={id:eventId,eventId,entity:'Delivery',entityId:deliveryId,type:'DELIVERY_FAILED',occurredAt:now,
+    actor:{type:'driver',id:f.driverId},payload:{reason:'synthetic E2E failure'},protocolVersion:1};
+  await client.query('BEGIN');
+  try{
+    await client.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+    await client.query(`INSERT INTO ${schema}.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+      VALUES($1,$2,'Order','restaurante',$3,$4::jsonb,1,$5,$5)`,[f.companyId,orderId,f.restaurantInstallId,JSON.stringify(JSON.parse(order[5])),now]);
+    await client.query(`INSERT INTO ${schema}.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,related_entity_type,related_record_id,payload,version,created_at,updated_at)
+      VALUES($1,$2,'Delivery','restaurante',$3,'Order',$4,$5::jsonb,1,$6,$6)`,[f.companyId,deliveryId,f.restaurantInstallId,orderId,delivery[7],now]);
+    await client.query(`INSERT INTO ${schema}.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,related_entity_type,related_record_id,source_event_id,payload,version,created_at,updated_at)
+      VALUES($1,$2,'DeliveryEvent','motoboy',$3,'Delivery',$4,$5,$6::jsonb,1,$7,$7)`,
+      [f.companyId,eventId,f.motoboyInstallId,deliveryId,eventId,JSON.stringify(eventPayload),now]);
+    await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}
+  return {orderId,deliveryId,eventId};
 }
 
 function apiServer({ identityService, availability, queue, syncService }) {
@@ -449,8 +479,49 @@ async function main() {
     markLocal('0113: equal server FIFO timestamps have deterministic Driver UUID tie-break; tenant-scoped queue query returns canonical order');
     markLocal('0113: authenticated QR check-in, tamper/replay rejection, duplicate idempotency and server FIFO timestamp confirmed');
 
+    // 0114 regression: an unassigned manual redelivery request must persist as
+    // REDELIVERY and retain the existing immutable failure event.
+    const manualRedeliveryFixture=await seedRedeliveryFixture(migrator,schema,f);
+    const manualRedeliveryPacket=unassignedRedeliveryPacket(f,manualRedeliveryFixture);
+    const manualRedeliveryResponse=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:manualRedeliveryPacket});
+    assert.equal(manualRedeliveryResponse.status,200,JSON.stringify(manualRedeliveryResponse.body));
+    assert.equal(manualRedeliveryResponse.body.operationResults[0].status,'accepted',JSON.stringify(manualRedeliveryResponse.body));
+    const manualRedeliveryState=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0114-manual-redelivery'});
+    const manualRedeliveryRow=await manualRedeliveryState.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,manualRedeliveryFixture.deliveryId]);
+    assert.equal(manualRedeliveryRow.rows[0].payload.status,'REDELIVERY');assert.equal(manualRedeliveryRow.rows[0].payload.driverId,null);
+    const manualRedeliveryHistory=await manualRedeliveryState.client.query(`SELECT count(*)::int AS n FROM ${schema}.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2`,[f.companyId,manualRedeliveryFixture.deliveryId]);
+    assert.equal(manualRedeliveryHistory.rows[0].n,1,'manual retry preserves the immutable failure event');
+    await endRuntimeClient(manualRedeliveryState.raw);
+    markLocal('0114 manual mode: unassigned REDELIVERY persisted without silent allocation; failure event retained');
+
     const autoMode=await fetchJson(origin,'/api/restaurant-driver-queue/settings',sessions[0],{method:'POST',body:{mode:'automatic',expectedRevision:0}});
     assert.equal(autoMode.status,200,JSON.stringify(autoMode.body));assert.equal(autoMode.body.settings.mode,'automatic');
+    // Expected to expose any mismatch between the REDELIVERY→ASSIGNED contract
+    // and the dispatcher’s status mutation before making a product correction.
+    const automaticRedeliveryFixture=await seedRedeliveryFixture(migrator,schema,f);
+    const automaticRedeliveryPacket=unassignedRedeliveryPacket(f,automaticRedeliveryFixture);
+    const automaticRedeliveryResponse=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:automaticRedeliveryPacket});
+    assert.equal(automaticRedeliveryResponse.status,200,JSON.stringify(automaticRedeliveryResponse.body));
+    assert.equal(automaticRedeliveryResponse.body.operationResults[0].status,'accepted',JSON.stringify(automaticRedeliveryResponse.body));
+    const automaticRedeliveryState=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0114-auto-redelivery-readback'});
+    const automaticRedeliveryRow=await automaticRedeliveryState.client.query(`SELECT payload,version FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,automaticRedeliveryFixture.deliveryId]);
+    assert.equal(automaticRedeliveryRow.rows[0].payload.status,'ASSIGNED');assert.equal(automaticRedeliveryRow.rows[0].payload.driverId,f.driverId);assert.equal(Number(automaticRedeliveryRow.rows[0].version),2);
+    const automaticRedeliveryHistory=await automaticRedeliveryState.client.query(`SELECT count(*)::int AS n FROM ${schema}.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2`,[f.companyId,automaticRedeliveryFixture.deliveryId]);
+    assert.equal(automaticRedeliveryHistory.rows[0].n,1,'automatic re-delivery retains the immutable failure event without fabricating execution events');
+    await migrator.query("SELECT set_config('app.tenant_id',$1,false)",[f.companyId]);
+    const redeliveryAudit=await migrator.query(`SELECT details FROM ${schema}.audit_log WHERE company_id=$1 AND action='delivery.redelivery.requested' AND resource_id=$2`,[f.companyId,automaticRedeliveryFixture.deliveryId]);
+    assert.equal(redeliveryAudit.rowCount,1);assert.equal(redeliveryAudit.rows[0].details.assignedAutomatically,true);
+    await endRuntimeClient(automaticRedeliveryState.raw);
+    const retryAutomaticRedelivery=await fetchJson(origin,'/api/sync/push',sessions[1],{method:'POST',body:automaticRedeliveryPacket});
+    assert.equal(retryAutomaticRedelivery.status,200);assert.equal(retryAutomaticRedelivery.body.duplicate,true);
+    markLocal('0114 automatic mode: real unassigned REDELIVERY followed FAILED→REDELIVERY→ASSIGNED, retained history/audit, retry idempotent');
+    for(const type of ['DELIVERY_ACCEPTED','DELIVERY_PICKED_UP','DELIVERY_STARTED','DELIVERY_COMPLETED']){
+      const eventResult=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:deliveryExecutionPacket(f,automaticRedeliveryFixture.deliveryId,type)});
+      assert.equal(eventResult.status,200,JSON.stringify(eventResult.body));assert.equal(eventResult.body.operationResults[0].status,'accepted',JSON.stringify(eventResult.body));
+    }
+    const nextQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
+    const nextCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:nextQr.body.token}});
+    assert.equal(nextCheckIn.status,200,JSON.stringify(nextCheckIn.body));
     const ready=readyDeliveryPacket(f);
     const autoDispatch=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:ready.packet});
     assert.equal(autoDispatch.status,200,JSON.stringify(autoDispatch.body));assert.equal(autoDispatch.body.operationResults[1].status,'accepted',JSON.stringify(autoDispatch.body));
@@ -542,6 +613,121 @@ async function main() {
     const returningCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:returningQr.body.token}});
     assert.equal(returningCheckIn.status,200);assert.equal(returningCheckIn.body.presence.confirmed,true);
     assert(Date.parse(returningCheckIn.body.presence.checkedInAt)>Date.parse(presenceCheckIn.body.presence.checkedInAt),'return enters at a new server timestamp at the FIFO tail');
+
+    // 0114: exercise the same deterministic Offline × automatic-redelivery
+    // interleavings through sync-push (not a dispatcher stub).
+    const redeliveryOfflineTx=await connectOperation('campaign-0114-redelivery-offline-first');
+    await redeliveryOfflineTx.client.query('BEGIN');
+    await redeliveryOfflineTx.client.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+    const beforeRedeliveryOffline=await readAvailability(redeliveryOfflineTx.client,schema,f);
+    const offlineRedeliveryFirstCommand=await availability.set(redeliveryOfflineTx.client,{...tenantPrincipal,session_id:sessions[0].id},
+      {desiredStatus:'offline',expectedRevision:Number(beforeRedeliveryOffline.revision),commandId:UUID()});
+    assert.equal(offlineRedeliveryFirstCommand.availability.effectiveStatus,'offline');
+    const offlineFirstFixture=await seedRedeliveryFixture(migrator,schema,f);
+    const offlineFirstPacket=unassignedRedeliveryPacket(f,offlineFirstFixture);
+    const offlineFirstDispatchTx=await connectOperation('campaign-0114-redelivery-dispatch-offline-first');
+    let offlineFirstResponse;
+    try {
+      offlineFirstResponse=await pushDirect(offlineFirstDispatchTx.client,syncService,tenantPrincipal,offlineFirstPacket);
+      await offlineFirstDispatchTx.client.query('COMMIT');
+    } catch(error) {
+      await offlineFirstDispatchTx.client.query('ROLLBACK').catch(()=>{});
+      throw error;
+    } finally { await endRuntimeClient(offlineFirstDispatchTx.raw); }
+    assert.equal(offlineFirstResponse.operationResults[0].status,'accepted',JSON.stringify(offlineFirstResponse));
+    const offlineFirstRead=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0114-redelivery-offline-readback'});
+    const offlineFirstState=await offlineFirstRead.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,offlineFirstFixture.deliveryId]);
+    assert.equal(offlineFirstState.rows[0].payload.status,'REDELIVERY');assert.equal(offlineFirstState.rows[0].payload.driverId,null,
+      'automatic redelivery must remain unassigned when the only FIFO candidate is locked Offline');
+    const offlineFirstRevocation=await offlineFirstRead.client.query(`SELECT count(*)::int AS n FROM ${schema}.sync_outbox WHERE company_id=$1 AND payload->>'type'='CANONICAL_ASSIGNMENT_REVOKED' AND payload->>'entityId'=$2`,[f.companyId,offlineFirstFixture.deliveryId]);
+    assert.equal(offlineFirstRevocation.rows[0].n,0,'terminal failure does not create an active-assignment revocation or block on its recipient');
+    await endRuntimeClient(offlineFirstRead.raw);
+    await redeliveryOfflineTx.client.query('COMMIT');await endRuntimeClient(redeliveryOfflineTx.raw);
+    const retryOfflineRedelivery=await fetchJson(origin,'/api/sync/push',sessions[1],{method:'POST',body:offlineFirstPacket});
+    assert.equal(retryOfflineRedelivery.status,200);assert.equal(retryOfflineRedelivery.body.duplicate,true);
+    canonical=await fetchJson(origin,'/api/driver-availability',sessions[0]);
+    const onlineAfterRedeliveryOffline=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:canonical.body.availability.revision,commandId:UUID()}});
+    assert.equal(onlineAfterRedeliveryOffline.status,200,JSON.stringify(onlineAfterRedeliveryOffline.body));
+    const redeliveryReturnQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
+    const redeliveryReturnCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:redeliveryReturnQr.body.token}});
+    assert.equal(redeliveryReturnCheckIn.status,200,JSON.stringify(redeliveryReturnCheckIn.body));
+    markLocal('0114 re-delivery Offline-first: canonical Offline committed; real automatic re-delivery stayed REDELIVERY/unassigned; retry idempotent');
+
+    const assignmentFirstFixture=await seedRedeliveryFixture(migrator,schema,f);
+    const assignmentFirstPacket=unassignedRedeliveryPacket(f,assignmentFirstFixture);
+    const assignmentFirstTx=await connectOperation('campaign-0114-redelivery-assignment-first');
+    const assignmentFirstPid=(await assignmentFirstTx.client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const assignmentFirstResult=await pushDirect(assignmentFirstTx.client,syncService,tenantPrincipal,assignmentFirstPacket);
+    assert.equal(assignmentFirstResult.operationResults[0].status,'accepted',JSON.stringify(assignmentFirstResult));
+    const assignedRedeliveryId=assignmentFirstResult.operationResults[0].canonicalId;
+    const assignedRedeliveryOpen=await assignmentFirstTx.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,assignedRedeliveryId]);
+    assert.equal(assignedRedeliveryOpen.rows[0].payload.status,'ASSIGNED');assert.equal(assignedRedeliveryOpen.rows[0].payload.driverId,f.driverId);
+    canonical=await fetchJson(origin,'/api/driver-availability',sessions[1]);
+    const offlineAfterRedeliveryPromise=fetchJson(origin,'/api/driver-availability/commands',sessions[1],{method:'POST',body:{desiredStatus:'offline',expectedRevision:canonical.body.availability.revision,commandId:UUID()}});
+    await waitForBlockedRequest(observer,'campaign-0112-api',assignmentFirstPid);
+    await assignmentFirstTx.client.query('COMMIT');await endRuntimeClient(assignmentFirstTx.raw);
+    const offlineAfterRedelivery=await offlineAfterRedeliveryPromise;
+    assert.equal(offlineAfterRedelivery.status,200,JSON.stringify(offlineAfterRedelivery.body));
+    const assignmentRetry=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:assignmentFirstPacket});
+    assert.equal(assignmentRetry.status,200);assert.equal(assignmentRetry.body.duplicate,true);
+    const assignedRedeliveryRead=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0114-redelivery-assignment-readback'});
+    const assignedRedeliveryFinal=await assignedRedeliveryRead.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,assignedRedeliveryId]);
+    assert.equal(assignedRedeliveryFinal.rows[0].payload.status,'ASSIGNED');assert.equal(assignedRedeliveryFinal.rows[0].payload.driverId,f.driverId);
+    const assignedRedeliveryEvents=await assignedRedeliveryRead.client.query(`SELECT count(*)::int AS n FROM ${schema}.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2`,[f.companyId,assignedRedeliveryId]);
+    assert.equal(assignedRedeliveryEvents.rows[0].n,1,'assignment-first redelivery retains the failure event exactly once');
+    await endRuntimeClient(assignedRedeliveryRead.raw);
+    markLocal('0114 re-delivery assignment-first: real automatic sync assignment committed before Offline; assignment/history retained and retry idempotent');
+    for(const type of ['DELIVERY_ACCEPTED','DELIVERY_PICKED_UP','DELIVERY_STARTED','DELIVERY_COMPLETED']){
+      const result=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:deliveryExecutionPacket(f,assignedRedeliveryId,type)});
+      assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.operationResults[0].status,'accepted',JSON.stringify(result.body));
+    }
+    canonical=await fetchJson(origin,'/api/driver-availability',sessions[0]);
+    const onlineAfterRedeliveryAssignment=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:canonical.body.availability.revision,commandId:UUID()}});
+    assert.equal(onlineAfterRedeliveryAssignment.status,200);
+    const finalRedeliveryQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
+    const finalRedeliveryCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:finalRedeliveryQr.body.token}});
+    assert.equal(finalRedeliveryCheckIn.status,200);
+
+    // Two real REDELIVERY sync operations contend for the FIFO settings row
+    // and the two eligible Drivers through independent PostgreSQL sessions.
+    await migrator.query('BEGIN');
+    await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+    await migrator.query(schemaSql(schema,`UPDATE rotamoto.restaurant_driver_presence SET is_present=true,confirmed=true,checked_in_at=now()-interval '1 second',checked_out_at=NULL,revision=revision+1,updated_at=now()
+      WHERE company_id=$1 AND driver_id=$2`),[f.companyId,tiedDriverId]);
+    await migrator.query('COMMIT');
+    const simultaneousOne=await seedRedeliveryFixture(migrator,schema,f),simultaneousTwo=await seedRedeliveryFixture(migrator,schema,f);
+    const simultaneousPacketOne=unassignedRedeliveryPacket(f,simultaneousOne),simultaneousPacketTwo=unassignedRedeliveryPacket(f,simultaneousTwo);
+    const firstAutoRedeliveryTx=await connectOperation('campaign-0114-simultaneous-redelivery-a');
+    const secondAutoRedeliveryTx=await connectOperation('campaign-0112-api');
+    await firstAutoRedeliveryTx.client.query('BEGIN');await firstAutoRedeliveryTx.client.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+    await secondAutoRedeliveryTx.client.query('BEGIN');await secondAutoRedeliveryTx.client.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+    const simultaneousPid=(await firstAutoRedeliveryTx.client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const firstAutoRedelivery=await pushDirect(firstAutoRedeliveryTx.client,syncService,tenantPrincipal,simultaneousPacketOne);
+    assert.equal(firstAutoRedelivery.operationResults[0].status,'accepted',JSON.stringify(firstAutoRedelivery));
+    const secondAutoRedeliveryPromise=pushDirect(secondAutoRedeliveryTx.client,syncService,tenantPrincipal,simultaneousPacketTwo);
+    await waitForBlockedRequest(observer,'campaign-0112-api',simultaneousPid);
+    await firstAutoRedeliveryTx.client.query('COMMIT');await endRuntimeClient(firstAutoRedeliveryTx.raw);
+    const secondAutoRedelivery=await secondAutoRedeliveryPromise;
+    assert.equal(secondAutoRedelivery.operationResults[0].status,'accepted',JSON.stringify(secondAutoRedelivery));
+    await secondAutoRedeliveryTx.client.query('COMMIT');await endRuntimeClient(secondAutoRedeliveryTx.raw);
+    const simultaneousIds=[firstAutoRedelivery.operationResults[0].canonicalId,secondAutoRedelivery.operationResults[0].canonicalId];
+    const simultaneousRead=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0114-simultaneous-redelivery-readback'});
+    const simultaneousRows=await simultaneousRead.client.query(`SELECT record_id::text AS id,payload->>'status' AS status,payload->>'driverId' AS driver_id FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=ANY($2::uuid[]) ORDER BY record_id`,[f.companyId,simultaneousIds]);
+    assert.equal(simultaneousRows.rowCount,2);assert(simultaneousRows.rows.every(row=>row.status==='ASSIGNED'));
+    assert.deepEqual(new Set(simultaneousRows.rows.map(row=>row.driver_id)),new Set([f.driverId,tiedDriverId]),'simultaneous automatic redeliveries must allocate distinct FIFO Drivers');
+    const simultaneousRetry=await fetchJson(origin,'/api/sync/push',sessions[1],{method:'POST',body:simultaneousPacketOne});
+    assert.equal(simultaneousRetry.status,200);assert.equal(simultaneousRetry.body.duplicate,true);
+    const simultaneousOwnedBySession=simultaneousRows.rows.find(row=>row.driver_id===f.driverId);
+    assert(simultaneousOwnedBySession,'one concurrent assignment belongs to the authenticated fixture Driver');
+    for(const type of ['DELIVERY_ACCEPTED','DELIVERY_PICKED_UP','DELIVERY_STARTED','DELIVERY_COMPLETED']){
+      const result=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:deliveryExecutionPacket(f,simultaneousOwnedBySession.id,type)});
+      assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.operationResults[0].status,'accepted',JSON.stringify(result.body));
+    }
+    const afterSimultaneousQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
+    const afterSimultaneousCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:afterSimultaneousQr.body.token}});
+    assert.equal(afterSimultaneousCheckIn.status,200,JSON.stringify(afterSimultaneousCheckIn.body));
+    await endRuntimeClient(simultaneousRead.raw);
+    markLocal('0114 concurrent auto redelivery: two independent real sync transactions serialized at FIFO lock, assigned distinct eligible Drivers, preserved idempotency/history');
 
     // Automatic B: the real sync transaction assigns and holds Driver,
     // availability, presence, settings, and Delivery locks. A second session's
