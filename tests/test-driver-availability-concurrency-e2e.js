@@ -16,6 +16,8 @@ const { createSyncService } = require('../backend/domain/sync-service');
 const { createSyncHttpHandler } = require('../backend/domain/sync-http');
 const { createDriverAvailabilityService } = require('../backend/logistics/driver-availability');
 const { createDriverAvailabilityHttpHandler } = require('../backend/logistics/driver-availability-http');
+const { createRestaurantDriverQueueService } = require('../backend/logistics/restaurant-driver-queue');
+const { createRestaurantDriverQueueHttpHandler } = require('../backend/logistics/restaurant-driver-queue-http');
 
 const RUNTIME_URL = process.env.E2E_RUNTIME_DATABASE_URL;
 const DATABASE = 'rotamoto_e2e';
@@ -23,6 +25,11 @@ const RUNTIME_ROLE = 'rotamoto_app';
 const MIGRATOR_ROLE = 'rotamoto_migrator';
 const UUID = () => crypto.randomUUID();
 const digest = value => crypto.createHash('sha256').update(value).digest();
+function signedPresenceToken(pair, claims) {
+  const encoded=Buffer.from(JSON.stringify(claims)).toString('base64url');
+  const input=`rm-presence.v1.${encoded}`;
+  return `${input}.${crypto.sign(null,Buffer.from(input),pair.privateKey).toString('base64url')}`;
+}
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const timeline = [];
 const runtimeClients = new Set();
@@ -201,7 +208,22 @@ function assignmentPacket(f, deliveryIndex, { status = 'ASSIGNED', packetId = `p
       proofs: [], earnings: [], tombstones: [] } };
 }
 
-function apiServer({ identityService, availability, syncService }) {
+function readyDeliveryPacket(f) {
+  const now=new Date().toISOString(),orderId=UUID(),deliveryId=UUID();
+  const order={id:orderId,companyId:f.companyId,number:`E2E-${orderId.slice(0,8)}`,customer:'Fixture sintética',address:'Endereço E2E',source:'manual',status:'READY',version:1,createdAt:now,updatedAt:now};
+  const delivery={id:deliveryId,companyId:f.companyId,orderId,driverId:null,status:'CREATED',version:1,createdAt:now,updatedAt:now};
+  return {deliveryId,packet:{protocol:'rotamoto-sync',protocolVersion:1,schemaVersion:1,packetId:`pkt_${UUID()}`,deviceId:'campaign-0112-restaurante',source:{deviceId:'campaign-0112-restaurante'},createdAt:now,
+    data:{orders:[order],drivers:[],deliveries:[delivery],routes:[],deliveryEvents:[],locationUpdates:[],proofs:[],earnings:[],tombstones:[]}}};
+}
+function deliveryExecutionPacket(f,deliveryId,type){
+  const at=new Date().toISOString(),eventId=UUID();
+  const event={id:eventId,eventId,companyId:f.companyId,entity:'Delivery',entityId:deliveryId,type,occurredAt:at,
+    actor:{type:'driver',id:f.driverId},payload:{},protocolVersion:1,version:1,createdAt:at,updatedAt:at};
+  return {protocol:'rotamoto-sync',protocolVersion:1,schemaVersion:1,packetId:`pkt_${UUID()}`,deviceId:'campaign-0112-motoboy',source:{deviceId:'campaign-0112-motoboy'},createdAt:at,
+    data:{orders:[],drivers:[],deliveries:[],routes:[],deliveryEvents:[event],locationUpdates:[],proofs:[],earnings:[],tombstones:[]}};
+}
+
+function apiServer({ identityService, availability, queue, syncService }) {
   let handlers = [];
   const server = http.createServer(async (req, res) => {
     req.clientIp = '127.0.0.1'; req.requestId = UUID();
@@ -217,6 +239,7 @@ function apiServer({ identityService, availability, syncService }) {
     const rateLimiter = createRateLimit();
     handlers = [
       createDriverAvailabilityHttpHandler({ identityService, service: availability, rateLimiter, logger: () => {}, allowedOrigin: [origin] }),
+      createRestaurantDriverQueueHttpHandler({ identityService, service: queue, rateLimiter, logger: () => {}, allowedOrigin: [origin] }),
       createSyncHttpHandler({ identityService, syncService, rateLimiter, logger: () => {}, allowedOrigin: [origin] })
     ];
   } };
@@ -281,8 +304,8 @@ async function main() {
   const schema = `campaign0112_${UUID().replaceAll('-', '')}`;
   assert.match(schema, /^campaign0112_[a-f0-9]{32}$/u);
   const f = createFixture();
-  const tenantPrincipal = { company_id: f.companyId, user_id: f.userId, driver_id: f.driverId,
-    permissions: ['sync.pull', 'sync.push'], mfa_verified_at: new Date(), mfa_enrollment_required: false };
+  const tenantPrincipal = { company_id: f.companyId, user_id: f.userId, role_id:f.roleId, driver_id: f.driverId,
+    permissions: ['sync.pull', 'sync.push','orders.manage'], mfa_verified_at: new Date(), mfa_enrollment_required: false };
   let schemaCommitted = false, pool, httpHost, origin;
   const trace = [];
   const markLocal = (name, detail = '') => { const item = `${trace.length + 1}:${name}${detail ? `:${detail}` : ''}`; trace.push(item); mark(name, detail); console.log(item); };
@@ -310,6 +333,16 @@ async function main() {
       assert.match(policy.with_check, /current_tenant_id/u);
     }
     markLocal('actual rotamoto_e2e 0039 checksum/RLS/FORCE validated');
+    const m0040=migrations.find(row=>row.id==='0040_restaurant_driver_queue');assert(m0040,'repository includes migration 0040');
+    const ledger0040=await migrator.query('SELECT checksum_sha256 FROM rotamoto.schema_migrations WHERE migration_id=$1',[m0040.id]);
+    assert.equal(ledger0040.rowCount,1,'actual E2E DB has queue migration 0040 applied');assert.equal(ledger0040.rows[0].checksum_sha256.trim(),m0040.checksum);
+    const queueSecurity=await migrator.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rotamoto'
+      AND c.relname=ANY($1::text[]) ORDER BY c.relname`,[['restaurant_dispatch_settings','restaurant_driver_presence','restaurant_presence_qr_nonces']]);
+    assert.equal(queueSecurity.rowCount,3);for(const row of queueSecurity.rows){assert.equal(row.relrowsecurity,true);assert.equal(row.relforcerowsecurity,true);assert.equal(row.owner,'rotamoto_migrator')}
+    const queuePolicies=await migrator.query(`SELECT tablename,qual,with_check FROM pg_policies WHERE schemaname='rotamoto' AND tablename=ANY($1::text[])`,[['restaurant_dispatch_settings','restaurant_driver_presence','restaurant_presence_qr_nonces']]);
+    assert.equal(queuePolicies.rowCount,3);for(const row of queuePolicies.rows){assert.match(row.qual,/current_tenant_id/u);assert.match(row.with_check,/current_tenant_id/u)}
+    markLocal('actual rotamoto_e2e 0040 checksum/RLS/FORCE validated');
 
     const existingSchema = await migrator.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [schema]);
     assert.equal(existingSchema.rowCount, 0, 'generated schema name is new and owned by this test run');
@@ -336,12 +369,26 @@ async function main() {
     } catch (error) { await migrator.query('ROLLBACK').catch(() => {}); throw error; }
     markLocal('isolated schema migrated inside rotamoto_e2e', `migrations=${migrations.length}`);
     await seedFixture(migrator, schema, f);
+    await migrator.query('BEGIN');
+    try {
+      await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[f.otherCompanyId]);
+      await migrator.query(schemaSql(schema,`INSERT INTO rotamoto.restaurant_dispatch_settings(company_id,mode) VALUES($1,'automatic')`),[f.otherCompanyId]);
+      await migrator.query(schemaSql(schema,`INSERT INTO rotamoto.restaurant_driver_presence(company_id,driver_id,checked_in_at,checkin_method,confirmed,is_present,revision)
+        VALUES($1,$2,now(),'self_reported',false,true,1)`),[f.otherCompanyId,f.otherDriverId]);
+      await migrator.query(schemaSql(schema,`INSERT INTO rotamoto.restaurant_presence_qr_nonces(company_id,nonce_id,expires_at) VALUES($1,$2,now()+interval '60 seconds')`),[f.otherCompanyId,UUID()]);
+      await migrator.query('COMMIT');
+    } catch(error) { await migrator.query('ROLLBACK');throw error; }
 
     const availability = createDriverAvailabilityService();
-    const syncService = createSyncService({ driverAvailability: availability });
+    const connectOperation = name => openRuntimeClient({ schema, applicationName: name });
+    let canonical;
+    const observer = await openRuntimeClient({ applicationName: 'campaign-0112-observer' });
+    const qrPair=crypto.generateKeyPairSync('ed25519');
+    const queue=createRestaurantDriverQueueService({qrKey:qrPair.privateKey.export({type:'pkcs8',format:'pem'}),qrKid:'e2e0113'});
+    const syncService = createSyncService({ driverAvailability: availability,restaurantDriverQueue:queue });
     pool = createRuntimePool(schema);
     const identityService = createIdentityService({ pool });
-    const host = apiServer({ identityService, availability, syncService }); httpHost = host.server;
+    const host = apiServer({ identityService, availability, queue, syncService }); httpHost = host.server;
     await new Promise((resolve, reject) => { httpHost.once('error', reject); httpHost.listen(0, '127.0.0.1', resolve); });
     origin = `http://127.0.0.1:${httpHost.address().port}`; host.setHandlers(origin);
     const sessions = f.sessions;
@@ -352,12 +399,183 @@ async function main() {
     }
     markLocal('two authenticated sessions resolve to the same Driver');
 
-    const observer = await openRuntimeClient({ applicationName: 'campaign-0112-observer' });
+    // 0113: the signed, short-lived restaurant QR is a physical-presence proof.
+    // The same transaction stores server time, consumes the nonce, and makes
+    // the confirmed Online/unoccupied Driver eligible in the FIFO queue.
+    const qr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
+    assert.equal(qr.status,200,JSON.stringify(qr.body));
+    const invalidQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:`${qr.body.token}tampered`}});
+    assert.equal(invalidQr.status,400);assert.equal(invalidQr.body.error.code,'PRESENCE_QR_INVALID');
+    const tokenNow=Math.floor(Date.now()/1000), tokenBase={v:1,jti:UUID(),kid:'e2e0113',iat:tokenNow,exp:tokenNow+60};
+    const foreignQr=signedPresenceToken(qrPair,{...tokenBase,c:f.otherCompanyId});
+    const crossTenantQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:foreignQr}});
+    assert.equal(crossTenantQr.status,403);assert.equal(crossTenantQr.body.error.code,'PRESENCE_QR_TENANT_MISMATCH');
+    const expiredQr=signedPresenceToken(qrPair,{...tokenBase,c:f.companyId,iat:tokenNow-120,exp:tokenNow-60});
+    const expiredCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:expiredQr}});
+    assert.equal(expiredCheckIn.status,400);assert.equal(expiredCheckIn.body.error.code,'PRESENCE_QR_INVALID');
+    const presenceCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:qr.body.token}});
+    assert.equal(presenceCheckIn.status,200,JSON.stringify(presenceCheckIn.body));
+    assert.equal(presenceCheckIn.body.presence.confirmed,true);
+    assert.equal(presenceCheckIn.body.presence.method,'restaurant_qr');
+    const replayQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[1],{method:'POST',body:{token:qr.body.token}});
+    assert.equal(replayQr.status,409);assert.equal(replayQr.body.error.code,'PRESENCE_QR_REPLAY');
+    const repeatedCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/check-in',sessions[1],{method:'POST',body:{}});
+    assert.equal(repeatedCheckIn.status,200);assert.equal(repeatedCheckIn.body.presence.duplicate,true);
+    assert.equal(repeatedCheckIn.body.presence.checkedInAt,presenceCheckIn.body.presence.checkedInAt,'duplicate check-in preserves server FIFO timestamp');
+    const firstQueue=await fetchJson(origin,'/api/restaurant-driver-queue',sessions[0]);
+    assert.equal(firstQueue.status,200);assert.equal(firstQueue.body.presence.eligible,true);assert.equal(firstQueue.body.presence.position,1);
+    const tiedDriverId='ffffffff-ffff-4fff-8fff-ffffffffffff';
+    const tiedDriver=driverRecord(f,tiedDriverId,f.companyId,f.restaurantInstallId);
+    await migrator.query('BEGIN');
+    try {
+      await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+      await migrator.query(schemaSql(schema,`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,$3,$4,$5,$6::jsonb,1,$7,$8)`),tiedDriver);
+      await migrator.query(schemaSql(schema,`INSERT INTO rotamoto.driver_availability(company_id,driver_id,status,revision,lease_expires_at,lease_session_id,updated_by_user_id)
+        VALUES($1,$2,'online',1,now()+interval '120 seconds',$3,$4)`),[f.companyId,tiedDriverId,sessions[0].id,f.userId]);
+      await migrator.query(schemaSql(schema,`INSERT INTO rotamoto.restaurant_driver_presence(company_id,driver_id,checked_in_at,checkin_method,confirmed,is_present,revision,updated_at)
+        VALUES($1,$2,$3,'restaurant_qr',true,true,1,$3)`),[f.companyId,tiedDriverId,firstQueue.body.presence.checkedInAt]);
+      await migrator.query('COMMIT');
+    } catch(error) { await migrator.query('ROLLBACK');throw error; }
+    const queueReader=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-fifo-tie'});
+    const tiedQueue=await queue.getQueue(queueReader.client,{...tenantPrincipal,driver_id:null});
+    assert.deepEqual(tiedQueue.queue.map(row=>row.driverId),[f.driverId,tiedDriverId],'equal PostgreSQL arrival timestamps use deterministic ascending Driver UUID as tie-breaker');
+    await endRuntimeClient(queueReader.raw);
+    await migrator.query('BEGIN');
+    await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+    const tieCleanup=await migrator.query(schemaSql(schema,`UPDATE rotamoto.restaurant_driver_presence SET is_present=false,checked_out_at=now(),revision=revision+1 WHERE company_id=$1 AND driver_id=$2`),[f.companyId,tiedDriverId]);
+    assert.equal(tieCleanup.rowCount,1,'tie-only synthetic Driver is removed from the active queue after the FIFO assertion');
+    await migrator.query('COMMIT');
+    markLocal('0113: equal server FIFO timestamps have deterministic Driver UUID tie-break; tenant-scoped queue query returns canonical order');
+    markLocal('0113: authenticated QR check-in, tamper/replay rejection, duplicate idempotency and server FIFO timestamp confirmed');
+
+    const autoMode=await fetchJson(origin,'/api/restaurant-driver-queue/settings',sessions[0],{method:'POST',body:{mode:'automatic',expectedRevision:0}});
+    assert.equal(autoMode.status,200,JSON.stringify(autoMode.body));assert.equal(autoMode.body.settings.mode,'automatic');
+    const ready=readyDeliveryPacket(f);
+    const autoDispatch=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:ready.packet});
+    assert.equal(autoDispatch.status,200,JSON.stringify(autoDispatch.body));assert.equal(autoDispatch.body.operationResults[1].status,'accepted',JSON.stringify(autoDispatch.body));
+    markLocal('0113: automatic ready-delivery sync response',JSON.stringify(autoDispatch.body.operationResults));
+    const autoDeliveryId=autoDispatch.body.operationResults.find(row=>row.entity==='Delivery').canonicalId;
+    const autoState=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-auto-readback'});
+    const dispatched=await autoState.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,autoDeliveryId]);
+    assert.equal(dispatched.rowCount,1,`canonical Delivery missing: ${JSON.stringify(autoDispatch.body.operationResults)}`);assert.equal(dispatched.rows[0].payload.status,'ASSIGNED');assert.equal(dispatched.rows[0].payload.driverId,f.driverId);
+    const consumedPresence=await autoState.client.query(`SELECT is_present,revision FROM ${schema}.restaurant_driver_presence WHERE company_id=$1 AND driver_id=$2`,[f.companyId,f.driverId]);
+    assert.equal(consumedPresence.rows[0].is_present,false);await endRuntimeClient(autoState.raw);
+    const duplicateAuto=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:ready.packet});assert.equal(duplicateAuto.status,200);assert.equal(duplicateAuto.body.duplicate,true);
+    markLocal('0113: real sync push dispatches only CREATED delivery through confirmed FIFO presence; retry is idempotent');
+
+    const manualMode=await fetchJson(origin,'/api/restaurant-driver-queue/settings',sessions[0],{method:'POST',body:{mode:'manual',expectedRevision:autoMode.body.settings.revision}});
+    assert.equal(manualMode.status,200);
+    const manualReady=readyDeliveryPacket(f);
+    const noSilentDispatch=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:manualReady.packet});
+    assert.equal(noSilentDispatch.status,200,JSON.stringify(noSilentDispatch.body));
+    const manualDeliveryId=noSilentDispatch.body.operationResults.find(row=>row.entity==='Delivery').canonicalId;
+    const manualState=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-manual-readback'});
+    const pendingManual=await manualState.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,manualDeliveryId]);
+    assert.equal(pendingManual.rows[0].payload.status,'CREATED');assert.equal(pendingManual.rows[0].payload.driverId,null);await endRuntimeClient(manualState.raw);
+    markLocal('0113: manual mode persists on server and does not silently assign new CREATED delivery');
+
+    // Finish the first automatically assigned Delivery through the real
+    // Motoboy event contract, then verify self-report requires an operator
+    // confirmation before it can enter the automatic queue.
+    for(const type of ['DELIVERY_ACCEPTED','DELIVERY_PICKED_UP','DELIVERY_STARTED','DELIVERY_COMPLETED']){
+      const eventResult=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:deliveryExecutionPacket(f,autoDeliveryId,type)});
+      assert.equal(eventResult.status,200,JSON.stringify(eventResult.body));
+      assert.equal(eventResult.body.operationResults[0].status,'accepted',JSON.stringify(eventResult.body));
+    }
+    const selfCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/check-in',sessions[0],{method:'POST',body:{}});
+    assert.equal(selfCheckIn.status,200,JSON.stringify(selfCheckIn.body));assert.equal(selfCheckIn.body.presence.confirmed,false);
+    const selfQueue=await fetchJson(origin,'/api/restaurant-driver-queue',sessions[0]);assert.equal(selfQueue.body.presence.eligible,false);
+    const unconfirmedReader=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-unconfirmed-readback'});
+    const unconfirmedRestaurantQueue=await queue.getQueue(unconfirmedReader.client,{...tenantPrincipal,driver_id:null});
+    assert.equal(unconfirmedRestaurantQueue.records.find(row=>row.driverId===f.driverId)?.eligible,false);
+    assert.equal(unconfirmedRestaurantQueue.queue.some(row=>row.driverId===f.driverId),false,'self-reported presence never appears as eligible in the Restaurant FIFO view');
+    await endRuntimeClient(unconfirmedReader.raw);
+    const confirmQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
+    const qrUpgrade=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:confirmQr.body.token}});
+    assert.equal(qrUpgrade.status,200,JSON.stringify(qrUpgrade.body));assert.equal(qrUpgrade.body.presence.confirmed,true);
+    assert.equal(qrUpgrade.body.presence.checkedInAt,selfCheckIn.body.presence.checkedInAt,'QR confirms a self-reported presence without moving FIFO time');
+    const confirmedReader=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-confirmed-readback'});
+    const confirmedRestaurantQueue=await queue.getQueue(confirmedReader.client,{...tenantPrincipal,driver_id:null});
+    assert.equal(confirmedRestaurantQueue.queue.some(row=>row.driverId===f.driverId),true,'Restaurant FIFO view includes the driver only after physical confirmation');
+    await endRuntimeClient(confirmedReader.raw);
+    await fetchJson(origin,'/api/restaurant-driver-queue/check-out',sessions[0],{method:'POST',body:{}});
+    await fetchJson(origin,'/api/restaurant-driver-queue/check-in',sessions[0],{method:'POST',body:{}});
+    const operatorConfirm=await fetchJson(origin,'/api/restaurant-driver-queue/confirm',sessions[0],{method:'POST',body:{driverId:f.driverId}});
+    assert.equal(operatorConfirm.status,200,JSON.stringify(operatorConfirm.body));
+    const confirmedQueue=await fetchJson(origin,'/api/restaurant-driver-queue',sessions[0]);assert.equal(confirmedQueue.body.presence.eligible,true);
+    markLocal('0113: manual button is self-reported only; operator confirmation enables automatic eligibility after real delivery completion');
+
+    // Automatic A: Offline takes the canonical Driver/availability locks;
+    // the real Restaurant sync request reaches a second PostgreSQL backend
+    // while that transaction is open. The barrier observes its lock wait.
+    const autoOfflineFirst=await connectOperation('campaign-0113-auto-offline-first');
+    await autoOfflineFirst.client.query('BEGIN');await autoOfflineFirst.client.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+    const currentAvailability=await readAvailability(autoOfflineFirst.client,schema,f);
+    const offlineBeforeAuto=await availability.set(autoOfflineFirst.client,{...tenantPrincipal,session_id:sessions[0].id},{desiredStatus:'offline',expectedRevision:Number(currentAvailability.revision),commandId:UUID()});
+    assert.equal(offlineBeforeAuto.availability.effectiveStatus,'offline');
+    const autoBlockedByOffline=readyDeliveryPacket(f);
+    const autoBlockedResponsePromise=fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:autoBlockedByOffline.packet});
+    // Auto dispatch uses SKIP LOCKED for FIFO candidates. Observe its response
+    // while Offline still owns the locks: the dispatcher must skip the locked
+    // Driver and persist the new Delivery as CREATED, rather than wait or assign.
+    const autoBlockedResponse=await autoBlockedResponsePromise;assert.equal(autoBlockedResponse.status,200,JSON.stringify(autoBlockedResponse.body));
+    const blockedDeliveryId=autoBlockedResponse.body.operationResults.find(row=>row.entity==='Delivery').canonicalId;
+    const remainsPendingWhileOfflineUncommitted=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-auto-offline-inflight'});
+    const inflightState=await remainsPendingWhileOfflineUncommitted.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,blockedDeliveryId]);
+    assert.equal(inflightState.rows[0].payload.status,'CREATED');assert.equal(inflightState.rows[0].payload.driverId,null);
+    await endRuntimeClient(remainsPendingWhileOfflineUncommitted.raw);
+    await autoOfflineFirst.client.query('COMMIT');await endRuntimeClient(autoOfflineFirst.raw);
+    const offlineRead=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-auto-offline-readback'});
+    const remainsPending=await offlineRead.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,blockedDeliveryId]);
+    assert.equal(remainsPending.rows[0].payload.status,'CREATED');assert.equal(remainsPending.rows[0].payload.driverId,null);await endRuntimeClient(offlineRead.raw);
+    markLocal('0113 auto A: real automatic dispatch ran concurrently while Offline held locks; SKIP LOCKED kept Delivery pending before Offline commit');
+
+    // Returning Online does not restore old presence; a new one-use QR check-in
+    // puts the Driver back at the FIFO tail before the inverse race.
+    const automaticAgain=await fetchJson(origin,'/api/restaurant-driver-queue/settings',sessions[0],{method:'POST',body:{mode:'automatic',expectedRevision:manualMode.body.settings.revision}});
+    assert.equal(automaticAgain.status,200);
+    canonical=await fetchJson(origin,'/api/driver-availability',sessions[0]);
+    const returnedOnline=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:canonical.body.availability.revision,commandId:UUID()}});
+    assert.equal(returnedOnline.status,200);const noStalePresence=await fetchJson(origin,'/api/restaurant-driver-queue',sessions[0]);assert.equal(noStalePresence.body.presence.present,false);
+    const returningQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
+    const returningCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:returningQr.body.token}});
+    assert.equal(returningCheckIn.status,200);assert.equal(returningCheckIn.body.presence.confirmed,true);
+    assert(Date.parse(returningCheckIn.body.presence.checkedInAt)>Date.parse(presenceCheckIn.body.presence.checkedInAt),'return enters at a new server timestamp at the FIFO tail');
+
+    // Automatic B: the real sync transaction assigns and holds Driver,
+    // availability, presence, settings, and Delivery locks. A second session's
+    // Offline command is observed waiting on that backend before commit.
+    const autoAssignBeforeOffline=readyDeliveryPacket(f);
+    const autoAssignmentTx=await connectOperation('campaign-0113-auto-assignment-first');
+    const autoAssignmentPid=(await autoAssignmentTx.client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const autoAssignmentResult=await pushDirect(autoAssignmentTx.client,syncService,tenantPrincipal,autoAssignBeforeOffline.packet);
+    assert.equal(autoAssignmentResult.operationResults.find(row=>row.entity==='Delivery').status,'accepted',JSON.stringify(autoAssignmentResult));
+    const assignedWhileOpen=await autoAssignmentTx.client.query(`SELECT payload->>'status' AS status,payload->>'driverId' AS driver_id FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2`,[f.companyId,autoAssignmentResult.operationResults.find(row=>row.entity==='Delivery').canonicalId]);
+    assert.equal(assignedWhileOpen.rows[0]?.status,'ASSIGNED',`real automatic dispatch must assign before the race barrier: ${JSON.stringify(assignedWhileOpen.rows[0])}`);
+    assert.equal(assignedWhileOpen.rows[0]?.driver_id,f.driverId);
+    const availabilityBeforeAutoOffline=await fetchJson(origin,'/api/driver-availability',sessions[1]);
+    const racingOffline=fetchJson(origin,'/api/driver-availability/commands',sessions[1],{method:'POST',body:{desiredStatus:'offline',expectedRevision:availabilityBeforeAutoOffline.body.availability.revision,commandId:UUID()}});
+    let autoBlockedPids;
+    try{autoBlockedPids=await waitForBlockedRequest(observer,'campaign-0112-api',autoAssignmentPid)}catch(error){const response=await racingOffline;throw new Error(`${error.message}; offline response=${JSON.stringify(response)}`)}
+    assert.equal(autoBlockedPids.length,1);await autoAssignmentTx.client.query('COMMIT');await endRuntimeClient(autoAssignmentTx.raw);
+    const offlineAfterAuto=await racingOffline;assert.equal(offlineAfterAuto.status,200,JSON.stringify(offlineAfterAuto.body));assert.equal(offlineAfterAuto.body.availability.effectiveStatus,'offline');
+    const assignedAutoId=autoAssignmentResult.operationResults.find(row=>row.entity==='Delivery').canonicalId;
+    const autoBRead=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-auto-b-readback'});
+    const autoBState=await autoBRead.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,assignedAutoId]);
+    assert.equal(autoBState.rows[0].payload.status,'ASSIGNED');assert.equal(autoBState.rows[0].payload.driverId,f.driverId);await endRuntimeClient(autoBRead.raw);
+    const autoRetry=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:autoAssignBeforeOffline.packet});assert.equal(autoRetry.status,200);assert.equal(autoRetry.body.duplicate,true);
+    const noAutoWhileOffline=readyDeliveryPacket(f);const noAutoAfterOffline=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:noAutoWhileOffline.packet});
+    const noAutoId=noAutoAfterOffline.body.operationResults.find(row=>row.entity==='Delivery').canonicalId;
+    const noAutoRead=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0113-auto-offline-followup'});
+    const stillPending=await noAutoRead.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,noAutoId]);
+    assert.equal(stillPending.rows[0].payload.status,'CREATED');assert.equal(stillPending.rows[0].payload.driverId,null);await endRuntimeClient(noAutoRead.raw);
+    markLocal('0113 auto B: deterministic PostgreSQL lock order assigns before Offline; assignment remains valid and retries do not duplicate');
+
     const commandPrincipal = (session, index) => ({ ...tenantPrincipal, session_id: session.id, sessionIndex: index });
     const runDirectCommand = async (client, session, desiredStatus, expectedRevision, commandId) => {
       return availability.set(client, commandPrincipal(session), { desiredStatus, expectedRevision, commandId });
     };
-    const connectOperation = name => openRuntimeClient({ schema, applicationName: name });
 
     // A. Offline acquires the canonical Driver/availability locks before the
     // real Restaurante sync-push assignment arrives on a different backend.
@@ -388,7 +606,7 @@ async function main() {
     markLocal('A: assignment rejected after Offline; retry idempotent and Delivery unchanged');
 
     // Return to Online through the authenticated route before scenario B.
-    let canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
+    canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     const online = await fetchJson(origin, '/api/driver-availability/commands', sessions[0], { method: 'POST', body: {
       desiredStatus: 'online', expectedRevision: canonical.body.availability.revision, commandId: UUID() } });
     assert.equal(online.status, 200, JSON.stringify(online.body));
@@ -489,13 +707,9 @@ async function main() {
     assert.equal(retryRedelivery.status, 200); assert.equal(retryRedelivery.body.duplicate, true);
     markLocal('D2: REDELIVERY commits before Offline, no event fabricated, idempotent retry');
 
-    // C. Repository audit: there is no automatic internal Driver dispatch
-    // service. Assignment decisions require sync/manual confirmation; route
-    // grouping is a recommendation, not an automatic dispatcher.
-    assert.equal(typeof syncService.assignDeliveryToRoute, 'function');
-    const decisionCode = require('../backend/logistics/human-decision').createHumanDecisionService;
-    assert.equal(typeof decisionCode, 'function');
-    markLocal('C: BLOCKED — no automatic internal dispatch operation exists in the current domain');
+    // C: the real sync-push CREATED path above exercises automatic dispatch
+    // with PostgreSQL locks and two-session Offline races in both orders.
+    markLocal('C: automatic CREATED dispatch path exercised in both deterministic Offline interleavings');
 
     // E. Two real authenticated sessions race commands against the same
     // expected revision while a barrier holds both behind the Driver row.
@@ -617,6 +831,10 @@ async function main() {
     const otherTenantAvailability = await tenantCheck.client.query(`SELECT count(*)::int AS n FROM ${schema}.driver_availability
       WHERE company_id=$1`, [f.otherCompanyId]);
     assert.equal(otherTenantAvailability.rows[0].n, 0, 'Tenant A cannot read Tenant B availability despite a seeded row');
+    for(const table of ['restaurant_dispatch_settings','restaurant_driver_presence','restaurant_presence_qr_nonces']){
+      const hiddenQueueRows=await tenantCheck.client.query(`SELECT count(*)::int AS n FROM ${schema}.${table} WHERE company_id=$1`,[f.otherCompanyId]);
+      assert.equal(hiddenQueueRows.rows[0].n,0,`Tenant A cannot read Tenant B row in ${table} under FORCE RLS`);
+    }
     await tenantCheck.client.query('ROLLBACK'); await endRuntimeClient(tenantCheck.raw);
     const assignAfterRollback = assignmentPacket(f, 5);
     const acceptedAfterRollback = await fetchJson(origin, '/api/sync/push', sessions[0], { method: 'POST', body: assignAfterRollback });
@@ -639,9 +857,9 @@ async function main() {
     assert.equal(lockCheck.rows[0].n, 0, 'no campaign transaction remains waiting on a lock');
     markLocal('all API/PG operations settled; no lingering lock waits');
 
-    console.log(JSON.stringify({ result: 'PARTIAL_AUTOMATIC_DISPATCH_PATH_UNAVAILABLE', database: DATABASE, schemaSandbox: 'isolated migration-derived schema, dropped in finally',
+    console.log(JSON.stringify({ result: 'PASS_E2E_SCENARIOS_A_F', database: DATABASE, schemaSandbox: 'isolated migration-derived schema, dropped in finally',
       independentlyBlockedTransactions: blockedByA.length + blockedByB.length + blockedByD2.length + blockedSessions.length,
-      scenarios: { A: 'PASS', B: 'PASS', C: 'BLOCKED_NO_AUTOMATIC_DISPATCH_DOMAIN_PATH', D: 'PASS', E: 'PASS', F: 'PASS' },
+      scenarios: { A: 'PASS', B: 'PASS', C: 'PASS_REAL_AUTOMATIC_CREATED_DISPATCH_BOTH_INTERLEAVINGS', D: 'PASS', E: 'PASS', F: 'PASS' },
       timeline: trace }));
     await endRuntimeClient(observer.raw);
   } finally {

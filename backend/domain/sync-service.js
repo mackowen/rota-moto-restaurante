@@ -129,7 +129,7 @@ function validatePacket(packet) {
   return { packetId: id, deviceId, data, events: packet.events || [] };
 }
 
-function createSyncService({ clock = () => new Date(), mediaStorage = createMediaStorage(), driverAvailability = null } = {}) {
+function createSyncService({ clock = () => new Date(), mediaStorage = createMediaStorage(), driverAvailability = null, restaurantDriverQueue = null } = {}) {
   async function assignDeliveryToRoute(client, principal, input) {
     const { routeId, deliveryId, driverId, position, expectedRouteVersion } = input || {};
     if (![routeId,deliveryId,driverId].every(value=>typeof value==='string'&&UUID.test(value))||
@@ -499,6 +499,11 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         related_entity_type,related_record_id::text
         FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 FOR UPDATE`, [companyId, canonicalId]);
       if (existing.rowCount && existing.rows[0].entity_type !== entityType) throw new SyncError('SYNC_CONFLICT', 'ID canônico já pertence a outro tipo de entidade.');
+      if (entityType === 'Delivery' && appKey === 'restaurante' && !canonical.driverId && ['CREATED','REDELIVERY'].includes(canonical.status) && restaurantDriverQueue && await restaurantDriverQueue.schemaReady(client) &&
+          (!existing.rowCount && canonical.status === 'CREATED' || existing.rowCount && existing.rows[0].payload.status !== 'REDELIVERY' && canonical.status === 'REDELIVERY')) {
+        const result = await restaurantDriverQueue.assignForNewDelivery(client, companyId, canonical);
+        canonical = result.delivery;
+      }
       if(entityType==='Route'&&record.deliveryIds!==undefined){
         const before=existing.rows[0]?.payload?.deliveryIds||[],after=canonical.deliveryIds||[];
         routeMembershipChange={added:after.filter(id=>!before.includes(id)),removed:before.filter(id=>!after.includes(id))};
@@ -626,6 +631,9 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         const nextDriverId = canonical.driverId || null;
         await projectRestaurantDriverAssignment(client, { companyId, userId, deliveryId: canonicalId,
           previousDriverId, driverId: nextDriverId, deliveryStatus: canonical.status, now });
+        if (restaurantDriverQueue && nextDriverId && nextDriverId !== previousDriverId) {
+          await restaurantDriverQueue.assignmentConsumed(client, companyId, nextDriverId);
+        }
       }
       if (entityType === 'DeliveryProof' && canonical.media?.storageRef?.objectKey) {
         await client.query(`DELETE FROM rotamoto.proof_media_upload_intents

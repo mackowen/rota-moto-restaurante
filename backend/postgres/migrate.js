@@ -91,11 +91,11 @@ function disposable0110MigrationConnectionString(env = process.env) {
 function assert0110RehearsalState(applied, migrations) {
   const id = '0039_driver_operational_availability';
   const index = migrations.findIndex(migration => migration.id === id);
-  if (index < 0 || migrations.slice(index + 1).length ||
-      !migrations.slice(0, index).every(migration => applied.has(migration.id))) {
+  const scoped=index<0?[]:migrations.slice(0,index+1);
+  if (index < 0 || !migrations.slice(0, index).every(migration => applied.has(migration.id))) {
     throw new Error('Ensaio 0110 exige somente 0039 pendente após o ledger 0038 íntegro.');
   }
-  const pending = migrations.filter(migration => !applied.has(migration.id));
+  const pending = scoped.filter(migration => !applied.has(migration.id));
   if (pending.length > 1 || pending.some(migration => migration.id !== id)) {
     throw new Error('Ensaio 0110 exige somente 0039 pendente após o ledger 0038 íntegro.');
   }
@@ -229,9 +229,10 @@ async function main() {
       const applied = await assertChecksums(client, allMigrations);
       assert0110RehearsalState(applied, allMigrations);
     }
-    const throughIndex = throughId ? allMigrations.findIndex(migration => migration.id === throughId) : -1;
-    if (throughId && throughIndex < 0) throw new Error('Migration checkpoint desconhecido.');
-    const migrations = throughId ? allMigrations.slice(0, throughIndex + 1) : allMigrations;
+    const effectiveThroughId=rehearsal0110?'0039_driver_operational_availability':throughId;
+    const throughIndex = effectiveThroughId ? allMigrations.findIndex(migration => migration.id === effectiveThroughId) : -1;
+    if (effectiveThroughId && throughIndex < 0) throw new Error('Migration checkpoint desconhecido.');
+    const migrations = effectiveThroughId ? allMigrations.slice(0, throughIndex + 1) : allMigrations;
     if (command === 'up') await migrateUp(client, migrations);
     else if (command === 'down') await migrateDown(client, migrations);
     else await status(client, migrations);

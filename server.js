@@ -27,6 +27,8 @@ const {createOsrmRouteDistanceProvider}=require('./backend/logistics/osrm-route-
 const {createLogisticsHttpHandler}=require('./backend/logistics/http');
 const {createDriverAvailabilityService}=require('./backend/logistics/driver-availability');
 const {createDriverAvailabilityHttpHandler}=require('./backend/logistics/driver-availability-http');
+const {createRestaurantDriverQueueService}=require('./backend/logistics/restaurant-driver-queue');
+const {createRestaurantDriverQueueHttpHandler}=require('./backend/logistics/restaurant-driver-queue-http');
 const {createTerritorialAnalyticsService}=require('./backend/analytics/territorial-service');
 const {createTerritorialAnalyticsHttpHandler}=require('./backend/analytics/territorial-http');
 const {createAdminRepository}=require('./backend/admin/repository');
@@ -124,11 +126,16 @@ const mediaStorage=Object.freeze({configured:()=>Boolean(CONFIG.mediaDirectory),
   async read(ref,metadata){return(await getMediaStorage()).read(ref,metadata)},async remove(ref){return(await getMediaStorage()).remove(ref)}});
 const proofMediaHttp=createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin:ALLOWED_ORIGINS});
 const driverAvailabilityService=createDriverAvailabilityService();
-const syncService=createSyncService({mediaStorage,driverAvailability:driverAvailabilityService});
+const restaurantDriverQueueService=createRestaurantDriverQueueService({
+  qrKey:CONFIG.deliveryQrKeyRef&&secretProvider?()=>Promise.resolve(secretProvider).then(provider=>provider.get(CONFIG.deliveryQrKeyRef,{name:`delivery/qr-signing-key/${CONFIG.deliveryQrKeyId}`,scope:'installation'})):null,
+  qrKid:CONFIG.deliveryQrKeyId||null
+});
+const syncService=createSyncService({mediaStorage,driverAvailability:driverAvailabilityService,restaurantDriverQueue:restaurantDriverQueueService});
 const syncHttp=createSyncHttpHandler({identityService,syncService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const domainQueryService=createDomainQueryService({repository:createDomainQueryRepository()});
 const domainQueryHttp=createDomainQueryHttpHandler({identityService,queryService:domainQueryService,logger:()=>{}});
 const driverAvailabilityHttp=createDriverAvailabilityHttpHandler({identityService,service:driverAvailabilityService,logger:requestLogger,allowedOrigin:ALLOWED_ORIGINS});
+const restaurantDriverQueueHttp=createRestaurantDriverQueueHttpHandler({identityService,service:restaurantDriverQueueService,logger:requestLogger,allowedOrigin:ALLOWED_ORIGINS});
 const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQrService({
   secretProvider:{get:(ref,context)=>Promise.resolve(secretProvider).then(provider=>provider.get(ref,context))},
   keyRef:CONFIG.deliveryQrKeyRef,kid:CONFIG.deliveryQrKeyId
@@ -200,6 +207,7 @@ async function route(req,res){
     if(await proofMediaHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
     if(await driverAvailabilityHttp(req,res))return;
+    if(await restaurantDriverQueueHttp(req,res))return;
     if(await deliveryQrHttp(req,res))return;
   if(await territorialAnalyticsHttp(req,res))return;
   if(await logisticsHttp(req,res))return;
