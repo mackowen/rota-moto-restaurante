@@ -601,6 +601,46 @@ async function main() {
       assert.equal(lateFact.body.operationResults[0].status,'rejected');
       assert.equal(lateFact.body.operationResults[0].error.code,'DRIVER_NOT_ASSIGNED');
 
+      const beforeReplayAssignment=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,deliveryId]);
+      const replayAssignment={...beforeReplayAssignment.rows[0].payload,driverId,status:'ASSIGNED',
+        assignedAt:new Date(Date.now()+16000).toISOString(),version:Number(beforeReplayAssignment.rows[0].version)+1,
+        baseVersion:Number(beforeReplayAssignment.rows[0].version),updatedAt:new Date(Date.now()+16000).toISOString()};
+      const assignmentPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],deliveries:[replayAssignment],
+        drivers:[],routes:[],deliveryEvents:[],earnings:[],proofs:[],locationUpdates:[]}};
+      const assignmentAck=await call('/api/sync/push',{method:'POST',body:assignmentPacket});
+      assert.equal(assignmentAck.body.operationResults[0].status,'accepted',JSON.stringify(assignmentAck.body.operationResults));
+      const staleAssignmentSnapshot={...replayAssignment};
+      delete staleAssignmentSnapshot.baseVersion;
+      const replayLifecycle=[['DELIVERY_ACCEPTED',17000],['DELIVERY_PICKED_UP',18000],['DELIVERY_STARTED',19000],
+        ['DELIVERY_ARRIVED',20000],['DELIVERY_COMPLETED',21000]];
+      for(const [type,offset] of replayLifecycle){
+        const event={eventId:`evt_${crypto.randomUUID()}`,entity:'delivery',entityId:deliveryId,type,
+          occurredAt:new Date(Date.now()+offset).toISOString()};
+        const result=await call('/api/sync/push',{method:'POST',body:{...riderPacket,packetId:`pkt_${crypto.randomUUID()}`,
+          data:{...riderPacket.data,deliveries:[],deliveryEvents:[event],earnings:[]}}});
+        assert.equal(result.body.operationResults[0].status,'accepted',`${type}: ${JSON.stringify(result.body.operationResults)}`);
+      }
+      const deliveredBeforeReplay=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,deliveryId]);
+      assert.equal(deliveredBeforeReplay.rows[0].payload.status,'DELIVERED');
+      const outboxBeforeReplay=await client.query("SELECT count(*)::int AS count FROM rotamoto.sync_outbox WHERE company_id=$1 AND payload->>'entity'='Delivery' AND payload->>'entityId'=$2",[companyId,deliveryId]);
+      const staleReplayPacket={...assignmentPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...assignmentPacket.data,deliveries:[staleAssignmentSnapshot]}};
+      const staleReplay=await call('/api/sync/push',{method:'POST',body:staleReplayPacket});
+      assert.equal(staleReplay.body.operationResults[0].status,'duplicate',JSON.stringify(staleReplay.body.operationResults));
+      assert.equal(staleReplay.body.operationResults[0].canonicalVersion,Number(deliveredBeforeReplay.rows[0].version));
+      const deliveredAfterReplay=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,deliveryId]);
+      assert.equal(deliveredAfterReplay.rows[0].payload.status,'DELIVERED','stale projection cannot downgrade canonical execution state');
+      assert.equal(Number(deliveredAfterReplay.rows[0].version),Number(deliveredBeforeReplay.rows[0].version),'replay does not advance the canonical revision');
+      const outboxAfterReplay=await client.query("SELECT count(*)::int AS count FROM rotamoto.sync_outbox WHERE company_id=$1 AND payload->>'entity'='Delivery' AND payload->>'entityId'=$2",[companyId,deliveryId]);
+      assert.equal(outboxAfterReplay.rows[0].count,outboxBeforeReplay.rows[0].count,'replay emits no duplicate canonical event');
+      const tamperedReplay={...staleReplayPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...staleReplayPacket.data,
+        deliveries:[{...staleAssignmentSnapshot,assignedAt:new Date(Date.now()+22000).toISOString(),updatedAt:new Date(Date.now()+23000).toISOString()}]}};
+      const tamperedResult=await call('/api/sync/push',{method:'POST',body:tamperedReplay});
+      assert.equal(tamperedResult.body.operationResults[0].status,'rejected',JSON.stringify(tamperedResult.body.operationResults));
+      assert.equal(tamperedResult.body.operationResults[0].error.code,'FORBIDDEN_FIELD',
+        'a changed Restaurant-owned assignment field remains explicitly rejected');
+      const stillDelivered=await client.query("SELECT payload->>'status' AS status,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
+      assert.equal(stillDelivered.rows[0].status,'DELIVERED');assert.equal(Number(stillDelivered.rows[0].version),Number(deliveredBeforeReplay.rows[0].version));
+
       const beforeTombstone=await client.query('SELECT version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,deliveryId]);
       const tombstoneVersion=Number(beforeTombstone.rows[0].version);
       const tombstonePacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, data: { ...packet.data, orders: [], deliveries: [],

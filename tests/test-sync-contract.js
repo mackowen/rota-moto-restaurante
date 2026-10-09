@@ -35,6 +35,15 @@ assert.match(appSource,/findLocalByCanonical\(data\.deliveries,payload\.delivery
   'canonical Earnings reconcile to the local Delivery alias');
 assert.match(appSource,/item\.deliveryId===localDeliveryId/,
   'canonical Earning updates the existing per-delivery projection instead of duplicating it');
+assert.match(appSource,/await reconcileRestaurantOrderProjections\(result\.data\)/,
+  'the latest cached canonical Delivery is projected to Order after the entire pull page is merged');
+assert.match(appSource,/function reconcileRestaurantOrderProjections\(data\)/);
+assert.match(appSource,/isSupersededRestaurantDeliveryOperation\(localDelivery,delivery,deliveryOperation\)/,
+  'a superseded pull conflict is cleared only against the latest canonical assignment tuple');
+assert.match(appSource,/const pending=!confirmed&&\(order\.sync\?\.state==='local'\|\|\['rejected','conflict'\]\.includes\(operation\?\.status\)\)/,
+  'canonical projection preserves unresolved local Order operations');
+assert.match(appSource,/!document\.querySelector\('\.modal-back'\)/,
+  'sync refreshes the Order view without replacing an open dialog');
 assert.match(appSource,/multiStoreTransaction\(\[\.\.\.localStores,'inbox','syncState'\]/);
 assert.match(appSource,/function multiStoreTransaction\(storeNames,mode,work\)/,'multi-store persistence helper used by sync is defined');
 assert.match(appSource,/X-CSRF-Token/);

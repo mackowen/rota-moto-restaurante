@@ -350,14 +350,16 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       browserSessionCookie: sessionCookie, apiOrigin: host.base, runtime, call, authenticatedCall,driverAvailabilityService }));
     const recoveryRequest = await call('/api/identity/recovery', { method: 'POST', body: { email } });
     assert.equal(recoveryRequest.status, 202, JSON.stringify(recoveryRequest.body));
-    assert.equal(JSON.stringify(recoveryRequest.body).includes(emails[1].token), false,
+    const recoveryEmail = emails.findLast(message => message.kind === 'password_recovery' && message.to === email);
+    assert(recoveryEmail?.token, 'the test email sink captured this fixture user’s password-recovery token');
+    assert.equal(JSON.stringify(recoveryRequest.body).includes(recoveryEmail.token), false,
       'recovery token is delivered out of band and never returned by the API');
     const recoveredPassword = `E2E-recovered-${crypto.randomBytes(24).toString('base64url')}`;
     const recoveryConsumed = await call('/api/identity/recovery/consume', { method: 'POST',
-      body: { token: emails[1].token, password: recoveredPassword } });
+      body: { token: recoveryEmail.token, password: recoveredPassword } });
     assert.equal(recoveryConsumed.status, 204);
     const passwordRecoveryReplay = await call('/api/identity/recovery/consume', { method: 'POST',
-      body: { token: emails[1].token, password: recoveredPassword } });
+      body: { token: recoveryEmail.token, password: recoveredPassword } });
     assert.equal(passwordRecoveryReplay.status, 401, 'password recovery token is one-time');
     if (persistDisposableFixture) {
       await runtime.query('COMMIT'); transactionOpen = false; fixturePersisted = true;

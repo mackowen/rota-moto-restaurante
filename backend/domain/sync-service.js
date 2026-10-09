@@ -51,6 +51,15 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
+function isSupersededRestaurantAssignmentReplay({ appKey, record, incoming, canonical, existing }) {
+  if (appKey !== 'restaurante' || !existing || incoming.status !== 'ASSIGNED' ||
+      !['ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','DELIVERED','CANCELLED','FAILED','RETURNED'].includes(existing.status)) return false;
+  const baseVersion = record.baseVersion ?? record.sync?.canonicalVersion;
+  if (baseVersion !== undefined && (!Number.isSafeInteger(baseVersion) || baseVersion >= Number(existing.version))) return false;
+  return ['orderId','driverId','priority','assignedAt','estimatedDistanceM']
+    .every(field => stableJson(canonical[field]) === stableJson(existing.payload[field]));
+}
+
 function packetDigest(packet) {
   return crypto.createHash('sha256').update(stableJson(packet)).digest();
 }
@@ -516,6 +525,14 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       if (existing.rowCount) {
         ackCanonicalId = canonicalId;
         ackVersion = Number(existing.rows[0].version);
+      }
+      if (entityType === 'Delivery' && isSupersededRestaurantAssignmentReplay({ appKey, record,
+          incoming: record, canonical, existing: existing.rowCount ? { ...existing.rows[0], version: Number(existing.rows[0].version), status: existing.rows[0].payload.status } : null })) {
+        if (resolved.created) await addAlias(client, companyId, appKey, installationId, entityType, resolved.localId, canonicalId);
+        aliases.push({ entity: entityType, localId: resolved.localId, canonicalId });
+        operationResults.push({ operation: item.operationIndex, entity: entityType, localId: resolved.localId,
+          canonicalId, canonicalVersion: Number(existing.rows[0].version), status: 'duplicate' });
+        continue;
       }
       if(entityType==='Delivery'&&appKey==='restaurante'&&canonical.driverId&&driverAvailability){
         const old=existing.rows[0]?.payload;

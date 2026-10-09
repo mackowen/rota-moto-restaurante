@@ -54,6 +54,22 @@
   if(pendingPlanning&&Object.hasOwn(current,'status'))result.status=current.status;
   return result;
  }
+ function projectRestaurantOrderFromDelivery(order,delivery,{pendingOrder=false}={}){
+  if(!order||!delivery||pendingOrder)return order;
+  const status=({CREATED:'AGUARDANDO',ASSIGNED:'ATRIBUIDA',ACCEPTED:'ATRIBUIDA',PICKED_UP:'EM_ROTA',OUT_FOR_DELIVERY:'EM_ROTA',ARRIVED:'CHEGOU',DELIVERED:'FINALIZADA',CANCELLED:'CANCELADA',FAILED:'EM_ROTA',RETURNED:'EM_ROTA',REDELIVERY:'ATRIBUIDA'})[delivery.status];
+  if(!status)return order;
+  return {...order,status,canonicalStatus:delivery.status,deliveryStatus:delivery.status,
+   updatedAt:delivery.updatedAt||order.updatedAt,
+   ...(delivery.status==='DELIVERED'?{completedAt:delivery.completedAt||delivery.updatedAt||order.completedAt}:{})};
+ }
+ function isSupersededRestaurantDeliveryOperation(local,remote,operation){
+  if(!local||!remote||operation?.status!=='conflict'||
+   !['ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','DELIVERED','CANCELLED','FAILED','RETURNED'].includes(remote.status)||
+   String(operation.canonicalId||'')!==String(remote.id||'')||
+   Number(operation.sourceVersion)!==Number(local.sync?.version||local.version||1))return false;
+  return ['orderId','driverId','priority','assignedAt','estimatedDistanceM']
+   .every(field=>JSON.stringify(local[field])===JSON.stringify(remote[field]));
+ }
  function createCoordinator({locks,lockName='rotamoto-sync'}={}){let active=null;return Object.freeze({run(task){if(typeof task!=='function')return Promise.reject(new TypeError('Tarefa de sync inválida.'));if(active)return active;const execute=()=>Promise.resolve().then(task);active=locks?.request?locks.request(lockName,{mode:'exclusive'},execute):execute();return active.finally(()=>{active=null})}})}
- return Object.freeze({canonicalEvent,decide,statusFromAck,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery});
+ return Object.freeze({canonicalEvent,decide,statusFromAck,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
 });

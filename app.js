@@ -263,7 +263,7 @@ async function performServerSync({apiBase=window.ROTA_MOTO_API_BASE||'/api',csrf
  const queueId=`sync-packet:${deviceId}`;let queued=await req('outbox','readonly',s=>new Promise((resolve,reject)=>{const q=s.get(queueId);q.onsuccess=()=>resolve(q.result||null);q.onerror=()=>reject(q.error)}));if(!queued){const packet=await buildRestaurantSyncPacket();queued={id:queueId,type:'sync.packet',status:'pending',packet,snapshots:captureSyncSnapshots(packet),createdAt:Date.now()};await put('outbox',queued)}
  const ack=await send(`${base}/push`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify(queued.packet)});if(!Array.isArray(ack.operationResults)||ack.operationResults.some(row=>RotaMotoSyncReconciliation.statusFromAck(row.status)==='invalid'))throw new Error('SYNC_ACK_INVALID');await persistSyncAck(queued.packet,ack.operationResults,queued.snapshots||captureSyncSnapshots(queued.packet));await del('outbox',queueId);
  let pulled=prePulled,hasMore=true,pages=0;while(hasMore&&pages++<100){const query=new URLSearchParams({deviceId,limit:'100'});if(cursor)query.set('cursor',cursor);const page=await send(`${base}/pull?${query}`);if(page.companyId!==session.companyId||page.deviceId!==deviceId||!Array.isArray(page.events))throw new Error('SYNC_PULL_INVALID');pulled+=await reconcileRestaurantPullPage(page);cursor=page.nextCursor||cursor;hasMore=!!page.hasMore}
- await compactSyncStores();await updateSyncStatus({state:'ready',lastSuccessAt:Date.now(),lastErrorCode:null,lastPullAt:Date.now(),installationId:registration.installationId});const status=await getSyncStatus();if(status.pending||hasMore)scheduleServerSync(0);return {packetId:queued.packet.packetId,operationResults:ack.operationResults,pulled,cursor,hasMore};
+ await compactSyncStores();await updateSyncStatus({state:'ready',lastSuccessAt:Date.now(),lastErrorCode:null,lastPullAt:Date.now(),installationId:registration.installationId});if(state.tab==='orders'&&!document.querySelector('.modal-back'))filterOrders();const status=await getSyncStatus();if(status.pending||hasMore)scheduleServerSync(0);return {packetId:queued.packet.packetId,operationResults:ack.operationResults,pulled,cursor,hasMore};
 }
 function multiStoreTransaction(storeNames,mode,work){
  const transaction=db.transaction(storeNames,mode);
@@ -290,6 +290,36 @@ async function persistSyncAck(packet,results,snapshots={}){
 }
 function findLocalByCanonical(rows,canonicalId,entity,syncMap){return (rows||[]).find(row=>row.id===canonicalId||row.sync?.canonicalId===canonicalId||syncMap.get(syncOperationKey(entity,{id:row.id}))?.canonicalId===canonicalId)||null}
 function orderStatusFromDelivery(status){return ({CREATED:'AGUARDANDO',ASSIGNED:'ATRIBUIDA',ACCEPTED:'ATRIBUIDA',PICKED_UP:'EM_ROTA',OUT_FOR_DELIVERY:'EM_ROTA',ARRIVED:'CHEGOU',DELIVERED:'FINALIZADA',CANCELLED:'CANCELADA',FAILED:'EM_ROTA',RETURNED:'EM_ROTA',REDELIVERY:'ATRIBUIDA'})[status]||null}
+async function reconcileRestaurantOrderProjections(data){
+ const syncMap=new Map((data.syncState||[]).map(row=>[row.id,row])),updates=[],deliveryUpdates=[],operationUpdates=[];
+ for(const cache of data.syncState||[]){
+  if(!String(cache.id||'').startsWith('canonical:Delivery:')||!['canonical','conflict'].includes(cache.status))continue;
+  const delivery=cache.payload;if(!delivery||delivery.companyId!==syncSession?.companyId||delivery.deletedAt)continue;
+  const localDelivery=findLocalByCanonical(data.deliveries,delivery.id,'Delivery',syncMap);
+  const deliveryOperation=localDelivery&&syncMap.get(`operation:Delivery:${localDelivery.id}`);
+  if(localDelivery&&RotaMotoSyncReconciliation.isSupersededRestaurantDeliveryOperation(localDelivery,delivery,deliveryOperation)){
+   const synced={...localDelivery,sync:{...(localDelivery.sync||{}),state:'synced',canonicalId:delivery.id,canonicalVersion:Number(delivery.version||cache.canonicalVersion)}};
+   const duplicate={...deliveryOperation,status:'duplicate',error:null,canonicalId:delivery.id,canonicalVersion:Number(delivery.version||cache.canonicalVersion),updatedAt:Date.now()};
+   deliveryUpdates.push({local:localDelivery,synced});operationUpdates.push(duplicate);syncMap.set(duplicate.id,duplicate);
+  }
+  const order=findLocalByCanonical(data.orders,delivery.orderId,'Order',syncMap);if(!order||order.deleted||order.deletedAt)continue;
+  const operation=syncMap.get(`operation:Order:${order.id}`),confirmed=RotaMotoSyncReconciliation.hasCurrentCanonicalAck(order,order.sync?.canonicalId||order.id,operation);
+  const pending=!confirmed&&(order.sync?.state==='local'||['rejected','conflict'].includes(operation?.status));
+  if(pending)continue;
+  const projected=RotaMotoSyncReconciliation.projectRestaurantOrderFromDelivery(order,delivery);
+  if(projected===order||(projected.status===order.status&&projected.deliveryStatus===order.deliveryStatus&&projected.canonicalStatus===order.canonicalStatus&&projected.completedAt===order.completedAt))continue;
+  updates.push({order,projected});
+ }
+ if(!updates.length&&!deliveryUpdates.length)return;
+ await multiStoreTransaction(['orders','deliveries','syncState'],'readwrite',stores=>{
+  for(const {projected} of updates)stores.objectStore('orders').put(projected);
+  for(const {synced} of deliveryUpdates)stores.objectStore('deliveries').put(synced);
+  for(const operation of operationUpdates)stores.objectStore('syncState').put(operation);
+ });
+ for(const {order,projected} of updates){const index=data.orders.indexOf(order);if(index>=0)data.orders[index]=projected}
+ for(const {local,synced} of deliveryUpdates){const index=data.deliveries.indexOf(local);if(index>=0)data.deliveries[index]=synced;else data.deliveries.push(synced)}
+ for(const operation of operationUpdates){const index=data.syncState.findIndex(row=>row.id===operation.id);if(index>=0)data.syncState[index]=operation;else data.syncState.push(operation)}
+}
 async function reconcileRestaurantPullPage(page){
  if(!syncSession||page.companyId!==syncSession.companyId)throw new Error('SYNC_TENANT_MISMATCH');const received=page.events.map(item=>RotaMotoSyncReconciliation.canonicalEvent(item,syncSession.companyId));const localStores=['orders','deliveries','bikes','routes','deliveryEvents','locations','proofs','earnings'];let result,generatedEarnings=0;
  result=await multiStoreTransaction([...localStores,'inbox','syncState'],'readwrite',stores=>new Promise((resolve,reject)=>{
@@ -304,7 +334,7 @@ async function reconcileRestaurantPullPage(page){
    stores.objectStore('inbox').put({id:`server:${event.eventId}`,event,status:decision==='conflict'?'conflict':'reconciled',resolution:decision,receivedAt:Date.now()});
   }if(page.nextCursor)stores.objectStore('syncState').put({id:'pull:cursor',value:page.nextCursor});stores.objectStore('syncState').put({id:'sync:status',value:{...syncLastStatus,state:'syncing',lastPullAt:Date.now(),conflicts}});resolve({data,conflicts,count:received.length,generatedEarnings})}catch(error){reject(error)}}
  }));
- for(const name of localStores)state[name]=result.data[name];syncLastStatus={...syncLastStatus,conflicts:result.conflicts,lastReceivedAt:Date.now()};if(result.generatedEarnings)scheduleServerSync(0);return result.count;
+ await reconcileRestaurantOrderProjections(result.data);for(const name of localStores)state[name]=result.data[name];syncLastStatus={...syncLastStatus,conflicts:result.conflicts,lastReceivedAt:Date.now()};if(result.generatedEarnings)scheduleServerSync(0);return result.count;
 }
 async function updateSyncStatus(patch){syncLastStatus={...syncLastStatus,...patch,online:navigator.onLine!==false};state.settings.global.sync={...state.settings.global.sync,...syncLastStatus};await req('meta','readwrite',s=>s.put({key:'settings',value:state.settings}));await req('syncState','readwrite',s=>s.put({id:'sync:status',value:syncLastStatus}));refreshSyncStatusUi();if(patch.state==='unauthenticated')window.dispatchEvent(new CustomEvent('rotamoto:session-expired',{detail:{code:patch.lastErrorCode||'UNAUTHENTICATED'}}));return {...syncLastStatus}}
 async function clearSyncSession(){syncCsrfToken=null;syncSession=null;if(syncScheduleTimer){clearTimeout(syncScheduleTimer);syncScheduleTimer=null}return updateSyncStatus({state:'unauthenticated',lastErrorCode:'UNAUTHENTICATED',retryable:false})}
