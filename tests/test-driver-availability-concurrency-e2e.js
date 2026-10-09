@@ -253,6 +253,53 @@ async function seedRedeliveryFixture(client,schema,f){
   return {orderId,deliveryId,eventId};
 }
 
+async function seedEligibilityPair(client,schema,f,kind){
+  const firstId=UUID(),secondId=UUID(),now=new Date().toISOString();
+  const firstLease=kind==='expired'?'now()-interval \'1 second\'':"now()+interval '120 seconds'";
+  await client.query('BEGIN');
+  try{
+    await client.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+    await client.query(`UPDATE ${schema}.restaurant_driver_presence SET is_present=false,checked_out_at=coalesce(checked_out_at,now()),revision=revision+1,updated_at=now()
+      WHERE company_id=$1 AND is_present`,[f.companyId]);
+    for(const [index,driverId] of [firstId,secondId].entries()){
+      const row=driverRecord(f,driverId,f.companyId,f.restaurantInstallId);
+      await client.query(`INSERT INTO ${schema}.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Driver','restaurante',$3,$4::jsonb,1,$5,$5)`,[f.companyId,driverId,f.restaurantInstallId,JSON.stringify(JSON.parse(row[5])),now]);
+      const status=index===0&&kind==='offline'?'offline':'online';
+      await client.query(`INSERT INTO ${schema}.driver_availability(company_id,driver_id,status,revision,lease_expires_at,lease_session_id,updated_by_user_id)
+        VALUES($1,$2,$3,1,CASE WHEN $3='online' THEN ${index===0?firstLease:"now()+interval '120 seconds'"} ELSE NULL END,
+          CASE WHEN $3='online' THEN $4::uuid ELSE NULL END,$5)`,[f.companyId,driverId,status,f.sessions[0].id,f.userId]);
+      const present=!(index===0&&kind==='offline');
+      await client.query(`INSERT INTO ${schema}.restaurant_driver_presence(company_id,driver_id,checked_in_at,checkin_method,confirmed,is_present,checked_out_at,revision,updated_at)
+        VALUES($1,$2,now()-($3::int*interval '1 minute'),'restaurant_qr',true,$4,CASE WHEN $4 THEN NULL ELSE now() END,1,now())`,
+      [f.companyId,driverId,index===0?4:2,present]);
+    }
+    if(kind==='occupied'){
+      const orderId=UUID(),deliveryId=UUID(),order=orderRecord(f,f.companyId,orderId,f.restaurantInstallId),delivery=deliveryRecord(f,deliveryId,orderId,'ASSIGNED',firstId);
+      await client.query(`INSERT INTO ${schema}.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Order','restaurante',$3,$4::jsonb,1,$5,$5)`,[f.companyId,orderId,f.restaurantInstallId,JSON.stringify(JSON.parse(order[5])),now]);
+      await client.query(`INSERT INTO ${schema}.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,related_entity_type,related_record_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Delivery','restaurante',$3,'Order',$4,$5::jsonb,1,$6,$6)`,[f.companyId,deliveryId,f.restaurantInstallId,orderId,JSON.stringify(JSON.parse(delivery[7])),now]);
+    }
+    await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}
+  return {firstId,secondId};
+}
+
+async function seedForeignEligibleDriver(client,schema,f){
+  await client.query('BEGIN');
+  try{
+    await client.query("SELECT set_config('app.tenant_id',$1,true)",[f.otherCompanyId]);
+    await client.query(`UPDATE ${schema}.driver_availability SET status='online',revision=revision+1,lease_expires_at=now()+interval '120 seconds',
+      lease_session_id=$3,updated_by_user_id=$4 WHERE company_id=$1 AND driver_id=$2`,[f.otherCompanyId,f.otherDriverId,f.sessions[0].id,f.userId]);
+    await client.query(`INSERT INTO ${schema}.restaurant_driver_presence(company_id,driver_id,checked_in_at,checkin_method,confirmed,is_present,revision,updated_at)
+      VALUES($1,$2,now()-interval '5 minutes','restaurant_qr',true,true,1,now())
+      ON CONFLICT(company_id,driver_id) DO UPDATE SET checked_in_at=EXCLUDED.checked_in_at,checkin_method='restaurant_qr',confirmed=true,
+        is_present=true,checked_out_at=NULL,revision=${schema}.restaurant_driver_presence.revision+1,updated_at=now()`,[f.otherCompanyId,f.otherDriverId]);
+    await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}
+}
+
 function apiServer({ identityService, availability, queue, syncService }) {
   let handlers = [];
   const server = http.createServer(async (req, res) => {
@@ -1038,14 +1085,128 @@ async function main() {
     await endRuntimeClient(finalVerify.raw);
     markLocal('F: rollback restored Online and removed its command; RLS isolation and idempotent retry passed');
 
+    // 0115: the real automatic REDLIVERY path must skip each older ineligible
+    // FIFO record and choose the next eligible Driver. Each case uses the
+    // sync service and a committed canonical fixture in the disposable E2E schema.
+    assert.equal(automaticAgain.body.settings.mode,'automatic','the canonical Restaurant setting is automatic for the eligibility matrix');
+    const eligibilityCases=['offline','occupied','expired','locked'];
+    for(const kind of eligibilityCases){
+      const pair=await seedEligibilityPair(migrator,schema,f,kind);
+      markLocal(`0115 eligibility fixture seeded: ${kind}`);
+      const queueReader=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:`campaign-0115-fifo-${kind}-read`});
+      const observedQueue=await queue.getQueue(queueReader.client,{...tenantPrincipal,driver_id:null});
+      markLocal(`0115 canonical FIFO read completed: ${kind}`);
+      const localRecords=observedQueue.records.filter(row=>row.driverId===pair.firstId||row.driverId===pair.secondId);
+      assert.deepEqual(localRecords.map(row=>row.driverId),[pair.firstId,pair.secondId],`${kind}: server arrival timestamp orders the older candidate first`);
+      if(kind==='locked') assert.deepEqual(observedQueue.queue.filter(row=>row.driverId===pair.firstId||row.driverId===pair.secondId).map(row=>row.driverId),[pair.firstId,pair.secondId]);
+      else assert.deepEqual(observedQueue.queue.filter(row=>row.driverId===pair.firstId||row.driverId===pair.secondId).map(row=>row.driverId),[pair.secondId],`${kind}: only the second candidate is eligible`);
+      if(kind==='offline') assert.equal(localRecords[0].online,false,'offline FIFO record is not eligible');
+      if(kind==='occupied') assert.equal(localRecords[0].busy,true,'candidate with active Delivery is not eligible');
+      if(kind==='expired') assert.equal(localRecords[0].online,false,'expired lease is not eligible');
+      markLocal(`0115 FIFO eligibility asserted: ${kind}`);
+      if(kind==='locked'){
+        const lockFirst=await connectOperation('campaign-0115-fifo-lock-first');
+        await lockFirst.client.query('BEGIN');
+        await lockFirst.client.query("SELECT set_config('app.tenant_id',$1,true)",[f.companyId]);
+        await lockFirst.client.query(`SELECT d.record_id FROM ${schema}.domain_records d
+          JOIN ${schema}.driver_availability a ON a.company_id=d.company_id AND a.driver_id=d.record_id
+          JOIN ${schema}.restaurant_driver_presence p ON p.company_id=d.company_id AND p.driver_id=d.record_id
+          WHERE d.company_id=$1 AND d.record_id=$2 AND d.entity_type='Driver' FOR UPDATE OF d,a,p`,[f.companyId,pair.firstId]);
+        const redelivery=await seedRedeliveryFixture(migrator,schema,f);
+        const packet=unassignedRedeliveryPacket(f,redelivery);
+        markLocal(`0115 redelivery fixture ready: ${kind}`);
+        const response=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:packet});
+        assert.equal(response.status,200,JSON.stringify(response.body));
+        assert.equal(response.body.operationResults.find(row=>row.entity==='Delivery').status,'accepted');
+        const assignedId=response.body.operationResults.find(row=>row.entity==='Delivery').canonicalId;
+        const read=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0115-fifo-lock-read'});
+        const state=await read.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,assignedId]);
+        assert.equal(state.rows[0].payload.driverId,pair.secondId,'dispatcher skips a locked older candidate and selects the next FIFO candidate');
+        const lockCounts=await read.client.query(`SELECT
+          (SELECT count(*)::int FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery') AS delivery_count,
+          (SELECT count(*)::int FROM ${schema}.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2) AS event_count,
+          (SELECT count(*)::int FROM ${schema}.sync_inbox WHERE company_id=$1 AND packet_id=$3) AS receipt_count,
+          (SELECT count(*)::int FROM ${schema}.sync_outbox WHERE company_id=$1 AND payload->>'entityId'=$2::text) AS outbox_count`,
+        [f.companyId,assignedId,packet.packetId.slice(4)]);
+        assert.deepEqual(lockCounts.rows[0],{delivery_count:1,event_count:1,receipt_count:1,outbox_count:1},'locked-candidate dispatch writes one canonical artifact of each kind');
+        await migrator.query("SELECT set_config('app.tenant_id',$1,false)",[f.companyId]);
+        const lockAudit=await migrator.query(`SELECT count(*)::int AS count FROM ${schema}.audit_log WHERE company_id=$1 AND action='delivery.redelivery.requested' AND resource_id=$2::text`,[f.companyId,assignedId]);
+        assert.equal(lockAudit.rows[0].count,1,'locked-candidate dispatch writes one audit record');
+        await endRuntimeClient(read.raw);
+        await lockFirst.client.query('COMMIT');await endRuntimeClient(lockFirst.raw);
+        const retry=await fetchJson(origin,'/api/sync/push',sessions[1],{method:'POST',body:packet});
+        assert.equal(retry.status,200);assert.equal(retry.body.duplicate,true,'locked-candidate dispatch retry is idempotent');
+        const retryRead=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0115-fifo-lock-retry-read'});
+        const retryCounts=await retryRead.client.query(`SELECT
+          (SELECT count(*)::int FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery') AS delivery_count,
+          (SELECT count(*)::int FROM ${schema}.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2) AS event_count,
+          (SELECT count(*)::int FROM ${schema}.sync_inbox WHERE company_id=$1 AND packet_id=$3) AS receipt_count,
+          (SELECT count(*)::int FROM ${schema}.sync_outbox WHERE company_id=$1 AND payload->>'entityId'=$2::text) AS outbox_count`,
+        [f.companyId,assignedId,packet.packetId.slice(4)]);
+        assert.deepEqual(retryCounts.rows[0],{delivery_count:1,event_count:1,receipt_count:1,outbox_count:1},'retry leaves each artifact unique');
+        const retryAudit=await migrator.query(`SELECT count(*)::int AS count FROM ${schema}.audit_log WHERE company_id=$1 AND action='delivery.redelivery.requested' AND resource_id=$2::text`,[f.companyId,assignedId]);
+        assert.equal(retryAudit.rows[0].count,1,'retry leaves one audit record');
+        await endRuntimeClient(retryRead.raw);
+        markLocal('0115 FIFO lock interleaving: a locked older Driver is skipped and the next eligible Driver receives REDELIVERY');
+      }else{
+        const redelivery=await seedRedeliveryFixture(migrator,schema,f);
+        const packet=unassignedRedeliveryPacket(f,redelivery);
+        markLocal(`0115 redelivery fixture ready: ${kind}`);
+        const response=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:packet});
+        assert.equal(response.status,200,JSON.stringify(response.body));
+        assert.equal(response.body.operationResults.find(row=>row.entity==='Delivery').status,'accepted');
+        const assignedId=response.body.operationResults.find(row=>row.entity==='Delivery').canonicalId;
+        const read=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:`campaign-0115-fifo-${kind}-readback`});
+        const deliveryState=await read.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,assignedId]);
+        assert.equal(deliveryState.rows[0].payload.driverId,pair.secondId,`${kind}: automatic redelivery selects next eligible FIFO Driver`);
+        const counts=await read.client.query(`SELECT
+          (SELECT count(*)::int FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery') AS delivery_count,
+          (SELECT count(*)::int FROM ${schema}.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2) AS event_count,
+          (SELECT count(*)::int FROM ${schema}.sync_inbox WHERE company_id=$1 AND packet_id=$3) AS receipt_count,
+          (SELECT count(*)::int FROM ${schema}.sync_outbox WHERE company_id=$1 AND payload->>'entityId'=$2::text) AS outbox_count`,
+        [f.companyId,assignedId,packet.packetId.slice(4)]);
+        assert.deepEqual(counts.rows[0],{delivery_count:1,event_count:1,receipt_count:1,outbox_count:1},`${kind}: canonical record, failure event, sync receipt and outbox are unique`);
+        await migrator.query("SELECT set_config('app.tenant_id',$1,false)",[f.companyId]);
+        const audit=await migrator.query(`SELECT count(*)::int AS count FROM ${schema}.audit_log WHERE company_id=$1 AND action='delivery.redelivery.requested' AND resource_id=$2::text`,[f.companyId,assignedId]);
+        assert.equal(audit.rows[0].count,1,`${kind}: one canonical redelivery audit`);
+        await endRuntimeClient(read.raw);
+        const retry=await fetchJson(origin,'/api/sync/push',sessions[1],{method:'POST',body:packet});
+        assert.equal(retry.status,200);assert.equal(retry.body.duplicate,true,`${kind}: repeated sync package is idempotent`);
+        const retryAudit=await migrator.query(`SELECT count(*)::int AS count FROM ${schema}.audit_log WHERE company_id=$1 AND action='delivery.redelivery.requested' AND resource_id=$2::text`,[f.companyId,assignedId]);
+        assert.equal(retryAudit.rows[0].count,1,`${kind}: retry does not duplicate audit`);
+        markLocal(`0115 FIFO eligibility ${kind}: real automatic redelivery selected next eligible Driver, retained one event/receipt/audit, retry idempotent`);
+      }
+      await endRuntimeClient(queueReader.raw);
+    }
+
+    // A fully eligible tenant-B Driver with an older arrival must never be
+    // visible or selected for tenant A's real dispatcher transaction.
+    const foreignPair=await seedEligibilityPair(migrator,schema,f,'occupied');
+    await seedForeignEligibleDriver(migrator,schema,f);
+    const tenantAQueue=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0115-tenant-a-queue'});
+    const visibleA=await queue.getQueue(tenantAQueue.client,{...tenantPrincipal,driver_id:null});
+    assert.equal(visibleA.records.some(row=>row.driverId===f.otherDriverId),false,'tenant A queue never returns tenant B Driver');
+    assert.deepEqual(visibleA.queue.filter(row=>row.driverId===foreignPair.firstId||row.driverId===foreignPair.secondId).map(row=>row.driverId),[foreignPair.secondId]);
+    await endRuntimeClient(tenantAQueue.raw);
+    const foreignRedelivery=await seedRedeliveryFixture(migrator,schema,f),foreignPacket=unassignedRedeliveryPacket(f,foreignRedelivery);
+    const foreignDispatch=await fetchJson(origin,'/api/sync/push',sessions[0],{method:'POST',body:foreignPacket});
+    assert.equal(foreignDispatch.status,200,JSON.stringify(foreignDispatch.body));
+    const foreignAssignedId=foreignDispatch.body.operationResults.find(row=>row.entity==='Delivery').canonicalId;
+    const foreignRead=await openRuntimeClient({schema,tenantId:f.companyId,applicationName:'campaign-0115-tenant-a-dispatch'});
+    const foreignState=await foreignRead.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,foreignAssignedId]);
+    assert.equal(foreignState.rows[0].payload.driverId,foreignPair.secondId,'tenant A dispatcher assigns only tenant A Driver');
+    await endRuntimeClient(foreignRead.raw);
+    markLocal('0115 tenant isolation: older eligible tenant-B Driver is invisible and never receives tenant-A redelivery');
+
     const lockCheck = await observer.client.query(`SELECT count(*)::int AS n FROM pg_stat_activity
-      WHERE application_name LIKE 'campaign-0112-%' AND wait_event_type='Lock'`);
+      WHERE application_name LIKE 'campaign-011%' AND wait_event_type='Lock'`);
     assert.equal(lockCheck.rows[0].n, 0, 'no campaign transaction remains waiting on a lock');
     markLocal('all API/PG operations settled; no lingering lock waits');
 
-    console.log(JSON.stringify({ result: 'PASS_E2E_SCENARIOS_A_F', database: DATABASE, schemaSandbox: 'isolated migration-derived schema, dropped in finally',
+    console.log(JSON.stringify({ result: 'PASS_E2E_SCENARIOS_0115_FIFO_ELIGIBILITY', database: DATABASE, schemaSandbox: 'isolated migration-derived schema, dropped in finally',
       independentlyBlockedTransactions: blockedByA.length + blockedByB.length + blockedByD2.length + blockedSessions.length,
-      scenarios: { A: 'PASS', B: 'PASS', C: 'PASS_REAL_AUTOMATIC_CREATED_DISPATCH_BOTH_INTERLEAVINGS', D: 'PASS', E: 'PASS', F: 'PASS' },
+      scenarios: { A: 'PASS', B: 'PASS', C: 'PASS_REAL_AUTOMATIC_CREATED_DISPATCH_BOTH_INTERLEAVINGS', D: 'PASS', E: 'PASS', F: 'PASS',
+        '0115_offline_occupied_expired_locked_fifo': 'PASS', '0115_retry_artifacts': 'PASS', '0115_tenant_isolation': 'PASS' },
       timeline: trace }));
     await endRuntimeClient(observer.raw);
   } finally {
