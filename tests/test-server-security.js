@@ -23,9 +23,10 @@ async function main(){
   assert.equal(CONFIG.trustProxy,false,'forwarded headers are not trusted');
   const readinessResult=values=>({async connect(){return{async query(sql){if(sql==='BEGIN'||sql==='COMMIT'||sql.startsWith('SET LOCAL'))return{rows:[]};return{rows:[values]};},release(){}};}});
   const readySchema={role:'rotamoto_app',domain_ready:true,sync_installations_ready:true,mfa_schema_ready:true,
-    membership_driver_ready:true,logistics_schema_ready:true,territorial_analytics_schema_ready:true,marketplace_schema_ready:true};
+    membership_driver_ready:true,logistics_schema_ready:true,territorial_analytics_schema_ready:true,marketplace_schema_ready:true,driver_availability_schema_ready:true};
   assert.equal(await databaseReadiness(readinessResult({...readySchema,territorial_analytics_schema_ready:false})),false,
     'readiness stays fail-closed if any required schema capability is absent');
+  assert.equal(await databaseReadiness(readinessResult({...readySchema,driver_availability_schema_ready:false})),false,'readiness requires the canonical availability schema before exposing assignment APIs');
   assert.equal(await databaseReadiness(readinessResult(readySchema)),true,'readiness accepts the full required schema');
   assert.equal(hostAllowed('attacker.example',CONFIG.allowedHosts,false),false,'unlisted Host is rejected before routing');
   const exposedBoot=spawnSync(process.execPath,['server.js'],{cwd:require('node:path').join(__dirname,'..'),env:{...process.env,NODE_ENV:'development',HOST:'0.0.0.0'},encoding:'utf8'});

@@ -803,3 +803,4 @@ button:disabled,.btn:disabled{cursor:not-allowed;opacity:.55;transform:none!impo
   .grid.kpis,.event-kpis,.admin-overview{grid-template-columns:repeat(3,minmax(0,1fr))}
   .settings-nav{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+.availability-readout{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding:9px 11px;border:1px solid var(--border-subtle);border-radius:11px;background:var(--surface-soft);font-size:12px}.availability-readout span{color:var(--text-muted)}.availability-readout b{color:var(--text-secondary)}.availability-readout[data-state="online"] b{color:var(--success)}.availability-readout[data-state="offline"] b{color:var(--danger)}.bike-card-actions button:disabled{opacity:.62;cursor:not-allowed}

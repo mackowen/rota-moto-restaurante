@@ -16,6 +16,48 @@ runFixtureLifecycle({ exercise: async fixture => {
   const delivery = initialDeliveries.body.records.find(row => row.id === fixture.deliveryId);
   assert(order && delivery, 'lifecycle service created canonical Order and Delivery records');
 
+  const availabilityBefore=await fixture.authenticatedCall('/api/driver-availability');
+  assert.equal(availabilityBefore.status,200,JSON.stringify(availabilityBefore.body));
+  assert.equal(availabilityBefore.body.availability.effectiveStatus,'online','fixture Driver explicitly opted in');
+  const revision=availabilityBefore.body.availability.revision;
+  const secondLogin=await fixture.call('/api/identity/login',{method:'POST',body:{email:fixture.email,password:fixture.password,companyId:fixture.companyId,mfaCode:fixture.mfaCode}});
+  assert.equal(secondLogin.status,200,JSON.stringify(secondLogin.body));
+  const secondSessionCookie=secondLogin.headers.get('set-cookie').split(';',1)[0];
+  const secondSession=await fixture.call('/api/identity/session',{cookie:secondSessionCookie});
+  assert.equal(secondSession.status,200,JSON.stringify(secondSession.body));
+  assert.equal(secondSession.body.driverId,fixture.driverId,'a second authenticated session resolves to the same owned Driver');
+  const offlineCommand={desiredStatus:'offline',expectedRevision:revision,commandId:crypto.randomUUID()};
+  const offline=await fixture.call('/api/driver-availability/commands',{method:'POST',cookie:secondSessionCookie,csrf:secondSession.body.csrfToken,body:offlineCommand});
+  assert.equal(offline.status,200,JSON.stringify(offline.body));
+  assert.equal(offline.body.availability.effectiveStatus,'offline');
+  const observedOffline=await fixture.authenticatedCall('/api/driver-availability');
+  assert.equal(observedOffline.body.availability.effectiveStatus,'offline','the first session observes the canonical change from the second session');
+  const replay=await fixture.call('/api/driver-availability/commands',{method:'POST',cookie:secondSessionCookie,csrf:secondSession.body.csrfToken,body:offlineCommand});
+  assert.equal(replay.status,200,JSON.stringify(replay.body));
+  assert.equal(replay.body.command.duplicate,true,'availability commands are idempotent');
+  const stale=await fixture.authenticatedCall('/api/driver-availability/commands',{method:'POST',body:{desiredStatus:'online',expectedRevision:revision,commandId:crypto.randomUUID()}});
+  assert.equal(stale.status,409,'stale concurrent device must reconcile canonical revision');
+
+  const rejectedId=`availability-offline-${crypto.randomUUID()}`,rejectedOrder=`availability-order-${crypto.randomUUID()}`;
+  const unavailablePacket={protocol:'rotamoto-sync',protocolVersion:1,schemaVersion:1,packetId:`pkt_${crypto.randomUUID()}`,
+    deviceId:fixture.restaurantDevice,source:{deviceId:fixture.restaurantDevice},createdAt:new Date().toISOString(),data:{
+      orders:[{id:rejectedOrder,customer:'E2E assignment gate',source:'manual',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),version:1}],
+      deliveries:[{id:rejectedId,orderId:rejectedOrder,driverId:fixture.driverId,status:'ASSIGNED',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),version:1}]}};
+  const blockedAssignment=await fixture.authenticatedCall('/api/sync/push',{method:'POST',body:unavailablePacket});
+  assert.equal(blockedAssignment.status,200,JSON.stringify(blockedAssignment.body));
+  assert(blockedAssignment.body.operationResults.some(result=>result.status==='rejected'),JSON.stringify(blockedAssignment.body.operationResults));
+  const deliveriesWhileOffline=await fixture.authenticatedCall('/api/domain/deliveries?limit=100');
+  const activeDelivery=deliveriesWhileOffline.body.records.find(row=>row.id===fixture.deliveryId);
+  assert(activeDelivery,'existing assignment remains present when the Driver goes Offline');
+  assert.equal(activeDelivery.record.driverId,fixture.driverId,'Offline does not cancel or clear accepted operational work');
+
+  const onlineAgain=await fixture.authenticatedCall('/api/driver-availability/commands',{method:'POST',body:{desiredStatus:'online',expectedRevision:offline.body.availability.revision,commandId:crypto.randomUUID()}});
+  assert.equal(onlineAgain.status,200,JSON.stringify(onlineAgain.body));
+  assert.equal(onlineAgain.body.availability.effectiveStatus,'online');
+  const heartbeat=await fixture.authenticatedCall('/api/driver-availability/heartbeat',{method:'POST',body:{revision:onlineAgain.body.availability.revision}});
+  assert.equal(heartbeat.status,200,JSON.stringify(heartbeat.body));
+  assert.equal(heartbeat.body.renewed,true,'foreground heartbeat extends the lease without changing the revision');
+
   const deviceId = `restaurant-imported-${crypto.randomUUID()}`;
   const installation = await fixture.authenticatedCall('/api/sync/installations/restaurante', {
     method: 'POST', body: { deviceId }

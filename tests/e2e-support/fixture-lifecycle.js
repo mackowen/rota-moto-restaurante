@@ -24,6 +24,8 @@ const { runProofMediaGc } = require('../../backend/domain/proof-media-gc');
 const { createDomainQueryHttpHandler } = require('../../backend/domain/query-http');
 const { createDomainQueryRepository } = require('../../backend/domain/query-repository');
 const { createDomainQueryService } = require('../../backend/domain/query-service');
+const { createDriverAvailabilityService } = require('../../backend/logistics/driver-availability');
+const { createDriverAvailabilityHttpHandler } = require('../../backend/logistics/driver-availability-http');
 const { COOKIE_NAME } = require('../../backend/identity/http');
 
 function savepointPool(client) {
@@ -125,15 +127,17 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       rateLimiter: limiter });
     const adminHttp = createAdminHttpHandler({ identityService, adminService: createAdminService({ repository: createAdminRepository() }),
       logger: () => {}, rateLimiter: limiter, allowedOrigin: originConfig });
-    const syncHttp = createSyncHttpHandler({ identityService, syncService: createSyncService({ mediaStorage }), logger: () => {}, rateLimiter: limiter,
+    const driverAvailabilityService=createDriverAvailabilityService();
+    const syncHttp = createSyncHttpHandler({ identityService, syncService: createSyncService({ mediaStorage,driverAvailability:driverAvailabilityService }), logger: () => {}, rateLimiter: limiter,
       allowedOrigin: originConfig });
+    const driverAvailabilityHttp=createDriverAvailabilityHttpHandler({identityService,service:driverAvailabilityService,logger:()=>{},rateLimiter:limiter,allowedOrigin:originConfig});
     const queryHttp = createDomainQueryHttpHandler({ identityService,
       queryService: createDomainQueryService({ repository: createDomainQueryRepository() }), logger: () => {}, rateLimiter: limiter });
     const testHandlers = await extraHttpHandlers(Object.freeze({ identityService, runtime, pool }));
     if (!Array.isArray(testHandlers) || testHandlers.some(handler => typeof handler !== 'function')) throw new Error('Handlers E2E inválidos.');
     // Test-only domain adapters must run before the broad /api/admin handler so
     // mounted marketplace/admin subdomains can use their canonical routes.
-    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, syncHttp, queryHttp]);
+    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp]);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {} } = {}) => {
       const response = await fetch(`${host.base}${path}`, { method, headers: { Origin: allowedOrigins[0] || host.base,
@@ -225,6 +229,10 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const motoboyRegistration = await call('/api/sync/installations/motoboy', { method: 'POST', cookie: sessionCookie, csrf,
       body: { deviceId: motoboyDevice } });
     assert.equal(motoboyRegistration.status, 200, JSON.stringify(motoboyRegistration.body));
+    const availabilityOnline=await call('/api/driver-availability/commands',{method:'POST',cookie:sessionCookie,csrf,
+      body:{desiredStatus:'online',expectedRevision:0,commandId:crypto.randomUUID()}});
+    assert.equal(availabilityOnline.status,200,JSON.stringify(availabilityOnline.body));
+    assert.equal(availabilityOnline.body.availability.effectiveStatus,'online','fixture explicitly opts its Driver in before creating assigned work');
 
     let orderId = null, deliveryId = null, navigationRouteId = null;
     let navigationDeliveryIds = [];
@@ -332,8 +340,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       cookie: options.cookie || sessionCookie, csrf: options.csrf === undefined ? csrf : options.csrf });
     const browserMfaCode = codeAt(enrollment.body.secret, Math.floor(Date.now() / 30000) + 1);
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
-      driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, email, password, mfaCode: browserMfaCode,
-      browserSessionCookie: sessionCookie, apiOrigin: host.base, runtime, call, authenticatedCall }));
+      driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, restaurantDevice, email, password, mfaCode: browserMfaCode,
+      browserSessionCookie: sessionCookie, apiOrigin: host.base, runtime, call, authenticatedCall,driverAvailabilityService }));
     const recoveryRequest = await call('/api/identity/recovery', { method: 'POST', body: { email } });
     assert.equal(recoveryRequest.status, 202, JSON.stringify(recoveryRequest.body));
     assert.equal(JSON.stringify(recoveryRequest.body).includes(emails[1].token), false,

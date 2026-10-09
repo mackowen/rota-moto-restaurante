@@ -31,7 +31,7 @@ function asFulfillment(row) {
 const FIELDS = `company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,external_reference,status,selected_at,
  selected_by,revision,eta_at,estimated_cost_minor,estimated_cost_currency,final_cost_minor,final_cost_currency,updated_at`;
 
-function createLogisticsService({ clock = () => new Date(), testProvider = null, providerIntegration = createProviderIntegrationService({ clock, testProvider }), routeDistanceProvider = null, assignDeliveryToRoute = null } = {}) {
+function createLogisticsService({ clock = () => new Date(), testProvider = null, providerIntegration = createProviderIntegrationService({ clock, testProvider }), routeDistanceProvider = null, assignDeliveryToRoute = null, driverAvailability = null } = {}) {
   if (testProvider && (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function')) throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
   function providerProjection(row) {
     const provider = asProvider(row), test = resolveTestProviderConfiguration(testProvider, provider.companyId, provider.id);
@@ -171,6 +171,7 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
     if (input.mode === 'internal') {
       const driver = await client.query(`SELECT 1 FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Driver' AND deleted_at IS NULL FOR UPDATE`, [principal.company_id, input.driverId]);
       if (!driver.rowCount) fail('INVALID_DRIVER', 'Motoboy não pertence a esta empresa ou está removido.');
+      if(driverAvailability)await driverAvailability.assertEligibleForAssignment(client,principal.company_id,input.driverId);
     } else {
       const route = await client.query(`SELECT 1 FROM rotamoto.domain_records r WHERE r.company_id=$1 AND r.entity_type='Route' AND r.deleted_at IS NULL
         AND r.payload->>'status' IN ('PLANNED','ACTIVE','IN_PROGRESS') AND jsonb_typeof(r.payload->'deliveryIds')='array'

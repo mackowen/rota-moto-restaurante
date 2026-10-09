@@ -25,6 +25,8 @@ const {createDeliveryQrHttpHandler}=require('./backend/domain/delivery-qr-http')
 const {createLogisticsService}=require('./backend/logistics/service');
 const {createOsrmRouteDistanceProvider}=require('./backend/logistics/osrm-route-distance');
 const {createLogisticsHttpHandler}=require('./backend/logistics/http');
+const {createDriverAvailabilityService}=require('./backend/logistics/driver-availability');
+const {createDriverAvailabilityHttpHandler}=require('./backend/logistics/driver-availability-http');
 const {createTerritorialAnalyticsService}=require('./backend/analytics/territorial-service');
 const {createTerritorialAnalyticsHttpHandler}=require('./backend/analytics/territorial-http');
 const {createAdminRepository}=require('./backend/admin/repository');
@@ -121,10 +123,12 @@ const mediaStorage=Object.freeze({configured:()=>Boolean(CONFIG.mediaDirectory),
   async storeProof(value){return(await getMediaStorage()).storeProof(value)},async validateReference(ref,metadata){return(await getMediaStorage()).validateReference(ref,metadata)},
   async read(ref,metadata){return(await getMediaStorage()).read(ref,metadata)},async remove(ref){return(await getMediaStorage()).remove(ref)}});
 const proofMediaHttp=createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin:ALLOWED_ORIGINS});
-const syncService=createSyncService({mediaStorage});
+const driverAvailabilityService=createDriverAvailabilityService();
+const syncService=createSyncService({mediaStorage,driverAvailability:driverAvailabilityService});
 const syncHttp=createSyncHttpHandler({identityService,syncService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const domainQueryService=createDomainQueryService({repository:createDomainQueryRepository()});
 const domainQueryHttp=createDomainQueryHttpHandler({identityService,queryService:domainQueryService,logger:()=>{}});
+const driverAvailabilityHttp=createDriverAvailabilityHttpHandler({identityService,service:driverAvailabilityService,logger:requestLogger,allowedOrigin:ALLOWED_ORIGINS});
 const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQrService({
   secretProvider:{get:(ref,context)=>Promise.resolve(secretProvider).then(provider=>provider.get(ref,context))},
   keyRef:CONFIG.deliveryQrKeyRef,kid:CONFIG.deliveryQrKeyId
@@ -132,7 +136,7 @@ const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQr
 const deliveryQrHttp=createDeliveryQrHttpHandler({identityService,queryService:domainQueryService,qrService:deliveryQrService,logger:()=>{}});
 const routeDistanceProvider=CONFIG.routeDistance.enabled?createOsrmRouteDistanceProvider({baseUrl:CONFIG.routeDistance.baseUrl,
   version:CONFIG.routeDistance.version,timeoutMs:CONFIG.routeDistance.timeoutMs}):null;
-const logisticsService=createLogisticsService({assignDeliveryToRoute:syncService.assignDeliveryToRoute,routeDistanceProvider});
+const logisticsService=createLogisticsService({assignDeliveryToRoute:syncService.assignDeliveryToRoute,routeDistanceProvider,driverAvailability:driverAvailabilityService});
 const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const territorialAnalyticsHttp=createTerritorialAnalyticsHttpHandler({identityService,service:createTerritorialAnalyticsService(),logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const adminService=createAdminService({repository:createAdminRepository()});
@@ -155,9 +159,10 @@ async function databaseReadiness(pool=identityPool){
       to_regclass('rotamoto.logistics_providers') IS NOT NULL AND to_regclass('rotamoto.delivery_fulfillments') IS NOT NULL
         AND to_regclass('rotamoto.dispatch_attempts') IS NOT NULL AS logistics_schema_ready,
       to_regclass('rotamoto.delivery_geo_snapshots') IS NOT NULL AS territorial_analytics_schema_ready,
+      to_regclass('rotamoto.driver_availability') IS NOT NULL AND to_regclass('rotamoto.driver_availability_commands') IS NOT NULL AS driver_availability_schema_ready,
       to_regclass('rotamoto.marketplace_event_inbox') IS NOT NULL AND to_regclass('rotamoto.marketplace_account_routes') IS NOT NULL AS marketplace_schema_ready`);
     await client.query('COMMIT');
-    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true&&result.rows[0]?.logistics_schema_ready===true&&result.rows[0]?.territorial_analytics_schema_ready===true&&result.rows[0]?.marketplace_schema_ready===true;
+    return result.rows[0]?.role==='rotamoto_app'&&result.rows[0]?.domain_ready===true&&result.rows[0]?.sync_installations_ready===true&&result.rows[0]?.mfa_schema_ready===true&&result.rows[0]?.membership_driver_ready===true&&result.rows[0]?.logistics_schema_ready===true&&result.rows[0]?.territorial_analytics_schema_ready===true&&result.rows[0]?.driver_availability_schema_ready===true&&result.rows[0]?.marketplace_schema_ready===true;
   }catch(error){try{await client.query('ROLLBACK')}catch(_){}throw error}
   finally{client.release()}
 }
@@ -194,6 +199,7 @@ async function route(req,res){
     }
     if(await proofMediaHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
+    if(await driverAvailabilityHttp(req,res))return;
     if(await deliveryQrHttp(req,res))return;
   if(await territorialAnalyticsHttp(req,res))return;
   if(await logisticsHttp(req,res))return;

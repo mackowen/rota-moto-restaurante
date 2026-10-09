@@ -84,13 +84,20 @@ function summarizeFleetCapacity(drivers = [], deliveries = []) {
     const capacityKnown=configured&&loadKnown;
     const remainingSlots=capacityKnown?Math.max(0,driver.capacity.limit-load.assigned):null;
     const capacityStatus=!capacityKnown?'unknown':remainingSlots>0?'slots_available':'full';
-    const available=active&&['AVAILABLE','DISPONIVEL'].includes(status)&&loadKnown&&load.assigned===0;
+    const hasCanonicalAvailability=Object.hasOwn(driver,'operationalOnline');
+    const operationalOnline=hasCanonicalAvailability?driver.operationalOnline===true&&active:['AVAILABLE','DISPONIVEL'].includes(status);
+    const hasCapacitySlot=capacityKnown?remainingSlots>0:!hasCanonicalAvailability&&load.assigned===0;
+    const available=active&&operationalOnline&&loadKnown&&hasCapacitySlot;
     if (available) explicitlyAvailable = true;
-    byDriver.push({driverId:driver.driverId,status:driver.status||null,active,availability:available?'available':unavailable?'unavailable':'unknown',
+    byDriver.push({driverId:driver.driverId,status:driver.status||null,active,
+      operationalAvailability:hasCanonicalAvailability?(operationalOnline?'online':'offline'):'unknown',
+      availability:available?'available':hasCanonicalAvailability&&!operationalOnline||unavailable?'unavailable':'unknown',
       capacityLimit:configured?driver.capacity.limit:null,capacityUnit:configured?'deliveries':null,assignedDeliveries:load.assigned,
       inProgressDeliveries:load.inProgress,loadKnown,unknownAssignedDeliveries:load.unknown,remainingSlots,capacityStatus});
   }
+  const allOperationalStatesKnown=drivers.length>0&&drivers.every(driver=>Object.hasOwn(driver,'operationalOnline'));
   const availability = explicitlyAvailable ? 'available' :
+    allOperationalStatesKnown&&byDriver.every(driver=>driver.operationalAvailability==='offline') ? 'unavailable' :
     drivers.length > 0 && activeDrivers === 0 && unknownStatusDrivers === 0 ? 'unavailable' : 'unknown';
   const knownCapacity=byDriver.filter(driver=>driver.capacityStatus!=='unknown');
   return { availability, activeDrivers, knownUnavailableDrivers, unknownStatusDrivers,byDriver,
@@ -195,11 +202,13 @@ function makeRecommendation(alternatives, policy) {
 function createLogisticsIntelligenceService({ clock = () => new Date(), testProvider = null, ensureInternalProvider, routeDistanceProvider = null } = {}) {
   const routeDistanceService=createRouteDistanceService({provider:routeDistanceProvider});
   async function loadFleetCapacity(client, companyId) {
-    const driverResult = await client.query(`SELECT record_id::text AS driver_id,payload->>'status' AS status,payload->'capacity' AS capacity FROM rotamoto.domain_records
-      WHERE company_id=$1 AND entity_type='Driver' AND deleted_at IS NULL ORDER BY record_id`,[companyId]);
+    const driverResult = await client.query(`SELECT d.record_id::text AS driver_id,d.payload->>'status' AS status,d.payload->'capacity' AS capacity,
+        COALESCE(a.status='online' AND a.lease_expires_at>now(),false) AS operational_online
+      FROM rotamoto.domain_records d LEFT JOIN rotamoto.driver_availability a ON a.company_id=d.company_id AND a.driver_id=d.record_id
+      WHERE d.company_id=$1 AND d.entity_type='Driver' AND d.deleted_at IS NULL ORDER BY d.record_id`,[companyId]);
     const deliveryResult = await client.query(`SELECT payload->>'driverId' AS driver_id,payload->>'status' AS status FROM rotamoto.domain_records
       WHERE company_id=$1 AND entity_type='Delivery' AND deleted_at IS NULL AND NULLIF(payload->>'driverId','') IS NOT NULL`,[companyId]);
-    return summarizeFleetCapacity(driverResult.rows.map(row=>({driverId:row.driver_id,status:row.status,capacity:row.capacity})),
+    return summarizeFleetCapacity(driverResult.rows.map(row=>({driverId:row.driver_id,status:row.status,capacity:row.capacity,operationalOnline:row.operational_online})),
       deliveryResult.rows.map(row=>({driverId:row.driver_id,status:row.status})));
   }
 
@@ -507,7 +516,8 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
           : { status:'insufficient_data',reason:hasUnknownActiveCapacity?'CAPACITY_UNKNOWN':'NO_DRIVER_WITH_KNOWN_CAPACITY' }
         : { status:'insufficient_data',reason:routeCandidate?'ROUTE_INSERTION_NOT_PROVEN':'ROUTE_STATE_NOT_COMPLETE' };
       const decisionCost=selectedRouteMarginal?.status==='known' ? selectedRouteMarginal : isolatedDecisionCost;
-      const internalEligible=fleetCapacity.byDriver.some(driver=>driver.active&&(driver.capacityStatus==='unknown'||driver.remainingSlots>0));
+      const internalEligible=fleetCapacity.byDriver.some(driver=>driver.active&&driver.availability==='available'&&
+        (driver.capacityStatus==='unknown'||driver.remainingSlots>0));
       alternatives.push({ id: `internal:${internalResult.rows[0].provider_id}`, mode: 'internal', providerId: internalResult.rows[0].provider_id,
         providerName: 'Frota própria', kind: 'configured_estimate', eligible: internalEligible,
         availability: { status: fleetCapacity.availability, requiresHumanConfirmation: fleetCapacity.availability !== 'available' },

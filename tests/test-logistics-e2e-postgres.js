@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { createClient } = require('../backend/postgres/connection');
 const { e2eMigrationConnectionString, getMigrations } = require('../backend/postgres/migrate');
 const { createLogisticsService } = require('../backend/logistics/service');
+const { createDriverAvailabilityService } = require('../backend/logistics/driver-availability');
 const { createProviderIntegrationService } = require('../backend/logistics/provider-integration');
 const { createProviderWorker } = require('../backend/logistics/provider-worker');
 const { createFakeLogisticsProvider } = require('./helpers/fake-logistics-provider');
@@ -26,10 +27,10 @@ async function main() {
       (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user) AS bypass`)).rows[0];
     assert.deepEqual(identity, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', bypass: false });
     const migration = await client.query(`SELECT migration_id FROM rotamoto.schema_migrations
-      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings','0033_company_operational_location','0034_company_route_grouping_policy')
+      WHERE migration_id IN ('0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings','0033_company_operational_location','0034_company_route_grouping_policy','0039_driver_operational_availability')
       ORDER BY migration_id`);
     assert.deepEqual(migration.rows.map(row => row.migration_id), [
-      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings','0033_company_operational_location','0034_company_route_grouping_policy'
+      '0017_logistics_fulfillment','0018_delivery_geo_snapshots','0019_logistics_provider_secret_least_privilege','0020_provider_integration_runtime','0021_provider_claim_tenant_scope','0022_provider_ambiguous_lease_recovery','0023_provider_worker_least_privilege','0024_provider_tracking_status_grant','0025_provider_event_worker_grants','0026_provider_fulfillment_event_grants','0027_logistics_intelligence_settings','0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings','0033_company_operational_location','0034_company_route_grouping_policy','0039_driver_operational_availability'
     ], 'E2E schema includes the tested logistics, geography and least-privilege migrations');
     const catalog = await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
       has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,
@@ -44,6 +45,15 @@ async function main() {
       assert.equal(row.app_select, row.relname !== 'logistics_providers',
         'provider table access is column-scoped while fulfillment and attempt reads stay operational');
     }
+    const availabilitySecurity=await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,pg_get_userbyid(c.relowner) AS owner,
+      has_table_privilege('rotamoto_app',c.oid,'SELECT') AS app_select,has_table_privilege('rotamoto_app',c.oid,'UPDATE') AS app_update,
+      has_table_privilege('rotamoto_app',c.oid,'DELETE') AS app_delete,EXISTS(SELECT 1 FROM pg_policies p WHERE p.schemaname='rotamoto' AND p.tablename=c.relname AND p.qual LIKE '%current_tenant_id%') AS tenant_policy
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rotamoto' AND c.relname=ANY($1::text[]) ORDER BY c.relname`,[['driver_availability','driver_availability_commands']]);
+    assert.equal(availabilitySecurity.rowCount,2,'new operational authority tables exist in the E2E schema');
+    for(const row of availabilitySecurity.rows){assert.equal(row.relrowsecurity,true);assert.equal(row.relforcerowsecurity,true);assert.equal(row.owner,'rotamoto_migrator');assert.equal(row.app_delete,false);assert.equal(row.tenant_policy,true)}
+    assert.deepEqual(availabilitySecurity.rows.map(row=>({table:row.relname,select:row.app_select,update:row.app_update})),[
+      {table:'driver_availability',select:true,update:true},{table:'driver_availability_commands',select:true,update:false}
+    ],'runtime can mutate canonical availability but cannot rewrite idempotency receipts');
     const appPrivileges = await client.query(`SELECT
       has_column_privilege('rotamoto_app','rotamoto.logistics_providers','provider_id','INSERT') AS provider_insert,
       has_table_privilege('rotamoto_app','rotamoto.logistics_providers','SELECT') AS provider_table_select,
@@ -271,7 +281,8 @@ async function main() {
       await client.query(`INSERT INTO rotamoto.sync_installations(id,company_id,app_key,local_device_id)
         VALUES($1,$2,'restaurante',$3)`, [appInstall, tenantA, `qa-${appInstall}`]);
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
-        VALUES($1,$2,'Driver','restaurante',$3,$4::jsonb,1,now(),now())`, [tenantA, driverA, appInstall, JSON.stringify({ id: driverA, companyId: tenantA })]);
+        VALUES($1,$2,'Driver','restaurante',$3,$4::jsonb,1,now(),now())`, [tenantA, driverA, appInstall, JSON.stringify({ id: driverA, companyId: tenantA, status: 'ACTIVE', capacity: { unit: 'deliveries', limit: 10 } })]);
+      await client.query(`INSERT INTO rotamoto.driver_availability(company_id,driver_id,status,revision,lease_expires_at,lease_session_id,updated_by_user_id) VALUES($1,$2,'online',1,now()+interval '120 seconds',$3,$4)`,[tenantA,driverA,id(),actor]);
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
         VALUES($1,$2,'Delivery','restaurante',$3,$4::jsonb,1,now(),now())`, [tenantA, sourceDelivery, appInstall, JSON.stringify({ id: sourceDelivery, companyId: tenantA, status: 'ASSIGNED', driverId: driverA })]);
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
@@ -331,7 +342,8 @@ async function main() {
       assert.equal(visible.rows[0].count, 3);
 
       const providerIntegration = createProviderIntegrationService();
-      const logistics = createLogisticsService({ providerIntegration });
+      const driverAvailability=createDriverAvailabilityService();
+      const logistics = createLogisticsService({ providerIntegration,driverAvailability });
       const principal = { company_id: tenantA, user_id: actor };
       const manualKey = `manual-dispatch-${crypto.randomUUID()}`;
       const manualAttempt = await logistics.requestDispatch(client, principal, externalDelivery, { idempotencyKey:manualKey });
@@ -388,6 +400,9 @@ async function main() {
         driverId: driverA, fulfillmentId: internalAllocationId, expectedRevision: 0 });
       assert.equal(internal.fulfillment.mode, 'internal');
       assert.equal((await client.query(`SELECT payload->>'driverId' AS driver FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2`, [tenantA, serviceDelivery])).rows[0].driver, driverA);
+      await client.query(`UPDATE rotamoto.driver_availability SET status='offline',revision=revision+1,lease_expires_at=NULL,lease_session_id=NULL WHERE company_id=$1 AND driver_id=$2`,[tenantA,driverA]);
+      await rejected(client,'internal_assignment_requires_online_driver',()=>logistics.selectFulfillment(client,principal,serviceDelivery,{providerId:internalProvider,mode:'internal',driverId:driverA,fulfillmentId:id(),expectedRevision:0}));
+      await client.query(`UPDATE rotamoto.driver_availability SET status='online',revision=revision+1,lease_expires_at=now()+interval '120 seconds',lease_session_id=$3 WHERE company_id=$1 AND driver_id=$2`,[tenantA,driverA,id()]);
 
       const externalAllocationId = id();
       const external = await logistics.selectFulfillment(client, principal, serviceDelivery, { providerId: partner, mode: 'external',

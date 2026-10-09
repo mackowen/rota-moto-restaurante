@@ -129,7 +129,7 @@ function validatePacket(packet) {
   return { packetId: id, deviceId, data, events: packet.events || [] };
 }
 
-function createSyncService({ clock = () => new Date(), mediaStorage = createMediaStorage() } = {}) {
+function createSyncService({ clock = () => new Date(), mediaStorage = createMediaStorage(), driverAvailability = null } = {}) {
   async function assignDeliveryToRoute(client, principal, input) {
     const { routeId, deliveryId, driverId, position, expectedRouteVersion } = input || {};
     if (![routeId,deliveryId,driverId].every(value=>typeof value==='string'&&UUID.test(value))||
@@ -506,6 +506,12 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       if (existing.rowCount) {
         ackCanonicalId = canonicalId;
         ackVersion = Number(existing.rows[0].version);
+      }
+      if(entityType==='Delivery'&&appKey==='restaurante'&&canonical.driverId&&driverAvailability){
+        const old=existing.rows[0]?.payload;
+        const assignedNewDriver=!old||old.driverId!==canonical.driverId;
+        const requestedRedelivery=!!old&&old.status!=='REDELIVERY'&&canonical.status==='REDELIVERY';
+        if(assignedNewDriver||requestedRedelivery)await driverAvailability.assertEligibleForAssignment(client,companyId,canonical.driverId);
       }
       if (existing.rowCount && entityType === 'DeliveryEvent') {
         const oldPayload = existing.rows[0].payload;
