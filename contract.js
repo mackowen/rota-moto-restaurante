@@ -105,8 +105,12 @@
       createdAt:race.createdAt || now(), updatedAt:new Date(timestampMs(race.updatedAt)||Date.now()).toISOString(), version:Number(race.sync?.version || race.version || 1)
     };
   }
+  function deliveryExtensions(delivery={}){return delivery.extensions&&typeof delivery.extensions==='object'&&!Array.isArray(delivery.extensions)?delivery.extensions:{}}
+  function deliveryTypeOf(delivery={}){return deliveryExtensions(delivery).x_rotamoto_delivery_type==='RETURN'?'RETURN':'STANDARD'}
+  function returnOfDeliveryId(delivery={}){const value=deliveryExtensions(delivery).x_rotamoto_return_of_delivery_id;return typeof value==='string'&&value.trim()?value:null}
+  function custodyStateOf(delivery={}){const value=deliveryExtensions(delivery).x_rotamoto_custody_state;if(typeof value==='string'&&value.trim())return value;return delivery.pickedUpAt?'WITH_DRIVER':'NOT_CONFIRMED'}
   function raceFromDelivery(delivery={},order={},current={}){
-    const status=delivery.status||'ASSIGNED';
+    const status=delivery.status||'ASSIGNED';const extensions=deliveryExtensions(delivery),deliveryType=deliveryTypeOf(delivery),isReturn=deliveryType==='RETURN',destination=extensions.x_rotamoto_return_destination||{};
     const localStatus={CREATED:'open',ASSIGNED:'open',ACCEPTED:'open',PICKED_UP:'route',OUT_FOR_DELIVERY:'route',ARRIVED:'arrived',DELIVERED:'done',CANCELLED:'cancelled',FAILED:'issue',RETURNED:'issue',REDELIVERY:'open'}[status]||'open';
     const coords=Array.isArray(order.coords)?order.coords:null,shared=order.extensions?.x_rotamoto_navigation_coordinates;
     const sharedValid=shared&&shared.provenance==='restaurant_order_coordinates'&&Number.isFinite(Number(shared.latitude))&&Math.abs(Number(shared.latitude))<=90&&Number.isFinite(Number(shared.longitude))&&Math.abs(Number(shared.longitude))<=180;
@@ -115,11 +119,12 @@
     return {...current,id:current.id||delivery.id,deliveryId:delivery.id,companyId:delivery.companyId||order.companyId||current.companyId,
       orderId:delivery.orderId||order.id||current.orderId||null,driverId:delivery.driverId||current.driverId||null,
       status:localStatus,canonicalStatus:status,version:Number(delivery.version||delivery.sync?.version||1),updatedAt:new Date(timestampMs(delivery.updatedAt)||Date.now()).toISOString(),createdAt:current.createdAt||delivery.createdAt||now(),
-      client:order.customer?.name||order.customer||current.client||'',phone:order.phone||order.customer?.phone||current.phone||'',address:order.address||current.address||'',
-      lat:Number.isFinite(Number(lat))?Number(lat):null,lng:Number.isFinite(Number(lng))?Number(lng):null,
-      orderNo:order.num||order.orderNo||current.orderNo||'',value:order.value??order.deliveryFee??current.value??0,
-      deliveryFee:order.deliveryFee??order.value??current.deliveryFee??null,urgent:order.urgent??(delivery.priority==='HIGH'),
-      notes:order.obs||order.notes||current.notes||'',items:order.items||current.items||[],deleted:!!delivery.deleted};
+      client:isReturn?(destination.name||'Restaurante responsável'):(order.customer?.name||order.customer||current.client||''),phone:isReturn?'':(order.phone||order.customer?.phone||current.phone||''),address:isReturn?(destination.address||'Restaurante responsável'):(order.address||current.address||''),
+      lat:isReturn&&Number.isFinite(Number(destination.latitude))?Number(destination.latitude):Number.isFinite(Number(lat))?Number(lat):null,lng:isReturn&&Number.isFinite(Number(destination.longitude))?Number(destination.longitude):Number.isFinite(Number(lng))?Number(lng):null,
+      orderNo:order.num||order.orderNo||current.orderNo||'',value:isReturn?0:(order.value??order.deliveryFee??current.value??0),
+      deliveryFee:isReturn?0:(order.deliveryFee??order.value??current.deliveryFee??null),urgent:order.urgent??(delivery.priority==='HIGH'),
+      notes:isReturn?(extensions.x_rotamoto_return_reason||'Devolução para o restaurante responsável'):(order.obs||order.notes||current.notes||''),items:isReturn?[]:(order.items||current.items||[]),deleted:!!delivery.deleted,
+      deliveryType,isReturn,returnOfDeliveryId:returnOfDeliveryId(delivery),custodyStatus:custodyStateOf(delivery),returnDestination:isReturn?destination:null};
   }
   function event(type, entity, entityId, payload={}, actor={type:'system',id:null}){
     return { eventId:id('evt'), type, entity, entityId, occurredAt:now(), actor, payload, protocolVersion:PROTOCOL_VERSION };
@@ -192,5 +197,5 @@
     }
     return{valid:errors.length===0,errors};
   }
-  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,EXECUTION_EVENT_STATUS,WRITE_AUTHORITY,SYNC_ACK,ENTITY_SCHEMAS,validateEntity,validateRouteMembership,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,event,packet,normalizeDeliveryStatus,now,id});
+  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,EXECUTION_EVENT_STATUS,WRITE_AUTHORITY,SYNC_ACK,ENTITY_SCHEMAS,validateEntity,validateRouteMembership,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,deliveryTypeOf,returnOfDeliveryId,custodyStateOf,event,packet,normalizeDeliveryStatus,now,id});
 })();

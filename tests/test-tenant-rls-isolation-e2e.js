@@ -46,17 +46,17 @@ async function main() {
           AND a.attnum>0 AND NOT a.attisdropped) has_id
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p') ORDER BY c.relname`)).rows;
-    assert.equal(relations.length, 45, 'the audit baseline is 45 application tables');
+    assert.equal(relations.length, 46, 'the audit baseline is 46 application tables');
     const expectedWithoutRls = new Set(['credentials','identity_tokens','marketplace_account_routes',
       'permissions','provisioning_requests','recovery_tokens','schema_migrations','sessions','users']);
     assert.deepEqual(new Set(relations.filter(row => !row.relrowsecurity).map(row => row.relname)), expectedWithoutRls);
     assert(relations.filter(row => row.relrowsecurity).every(row => row.relforcerowsecurity),
       'every RLS table must also FORCE RLS');
-    assert.equal(relations.filter(row => row.relrowsecurity).length, 36);
+    assert.equal(relations.filter(row => row.relrowsecurity).length, 37);
 
     const policies = (await migrator.query(`SELECT tablename,policyname,permissive,roles,cmd,qual,with_check
       FROM pg_policies WHERE schemaname='rotamoto' ORDER BY tablename,policyname`)).rows;
-    assert.equal(policies.length, 36, 'each RLS table has one tenant policy');
+    assert.equal(policies.length, 37, 'each RLS table has one tenant policy');
     for (const relation of relations.filter(row => row.relrowsecurity)) {
       const tablePolicies = policies.filter(policy => policy.tablename === relation.relname);
       assert.equal(tablePolicies.length, 1, `${relation.relname} has exactly one policy`);
@@ -148,7 +148,7 @@ async function main() {
         error => error.code === '42501');
     });
 
-    console.log('Tenant RLS E2E: PASS (45-table catalog, 36 forced tenant policies, two-tenant SELECT/INSERT/UPDATE/DELETE, positive writes, missing/invalid context, runtime/internal ACLs)');
+    console.log('Tenant RLS E2E: PASS (46-table catalog, 37 forced tenant policies, two-tenant SELECT/INSERT/UPDATE/DELETE, positive writes, missing/invalid context, runtime/internal ACLs)');
   } finally {
     if (migrator.readyForQuery) {
       for (const index of created) {

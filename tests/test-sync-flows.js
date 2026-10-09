@@ -29,7 +29,10 @@ assert(appSource.includes('RotaMotoContract.timestampMs(raw.updatedAt)'));
 assert(appSource.includes('RotaMotoContract.assertTransition(previous,status)'));
 assert(appSource.includes('function cancelRestaurantDelivery(orderId)'));
 assert(appSource.includes('tombstones=(state.tombstones||[])'));
-assert(appSource.includes('O histórico será mantido.'));
+assert(appSource.includes('function postCustodyCommand(path,payload)'));
+assert(appSource.includes('/logistics/deliveries/${encodeURIComponent(deliveryId)}/cancel'));
+assert(appSource.includes('CUSTODY_REQUIRES_ONLINE_AUTHORITY'));
+assert(!appSource.includes("updated.canonicalStatus='CANCELLED'"), 'cancelamento deve aguardar a autoridade canônica do servidor');
 assert(!appSource.includes('function deleteOrder(orderId)'));
 
 // A tombstone in one packet must be compared with that packet's staged delivery,

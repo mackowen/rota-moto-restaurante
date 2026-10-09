@@ -36,7 +36,8 @@ function statusFor(code) {
   if (code === 'RATE_LIMITED') return 429;
   if (['NOT_FOUND'].includes(code)) return 404;
   if (['REVISION_CONFLICT','IDEMPOTENCY_CONFLICT','INVALID_STATE_TRANSITION','PROVIDER_UNAVAILABLE','INVALID_DRIVER','CAPACITY_UNKNOWN','INVALID_ROUTE',
-    'ROUTE_DELIVERY_ALREADY_ACTIVE','DELIVERY_IN_ACTIVE_ROUTE','INSTALLATION_REQUIRED','FULFILLMENT_RECONCILIATION_REQUIRED','PROVIDER_CODE_CONFLICT','RECONCILIATION_REQUIRED'].includes(code)) return 409;
+    'ROUTE_DELIVERY_ALREADY_ACTIVE','DELIVERY_IN_ACTIVE_ROUTE','INSTALLATION_REQUIRED','FULFILLMENT_RECONCILIATION_REQUIRED','PROVIDER_CODE_CONFLICT','RECONCILIATION_REQUIRED',
+    'EXTERNAL_PLATFORM_CONTROLLED','CUSTODY_NOT_CONFIRMED','CUSTODY_RECONCILIATION_REQUIRED','RETURN_ALREADY_EXISTS','ACTIVE_ROUTE_REQUIRED','ROUTE_NOT_ACTIVE'].includes(code)) return 409;
   if (code === 'PAYLOAD_TOO_LARGE') return 413;
   return 500;
 }
@@ -57,6 +58,10 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         { re: /^\/api\/logistics\/internal-provider$/u, methods: ['POST'] },
         { re: new RegExp(`^/api/logistics/providers/(${UUID})$`, 'u'), methods: ['PATCH'] },
         { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/fulfillment$`, 'u'), methods: ['GET','PUT','PATCH'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/custody$`, 'u'), methods: ['GET'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/cancel$`, 'u'), methods: ['POST'] },
+        { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/custody-decisions$`, 'u'), methods: ['POST'] },
+        { re: new RegExp(`^/api/logistics/returns/(${UUID})/receipt$`, 'u'), methods: ['POST'] },
         { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/dispatch-attempts$`, 'u'), methods: ['POST'] },
         { re: new RegExp(`^/api/logistics/deliveries/(${UUID})/provider-quotes$`, 'u'), methods: ['GET','POST'] },
         { re: new RegExp(`^/api/logistics/provider-quotes/(${UUID})/select$`, 'u'), methods: ['POST'] },
@@ -81,7 +86,9 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
       const token = tokenFrom(req); if (!token) error('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
       const write = !['GET','HEAD'].includes(req.method);
       if (write) sameOrigin(req, allowedOrigin);
-      const permission = ['/api/logistics/analytics','/api/logistics/intelligence/analytics','/api/logistics/intelligence/decision-quality'].includes(url.pathname) ||
+      const permission = /\/api\/logistics\/(?:deliveries\/[0-9a-f-]+\/(?:cancel|custody-decisions)|returns\/[0-9a-f-]+\/receipt)$/iu.test(url.pathname) && write ? 'orders.manage' :
+        ['/api/logistics/analytics','/api/logistics/intelligence/analytics','/api/logistics/intelligence/decision-quality'].includes(url.pathname) ||
+        /\/custody$/u.test(url.pathname) ||
         /^\/api\/logistics\/routes\/[0-9a-f-]+\/geometry$/iu.test(url.pathname) ||
         /\/(comparison|decisions)$/u.test(url.pathname) || ['/api/logistics/intelligence/settings','/api/logistics/route-settings'].includes(url.pathname) && req.method === 'GET'
         ? 'orders.read' : 'company.manage';
@@ -93,6 +100,14 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         const body = write ? await readJson(req) : null;
         const path = url.pathname;
         let match;
+        match = new RegExp(`^/api/logistics/deliveries/(${UUID})/custody$`, 'u').exec(path);
+        if (match) return logisticsService.getCustody(client, principal, match[1]);
+        match = new RegExp(`^/api/logistics/deliveries/(${UUID})/cancel$`, 'u').exec(path);
+        if (match) return logisticsService.cancelDelivery(client, principal, match[1], body);
+        match = new RegExp(`^/api/logistics/deliveries/(${UUID})/custody-decisions$`, 'u').exec(path);
+        if (match) return logisticsService.decideCustody(client, principal, match[1], body);
+        match = new RegExp(`^/api/logistics/returns/(${UUID})/receipt$`, 'u').exec(path);
+        if (match) return logisticsService.confirmReturnReceipt(client, principal, match[1], body);
         if (path === '/api/logistics/providers') return req.method === 'GET' ? logisticsService.listProviders(client, principal) : logisticsService.createProvider(client, principal, body);
         if (path === '/api/logistics/internal-provider') {
           if (Object.keys(body).length) error('INVALID_INPUT', 'Objeto vazio obrigatório.');

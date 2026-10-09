@@ -685,6 +685,11 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' FOR UPDATE`, [companyId, relatedId]);
         if (!currentDelivery.rowCount || currentDelivery.rows[0].deleted_at) throw new SyncError('UNRESOLVED_REFERENCE', 'Delivery canônica inexistente ou encerrada.');
         const oldStatus = currentDelivery.rows[0].payload.status;
+        if (oldStatus === 'CANCELLED' && ['DELIVERY_PICKED_UP','DELIVERY_STARTED'].includes(canonical.type)) {
+          const custodyError = new SyncError('CUSTODY_DIVERGENCE', 'Coleta alegada após cancelamento exige reconciliação operacional.');
+          custodyError.deliveryId = relatedId;
+          throw custodyError;
+        }
         if (oldStatus !== executionStatus && !TRANSITIONS[oldStatus]?.includes(executionStatus)) {
           throw new SyncError('INVALID_TRANSITION', `Transição de entrega inválida: ${oldStatus} → ${executionStatus}.`);
         }
@@ -720,7 +725,38 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         operationResults.length = resultBefore;
         Object.assign(outcomes, countsBefore);
         if (seenKey) seen.delete(seenKey);
-        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','INVALID_TRANSITION','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT','ROUTE_DELIVERY_ALREADY_ACTIVE','DRIVER_LINKED']);
+        if(error.code==='CUSTODY_DIVERGENCE'&&entityType==='DeliveryEvent'&&appKey==='motoboy'&&error.deliveryId){
+          const delivery=await client.query(`SELECT payload,version,created_at FROM rotamoto.domain_records
+            WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' AND deleted_at IS NULL FOR UPDATE`,[companyId,error.deliveryId]);
+          if(delivery.rowCount&&delivery.rows[0].payload.status==='CANCELLED'){
+            const observedAt=clock(),nextVersion=Number(delivery.rows[0].version)+1,oldPayload=delivery.rows[0].payload;
+            const nextPayload={...oldPayload,extensions:{...(oldPayload.extensions||{}),
+              x_rotamoto_custody_state:'DISPUTED',x_rotamoto_custody_divergence:{state:'OPEN',reportedEventType:record.type,
+                reportedAtDevice:record.occurredAt||null,receivedAtServer:observedAt.toISOString(),confirmedByServer:false,
+                sourceEventId:record.eventId||null}},version:nextVersion,updatedAt:observedAt.toISOString()};
+            await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5
+              WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[companyId,error.deliveryId,JSON.stringify(nextPayload),nextVersion,observedAt]);
+            const reportId=uuidV7(observedAt.getTime()),reportEventId=`evt_${reportId}`;
+            const report={eventId:reportEventId,entity:'Delivery',entityId:error.deliveryId,type:'DELIVERY_CUSTODY_DIVERGENCE_REPORTED',
+              occurredAt:observedAt.toISOString(),actor:{type:'user',id:userId},payload:{deliveryId:error.deliveryId,
+                reportedEventType:record.type,reportedAtDevice:record.occurredAt||null,receivedAtServer:observedAt.toISOString(),
+                confirmedByServer:false,state:'OPEN'},protocolVersion:1,id:reportId,companyId,version:1,updatedAt:observedAt.toISOString()};
+            await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,
+              related_entity_type,related_record_id,source_event_id,payload,version,created_at,updated_at)
+              VALUES($1,$2,'DeliveryEvent',$3,$4,'Delivery',$5,$6,$7::jsonb,1,$8,$8)`,
+            [companyId,reportId,appKey,installationId,error.deliveryId,`custody-divergence:${record.eventId||localId}`,JSON.stringify(report),observedAt]);
+            pending.push({entityType:'Delivery',canonicalId:error.deliveryId,canonical:nextPayload,
+              meta:{createdAt:new Date(delivery.rows[0].created_at),updatedAt:observedAt,version:nextVersion},changed:true});
+            pending.push({entityType:'DeliveryEvent',canonicalId:reportId,canonical:report,
+              meta:{createdAt:observedAt,updatedAt:observedAt,version:1},changed:true,relatedType:'Delivery',relatedId:error.deliveryId});
+            ackCanonicalId=error.deliveryId;ackVersion=nextVersion;
+            await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
+              VALUES($1,$2,$3,'user','delivery.custody.divergence.opened','Delivery',$4,$5::jsonb)`,
+            [uuidV7(observedAt.getTime()),companyId,userId,error.deliveryId,JSON.stringify({reportedEventType:record.type,
+              sourceEventId:record.eventId||null,confirmedByServer:false})]);
+          }
+        }
+        const conflictCodes = new Set(['SYNC_CONFLICT','REVISION_CONFLICT','INVALID_TRANSITION','UNRESOLVED_REFERENCE','IMMUTABLE_EVENT','ROUTE_DELIVERY_ALREADY_ACTIVE','DRIVER_LINKED','CUSTODY_DIVERGENCE']);
         operationResults.push({ operation: item.operationIndex, entity: entityType, localId: localId || null,
           ...(ackCanonicalId ? { canonicalId: ackCanonicalId } : {}), ...(ackVersion ? { canonicalVersion: ackVersion } : {}),
           status: conflictCodes.has(error.code) ? 'conflict' : 'rejected', error: { code: error.code || 'OPERATION_REJECTED' } });
