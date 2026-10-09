@@ -57,6 +57,19 @@ runFixtureLifecycle({ exercise: async fixture => {
   const heartbeat=await fixture.authenticatedCall('/api/driver-availability/heartbeat',{method:'POST',body:{revision:onlineAgain.body.availability.revision}});
   assert.equal(heartbeat.status,200,JSON.stringify(heartbeat.body));
   assert.equal(heartbeat.body.renewed,true,'foreground heartbeat extends the lease without changing the revision');
+  await fixture.runtime.query(`UPDATE rotamoto.driver_availability SET lease_expires_at=now()-interval '1 second'
+    WHERE company_id=$1 AND driver_id=$2`,[fixture.companyId,fixture.driverId]);
+  const expiredLease=await fixture.authenticatedCall('/api/driver-availability');
+  assert.equal(expiredLease.body.availability.effectiveStatus,'offline','an expired lease is not eligible for new assignments');
+  assert.equal(expiredLease.body.availability.reason,'lease_expired');
+  const staleSessionHeartbeat=await fixture.call('/api/driver-availability/heartbeat',{method:'POST',cookie:secondSessionCookie,
+    csrf:secondSession.body.csrfToken,body:{revision:onlineAgain.body.availability.revision}});
+  assert.equal(staleSessionHeartbeat.status,200);
+  assert.equal(staleSessionHeartbeat.body.renewed,false,'a second session cannot renew a lease owned by the current session');
+  const resumedHeartbeat=await fixture.authenticatedCall('/api/driver-availability/heartbeat',{method:'POST',
+    body:{revision:onlineAgain.body.availability.revision}});
+  assert.equal(resumedHeartbeat.body.renewed,true,'the authenticated current session can renew after lease expiry');
+  assert.equal(resumedHeartbeat.body.availability.effectiveStatus,'online');
 
   const deviceId = `restaurant-imported-${crypto.randomUUID()}`;
   const installation = await fixture.authenticatedCall('/api/sync/installations/restaurante', {
@@ -98,6 +111,14 @@ runFixtureLifecycle({ exercise: async fixture => {
   assert.equal(matchingDeliveries.length, 1, 'editing an imported canonical Delivery creates no duplicate');
   assert.equal(matchingDeliveries[0].record.priority, 'HIGH');
   assert.equal(matchingDeliveries[0].record.baseVersion, undefined);
+
+  await fixture.runtime.query(`UPDATE rotamoto.sessions SET last_seen_at=created_at,
+    idle_expires_at=greatest(created_at + interval '1 second',now()-interval '1 second')
+    WHERE user_id=$1 AND revoked_at IS NULL`,[fixture.userId]);
+  const expiredPrimarySession=await fixture.call('/api/driver-availability',{cookie:fixture.browserSessionCookie});
+  assert.equal(expiredPrimarySession.status,401,'expired authenticated session cannot read operational availability');
+  const expiredSecondSession=await fixture.call('/api/driver-availability',{cookie:secondSessionCookie});
+  assert.equal(expiredSecondSession.status,401,'the second authenticated session also enforces server expiry');
 } }).then(result => {
   assert.equal(result.authenticated, true);
   assert.equal(result.mfaVerified, true);
