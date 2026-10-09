@@ -181,7 +181,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const savedRecoveryDigests=await runtime.query("SELECT encode(token_digest,'hex') AS digest FROM rotamoto.recovery_tokens WHERE user_id=$1 AND purpose='mfa_recovery' ORDER BY digest",[fixtureUserId]);
     assert.deepEqual(savedRecoveryDigests.rows.map(row=>row.digest),confirmed.body.recoveryCodes.map(code=>recoveryDigest(code).toString('hex')).sort(),
       'PostgreSQL stores only digests of one-time MFA recovery codes');
-    const futureCode=codeAt(enrollment.body.secret,Math.floor(Date.now()/30000)+1);
+    const firstLoginCounter=Math.floor(Date.now()/30000)+1;
+    const futureCode=codeAt(enrollment.body.secret,firstLoginCounter);
     const invalidMfa = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId,
       mfaCode: String((Number(futureCode) + 1) % 1000000).padStart(6, '0') } });
     assert.equal(invalidMfa.status, 403, 'invalid native MFA proof cannot create an authenticated fixture');
@@ -338,6 +339,10 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
 
     const authenticatedCall = (path, options = {}) => call(path, { ...options,
       cookie: options.cookie || sessionCookie, csrf: options.csrf === undefined ? csrf : options.csrf });
+    // Wait until the first login's accepted +1 counter is current, then use its
+    // next counter. This avoids replaying the same TOTP in fast fixture runs.
+    while (Math.floor(Date.now() / 30000) < firstLoginCounter)
+      await new Promise(resolve => setTimeout(resolve, 100));
     const browserMfaCode = codeAt(enrollment.body.secret, Math.floor(Date.now() / 30000) + 1);
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
       driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, restaurantDevice, email, password, mfaCode: browserMfaCode,
