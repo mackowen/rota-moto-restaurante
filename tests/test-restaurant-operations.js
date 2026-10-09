@@ -72,6 +72,14 @@ assert.equal(Operations.plannedDeliveryStatus({ status: 'AGUARDANDO' }, 'OUT_FOR
 assert.equal(Operations.plannedDeliveryStatus({ status: 'FINALIZADA' }, 'FAILED', 'DELIVERED'), 'FAILED');
 assert.equal(Operations.plannedDeliveryStatus({ deliveryStatus: 'REDELIVERY' }, 'FAILED', 'FAILED'), 'REDELIVERY');
 assert.equal(Operations.plannedDeliveryStatus({ status: 'CANCELADA' }, null, 'CREATED'), 'CANCELLED');
+assert.equal(Operations.shouldIncludeDeliveryForSync({ orderChangedHere: true, deliveryChangedHere: false, hasLocalDelivery: false, status: 'CREATED' }), true,
+  'new locally created Orders still publish their initial Delivery');
+assert.equal(Operations.shouldIncludeDeliveryForSync({ orderChangedHere: true, deliveryChangedHere: true, hasLocalDelivery: true, status: 'ASSIGNED' }), true,
+  'a locally changed assignment is published');
+assert.equal(Operations.shouldIncludeDeliveryForSync({ orderChangedHere: true, deliveryChangedHere: false, hasLocalDelivery: true, status: 'ASSIGNED' }), false,
+  'an Order-only edit must not resend an unchanged canonical assignment');
+assert.equal(Operations.shouldIncludeDeliveryForSync({ orderChangedHere: true, deliveryChangedHere: false, hasLocalDelivery: true, status: 'DELIVERED' }), false,
+  'a stale Order projection must not resend terminal Delivery state');
 
 const route = Operations.canonicalRoute({ id: 'route_1', createdAt, updatedAt: createdAt, version: 1, deliveryIds: ['d_local'], internalCache: true }, 'company_fallback');
 assert.equal(route.internalCache, undefined);

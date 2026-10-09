@@ -76,8 +76,9 @@ async function start(handler) {
 
 async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
   persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false,
-  businessFixture = true } = {}) {
+  businessFixture = true, onTestEmail = null } = {}) {
   if (env.NODE_ENV !== 'test' || typeof extraHttpHandlers !== 'function') throw new Error('Handlers extras do fixture só são aceitos no modo test.');
+  if (onTestEmail !== null && typeof onTestEmail !== 'function') throw new Error('Observador de email E2E inválido.');
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
   const disposableCampaign = clients.migrator ? env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' : false;
   if (persistDisposableFixture && (!disposableCampaign || env.NODE_ENV !== 'test' ||
@@ -113,7 +114,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         if (context?.request?.headers['x-e2e-operator'] !== operatorMarker) throw new Error('unauthorized');
         return { actorRef: 'test:e2e-fixture-operator' };
       },
-      emailProvider: createEmailDeliveryProvider(async message => { emails.push(message); return { accepted: true }; }),
+      emailProvider: createEmailDeliveryProvider(async message => { emails.push(message); onTestEmail?.(message); return { accepted: true }; }),
       mfaProvider: createNativeMfaProvider({ secretProvider }) , secretProvider });
     const limiter = rateLimiter();
     const originConfig = allowedOrigins.length ? allowedOrigins : undefined;

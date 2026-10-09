@@ -59,8 +59,8 @@ if(appSource.includes("function recordDeliveryEvent(type,r,payload={}")){
     'derived Delivery links on imported canonical Orders do not mark the Order dirty');
   assert.match(builder,/deliveryFromOrder\(order\.deliveryId\?order:\{\.\.\.order,deliveryId\}/,
     'packet construction can project a Delivery without mutating an imported Order');
-assert.match(builder,/if\(\(orderChangedHere\|\|deliveryChangedHere\)/,
-    'Delivery uploads require an Order or Delivery changed in this installation');
+assert.match(builder,/shouldIncludeDeliveryForSync\(\{orderChangedHere,deliveryChangedHere,hasLocalDelivery:!!localDelivery,status:delivery\.status\}\)/,
+    'canonical Delivery rows are not resent just because their related Order changes');
   assert.match(builder,/filter\(isLocallyDirtyForSync\)/,
     'unchanged canonical Routes are not re-created by another installation');
   assert.match(builder,/\(state\.earnings\|\|\[\]\)\.filter\(earning=>!earning\.deleted&&!earning\.deletedAt&&isLocallyDirtyForSync\(earning\)\)/,

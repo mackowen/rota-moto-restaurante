@@ -135,6 +135,11 @@
     return savedStatus || mapped || generatedStatus || 'CREATED';
   }
 
+  function shouldIncludeDeliveryForSync({ orderChangedHere, deliveryChangedHere, hasLocalDelivery, status }) {
+    if (deliveryChangedHere === true) return true;
+    return hasLocalDelivery !== true && orderChangedHere === true && ['CREATED', 'ASSIGNED'].includes(String(status || '').toUpperCase());
+  }
+
   function canonicalDelivery(delivery, order, companyId) {
     const record = {
       id: delivery.id || order.deliveryId,
@@ -246,6 +251,6 @@
       version: Math.max(1, Number(order.version || order.sync?.version || 1)) };
   }
 
-  return Object.freeze({ canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, canonicalRoute,
+  return Object.freeze({ canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, shouldIncludeDeliveryForSync, canonicalRoute,
     validateRouteMembership, localIdForDelivery, findOrderForDeliveryId, minorUnitsFromDecimal, driverPayoutSnapshot, canonicalEarningFromCompletedOrder });
 });
