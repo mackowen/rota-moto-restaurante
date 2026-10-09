@@ -14,6 +14,7 @@
     "test:postgres": "node tests/test-postgres-migrations.js && node tests/test-identity-postgres.js && node tests/test-identity-http-postgres.js && node tests/test-domain-sync-postgres.js",
     "test:e2e-guards": "node tests/test-postgres-e2e-guards.js && node tests/test-e2e-fixture-guards.js",
     "test:e2e-security": "NODE_ENV=test node tests/test-postgres-e2e-security-parity.js",
+    "test:e2e-tenant-isolation": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-tenant-rls-isolation-e2e.js",
     "test:e2e-lifecycle": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-postgres-e2e-lifecycle.js",
     "test:availability-concurrency-e2e": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-driver-availability-concurrency-e2e.js",
     "operator": "node scripts/rotamoto-operator.js status",
