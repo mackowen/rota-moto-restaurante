@@ -312,6 +312,15 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(uploaded.status, 201, JSON.stringify(uploadedBody));
     assert.equal(uploadedBody.storageRef.provider, 'filesystem-v1');
     assert.equal(uploadedBody.sizeBytes, png.length);
+    const repeatedUpload=await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/media?proofId=${proofId}`,{method:'POST',
+      headers:{Origin:allowedOrigins[0]||host.base,Cookie:sessionCookie,'X-CSRF-Token':csrf,'Content-Type':'image/png','Content-Length':String(png.length)},body:png});
+    const repeatedBody=await repeatedUpload.json();assert.equal(repeatedUpload.status,201,JSON.stringify(repeatedBody));
+    assert.deepEqual(repeatedBody.storageRef,uploadedBody.storageRef,'retry of the same proof reuses one media object');
+    assert.equal(repeatedBody.sha256,uploadedBody.sha256);
+    const changedBytes=Buffer.concat([png,Buffer.from([1])]);
+    const conflictingUpload=await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/media?proofId=${proofId}`,{method:'POST',
+      headers:{Origin:allowedOrigins[0]||host.base,Cookie:sessionCookie,'X-CSRF-Token':csrf,'Content-Type':'image/png','Content-Length':String(changedBytes.length)},body:changedBytes});
+    assert.equal(conflictingUpload.status,409,'one proof ID cannot be rebound to different image bytes');
     const pendingGc=await runProofMediaGc({pool,objectStore,now:()=>new Date(Date.now()+120_000),graceMs:60_000,dryRun:false,log:()=>{}});
     assert.equal(pendingGc.skipped,1,'staged upload intent protects media if the response is lost or sync stays offline');
     const motoboyProofPush = await call('/api/sync/push', { method: 'POST', cookie: sessionCookie, csrf, body: {
@@ -330,6 +339,14 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(canonicalProof.rows[0].related_record_id,deliveryId);
     const uploadIntent=await runtime.query('SELECT 1 FROM rotamoto.proof_media_upload_intents WHERE company_id=$1 AND proof_id=$2',[companyId,proofId]);
     assert.equal(uploadIntent.rowCount,0,'sync consumes the staged upload intent atomically with canonical metadata');
+    const canonicalRetry=await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/media?proofId=${proofId}`,{method:'POST',
+      headers:{Origin:allowedOrigins[0]||host.base,Cookie:sessionCookie,'Content-Type':'image/png','X-CSRF-Token':csrf},body:Buffer.from(png)});
+    assert.equal(canonicalRetry.status,201,'retry after canonical metadata ACK remains idempotent');
+    const canonicalRetryBody=await canonicalRetry.json();
+    assert.deepEqual(canonicalRetryBody.storageRef,uploadedBody.storageRef,'post-ACK retry returns the canonical media reference');
+    assert.equal(canonicalRetryBody.sha256,uploadedBody.sha256);
+    const retryIntent=await runtime.query('SELECT 1 FROM rotamoto.proof_media_upload_intents WHERE company_id=$1 AND proof_id=$2',[companyId,proofId]);
+    assert.equal(retryIntent.rowCount,0,'post-ACK idempotent retry does not recreate an orphan upload intent');
     const gcResult=await runProofMediaGc({pool,objectStore,now:()=>new Date(Date.now()+120_000),graceMs:60_000,dryRun:false,log:()=>{}});
     assert.equal(gcResult.skipped,1,'GC confirms canonical reference and preserves synced media');
     const proofRead = await fetch(`${host.base}/api/domain/deliveries/${deliveryId}/proofs/${canonicalProofId}/media`, {

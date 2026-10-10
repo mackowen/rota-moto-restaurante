@@ -12,7 +12,7 @@ function createMediaStorage({ objectStore = null, provider = null } = {}) {
     }
     const stored = await objectStore.putProof({ ...input, maxBytes: MAX_PROOF_BYTES });
     return Object.freeze({ storageRef: stored.reference, provider: objectStore.provider,
-      mimeType: stored.contentType, sizeBytes: stored.sizeBytes, sha256: stored.sha256 });
+      mimeType: stored.contentType, sizeBytes: stored.sizeBytes, sha256: stored.sha256, created: stored.created === true });
   }
   async function validateReference(reference, metadata) {
     // Preserve the pre-existing server-side adapter contract used by configured storage providers.
