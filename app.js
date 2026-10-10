@@ -28,7 +28,7 @@ const money=n=>{const l=state?.settings?.language||'pt-BR';return Number(n||0).t
 function knownDeliveryFeeBRL(order){const value=window.RotaMotoOrderMoney?.canonicalComponents(order);if(value?.currency!=='BRL')return null;if(Number.isSafeInteger(value.deliveryFeeMinor)&&Number.isInteger(value.scale))return value.deliveryFeeMinor/(10**value.scale);if(value?.kind==='legacy_delivery_fee'&&Number.isFinite(value.legacyDeliveryFee)&&value.legacyDeliveryFee>=0)return value.legacyDeliveryFee;return null;}
 const uid=(p='id')=>`${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
 function canonicalizeRestaurantData(){
- const companyId=state.settings.global?.companyId||'company_local';
+ const companyId=syncSession?.companyId||state.settings.global?.companyId||'company_local';
  state.orders=(state.orders||[]).filter(Boolean).map(o=>{const deliveryId=o.deliveryId||RotaMotoContract.id('del');const canonical=RotaMotoContract.normalizeDeliveryStatus(o.status,'restaurante');return {...o,id:o.id||RotaMotoContract.id('ord'),companyId:o.companyId||companyId,deliveryId,canonicalStatus:canonical,createdAt:o.createdAt||Date.now(),updatedAt:o.updatedAt||o.createdAt||Date.now(),version:Number(o.version||o.sync?.version||1)};});
  const byId=new Map((state.deliveries||[]).map(d=>[d.id,d]));
  state.deliveries=state.orders.map(o=>({...RotaMotoContract.deliveryFromOrder(o,companyId),...(byId.get(o.deliveryId)||{}),id:o.deliveryId,orderId:o.id,companyId:o.companyId,driverId:o.bikeId||o.driverId||byId.get(o.deliveryId)?.driverId||null,status:o.canonicalStatus,updatedAt:o.updatedAt,version:Math.max(Number(byId.get(o.deliveryId)?.version||0),Number(o.version||1))}));
@@ -528,7 +528,7 @@ function routes(){
 function openRouteEditor(routeId=null){
  if(routeId&&!can('edit')||!routeId&&!can('create'))return toast('Você não tem permissão para editar planejamentos de rota.','error');
  const current=(state.routes||[]).find(row=>row.id===routeId);if(routeId&&!current)return toast('A rota não está mais disponível.','error');
- const companyId=state.settings.global?.companyId||'company_local';
+ const companyId=syncSession?.companyId||state.settings.global?.companyId||'company_local';
  const currentMembers=(current?.deliveryIds||[]).map(id=>{const delivery=routeDelivery(id);if(delivery?.extensions?.x_rotamoto_delivery_type==='RETURN'){const order=routeOrder(id);return {id:`return:${delivery.id}`,deliveryId:delivery.id,num:order?.num||order?.number||'—',customer:`Devolução do pedido ${order?.num||order?.number||''}`,address:delivery.extensions?.x_rotamoto_return_destination?.address||'Restaurante responsável',bike:order?.bike||delivery.driverId,status:delivery.status,returnDelivery:true}}return RotaMotoRestaurantOperations.findOrderForDeliveryId(id,state.orders,state.deliveries)}).filter(Boolean);
  const active=(state.orders||[]).filter(order=>!order.deleted&&!order.deletedAt&&routeEligible(order));
  const openReturns=(state.deliveries||[]).filter(delivery=>delivery.extensions?.x_rotamoto_delivery_type==='RETURN'&&delivery.status!=='RETURNED'&&delivery.extensions?.x_rotamoto_custody_state!=='RECEIVED').map(delivery=>{const order=routeOrder(delivery.id);return {id:`return:${delivery.id}`,deliveryId:delivery.id,num:order?.num||order?.number||'—',customer:`Devolução do pedido ${order?.num||order?.number||''}`,address:delivery.extensions?.x_rotamoto_return_destination?.address||'Restaurante responsável',bike:order?.bike||delivery.driverId,status:delivery.status,returnDelivery:true}});

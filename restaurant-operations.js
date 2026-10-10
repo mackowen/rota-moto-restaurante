@@ -191,7 +191,10 @@
     for (const id of deliveryIds) {
       const delivery = deliveryById.get(id);
       if (!delivery || delivery.deleted || delivery.deletedAt) throw new Error('A rota contém uma entrega inexistente ou removida.');
-      if (delivery.companyId && delivery.companyId !== companyId) throw new Error('A rota não pode incluir entrega de outra empresa.');
+      const canonicalLocalCompanyAlias = delivery.companyId === 'company_local' &&
+        typeof delivery.sync?.canonicalId === 'string' && delivery.sync.canonicalId.trim().length > 0;
+      if (delivery.companyId && delivery.companyId !== companyId && !canonicalLocalCompanyAlias)
+        throw new Error('A rota não pode incluir entrega de outra empresa.');
       const orderStatus = delivery.status;
       const retainedInCurrentRoute = route && (route.deliveryIds || []).some(existingId => (deliveryById.get(existingId)?.id || existingId) === delivery.id);
       const isOpenReturn = delivery.extensions?.x_rotamoto_delivery_type === 'RETURN' && orderStatus !== 'RETURNED' &&
@@ -210,7 +213,13 @@
 
   function findOrderForDeliveryId(id, orders, deliveries) {
     const delivery = (deliveries || []).find(row => row.id === id || row.canonicalId === id || row.sync?.canonicalId === id);
-    return (orders || []).find(order => order.deliveryId === id || order.deliveryId === delivery?.id || order.id === delivery?.orderId || order.sync?.canonicalId === id) || null;
+    const deliveryIds = new Set([id, delivery?.id, delivery?.canonicalId, delivery?.sync?.canonicalId].filter(Boolean));
+    const orderIds = new Set([delivery?.orderId, delivery?.canonicalOrderId].filter(Boolean));
+    return (orders || []).find(order =>
+      deliveryIds.has(order.deliveryId) || deliveryIds.has(order.canonicalDeliveryId) ||
+      orderIds.has(order.id) || orderIds.has(order.canonicalId) || orderIds.has(order.sync?.canonicalId) ||
+      order.sync?.canonicalId === id
+    ) || null;
   }
 
   function minorUnitsFromDecimal(value) {

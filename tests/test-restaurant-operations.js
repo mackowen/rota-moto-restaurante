@@ -92,9 +92,17 @@ assert.equal(Operations.validateRouteMembership(null, ['d_local'], deliveries, [
 assert.equal(Operations.validateRouteMembership(null, ['d_canonical'], deliveries, [], 'company_1'), true);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local', 'd_canonical'], deliveries, [], 'company_1'), /duas vezes/);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], [{ ...base, companyId: 'company_2' }], [], 'company_1'), /outra empresa/);
+assert.equal(Operations.validateRouteMembership(null, ['d_local'], [{ ...base, companyId: 'company_local', sync: { canonicalId: 'd_server' } }], [], 'company_1'), true,
+  'a canonical server identity binds a legacy local-company projection to the authenticated tenant context');
+assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], [{ ...base, companyId: 'company_local' }], [], 'company_1'), /outra empresa/,
+  'an unbound local delivery is not silently adopted into an authenticated tenant');
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], [{ ...base, status: 'DELIVERED' }], [], 'company_1'), /finalizadas/);
 const returnDelivery = { ...base, id: 'return_local', status: 'ASSIGNED', extensions: { x_rotamoto_delivery_type: 'RETURN',
   x_rotamoto_custody_state: 'WITH_DRIVER', x_rotamoto_return_destination: { companyId: 'company_1' } } };
+const linkedReturnOrder = { id: 'order_local', num: 'RETURN-42', sync: { canonicalId: 'order_canonical' } };
+assert.equal(Operations.findOrderForDeliveryId('return_local', [linkedReturnOrder], [
+  { ...returnDelivery, orderId: 'order_canonical', sync: { canonicalId: 'return_canonical' } },
+]), linkedReturnOrder, 'RETURN projections resolve their commercial Order through canonical order identity');
 assert.equal(Operations.validateRouteMembership(null, ['return_local'], [returnDelivery], [], 'company_1'), true,
   'an unreceived return remains eligible for manual route positioning');
 assert.throws(() => Operations.validateRouteMembership(null, ['return_local'], [{ ...returnDelivery, status: 'RETURNED',
