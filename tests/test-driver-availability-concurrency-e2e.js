@@ -18,6 +18,8 @@ const { createDriverAvailabilityService } = require('../backend/logistics/driver
 const { createDriverAvailabilityHttpHandler } = require('../backend/logistics/driver-availability-http');
 const { createRestaurantDriverQueueService } = require('../backend/logistics/restaurant-driver-queue');
 const { createRestaurantDriverQueueHttpHandler } = require('../backend/logistics/restaurant-driver-queue-http');
+const { createLogisticsService } = require('../backend/logistics/service');
+const { createLogisticsHttpHandler } = require('../backend/logistics/http');
 
 const RUNTIME_URL = process.env.E2E_RUNTIME_DATABASE_URL;
 const DATABASE = 'rotamoto_e2e';
@@ -195,6 +197,36 @@ async function seedFixture(client, schema, f) {
   }
 }
 
+async function seedReturnReceiptRaces(client, schema, f) {
+  const now = new Date().toISOString();
+  const scenarios = [0, 1].map(() => ({ orderId: UUID(), originalId: UUID(), returnId: UUID() }));
+  await client.query('BEGIN');
+  try {
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [f.companyId]);
+    for (const row of scenarios) {
+      const order = { id: row.orderId, companyId: f.companyId, number: `RETURN-RACE-${row.orderId.slice(0, 8)}`,
+        customer: 'Fixture sintética de concorrência RETURN', status: 'READY', version: 1, createdAt: now, updatedAt: now };
+      const original = { id: row.originalId, companyId: f.companyId, orderId: row.orderId, status: 'CANCELLED',
+        version: 7, createdAt: now, updatedAt: now, extensions: { x_rotamoto_custody_state: 'RETURN_REQUESTED' } };
+      const returned = { id: row.returnId, companyId: f.companyId, orderId: row.orderId, status: 'ARRIVED',
+        version: 4, createdAt: now, updatedAt: now, extensions: { x_rotamoto_delivery_type: 'RETURN',
+          x_rotamoto_return_of_delivery_id: row.originalId, x_rotamoto_custody_state: 'AWAITING_RESTAURANT_RECEIPT',
+          x_rotamoto_driver_handover_confirmed: true } };
+      await client.query(schemaSql(schema, `INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,
+        source_installation_id,payload,version,created_at,updated_at) VALUES($1,$2,'Order','restaurante',$3,$4::jsonb,1,$5,$5)`),
+      [f.companyId, row.orderId, f.restaurantInstallId, JSON.stringify(order), now]);
+      await client.query(schemaSql(schema, `INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,
+        source_installation_id,related_entity_type,related_record_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Delivery','restaurante',$3,'Order',$4,$5::jsonb,7,$6,$6),
+              ($1,$7,'Delivery','restaurante',$3,'Delivery',$2,$8::jsonb,4,$6,$6)`),
+      [f.companyId, row.originalId, f.restaurantInstallId, row.orderId, JSON.stringify(original), now,
+        row.returnId, JSON.stringify(returned)]);
+    }
+    await client.query('COMMIT');
+    return scenarios;
+  } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+}
+
 function assignmentPacket(f, deliveryIndex, { status = 'ASSIGNED', driverId = f.driverId, packetId = `pkt_${UUID()}` } = {}) {
   const base = deliveryRecord(f, f.deliveries[deliveryIndex].id, f.deliveries[deliveryIndex].orderId,
     status === 'REDELIVERY' ? 'FAILED' : 'CREATED', status === 'REDELIVERY' ? f.driverId : null);
@@ -300,7 +332,7 @@ async function seedForeignEligibleDriver(client,schema,f){
   }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}
 }
 
-function apiServer({ identityService, availability, queue, syncService }) {
+function apiServer({ identityService, availability, queue, syncService, logisticsService }) {
   let handlers = [];
   const server = http.createServer(async (req, res) => {
     req.clientIp = '127.0.0.1'; req.requestId = UUID();
@@ -317,6 +349,7 @@ function apiServer({ identityService, availability, queue, syncService }) {
     handlers = [
       createDriverAvailabilityHttpHandler({ identityService, service: availability, rateLimiter, logger: () => {}, allowedOrigin: [origin] }),
       createRestaurantDriverQueueHttpHandler({ identityService, service: queue, rateLimiter, logger: () => {}, allowedOrigin: [origin] }),
+      createLogisticsHttpHandler({ identityService, logisticsService, rateLimiter, logger: () => {}, allowedOrigin: [origin] }),
       createSyncHttpHandler({ identityService, syncService, rateLimiter, logger: () => {}, allowedOrigin: [origin] })
     ];
   } };
@@ -446,6 +479,7 @@ async function main() {
     } catch (error) { await migrator.query('ROLLBACK').catch(() => {}); throw error; }
     markLocal('isolated schema migrated inside rotamoto_e2e', `migrations=${migrations.length}`);
     await seedFixture(migrator, schema, f);
+    const returnReceiptRaces = await seedReturnReceiptRaces(migrator, schema, f);
     await migrator.query('BEGIN');
     try {
       await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[f.otherCompanyId]);
@@ -463,12 +497,81 @@ async function main() {
     const qrPair=crypto.generateKeyPairSync('ed25519');
     const queue=createRestaurantDriverQueueService({qrKey:qrPair.privateKey.export({type:'pkcs8',format:'pem'}),qrKid:'e2e0113'});
     const syncService = createSyncService({ driverAvailability: availability,restaurantDriverQueue:queue });
+    const logisticsService = createLogisticsService();
     pool = createRuntimePool(schema);
     const identityService = createIdentityService({ pool });
-    const host = apiServer({ identityService, availability, queue, syncService }); httpHost = host.server;
+    const host = apiServer({ identityService, availability, queue, syncService, logisticsService }); httpHost = host.server;
     await new Promise((resolve, reject) => { httpHost.once('error', reject); httpHost.listen(0, '127.0.0.1', resolve); });
     origin = `http://127.0.0.1:${httpHost.address().port}`; host.setHandlers(origin);
     const sessions = f.sessions;
+    const raceReturnReceipt = async ({ scenario, returnId, idempotencyKeys }) => {
+      const blocker = await connectOperation(`campaign-0126-return-receipt-${scenario}-barrier`);
+      try {
+        await blocker.client.query("SELECT set_config('app.tenant_id',$1,false)", [f.companyId]);
+        await blocker.client.query('BEGIN');
+        const locked = await blocker.client.query(`SELECT record_id FROM rotamoto.domain_records
+          WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' FOR UPDATE`, [f.companyId, returnId]);
+        assert.equal(locked.rowCount, 1, `${scenario}: independent PostgreSQL transaction locked RETURN ${returnId}`);
+        const blockerPid = Number((await blocker.client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
+        const requests = sessions.map((session, index) => fetchJson(origin,
+          `/api/logistics/returns/${returnId}/receipt`, session, { method: 'POST', body: {
+            expectedVersion: 4, idempotencyKey: idempotencyKeys[index], reason: `Recebimento concorrente ${scenario}`
+          } }));
+        const blocked = await waitForBlockedRequest(observer, 'campaign-0112-api', blockerPid, 2);
+        assert.equal(blocked.length, 2, `${scenario}: both independently authenticated HTTP sessions reached the PostgreSQL lock barrier`);
+        markLocal(`0126 RETURN receipt ${scenario}: two independent HTTP sessions blocked on PostgreSQL`, `blockedPids=${blocked.length}`);
+        await blocker.client.query('COMMIT');
+        return await Promise.all(requests);
+      } finally {
+        await blocker.client.query('ROLLBACK').catch(() => {});
+        await endRuntimeClient(blocker.raw);
+      }
+    };
+
+    const sameReceiptKey = `receipt-race-${UUID()}`;
+    const sameKeyResults = await raceReturnReceipt({ scenario: 'same-idempotency-key',
+      returnId: returnReceiptRaces[0].returnId, idempotencyKeys: [sameReceiptKey, sameReceiptKey] });
+    assert.deepEqual(sameKeyResults.map(row => row.status), [200, 200]);
+    assert.equal(sameKeyResults.filter(row => row.body?.duplicate === true).length, 1,
+      'same-key concurrent receipt has one original result and one replay');
+    const sameKeyCheck = await connectOperation('campaign-0126-return-receipt-same-key-check');
+    try {
+      await sameKeyCheck.client.query("SELECT set_config('app.tenant_id',$1,false)", [f.companyId]);
+      const operations = await sameKeyCheck.client.query(`SELECT count(*)::int AS n FROM rotamoto.delivery_custody_operations
+        WHERE company_id=$1 AND operation_type='RECEIPT' AND delivery_id=$2 AND idempotency_key=$3`,
+      [f.companyId, returnReceiptRaces[0].returnId, sameReceiptKey]);
+      const facts = await sameKeyCheck.client.query(`SELECT count(*)::int AS n FROM rotamoto.domain_records
+        WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2
+          AND payload->>'type'='DELIVERY_RETURN_RECEIPT_CONFIRMED'`, [f.companyId, returnReceiptRaces[0].returnId]);
+      assert.equal(operations.rows[0].n, 1, 'same-key race commits one durable receipt operation');
+      assert.equal(facts.rows[0].n, 1, 'same-key race emits one receipt fact');
+    } finally { await endRuntimeClient(sameKeyCheck.raw); }
+    markLocal('0126 same-key concurrent RETURN receipt: one durable operation and one receipt fact');
+
+    const differentKeyResults = await raceReturnReceipt({ scenario: 'distinct-idempotency-keys',
+      returnId: returnReceiptRaces[1].returnId, idempotencyKeys: [`receipt-race-a-${UUID()}`, `receipt-race-b-${UUID()}`] });
+    assert.equal(differentKeyResults.filter(row => row.status === 200 && row.body?.duplicate !== true).length, 1,
+      JSON.stringify(differentKeyResults.map(row => ({ status: row.status, body: row.body }))));
+    const losingReceipt = differentKeyResults.find(row => row.status === 409 || row.body?.duplicate === true);
+    assert.ok(losingReceipt && (losingReceipt.status === 409 || (losingReceipt.status === 200 && losingReceipt.body?.duplicate === true)),
+      'distinct-key race either rejects the stale revision or converges as already received');
+    if (losingReceipt.status === 409) assert.equal(losingReceipt.body.error.code, 'REVISION_CONFLICT');
+    const distinctCheck = await connectOperation('campaign-0126-return-receipt-distinct-key-check');
+    try {
+      await distinctCheck.client.query("SELECT set_config('app.tenant_id',$1,false)", [f.companyId]);
+      const final = await distinctCheck.client.query(`SELECT payload->>'status' AS status,
+        payload->'extensions'->>'x_rotamoto_custody_state' AS custody,version FROM rotamoto.domain_records
+        WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`, [f.companyId, returnReceiptRaces[1].returnId]);
+      const facts = await distinctCheck.client.query(`SELECT count(*)::int AS n FROM rotamoto.domain_records
+        WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2
+          AND payload->>'type'='DELIVERY_RETURN_RECEIPT_CONFIRMED'`, [f.companyId, returnReceiptRaces[1].returnId]);
+      assert.equal(final.rows[0].status, 'RETURNED');
+      assert.equal(final.rows[0].custody, 'RECEIVED');
+      assert.equal(Number(final.rows[0].version), 5);
+      assert.equal(facts.rows[0].n, 1, 'distinct-key race accepts one receipt event only');
+    } finally { await endRuntimeClient(distinctCheck.raw); }
+    markLocal('0126 distinct-key concurrent RETURN receipt: one accepted receipt, loser is stale 409 or convergent duplicate');
+
     for (const session of sessions) {
       const authenticated = await fetchJson(origin, '/api/driver-availability', session);
       assert.equal(authenticated.status, 200, JSON.stringify(authenticated.body));
