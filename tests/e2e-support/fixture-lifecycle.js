@@ -236,7 +236,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(availabilityOnline.status,200,JSON.stringify(availabilityOnline.body));
     assert.equal(availabilityOnline.body.availability.effectiveStatus,'online','fixture explicitly opts its Driver in before creating assigned work');
 
-    let orderId = null, deliveryId = null, navigationRouteId = null;
+    let orderId = null, deliveryId = null, navigationRouteId = null, proofFixture = null;
     let navigationDeliveryIds = [];
     if (businessFixture) {
     const orderLocalId = `order-${crypto.randomUUID()}`;
@@ -333,6 +333,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(motoboyProofPush.status, 200, JSON.stringify(motoboyProofPush.body));
     assert.equal(motoboyProofPush.body.operationResults[0].status, 'accepted', JSON.stringify(motoboyProofPush.body.operationResults));
     const canonicalProofId=motoboyProofPush.body.operationResults[0].canonicalId;
+    proofFixture = Object.freeze({ proofId, canonicalProofId, storageRef: uploadedBody.storageRef,
+      sha256: uploadedBody.sha256, sizeBytes: uploadedBody.sizeBytes, mimeType: uploadedBody.mimeType });
     await runtime.query("SELECT set_config('app.tenant_id',$1,true)",[companyId]);
     const canonicalProof=await runtime.query("SELECT payload,related_entity_type,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,canonicalProofId]);
     assert.equal(canonicalProof.rowCount,1,'accepted proof has canonical PostgreSQL metadata');
@@ -362,9 +364,66 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     while (Math.floor(Date.now() / 30000) < firstLoginCounter)
       await new Promise(resolve => setTimeout(resolve, 100));
     const browserMfaCode = codeAt(enrollment.body.secret, Math.floor(Date.now() / 30000) + 1);
+    const provisionAdditionalTenant = async ({ companyName, email: tenantEmail }) => {
+      if (typeof companyName !== 'string' || !companyName.trim() || typeof tenantEmail !== 'string' || !tenantEmail.includes('@'))
+        throw new Error('Tenant E2E adicional inválido.');
+      const provisionedTenant = await call('/api/admin/tenants/provision', { method: 'POST',
+        body: { companyName, email: tenantEmail, idempotencyKey: `e2e-${crypto.randomUUID()}` },
+        headers: { 'X-E2E-Operator': operatorMarker } });
+      assert.equal(provisionedTenant.status, 202, JSON.stringify(provisionedTenant.body));
+      const ownerInvitation = emails.findLast(message => message.kind === 'owner_invitation' && message.to === tenantEmail);
+      assert(ownerInvitation?.token, 'E2E email sink captured the second tenant owner invitation');
+      const tenantPassword = `E2E-${crypto.randomBytes(30).toString('base64url')}`;
+      const tenantAccepted = await call('/api/identity/invitations/accept', { method: 'POST',
+        body: { token: ownerInvitation.token, password: tenantPassword } });
+      assert.equal(tenantAccepted.status, 200, JSON.stringify(tenantAccepted.body));
+      const enrollmentLogin = await call('/api/identity/login', { method: 'POST',
+        body: { email: tenantEmail, password: tenantPassword, companyId: provisionedTenant.body.companyId } });
+      assert.equal(enrollmentLogin.status, 200, JSON.stringify(enrollmentLogin.body));
+      const setupCookie = enrollmentLogin.headers.get('set-cookie').split(';', 1)[0];
+      const setupSession = await call('/api/identity/session', { cookie: setupCookie });
+      const enrollment = await call('/api/identity/mfa/enrollment', { method: 'POST', cookie: setupCookie,
+        csrf: setupSession.body.csrfToken, body: {} });
+      assert.equal(enrollment.status, 200, JSON.stringify(enrollment.body));
+      let counter = Math.floor(Date.now() / 30000);
+      const confirmed = await call('/api/identity/mfa/enrollment/confirm', { method: 'POST', cookie: setupCookie,
+        csrf: setupSession.body.csrfToken, body: { code: codeAt(enrollment.body.secret, counter) } });
+      assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
+      while (Math.floor(Date.now() / 30000) <= counter) await new Promise(resolve => setTimeout(resolve, 100));
+      counter = Math.floor(Date.now() / 30000);
+      const ownerLogin = await call('/api/identity/login', { method: 'POST',
+        body: { email: tenantEmail, password: tenantPassword, companyId: provisionedTenant.body.companyId,
+          mfaCode: codeAt(enrollment.body.secret, counter) } });
+      assert.equal(ownerLogin.status, 200, JSON.stringify(ownerLogin.body));
+      const ownerCookie = ownerLogin.headers.get('set-cookie').split(';', 1)[0];
+      const ownerSession = await call('/api/identity/session', { cookie: ownerCookie });
+      assert.equal(ownerSession.status, 200, JSON.stringify(ownerSession.body));
+      const memberships = await call('/api/admin/memberships?limit=100', { cookie: ownerCookie });
+      const ownerMembership = memberships.body.members.find(row => row.userId === tenantAccepted.body.userId);
+      assert(ownerMembership?.membershipId, 'second tenant owner membership exists');
+      const deviceId = `tenant-b-${crypto.randomUUID()}`;
+      const registered = await call('/api/sync/installations/restaurante', { method: 'POST', cookie: ownerCookie,
+        csrf: ownerSession.body.csrfToken, body: { deviceId } });
+      assert.equal(registered.status, 200, JSON.stringify(registered.body));
+      const now = new Date().toISOString(), localDriverId = `driver-${crypto.randomUUID()}`;
+      const driverPush = await call('/api/sync/push', { method: 'POST', cookie: ownerCookie, csrf: ownerSession.body.csrfToken,
+        body: { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1,
+          packetId: `pkt_${crypto.randomUUID()}`, deviceId, source: { deviceId }, createdAt: now,
+          data: { drivers: [{ id: localDriverId, name: 'Motorista Tenant B E2E', status: 'active', createdAt: now, updatedAt: now, version: 1 }] } } });
+      assert.equal(driverPush.status, 200, JSON.stringify(driverPush.body));
+      const tenantDriverId = driverPush.body.aliases.find(row => row.entity === 'Driver')?.canonicalId;
+      assert(tenantDriverId, 'second tenant Driver has canonical identity');
+      const bound = await call(`/api/admin/memberships/${ownerMembership.membershipId}/driver`, { method: 'PUT', cookie: ownerCookie,
+        csrf: ownerSession.body.csrfToken, body: { driverId: tenantDriverId } });
+      assert.equal(bound.status, 200, JSON.stringify(bound.body));
+      return Object.freeze({ companyId: provisionedTenant.body.companyId, userId: tenantAccepted.body.userId,
+        membershipId: ownerMembership.membershipId, driverId: tenantDriverId, cookie: ownerCookie,
+        csrf: ownerSession.body.csrfToken, email: tenantEmail });
+    };
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
       driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, restaurantDevice, email, password, mfaCode: browserMfaCode,
-      browserSessionCookie: sessionCookie, apiOrigin: host.base, runtime, call, authenticatedCall,driverAvailabilityService }));
+      browserSessionCookie: sessionCookie, apiOrigin: host.base, mediaDirectory, proof: proofFixture,
+      provisionAdditionalTenant, runtime, call, authenticatedCall, driverAvailabilityService }));
     const recoveryRequest = await call('/api/identity/recovery', { method: 'POST', body: { email } });
     assert.equal(recoveryRequest.status, 202, JSON.stringify(recoveryRequest.body));
     const recoveryEmail = emails.findLast(message => message.kind === 'password_recovery' && message.to === email);
