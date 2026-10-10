@@ -17,6 +17,28 @@
   return tombstone?'tombstone':'apply';
  }
  function statusFromAck(status){return ['accepted','duplicate','rejected','conflict'].includes(status)?status:'invalid'}
+ function canonicalBaseVersion(record,operation){
+  const currentId=String(record?.sync?.canonicalId||record?.id||''),operationId=String(operation?.canonicalId||'');
+  const observed=Number(record?.sync?.canonicalVersion),acknowledged=Number(operation?.canonicalVersion);
+  const valid=value=>Number.isSafeInteger(value)&&value>0;
+  if(operationId&&currentId&&operationId!==currentId)return valid(observed)?observed:(valid(acknowledged)?acknowledged:null);
+  const versions=[observed,acknowledged].filter(valid);return versions.length?Math.max(...versions):null;
+ }
+ function captureSourceVersions(packetData={},sourceData={}){
+  const out={};
+  for(const [key,entity,sourceKey] of [['orders','Order','orders'],['deliveries','Delivery','deliveries'],['drivers','Driver','bikes'],['routes','Route','routes'],['earnings','Earning','earnings']]){
+   const sources=new Map((sourceData[sourceKey]||[]).filter(Boolean).map(row=>[row.id,row]));
+   for(const row of packetData[key]||[]){const source=sources.get(row.id)||row;out[`${entity}:${row.id}`]=Number(source?.sync?.version||source?.version||1)}
+  }
+  const deliveries=new Map((sourceData.deliveries||[]).filter(Boolean).map(row=>[row.id,row]));
+  for(const row of packetData.tombstones||[]){const source=deliveries.get(row.id)||row;out[`Delivery:${row.id}`]=Number(source?.sync?.version||source?.version||1)}
+  return out;
+ }
+ function retryDelay({status,retryAfterMs}={},attempt=0,{baseMs=1000,maxMs=60000}={}){
+  if(status!==408&&status!==429&&!(Number(status)>=500))return null;
+  if(Number.isFinite(Number(retryAfterMs))&&Number(retryAfterMs)>0)return Math.min(300000,Math.max(1000,Number(retryAfterMs)));
+  return Math.min(maxMs,baseMs*(2**Math.min(10,Math.max(0,Number(attempt)||0))));
+ }
  function hasCurrentCanonicalAck(record,canonicalId,operation){return !!record&&!!operation&&['accepted','duplicate'].includes(operation.status)&&
   String(operation.canonicalId||'')===String(canonicalId||'')&&Number(operation.sourceVersion)===Number(record.sync?.version||record.version||1)}
  function shouldRetry(status,changed){return status==='pending'||(['accepted','duplicate'].includes(status)&&changed)||(['rejected','conflict'].includes(status)&&changed)}
@@ -71,5 +93,5 @@
    .every(field=>JSON.stringify(local[field])===JSON.stringify(remote[field]));
  }
  function createCoordinator({locks,lockName='rotamoto-sync'}={}){let active=null;return Object.freeze({run(task){if(typeof task!=='function')return Promise.reject(new TypeError('Tarefa de sync inválida.'));if(active)return active;const execute=()=>Promise.resolve().then(task);active=locks?.request?locks.request(lockName,{mode:'exclusive'},execute):execute();return active.finally(()=>{active=null})}})}
- return Object.freeze({canonicalEvent,decide,statusFromAck,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
+ return Object.freeze({canonicalEvent,decide,statusFromAck,canonicalBaseVersion,captureSourceVersions,retryDelay,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
 });

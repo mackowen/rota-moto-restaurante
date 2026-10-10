@@ -829,8 +829,8 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       const outboxEvent = { eventId, type: 'CANONICAL_RECORD_UPSERTED', entity: item.entityType,
         entityId: item.canonicalId, occurredAt: now.toISOString(), actor: { type: 'user', id: userId },
         payload: item.canonical, protocolVersion: 1 };
-      await client.query(`INSERT INTO rotamoto.sync_outbox(company_id,event_id,app_key,installation_id,payload)
-        VALUES($1,$2,$3,$4,$5::jsonb)`, [companyId, eventId, appKey, installationId, JSON.stringify(outboxEvent)]);
+      await client.query(`INSERT INTO rotamoto.sync_outbox(company_id,event_id,app_key,installation_id,payload,created_at)
+        VALUES($1,$2,$3,$4,$5::jsonb,clock_timestamp())`, [companyId, eventId, appKey, installationId, JSON.stringify(outboxEvent)]);
     }
     for (const revocation of assignmentRevocations) {
       const eventId = uuidV7(now.getTime());

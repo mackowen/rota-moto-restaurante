@@ -52,3 +52,17 @@ assert(!R.isSupersededRestaurantDeliveryOperation(assignmentProjection,{...advan
 const keep=R.compactInbox([{id:'old',status:'reconciled',receivedAt:1},{id:'conflict',status:'conflict',receivedAt:1},...Array.from({length:3},(_,i)=>({id:`r${i}`,status:'reconciled',receivedAt:i+2}))],{keep:2});assert.deepEqual([...keep].sort(),['old','r0']);
 async function testCoordinator(){let active=0,max=0,lockRequests=0;const locks={request:async(_name,_options,run)=>{lockRequests++;return run()}};const coordinator=R.createCoordinator({locks,lockName:'test'});const task=async()=>{active++;max=Math.max(max,active);await new Promise(resolve=>setTimeout(resolve,10));active--;return 'ok'};const values=await Promise.all([coordinator.run(task),coordinator.run(task)]);assert.deepEqual(values,['ok','ok']);assert.equal(max,1);assert.equal(lockRequests,1)}
 testCoordinator().then(()=>console.log('sync reconciliation policy tests: OK')).catch(error=>{console.error(error);process.exitCode=1});
+assert.equal(R.canonicalBaseVersion({id:'route-local',sync:{canonicalId:'route-canonical',canonicalVersion:3}},{canonicalId:'route-canonical',canonicalVersion:1}),3,
+  'push uses the newest canonical revision observed on the local Route');
+assert.equal(R.canonicalBaseVersion({id:'route-local',sync:{canonicalId:'route-canonical',canonicalVersion:3}},{canonicalId:'other-route',canonicalVersion:4}),3,
+  'an operation ack for another canonical Route cannot replace the local canonical identity');
+assert.equal(R.canonicalBaseVersion({id:'new-route',sync:{version:1}},{canonicalVersion:0}),null,
+  'new Route has no canonical base revision');
+assert.equal(R.captureSourceVersions({routes:[{id:'route-local',version:4,baseVersion:3}]},{routes:[{id:'route-local',version:4,sync:{version:2,canonicalVersion:3}}]})['Route:route-local'],2,
+  'ACK snapshot tracks the dirty local source revision, not the packet projection version');
+assert.equal(R.retryDelay({status:429},0),1000);
+assert.equal(R.retryDelay({status:429,retryAfterMs:7000},2),7000);
+assert.equal(R.retryDelay({status:503},3),8000);
+assert.equal(R.retryDelay({status:503},20),60000);
+assert.equal(R.retryDelay({status:409},0),null,'permanent revision conflicts are not automatically retried');
+assert.equal(R.retryDelay({status:403},0),null,'authorization failures are not automatically retried');
