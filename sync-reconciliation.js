@@ -10,9 +10,10 @@
   if(raw.type==='CANONICAL_RECORD_UPSERTED'&&String(payload.id)!==String(raw.entityId))throw new Error('CANONICAL_ID_MISMATCH');
   return {eventId:raw.eventId,type:raw.type,entity:raw.entity,entityId:raw.entityId,version,payload:{...payload},occurredAt:raw.occurredAt};
  }
- function decide({localVersion=0,localPending=false,priorStatus=null,incomingVersion,tombstone=false}){
+ function decide({localVersion=0,localPending=false,priorStatus=null,incomingVersion,tombstone=false,confirmedCanonicalAck=false}){
   if(!Number.isSafeInteger(Number(incomingVersion))||Number(incomingVersion)<1)return 'invalid';
   if(localPending||['rejected','conflict'].includes(priorStatus))return 'conflict';
+  if(Number(localVersion)===Number(incomingVersion)&&confirmedCanonicalAck)return tombstone?'tombstone':'apply';
   if(Number(localVersion)>=Number(incomingVersion))return 'stale';
   return tombstone?'tombstone':'apply';
  }

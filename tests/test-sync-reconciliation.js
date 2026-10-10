@@ -6,6 +6,9 @@ const event={eventId:uuid,type:'CANONICAL_RECORD_UPSERTED',entity:'Delivery',ent
 assert.equal(R.canonicalEvent(event,'tenant-a').version,3);
 assert.throws(()=>R.canonicalEvent(event,'tenant-b'),/TENANT_MISMATCH/);
 assert.equal(R.decide({localVersion:2,incomingVersion:3}),'apply');
+assert.equal(R.decide({localVersion:1,incomingVersion:1,confirmedCanonicalAck:true}),'apply',
+  'same-revision canonical pull reconciles server-side dispatch applied before the initial ACK revision');
+assert.equal(R.decide({localVersion:1,incomingVersion:1}),'stale','same-revision event without a matching ACK stays stale');
 assert.equal(R.decide({localVersion:2,incomingVersion:3,localPending:true}),'conflict');
 assert.equal(R.decide({localVersion:3,incomingVersion:2}),'stale');
 assert.equal(R.decide({localVersion:1,incomingVersion:2,tombstone:true}),'tombstone');
