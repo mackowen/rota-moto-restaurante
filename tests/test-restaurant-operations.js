@@ -93,6 +93,12 @@ assert.equal(Operations.validateRouteMembership(null, ['d_canonical'], deliverie
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local', 'd_canonical'], deliveries, [], 'company_1'), /duas vezes/);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], [{ ...base, companyId: 'company_2' }], [], 'company_1'), /outra empresa/);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], [{ ...base, status: 'DELIVERED' }], [], 'company_1'), /finalizadas/);
+const returnDelivery = { ...base, id: 'return_local', status: 'ASSIGNED', extensions: { x_rotamoto_delivery_type: 'RETURN',
+  x_rotamoto_custody_state: 'WITH_DRIVER', x_rotamoto_return_destination: { companyId: 'company_1' } } };
+assert.equal(Operations.validateRouteMembership(null, ['return_local'], [returnDelivery], [], 'company_1'), true,
+  'an unreceived return remains eligible for manual route positioning');
+assert.throws(() => Operations.validateRouteMembership(null, ['return_local'], [{ ...returnDelivery, status: 'RETURNED',
+  extensions: { ...returnDelivery.extensions, x_rotamoto_custody_state: 'RECEIVED' } }], [], 'company_1'), /finalizadas/);
 assert.equal(Operations.validateRouteMembership({ id: 'route_current', deliveryIds: ['d_local'] }, ['d_local'], [{ ...base, status: 'DELIVERED' }], [], 'company_1'), true);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], deliveries, [{ id: 'route_old', deliveryIds: ['d_canonical'] }], 'company_1'), /outra rota ativa/);
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');

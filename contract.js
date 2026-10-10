@@ -29,6 +29,10 @@
     DELIVERY_STARTED:'OUT_FOR_DELIVERY', DELIVERY_ARRIVED:'ARRIVED',
     DELIVERY_COMPLETED:'DELIVERED', DELIVERY_FAILED:'FAILED', DELIVERY_RETURNED:'RETURNED'
   });
+  const RETURN_EVENT_TYPES = Object.freeze({
+    DELIVERY_RETURN_STARTED:'OUT_FOR_DELIVERY', DELIVERY_RETURN_ARRIVED:'ARRIVED',
+    DELIVERY_RETURN_HANDED_OVER:'AWAITING_RESTAURANT_RECEIPT'
+  });
   const REST_TO_CANONICAL = Object.freeze({
     AGUARDANDO:'CREATED', ATRIBUIDA:'ASSIGNED', EM_ROTA:'OUT_FOR_DELIVERY', 'EM ROTA':'OUT_FOR_DELIVERY', CHEGOU:'ARRIVED',
     FINALIZADA:'DELIVERED', CANCELADA:'CANCELLED'
@@ -197,5 +201,5 @@
     }
     return{valid:errors.length===0,errors};
   }
-  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,EXECUTION_EVENT_STATUS,WRITE_AUTHORITY,SYNC_ACK,ENTITY_SCHEMAS,validateEntity,validateRouteMembership,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,deliveryTypeOf,returnOfDeliveryId,custodyStateOf,event,packet,normalizeDeliveryStatus,now,id});
+  globalThis.RotaMotoContract = Object.freeze({APP,PROTOCOL_VERSION,SCHEMA_VERSION,STATUS,TRANSITIONS,EXECUTION_EVENT_STATUS,RETURN_EVENT_TYPES,WRITE_AUTHORITY,SYNC_ACK,ENTITY_SCHEMAS,validateEntity,validateRouteMembership,canTransition,assertTransition,timestampMs,compareRevision,isNewer,revise,tombstone,envelope,deliveryFromOrder,deliveryFromRace,raceFromDelivery,deliveryTypeOf,returnOfDeliveryId,custodyStateOf,event,packet,normalizeDeliveryStatus,now,id});
 })();

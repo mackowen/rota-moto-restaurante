@@ -5,6 +5,7 @@ const { uuidV7 } = require('../identity/service');
 const { createMediaStorage } = require('./media-storage');
 const OrderMoney = require('../../order-money');
 const { projectRestaurantDriverAssignment, projectInternalExecution } = require('../logistics/sync-projection');
+const { validateReturnEvent } = require('../logistics/return-events');
 
 const WRITE_OWNERS = Object.freeze({ Order: 'restaurante', Route: 'restaurante', Driver: 'restaurante', Earning: 'restaurante',
   LocationPoint: 'motoboy', DeliveryProof: 'motoboy' });
@@ -380,13 +381,27 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         if(appKey!=='restaurante')throw new SyncError('FORBIDDEN','Somente o Restaurante planeja a associação de rotas.');
         if(!Array.isArray(record.deliveryIds)||record.deliveryIds.length>500||new Set(record.deliveryIds).size!==record.deliveryIds.length||
           record.deliveryIds.some(id=>typeof id!=='string'||!id.trim()||id.length>200))invalid('Route.deliveryIds inválido.');
+        const previousRoute=await client.query(`SELECT payload,version FROM rotamoto.domain_records
+          WHERE company_id=$1 AND record_id=$2 AND entity_type='Route' AND deleted_at IS NULL`,[companyId,canonicalId]);
+        if(previousRoute.rowCount){
+          const routeBaseVersion=record.baseVersion??record.sync?.canonicalVersion;
+          if(!Number.isSafeInteger(routeBaseVersion)||routeBaseVersion!==Number(previousRoute.rows[0].version))
+            throw new SyncError('REVISION_CONFLICT','Route mudou; atualize a sequência canônica antes de reorganizar.');
+        }
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 402119))',[companyId+':active-route-membership']);
         const canonicalIds=[];
         for(const localDeliveryId of record.deliveryIds){
           const deliveryId=await resolveReferencedAlias(client,companyId,'Delivery',localDeliveryId);
           if(!deliveryId)throw new SyncError('UNRESOLVED_REFERENCE','Route referencia Delivery sem ID canônico.');
-          const exists=await client.query('SELECT 1 FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type=\'Delivery\' AND deleted_at IS NULL',[companyId,deliveryId]);
+          const exists=await client.query(`SELECT payload FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2
+            AND entity_type='Delivery' AND deleted_at IS NULL`,[companyId,deliveryId]);
           if(!exists.rowCount)throw new SyncError('UNRESOLVED_REFERENCE','Route referencia Delivery ausente ou tombstonada.');
+          const delivery=exists.rows[0].payload,extensions=delivery.extensions||{},isReturn=extensions.x_rotamoto_delivery_type==='RETURN';
+          if(isReturn&&(extensions.x_rotamoto_return_route_id!==canonicalId||['RETURNED','CANCELLED'].includes(delivery.status)||
+              extensions.x_rotamoto_custody_state==='RECEIVED'))
+            throw new SyncError('INVALID_ROUTE','Corrida RETURN concluída ou vinculada a outra rota não pode ser reorganizada.');
+          if(!isReturn&&!['CREATED','ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','DELIVERED','FAILED','REDELIVERY'].includes(delivery.status))
+            throw new SyncError('INVALID_ROUTE','A rota contém uma Delivery em estado incompatível.');
           const activeElsewhere=await client.query(`SELECT record_id::text FROM rotamoto.domain_records
             WHERE company_id=$1 AND entity_type='Route' AND record_id<>$2 AND deleted_at IS NULL
               AND payload->'deliveryIds' ? $3 LIMIT 1`,[companyId,canonicalId,deliveryId]);
@@ -394,6 +409,19 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           canonicalIds.push(deliveryId);
         }
         if(new Set(canonicalIds).size!==canonicalIds.length)invalid('Route.deliveryIds contém a mesma Delivery por aliases diferentes.');
+        const previousIds=previousRoute.rows[0]?.payload?.deliveryIds||[];
+        const executingStops=previousIds.length?await client.query(`SELECT record_id::text,payload->>'status' AS status
+          FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='Delivery' AND record_id=ANY($2::uuid[])
+            AND payload->>'status'=ANY($3::text[])`,[companyId,previousIds,['ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED']]):{rows:[]};
+        if(executingStops.rows.some(row=>previousIds.indexOf(row.record_id)!==canonicalIds.indexOf(row.record_id)))
+          throw new SyncError('INVALID_ROUTE','A corrida em execução deve permanecer na mesma posição da rota.');
+        const openReturn=previousIds.length?await client.query(`SELECT record_id::text FROM rotamoto.domain_records
+          WHERE company_id=$1 AND entity_type='Delivery' AND record_id=ANY($2::uuid[])
+            AND payload->'extensions'->>'x_rotamoto_delivery_type'='RETURN'
+            AND payload->>'status' NOT IN ('RETURNED','CANCELLED')
+            AND COALESCE(payload->'extensions'->>'x_rotamoto_custody_state','')<>'RECEIVED'`,[companyId,previousIds]):{rows:[]};
+        if(openReturn.rows.some(row=>!canonicalIds.includes(row.record_id)))
+          throw new SyncError('INVALID_ROUTE','Uma devolução com custódia aberta deve permanecer na rota responsável até sua resolução.');
         canonical.deliveryIds=canonicalIds;
       }
       if(entityType==='Earning'){
@@ -677,13 +705,41 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         [uuidV7(now.getTime()),companyId,userId,canonicalId,JSON.stringify(routeMembershipChange)]);
       }
       if (entityType === 'DeliveryEvent' && String(canonical.entity || '').toLowerCase() === 'delivery' && !existing.rowCount) {
+        const currentDelivery = await client.query(`SELECT payload,version,created_at,deleted_at FROM rotamoto.domain_records
+          WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' FOR UPDATE`, [companyId, relatedId]);
+        if (!currentDelivery.rowCount || currentDelivery.rows[0].deleted_at) throw new SyncError('UNRESOLVED_REFERENCE', 'Delivery canônica inexistente ou encerrada.');
+        const currentPayload = currentDelivery.rows[0].payload;
+        const currentExtensions = currentPayload.extensions || {};
+        const isReturn = currentExtensions.x_rotamoto_delivery_type === 'RETURN';
+        const returnEvent = validateReturnEvent({ type: canonical.type, deliveryType: currentExtensions.x_rotamoto_delivery_type,
+          status: currentPayload.status, custodyState: currentExtensions.x_rotamoto_custody_state,
+          expectedVersion: record.payload?.expectedVersion, canonicalVersion: currentDelivery.rows[0].version });
+        if (returnEvent?.error) throw new SyncError(returnEvent.error, returnEvent.message);
+        if (returnEvent?.transition?.to) {
+          const projectedAt = now.toISOString(), projectedVersion = Number(currentDelivery.rows[0].version) + 1;
+          const projected = { ...currentPayload, status: returnEvent.transition.to, updatedAt: projectedAt, version: projectedVersion,
+            ...(returnEvent.transition.to === 'OUT_FOR_DELIVERY' ? { extensions: { ...currentExtensions, x_rotamoto_return_started_at: projectedAt } } : { arrivedAt: projectedAt }) };
+          await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5
+            WHERE company_id=$1 AND record_id=$2`, [companyId, relatedId, JSON.stringify(projected), projectedVersion, projectedAt]);
+          pending.push({ entityType: 'Delivery', canonicalId: relatedId, canonical: projected,
+            meta: { createdAt: new Date(currentDelivery.rows[0].created_at), updatedAt: new Date(projectedAt), version: projectedVersion },
+            changed: true, relatedType: 'Delivery', relatedId: currentExtensions.x_rotamoto_return_of_delivery_id || null });
+        } else if (returnEvent?.transition && canonical.type === 'DELIVERY_RETURN_HANDED_OVER') {
+          const projectedAt = now.toISOString(), projectedVersion = Number(currentDelivery.rows[0].version) + 1;
+          const projected = { ...currentPayload, updatedAt: projectedAt, version: projectedVersion,
+            extensions: { ...currentExtensions, x_rotamoto_custody_state: returnEvent.custodyState,
+              x_rotamoto_driver_handover_at: projectedAt, x_rotamoto_driver_handover_confirmed: true } };
+          await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5
+            WHERE company_id=$1 AND record_id=$2`, [companyId, relatedId, JSON.stringify(projected), projectedVersion, projectedAt]);
+          pending.push({ entityType: 'Delivery', canonicalId: relatedId, canonical: projected,
+            meta: { createdAt: new Date(currentDelivery.rows[0].created_at), updatedAt: new Date(projectedAt), version: projectedVersion },
+            changed: true, relatedType: 'Delivery', relatedId: currentExtensions.x_rotamoto_return_of_delivery_id || null });
+        } else {
         const executionStatus = ({ DELIVERY_ACCEPTED: 'ACCEPTED', DELIVERY_PICKED_UP: 'PICKED_UP',
           DELIVERY_STARTED: 'OUT_FOR_DELIVERY', DELIVERY_ARRIVED: 'ARRIVED',
           DELIVERY_COMPLETED: 'DELIVERED', DELIVERY_FAILED: 'FAILED', DELIVERY_RETURNED: 'RETURNED' })[canonical.type];
         if (!executionStatus) throw new SyncError('FORBIDDEN_EVENT', 'Evento de execução não reconhecido ou não permitido.');
-        const currentDelivery = await client.query(`SELECT payload,version,created_at,deleted_at FROM rotamoto.domain_records
-          WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' FOR UPDATE`, [companyId, relatedId]);
-        if (!currentDelivery.rowCount || currentDelivery.rows[0].deleted_at) throw new SyncError('UNRESOLVED_REFERENCE', 'Delivery canônica inexistente ou encerrada.');
+        if (isReturn) throw new SyncError('FORBIDDEN_EVENT', 'A Delivery RETURN aceita somente fatos operacionais próprios da devolução.');
         const oldStatus = currentDelivery.rows[0].payload.status;
         if (oldStatus === 'CANCELLED' && ['DELIVERY_PICKED_UP','DELIVERY_STARTED'].includes(canonical.type)) {
           const custodyError = new SyncError('CUSTODY_DIVERGENCE', 'Coleta alegada após cancelamento exige reconciliação operacional.');
@@ -705,11 +761,12 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
           if (executionStatus === 'DELIVERED') projected.completedAt = canonical.occurredAt || projectedAt;
           await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=$4,updated_at=$5
             WHERE company_id=$1 AND record_id=$2`, [companyId, relatedId, JSON.stringify(projected), projectedVersion, projectedAt]);
-          await projectInternalExecution(client, { companyId, userId, deliveryId: relatedId,
+          if (!isReturn) await projectInternalExecution(client, { companyId, userId, deliveryId: relatedId,
             deliveryStatus: executionStatus, now });
           pending.push({ entityType: 'Delivery', canonicalId: relatedId, canonical: projected,
             meta: { createdAt: new Date(currentDelivery.rows[0].created_at), updatedAt: new Date(projectedAt), version: projectedVersion },
             changed: true, relatedType: 'Order', relatedId: null });
+        }
         }
       }
       pending.push({ entityType, canonicalId, canonical, meta, changed, relatedType, relatedId });

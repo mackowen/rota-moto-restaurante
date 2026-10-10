@@ -132,7 +132,8 @@ function createDeliveryCustodyService({clock=()=>new Date(),ensureInternalProvid
     return {delivery:{id:row.record_id,status:row.payload.status,version:Number(row.version),orderId:row.payload.orderId||null,
       driverId:row.payload.driverId||null,pickedUpAt:row.payload.pickedUpAt||null,deliveryType:ext.x_rotamoto_delivery_type||'STANDARD',
       custodyState:ext.x_rotamoto_custody_state||(row.payload.pickedUpAt?STATES.WITH_DRIVER:STATES.NOT_COLLECTED),
-      custodyDecision:ext.x_rotamoto_custody_decision||null,returnDeliveryId:returnId,orderSource:row.order_payload?.source||null,
+      custodyDecision:ext.x_rotamoto_custody_decision||null,custodyDivergence:ext.x_rotamoto_custody_divergence||null,
+      returnDeliveryId:returnId,orderSource:row.order_payload?.source||null,
       externalReference:row.order_payload?.externalId||null,fulfillmentMode:mode.rows[0]?.mode||'internal'},
       returnDelivery:returnResult.rows[0]?{id:returnResult.rows[0].record_id,status:returnResult.rows[0].payload.status,
         version:Number(returnResult.rows[0].version),driverId:returnResult.rows[0].payload.driverId,
@@ -188,7 +189,11 @@ function createDeliveryCustodyService({clock=()=>new Date(),ensureInternalProvid
     if(original.payload.status!=='CANCELLED')fail('INVALID_STATE_TRANSITION','A decisão só pode ser registrada depois do cancelamento canônico.');
     if(Number(original.version)!==input.expectedVersion)fail('REVISION_CONFLICT','A entrega mudou; atualize antes de decidir.');
     const currentExt=original.payload.extensions||{},currentState=currentExt.x_rotamoto_custody_state||STATES.DECISION_REQUIRED;
+    const divergence=currentExt.x_rotamoto_custody_divergence;
     if(currentState==='DISPUTED'&&input.decision!=='INCIDENT'&&input.reconcileIncident!==true)fail('CUSTODY_RECONCILIATION_REQUIRED','Resolva a divergência de custódia explicitamente antes da decisão.');
+    const resolveDivergence=divergence?.state==='OPEN'&&['RETURN','RELEASE'].includes(input.decision);
+    const resolvedDivergence=resolveDivergence?{...divergence,state:'RESOLVED',resolvedAt:(await serverTime(client)).toISOString(),
+      resolvedBy:principal.user_id,resolution:input.decision,resolutionReason:reason}:divergence;
     if(input.decision==='RETURN'){
       if(!original.payload.pickedUpAt||!original.payload.driverId)fail('CUSTODY_NOT_CONFIRMED','A coleta e o motoboy responsável precisam estar confirmados pelo servidor.');
       if(currentExt.x_rotamoto_return_delivery_id)fail('RETURN_ALREADY_EXISTS','Já existe corrida de devolução para esta entrega.');
@@ -214,14 +219,15 @@ function createDeliveryCustodyService({clock=()=>new Date(),ensureInternalProvid
       const provider=priorFulfillment.rowCount?{id:priorFulfillment.rows[0].provider_id}:await ensureInternalProvider(client,principal);
       if(!provider?.id)fail('PROVIDER_UNAVAILABLE','Frota própria não está configurada para registrar a devolução.');
       await client.query(`INSERT INTO rotamoto.delivery_fulfillments(company_id,fulfillment_id,delivery_id,provider_id,mode,driver_id,
-        status,selected_by,updated_by,revision,selected_at,created_at,updated_at)
-        VALUES($1,$2,$3,$4,'internal',$5,'selected',$6,$6,1,$7,$7,$7)`,
+        status,selected_by,updated_by,revision,selected_at)
+        VALUES($1,$2,$3,$4,'internal',$5,'selected',$6,$6,1,$7)`,
       [principal.company_id,uuidV7(clock().getTime()),returnId,provider.id,payload.driverId,principal.user_id,now]);
       const ids=(route.payload.deliveryIds||[]).filter(id=>id!==deliveryId);ids.push(returnId);
       await saveRoute(client,principal,installationId,route,ids);
       const updatedOriginal=await saveDelivery(client,principal,installationId,original,{...original.payload,extensions:{...currentExt,
         x_rotamoto_custody_state:STATES.RETURN_REQUESTED,x_rotamoto_return_delivery_id:returnId,
         x_rotamoto_custody_decision:{decision:'RETURN',reason,operatorId:principal.user_id,decidedAt:now.toISOString()},
+        ...(resolvedDivergence?{x_rotamoto_custody_divergence:resolvedDivergence}:{}),
         x_rotamoto_custody_route_id:route.record_id}});
       await emit(client,principal,installationId,'Delivery',returnId,payload,payload.driverId);
       await appendFact(client,principal,installationId,deliveryId,payload.driverId,'DELIVERY_RETURN_REQUESTED',{returnDeliveryId:returnId,reason,decision:'RETURN',decidedAt:now.toISOString()});
@@ -236,7 +242,8 @@ function createDeliveryCustodyService({clock=()=>new Date(),ensureInternalProvid
     const now=await serverTime(client),installationId=await restaurantInstallation(client,principal.company_id),nextState=input.decision==='RELEASE'?STATES.RELEASED:STATES.INCIDENT_OPEN;
     const decision={decision:input.decision,reason,operatorId:principal.user_id,decidedAt:now.toISOString(),
       ...(currentState==='DISPUTED'&&input.reconcileIncident?{reconciledAt:now.toISOString(),reconciledBy:principal.user_id}:{})};
-    const updated=await saveDelivery(client,principal,installationId,original,{...original.payload,extensions:{...currentExt,x_rotamoto_custody_state:nextState,x_rotamoto_custody_decision:decision}});
+    const updated=await saveDelivery(client,principal,installationId,original,{...original.payload,extensions:{...currentExt,x_rotamoto_custody_state:nextState,
+      x_rotamoto_custody_decision:decision,...(resolvedDivergence?{x_rotamoto_custody_divergence:resolvedDivergence}:{})}});
     await appendFact(client,principal,installationId,deliveryId,original.payload.driverId||null,
       input.decision==='RELEASE'?'DELIVERY_CUSTODY_RELEASED':input.decision==='INCIDENT'?'DELIVERY_CUSTODY_INCIDENT_OPENED':'DELIVERY_CUSTODY_DECISION_RECORDED',decision);
     await audit(client,principal,`delivery.custody.${input.decision.toLowerCase()}`,deliveryId,decision);

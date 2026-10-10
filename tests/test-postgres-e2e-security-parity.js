@@ -100,19 +100,36 @@ async function main() {
     finally { await client.end().catch(()=>{}); }
   }
   const [official,e2e] = results;
+  const migrations=getMigrations(),custodyMigration=migrations.find(item=>item.id==='0041_delivery_custody_return');
+  assert(custodyMigration,'known additive custody migration is present in the local migration set');
   assert.deepEqual(e2e.roles,official.roles,'role attributes differ');
   assert.deepEqual(e2e.membership,official.membership,'runtime role membership differs');
   assert.deepEqual(e2e.schema,official.schema,'schema grants/ownership differ');
-  assert.deepEqual(e2e.relations,official.relations,'table/sequence privileges, ownership or RLS flags differ');
-  assert.deepEqual(e2e.columns,official.columns,'column privileges differ');
+  assert.deepEqual(e2e.relations.filter(row=>row.relname!=='delivery_custody_operations'),official.relations,
+    'base table/sequence privileges, ownership or RLS flags differ outside additive migration 0041');
+  assert.deepEqual(e2e.columns.filter(row=>row.relation!=='delivery_custody_operations'),official.columns,
+    'base column privileges differ outside additive migration 0041');
   assert.deepEqual(e2e.functions,official.functions,'function privileges/ownership differ');
-  assert.deepEqual(e2e.policies,official.policies,'RLS policies differ');
+  assert.deepEqual(e2e.policies.filter(row=>row.tablename!=='delivery_custody_operations'),official.policies,
+    'base RLS policies differ outside additive migration 0041');
   assert.deepEqual(e2e.defaultPublic,official.defaultPublic,'PUBLIC default ACL differs');
   assert.deepEqual(e2e.ledger,official.ledger,'migration ledger ownership/access differs');
-  assert.deepEqual(e2e.applied.map(row=>({...row,checksum_sha256:row.checksum_sha256.trim()})),
-    getMigrations().map(({id,checksum})=>({migration_id:id,checksum_sha256:checksum})),
+  const normalizedLedger=rows=>rows.map(row=>({...row,checksum_sha256:row.checksum_sha256.trim()}));
+  const localLedger=migrations.map(({id,checksum})=>({migration_id:id,checksum_sha256:checksum}));
+  assert.deepEqual(normalizedLedger(e2e.applied),localLedger,
     'E2E ledger does not match the local additive migration set');
-  assert.equal(e2e.applied.length,getMigrations().length,'E2E ledger must contain exactly the local migrations');
+  assert.deepEqual(normalizedLedger(official.applied),localLedger.slice(0,localLedger.findIndex(row=>row.migration_id===custodyMigration.id)),
+    'official ledger must remain at the migration immediately preceding additive custody migration 0041');
+  assert.equal(e2e.applied.length,migrations.length,'E2E ledger must contain exactly the local migrations');
+  const custodyTable=e2e.relations.find(row=>row.relname==='delivery_custody_operations');
+  assert(custodyTable,'E2E additive migration 0041 creates its custody operation ledger');
+  assert.equal(custodyTable.owner,'rotamoto_migrator');assert.equal(custodyTable.rls,true);assert.equal(custodyTable.force_rls,true);
+  assert.deepEqual(custodyTable.app_privileges,[true,true,false,false,false,false,false],
+    'runtime custody ledger access is SELECT/INSERT only');
+  assert.deepEqual(e2e.policies.filter(row=>row.tablename==='delivery_custody_operations').map(row=>row.policyname),['tenant_isolation']);
+  const custodyPolicy=e2e.policies.find(row=>row.tablename==='delivery_custody_operations');
+  assert(custodyPolicy.qual?.includes('current_tenant_id')&&custodyPolicy.with_check?.includes('current_tenant_id'),
+    'additive custody operation table remains tenant isolated');
   assert.equal(e2e.database.app_connect,official.database.app_connect);
   assert.equal(e2e.database.app_create,official.database.app_create);
   assert.equal(e2e.database.app_temp,official.database.app_temp);
@@ -135,7 +152,7 @@ async function main() {
     assert(snapshot.policies.some(policy => policy.tablename === 'proof_media_upload_intents' && policy.policyname === 'tenant_isolation' &&
       policy.qual.includes('current_tenant_id') && policy.with_check.includes('current_tenant_id')), 'upload intents have tenant isolation policy');
   }
-  console.log(`E2E security parity: PASS (effective runtime ACLs, PUBLIC ACLs, ownership, RLS/FORCE, policies, ledger; ${getMigrations().length} checksums)`);
+  console.log(`E2E security parity: PASS (base ACL/RLS parity plus version-aware 0041 custody delta; official=${official.applied.at(-1)?.migration_id}, e2e=${e2e.applied.at(-1)?.migration_id})`);
 }
 
 if (require.main===module) main().catch(error=>{console.error(error.message);process.exitCode=1;});

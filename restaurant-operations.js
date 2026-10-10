@@ -194,7 +194,10 @@
       if (delivery.companyId && delivery.companyId !== companyId) throw new Error('A rota não pode incluir entrega de outra empresa.');
       const orderStatus = delivery.status;
       const retainedInCurrentRoute = route && (route.deliveryIds || []).some(existingId => (deliveryById.get(existingId)?.id || existingId) === delivery.id);
-      if (['DELIVERED', 'CANCELLED'].includes(orderStatus) && !retainedInCurrentRoute) throw new Error('Entregas finalizadas ou canceladas não podem entrar em uma rota ativa.');
+      const isOpenReturn = delivery.extensions?.x_rotamoto_delivery_type === 'RETURN' && orderStatus !== 'RETURNED' &&
+        delivery.extensions?.x_rotamoto_custody_state !== 'RECEIVED';
+      if (['DELIVERED', 'CANCELLED', 'RETURNED'].includes(orderStatus) && !retainedInCurrentRoute && !isOpenReturn)
+        throw new Error('Entregas finalizadas ou canceladas não podem entrar em uma rota ativa.');
       const owner = (routes || []).find(candidate => candidate.id !== route?.id && !candidate.deleted && !candidate.deletedAt && (candidate.deliveryIds || []).some(existingId => (deliveryById.get(existingId)?.id || existingId) === delivery.id));
       if (owner) throw new Error('Uma entrega já pertence a outra rota ativa. Remova-a do outro planejamento primeiro.');
     }
