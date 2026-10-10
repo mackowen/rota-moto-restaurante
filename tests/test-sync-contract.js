@@ -82,8 +82,14 @@ const preflight=syncTransport.indexOf('prePulled=0');
 const packetBuild=syncTransport.indexOf('buildRestaurantSyncPacket()');
 assert(preflight>=0&&packetBuild>preflight&&syncTransport.slice(preflight,packetBuild).includes('reconcileRestaurantPullPage(page)'),
   'Restaurant reconciles newer canonical facts before building an upload packet');
-assert(syncTransport.indexOf('const ack=await send')<syncTransport.indexOf('persistSyncAck(queued.packet,ack.operationResults'),
+assert(syncTransport.indexOf('const ack=await send')<syncTransport.indexOf('persistSyncAck(queued.packet,ack,'),
   'local ACK state is written only after a successful HTTP response');
+const ackPersistence=appSource.slice(appSource.indexOf('async function persistSyncAck'),appSource.indexOf('function findLocalByCanonical'));
+assert(ackPersistence.indexOf('validateOperationAck')>=0&&ackPersistence.indexOf('validateOperationAck')<ackPersistence.indexOf('multiStoreTransaction'),
+  'the complete ACK is validated before any local ACK transaction starts');
+assert(syncTransport.indexOf('await persistSyncAck(queued.packet,ack,')<syncTransport.indexOf("await del('outbox',queueId)"),
+  'the durable packet is retired only after the complete ACK transaction commits');
+assert.match(appSource,/queued\.packet\?\.companyId!==session\.companyId/,'a queued packet from another tenant is preserved and never sent');
 assert(syncTransport.includes('sync-packet:')&&syncTransport.includes('status:\'pending\''),
   'packet retry is retained in IndexedDB outbox until a response is received');
 console.log('sync contract and client transport tests: OK');

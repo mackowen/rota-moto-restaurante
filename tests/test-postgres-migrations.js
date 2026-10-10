@@ -44,13 +44,15 @@ function runMigrationSync(command) {
 }
 
 async function main() {
+  if(process.env.NODE_ENV!=='test')throw new Error('Guard: esta suíte somente pode executar em NODE_ENV=test com rotamoto_e2e.');
   if (!process.env.DATABASE_URL || !process.env.MIGRATOR_DATABASE_URL) {
     throw new Error('Defina DATABASE_URL (rotamoto_app) e MIGRATOR_DATABASE_URL (rotamoto_migrator) via pgpass.');
   }
   const runtimeUrl = new URL(process.env.DATABASE_URL);
   const migratorUrl = new URL(process.env.MIGRATOR_DATABASE_URL);
-  if (runtimeUrl.pathname === '/rotamoto' || migratorUrl.pathname === '/rotamoto') {
-    throw new Error('Guard: esta suíte cria fixtures e não pode conectar ao database operacional rotamoto. Use o lifecycle E2E em rotamoto_e2e.');
+  const e2eMigratorUrl=process.env.E2E_MIGRATOR_DATABASE_URL?new URL(process.env.E2E_MIGRATOR_DATABASE_URL):null;
+  if(runtimeUrl.pathname!=='/rotamoto_e2e'||migratorUrl.pathname!=='/rotamoto_e2e'||e2eMigratorUrl?.pathname!=='/rotamoto_e2e'){
+    throw new Error('Guard: migrations, fixtures e conexões desta suíte exigem DATABASE_URL, MIGRATOR_DATABASE_URL e E2E_MIGRATOR_DATABASE_URL apontando exclusivamente para rotamoto_e2e.');
   }
   assert.equal(decodeURIComponent(runtimeUrl.username), 'rotamoto_app', 'runtime tests must use the restricted role');
   assert.equal(decodeURIComponent(migratorUrl.username), 'rotamoto_migrator', 'migration tests must use the migrator role');
@@ -353,8 +355,48 @@ async function main() {
       'sync_installations','domain_records','proof_media_upload_intents','logistics_providers','delivery_fulfillments','dispatch_attempts','delivery_geo_snapshots',
       'provider_quotes','provider_command_outbox','provider_event_inbox','provider_tracking_snapshots','logistics_intelligence_settings','logistics_decisions','logistics_route_settings',
       'marketplace_account_bindings','marketplace_account_routes','marketplace_authorization_events','marketplace_command_outbox',
-      'marketplace_event_inbox','marketplace_oauth_secrets','marketplace_oauth_states','marketplace_order_versions'
+      'marketplace_event_inbox','marketplace_oauth_secrets','marketplace_oauth_states','marketplace_order_versions',
+      'driver_availability','driver_availability_commands','restaurant_dispatch_settings','restaurant_driver_presence',
+      'restaurant_presence_qr_nonces','delivery_custody_operations'
     ]));
+    const campaignMigrations=new Map(getMigrations().map(item=>[item.id,item]));
+    for(const [id,table] of [['0039_driver_operational_availability','driver_availability'],['0040_restaurant_driver_queue','restaurant_driver_presence'],['0041_delivery_custody_return','delivery_custody_operations']]){
+      assert(campaignMigrations.has(id),`migration ${id} is present in the checksummed local history`);
+      assert.match(campaignMigrations.get(id).up,new RegExp(`CREATE TABLE rotamoto\\.${table}\\b`),`${id} creates ${table}`);
+    }
+    const newTableSecurity=await client.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,
+      has_table_privilege('rotamoto_app',c.oid,'SELECT') AS can_select,
+      has_table_privilege('rotamoto_app',c.oid,'INSERT') AS can_insert,
+      has_table_privilege('rotamoto_app',c.oid,'UPDATE') AS can_update,
+      has_table_privilege('rotamoto_app',c.oid,'DELETE') AS can_delete,
+      has_table_privilege('rotamoto_app',c.oid,'TRUNCATE') AS can_truncate
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='rotamoto' AND c.relname=ANY($1::text[]) ORDER BY c.relname`,[[
+        'driver_availability','driver_availability_commands','restaurant_dispatch_settings','restaurant_driver_presence',
+        'restaurant_presence_qr_nonces','delivery_custody_operations']]);
+    assert.equal(newTableSecurity.rowCount,6,'the 0039–0041 additions are all in the live E2E inventory');
+    assert(newTableSecurity.rows.every(row=>row.relrowsecurity&&row.relforcerowsecurity),
+      'all tenant-scoped 0039–0041 tables enforce RLS');
+    const expectedPrivileges={
+      driver_availability:[true,true,true,false,false],driver_availability_commands:[true,true,false,false,false],
+      restaurant_dispatch_settings:[true,true,true,false,false],restaurant_driver_presence:[true,true,true,false,false],
+      restaurant_presence_qr_nonces:[true,true,true,false,false],delivery_custody_operations:[true,true,false,false,false]
+    };
+    for(const row of newTableSecurity.rows)assert.deepEqual([row.can_select,row.can_insert,row.can_update,row.can_delete,row.can_truncate],expectedPrivileges[row.relname],
+      `${row.relname} has only its migration-defined runtime privileges`);
+    const newConstraints=await client.query(`SELECT c.relname,co.contype,co.convalidated
+      FROM pg_constraint co JOIN pg_class c ON c.oid=co.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='rotamoto' AND c.relname=ANY($1::text[])`,[[
+        'driver_availability','driver_availability_commands','restaurant_dispatch_settings','restaurant_driver_presence',
+        'restaurant_presence_qr_nonces','delivery_custody_operations']]);
+    for(const table of Object.keys(expectedPrivileges)){
+      const constraints=newConstraints.rows.filter(row=>row.relname===table);
+      assert(constraints.some(row=>row.contype==='p')&&constraints.some(row=>row.contype==='f')&&constraints.every(row=>row.convalidated),
+        `${table} retains validated primary/foreign-key constraints`);
+    }
+    const returnIndex=await client.query(`SELECT indexdef FROM pg_indexes WHERE schemaname='rotamoto' AND indexname='domain_one_return_delivery_per_original_uq'`);
+    assert.equal(returnIndex.rowCount,1,'0041 preserves the unique RETURN-per-original constraint');
+    assert.match(returnIndex.rows[0].indexdef,/UNIQUE INDEX.*company_id, related_record_id/);
     const rls = await client.query(`
       SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -464,6 +506,11 @@ async function main() {
         assert.match(locationDown.stderr,/Uso: node backend\/postgres\/migrate\.js/u,'rollback denial is the runner guard, not an SQL failure');
         const stillLatest=await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
         assert.equal(stillLatest.rows[0].migration_id,appliedLedger.rows[0].migration_id,'blocked rollback leaves the E2E schema at the approved latest migration');
+      } else if (['0039_driver_operational_availability','0040_restaurant_driver_queue','0041_delivery_custody_return'].includes(appliedLedger.rows[0]?.migration_id)) {
+        const blockedDown=runMigrationSync('down');
+        assert.notEqual(blockedDown.status,0,'current logistics migrations cannot be rolled back by this fixture suite');
+        const stillLatest=await migrationClient.query(`SELECT migration_id FROM rotamoto.schema_migrations ORDER BY migration_id DESC LIMIT 1`);
+        assert.equal(stillLatest.rows[0].migration_id,appliedLedger.rows[0].migration_id,'blocked logistics rollback preserves the approved E2E schema');
       } else if (['0028_external_account_secret_least_privilege','0029_logistics_human_decisions','0030_logistics_decision_stale_approval','0031_logistics_decision_worker_projection','0032_logistics_route_origin_settings',
         '0035_marketplace_runtime','0036_marketplace_lifecycle_hardening','0037_marketplace_worker_secret_boundary','0038_marketplace_resolver_lifecycle_grants'].includes(appliedLedger.rows[0]?.migration_id)) {
         assert.match(getMigrations().at(-1).down, /rollback bloqueado/u, 'provider integration data migrations explicitly block rollback');

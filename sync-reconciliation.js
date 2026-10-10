@@ -17,6 +17,41 @@
   return tombstone?'tombstone':'apply';
  }
  function statusFromAck(status){return ['accepted','duplicate','rejected','conflict'].includes(status)?status:'invalid'}
+ function retryAfterMilliseconds(value,now=Date.now()){
+  if(typeof value!=='string'||!value.trim())return null;
+  const seconds=Number(value);if(Number.isFinite(seconds)&&seconds>=0)return seconds*1000;
+  const date=Date.parse(value);return Number.isFinite(date)?Math.max(0,date-now):null;
+ }
+ const ACK_ARRAY_ENTITIES=Object.freeze({orders:'Order',drivers:'Driver',deliveries:'Delivery',routes:'Route',deliveryEvents:'DeliveryEvent',locationUpdates:'LocationPoint',proofs:'DeliveryProof',earnings:'Earning'});
+ const ACK_TOMBSTONE_ENTITIES=Object.freeze({orders:'Order',drivers:'Driver',deliveries:'Delivery',routes:'Route',deliveryEvents:'DeliveryEvent',locations:'LocationPoint',locationUpdates:'LocationPoint',proofs:'DeliveryProof',earnings:'Earning'});
+ function expectedAckOperations(packet){
+  if(!packet||typeof packet!=='object'||Array.isArray(packet)||!packet.data||typeof packet.data!=='object'||Array.isArray(packet.data))throw new Error('SYNC_ACK_INVALID');
+  const expected=new Map();
+  const add=(operation,entity,row)=>{const localId=entity==='DeliveryEvent'?(row?.eventId||row?.id):row?.id;if(typeof localId!=='string'||!localId.trim())throw new Error('SYNC_ACK_INVALID');expected.set(operation,{entity,localId})};
+  for(const [key,entity] of Object.entries(ACK_ARRAY_ENTITIES)){const rows=packet.data[key];if(rows===undefined)continue;if(!Array.isArray(rows))throw new Error('SYNC_ACK_INVALID');rows.forEach((row,index)=>add(`${key}:${index}`,entity,row))}
+  if(packet.data.tombstones!==undefined){if(!Array.isArray(packet.data.tombstones))throw new Error('SYNC_ACK_INVALID');packet.data.tombstones.forEach((row,index)=>{const entity=ACK_TOMBSTONE_ENTITIES[row?.store];if(!entity)throw new Error('SYNC_ACK_INVALID');add(`tombstones:${index}`,entity,row)})}
+  const events=packet.events!==undefined?packet.events:packet.data.events;if(events!==undefined){if(!Array.isArray(events))throw new Error('SYNC_ACK_INVALID');events.forEach((row,index)=>add(`events:${index}`,'DeliveryEvent',row))}
+  return expected;
+ }
+ function validateOperationAck(packet,ack,{companyId=packet?.companyId,deviceId=packet?.deviceId}={}){
+  if(!ack||typeof ack!=='object'||Array.isArray(ack)||ack.packetId!==packet?.packetId||!packet?.packetId||
+   typeof companyId!=='string'||!companyId||packet.companyId!==companyId||ack.companyId!==companyId||
+   typeof deviceId!=='string'||!deviceId||packet.deviceId!==deviceId||
+   (ack.deviceId!==undefined&&ack.deviceId!==deviceId)||!Array.isArray(ack.operationResults))throw new Error('SYNC_ACK_INVALID');
+  const expected=expectedAckOperations(packet),seen=new Set();
+  for(const result of ack.operationResults){
+   if(!result||typeof result!=='object'||Array.isArray(result)||typeof result.operation!=='string'||seen.has(result.operation))throw new Error('SYNC_ACK_INVALID');
+   const operation=expected.get(result.operation),status=statusFromAck(result.status);
+   if(!operation||result.entity!==operation.entity||result.localId!==operation.localId||status==='invalid')throw new Error('SYNC_ACK_INVALID');
+   if(['accepted','duplicate'].includes(status)&&
+    (typeof result.canonicalId!=='string'||!UUID.test(result.canonicalId)||!Number.isSafeInteger(result.canonicalVersion)||result.canonicalVersion<1))throw new Error('SYNC_ACK_INVALID');
+   if(['rejected','conflict'].includes(status)&&(!result.error||typeof result.error.code!=='string'||!result.error.code.trim()))throw new Error('SYNC_ACK_INVALID');
+   seen.add(result.operation);
+  }
+  if(seen.size!==expected.size)throw new Error('SYNC_ACK_INVALID');
+  return true;
+ }
+ function sourceVersionMatches(record,snapshot){return !!record&&Number(record?.sync?.version||record?.version||1)===Number(snapshot)}
  function canonicalBaseVersion(record,operation){
   const currentId=String(record?.sync?.canonicalId||record?.id||''),operationId=String(operation?.canonicalId||'');
   const observed=Number(record?.sync?.canonicalVersion),acknowledged=Number(operation?.canonicalVersion);
@@ -93,5 +128,5 @@
    .every(field=>JSON.stringify(local[field])===JSON.stringify(remote[field]));
  }
  function createCoordinator({locks,lockName='rotamoto-sync'}={}){let active=null;return Object.freeze({run(task){if(typeof task!=='function')return Promise.reject(new TypeError('Tarefa de sync inválida.'));if(active)return active;const execute=()=>Promise.resolve().then(task);active=locks?.request?locks.request(lockName,{mode:'exclusive'},execute):execute();return active.finally(()=>{active=null})}})}
- return Object.freeze({canonicalEvent,decide,statusFromAck,canonicalBaseVersion,captureSourceVersions,retryDelay,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
+ return Object.freeze({canonicalEvent,decide,statusFromAck,expectedAckOperations,validateOperationAck,sourceVersionMatches,canonicalBaseVersion,captureSourceVersions,retryAfterMilliseconds,retryDelay,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
 });

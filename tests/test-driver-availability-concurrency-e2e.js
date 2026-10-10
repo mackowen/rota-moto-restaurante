@@ -1072,13 +1072,27 @@ async function main() {
     markLocal('E: both session commands are blocked on one Driver lock', `blockedPids=${blockedSessions.length}`);
     await barrier.client.query('COMMIT'); await endRuntimeClient(barrier.raw);
     const concurrentResults = await Promise.all(concurrentCommands);
-    assert.deepEqual(concurrentResults.map(row => row.status).sort((a,b) => a-b), [200,409]);
-    const winner = concurrentResults.find(row => row.status === 200);
-    assert(winner.body.availability.revision === raceRevision + 1);
+    const [offlineResult,onlineResult]=concurrentResults;
+    if(onlineResult.status===409){
+      assert.equal(offlineResult.status,200,'a stale Online command can only follow an accepted Offline transition');
+      assert.equal(onlineResult.body.error.code,'REVISION_CONFLICT');
+      assert.equal(offlineResult.body.availability.effectiveStatus,'offline');
+      assert.equal(offlineResult.body.availability.revision,raceRevision+1);
+    }else{
+      assert.deepEqual(concurrentResults.map(row=>row.status),[200,200],
+        'two 200 responses are valid only when the same-session Online request is a no-op before Offline commits');
+      assert.equal(onlineResult.body.availability.effectiveStatus,'online');
+      assert.equal(onlineResult.body.availability.revision,raceRevision,
+        'the same-session Online no-op does not advance the canonical revision');
+      assert.equal(offlineResult.body.availability.effectiveStatus,'offline');
+      assert.equal(offlineResult.body.availability.revision,raceRevision+1,
+        'the Offline transition advances the revision exactly once');
+    }
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     assert.equal(canonical.body.availability.revision, raceRevision + 1);
-    assert.equal(canonical.body.availability.effectiveStatus, winner.body.availability.effectiveStatus);
-    markLocal('E: one command committed; stale concurrent revision received HTTP 409');
+    assert.equal(canonical.body.availability.effectiveStatus,'offline',
+      'the terminal canonical state is Offline in either valid lock interleaving');
+    markLocal('E: revision and lease semantics verified for both valid command interleavings');
 
     // Same idempotency key concurrently from both valid sessions creates one command receipt.
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);

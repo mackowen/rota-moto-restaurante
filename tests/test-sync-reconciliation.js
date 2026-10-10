@@ -10,6 +10,39 @@ assert.equal(R.decide({localVersion:2,incomingVersion:3,localPending:true}),'con
 assert.equal(R.decide({localVersion:3,incomingVersion:2}),'stale');
 assert.equal(R.decide({localVersion:1,incomingVersion:2,tombstone:true}),'tombstone');
 for(const status of ['accepted','duplicate','rejected','conflict'])assert.equal(R.statusFromAck(status),status);
+const ackPacket={packetId:'packet-ack-1',companyId:'tenant-a',deviceId:'device-a',data:{routes:[{id:'route-local'}],deliveryEvents:[{id:'event-local',eventId:'event-local'}],tombstones:[]}};
+const ackResults=[
+ {operation:'routes:0',entity:'Route',localId:'route-local',canonicalId:'00000000-0000-4000-8000-000000000099',canonicalVersion:4,status:'accepted'},
+ {operation:'deliveryEvents:0',entity:'DeliveryEvent',localId:'event-local',canonicalId:'00000000-0000-4000-8000-000000000098',canonicalVersion:2,status:'duplicate'}
+];
+const validAck={packetId:ackPacket.packetId,companyId:'tenant-a',operationResults:ackResults};
+assert.equal(R.validateOperationAck(ackPacket,validAck,{companyId:'tenant-a',deviceId:'device-a'}),true);
+for(const malformed of [
+ {...validAck,packetId:'other-packet'},
+ {...validAck,companyId:'tenant-b'},
+ {...validAck,operationResults:[]},
+ {...validAck,operationResults:[ackResults[0]]},
+ {...validAck,operationResults:[...ackResults,ackResults[0]]},
+ {...validAck,operationResults:[ackResults[0],{...ackResults[1],operation:'unknown:0'}]},
+ {...validAck,operationResults:[{...ackResults[0],entity:'Delivery'} ,ackResults[1]]},
+ {...validAck,operationResults:[{...ackResults[0],localId:'other'} ,ackResults[1]]},
+ {...validAck,operationResults:[{...ackResults[0],canonicalVersion:'4'},ackResults[1]]},
+ {...validAck,operationResults:[{...ackResults[0],canonicalId:'not-a-uuid'},ackResults[1]]},
+ {...validAck,operationResults:[{...ackResults[0],status:'pending'},ackResults[1]]}
+])assert.throws(()=>R.validateOperationAck(ackPacket,malformed,{companyId:'tenant-a',deviceId:'device-a'}),/SYNC_ACK_INVALID/);
+assert.throws(()=>R.validateOperationAck(ackPacket,validAck,{companyId:'tenant-a',deviceId:'device-b'}),/SYNC_ACK_INVALID/);
+const durableAckOutbox=new Map([['sync-packet:device-a',{packet:ackPacket,snapshots:{'Route:route-local':1}}]]);
+const reloadAckOutbox=()=>durableAckOutbox.get('sync-packet:device-a');
+function modelAckOutboxReply(reply){const queued=reloadAckOutbox();if(reply instanceof Error)throw reply;R.validateOperationAck(queued.packet,reply,{companyId:'tenant-a',deviceId:'device-a'});durableAckOutbox.delete('sync-packet:device-a')}
+assert.throws(()=>modelAckOutboxReply(new Error('network unavailable')),/network unavailable/);
+assert.equal(reloadAckOutbox().packet.packetId,ackPacket.packetId,'after restart/reconnect the same durable packet is retried');
+assert.throws(()=>modelAckOutboxReply({...validAck,operationResults:[ackResults[0]]}),/SYNC_ACK_INVALID/);
+assert.equal(durableAckOutbox.size,1,'partial ACK cannot remove the durable packet');
+const editAfterSend={id:'route-local',sync:{state:'local',version:2}};
+assert.equal(R.sourceVersionMatches(editAfterSend,1),false,'an ACK snapshot cannot mark a concurrent newer local edit synced');
+assert.equal(R.shouldRetry('accepted',true),true,'a newer local edit becomes a new pending operation after the acknowledged snapshot');
+modelAckOutboxReply(validAck);
+assert.equal(durableAckOutbox.size,0,'only a complete valid ACK permits packet retirement');
 assert.equal(R.shouldRetry('rejected',false),false);assert.equal(R.shouldRetry('conflict',false),false);assert.equal(R.shouldRetry('conflict',true),true);
 const opMap=new Map([['operation:event-local',{canonicalId:'00000000-0000-4000-8000-000000000099'}]]);assert.equal(R.findCanonicalFact([{id:'event-local'}],'00000000-0000-4000-8000-000000000099',opMap,row=>`operation:${row.id}`).id,'event-local');
 const race=R.projectMotoboyDelivery(event.payload,{id:event.payload.orderId,customer:{name:'Jo'},address:'Rua A',coords:[-23,-46],items:[{name:'X'}]},{status:'route',startedAt:'2026-10-04T09:30:00Z'},{pendingExecution:true});
@@ -62,6 +95,10 @@ assert.equal(R.captureSourceVersions({routes:[{id:'route-local',version:4,baseVe
   'ACK snapshot tracks the dirty local source revision, not the packet projection version');
 assert.equal(R.retryDelay({status:429},0),1000);
 assert.equal(R.retryDelay({status:429,retryAfterMs:7000},2),7000);
+assert.equal(R.retryAfterMilliseconds('7'),7000,'HTTP Retry-After delta seconds are honored');
+assert.equal(R.retryAfterMilliseconds('Thu, 01 Jan 1970 00:00:12 GMT',10000),2000,'HTTP Retry-After dates are converted against the current time');
+assert.equal(R.retryAfterMilliseconds('invalid',10000),null,'invalid Retry-After falls back to exponential backoff');
+assert.equal(R.retryDelay({status:429,retryAfterMs:R.retryAfterMilliseconds('7')},2),7000);
 assert.equal(R.retryDelay({status:503},3),8000);
 assert.equal(R.retryDelay({status:503},20),60000);
 assert.equal(R.retryDelay({status:409},0),null,'permanent revision conflicts are not automatically retried');
