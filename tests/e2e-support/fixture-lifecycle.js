@@ -27,6 +27,9 @@ const { createDomainQueryService } = require('../../backend/domain/query-service
 const { createDriverAvailabilityService } = require('../../backend/logistics/driver-availability');
 const { createDriverAvailabilityHttpHandler } = require('../../backend/logistics/driver-availability-http');
 const { COOKIE_NAME } = require('../../backend/identity/http');
+const { createPool } = require('../../backend/postgres/connection');
+const { resolveE2eTargets, storedLoopbackCredential } = require('./guards');
+const { AsyncLocalStorage } = require('node:async_hooks');
 
 function savepointPool(client) {
   let sequence = 0;
@@ -51,32 +54,93 @@ function rateLimiter() {
     invitation: { limit: 50, windowMs: 60000 }, provision: { limit: 50, windowMs: 60000 }, mfa: { limit: 50, windowMs: 60000 }, default: { limit: 1000, windowMs: 60000 } } });
 }
 
-async function start(handler) {
-  // Browser requests can arrive concurrently while sharing the lifecycle's
-  // single PostgreSQL connection. Serialize them so savepoints never overlap.
+async function start(handler, requestContext) {
+  // The rollback fixture uses one PostgreSQL client and savepoints, so keep its
+  // legacy serialized mode until it explicitly switches to independent pool
+  // transactions. Concurrent mode is used only by the opt-in E2E scenario.
   let pending = Promise.resolve();
+  const inFlight = new Set();
+  let serialized = true;
+  let paused = false;
   const server = http.createServer(async (req, res) => {
     req.clientIp = '127.0.0.1';
-    req.requestId = crypto.randomUUID();
-    const task = pending.then(async () => {
+    const suppliedId = req.headers['x-campaign-0137-request-id'];
+    req.requestId = typeof suppliedId === 'string' && /^[0-9a-f-]{36}$/iu.test(suppliedId) ? suppliedId : crypto.randomUUID();
+    const execute = async () => requestContext.run({ requestId: req.requestId, path: req.url }, async () => {
+      if (paused) { if (!res.writableEnded) res.writeHead(503, { 'Cache-Control': 'no-store' }).end(); return; }
       for (const route of handler) if (await route(req, res)) return;
       if (!res.writableEnded) res.writeHead(404).end();
     });
-    pending = task.catch(() => {});
-    task.catch(error => {
+    const task = serialized ? pending.then(execute) : execute();
+    if (serialized) pending = task.catch(() => {});
+    const settled = task.catch(error => {
       if (!res.headersSent) res.writeHead(500, { 'Cache-Control': 'no-store' });
       if (!res.writableEnded) res.end();
       // Keep the queue usable while surfacing the failure in the request log.
       console.error(`E2E fixture request ${req.requestId} failed: ${error.message}`);
     });
+    inFlight.add(settled);
+    settled.finally(() => inFlight.delete(settled));
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-  return { server, base: `http://127.0.0.1:${server.address().port}` };
+  return { server, base: `http://127.0.0.1:${server.address().port}`,
+    async pauseAndDrain() { paused = true; await pending; await Promise.allSettled([...inFlight]); },
+    resumeConcurrent() { serialized = false; paused = false; } };
+}
+
+function quoteIdentifier(value) { return `"${String(value).replaceAll('"', '""')}"`; }
+
+async function cleanupCommittedFixture(migrator, tenantIds, userIds) {
+  if (!tenantIds.length) return;
+  await migrator.query('BEGIN');
+  try {
+    // Remove global child rows tied to the uniquely generated fixture users
+    // before deleting their tenant memberships and accounts.
+    await migrator.query('DELETE FROM rotamoto.sessions WHERE user_id=ANY($1::uuid[])', [userIds]);
+    await migrator.query('DELETE FROM rotamoto.recovery_tokens WHERE user_id=ANY($1::uuid[])', [userIds]);
+    await migrator.query('DELETE FROM rotamoto.credentials WHERE user_id=ANY($1::uuid[])', [userIds]);
+
+    const tenantRelations = await migrator.query(`SELECT c.relname
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname='company_id' AND a.attnum>0 AND NOT a.attisdropped
+      WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p') AND c.relname<>'companies' ORDER BY c.relname`);
+    const names = new Set(tenantRelations.rows.map(row => row.relname));
+    const foreignKeys = await migrator.query(`SELECT child.relname AS child,parent.relname AS parent
+      FROM pg_constraint fk JOIN pg_class child ON child.oid=fk.conrelid
+      JOIN pg_namespace cn ON cn.oid=child.relnamespace JOIN pg_class parent ON parent.oid=fk.confrelid
+      JOIN pg_namespace pn ON pn.oid=parent.relnamespace
+      WHERE fk.contype='f' AND cn.nspname='rotamoto' AND pn.nspname='rotamoto'`);
+    // Child-first order preserves RESTRICT constraints. Any cyclic tables with
+    // no fixture rows are harmless; fixture rows are scoped to these tenants.
+    const edges = foreignKeys.rows.filter(row => row.child !== row.parent && names.has(row.child) && names.has(row.parent));
+    const remaining = new Set(names), ordered = [];
+    while (remaining.size) {
+      const leaf = [...remaining].sort().find(parent => !edges.some(edge => remaining.has(edge.child) && edge.parent === parent));
+      if (!leaf) { ordered.push(...[...remaining].sort()); break; }
+      ordered.push(leaf); remaining.delete(leaf);
+    }
+
+    for (const tenantId of tenantIds) {
+      await migrator.query("SELECT set_config('app.tenant_id',$1,true)", [tenantId]);
+      await migrator.query(`DELETE FROM rotamoto.role_permissions WHERE role_id IN
+        (SELECT id FROM rotamoto.roles WHERE company_id=$1)`, [tenantId]);
+      for (const relation of ordered) {
+        await migrator.query(`DELETE FROM rotamoto.${quoteIdentifier(relation)} WHERE company_id=$1`, [tenantId]);
+      }
+      await migrator.query('DELETE FROM rotamoto.companies WHERE id=$1', [tenantId]);
+    }
+    await migrator.query('DELETE FROM rotamoto.users WHERE id=ANY($1::uuid[])', [userIds]);
+    await migrator.query('COMMIT');
+  } catch (error) {
+    await migrator.query('ROLLBACK').catch(() => {});
+    throw error;
+  }
 }
 
 async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
   persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false,
-  businessFixture = true, onTestEmail = null } = {}) {
+  businessFixture = true, onTestEmail = null, independentRequestTransactions = false, retainIndependentFixture = false,
+  onIndependentFixtureRetained = null, onIndependentConnection = null, onIndependentTransaction = null } = {}) {
   if (env.NODE_ENV !== 'test' || typeof extraHttpHandlers !== 'function') throw new Error('Handlers extras do fixture só são aceitos no modo test.');
   if (onTestEmail !== null && typeof onTestEmail !== 'function') throw new Error('Observador de email E2E inválido.');
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
@@ -88,8 +152,22 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     throw new Error('Fixture persistente aceita somente diretório temporário e origem descartável da campanha 0068.');
   }
   const { runtime, migrator } = clients;
+  if (independentRequestTransactions && (env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' || persistDisposableFixture)) {
+    throw new Error('Transações independentes do fixture aceitas somente em rotamoto_e2e.');
+  }
+  if (retainIndependentFixture && !independentRequestTransactions) throw new Error('Retenção de fixture exige transações independentes.');
+  if (onIndependentFixtureRetained !== null && typeof onIndependentFixtureRetained !== 'function') throw new Error('Observador de fixture retida inválido.');
+  if (onIndependentConnection !== null && typeof onIndependentConnection !== 'function') throw new Error('Observador de conexão independente inválido.');
+  if (onIndependentTransaction !== null && typeof onIndependentTransaction !== 'function') throw new Error('Observador de transação independente inválido.');
   let connectedRuntime = false;
   let transactionOpen = false;
+  let committedForIndependentRequests = false;
+  let independentPool = null;
+  let activePool = null;
+  const requestContext = new AsyncLocalStorage();
+  const instrumentedIndependentClients = new WeakSet();
+  const fixtureTenantIds = [];
+  const fixtureUserIds = [];
   let host;
   let mediaDirectory;
   let companyId;
@@ -101,7 +179,34 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const database = disposableCampaign ? 'rotamoto_disposable_0068_source' : 'rotamoto_e2e';
     await assertConnectedIdentity(runtime, { role: 'rotamoto_app', database, env });
     await runtime.query('BEGIN'); transactionOpen = true;
-    const pool = savepointPool(runtime);
+    activePool = savepointPool(runtime);
+    const pool = { async connect(...args) {
+      const client = await activePool.connect(...args);
+      const context = requestContext.getStore();
+      const requestId = context?.requestId;
+      if (requestId && independentPool) {
+        const applicationName = `campaign-0137:${requestId}`;
+        await client.query("SELECT set_config('application_name',$1,false)", [applicationName]);
+        const identity = await client.query('SELECT pg_backend_pid() AS pid,current_user AS role,current_database() AS database');
+        onIndependentConnection?.({ requestId, applicationName, ...identity.rows[0] });
+        if (context.path === '/api/sync/push' && !instrumentedIndependentClients.has(client)) {
+          const query = client.query.bind(client);
+          client.query = async (sql, values) => {
+            const queryText = typeof sql === 'string' ? sql : sql?.text;
+            const result = await query(sql, values);
+            const currentRequest = requestContext.getStore();
+            if (currentRequest?.path === '/api/sync/push' && typeof queryText === 'string' && /^\s*BEGIN\b/iu.test(queryText)) {
+              const transaction = await query('SELECT pg_backend_pid() AS pid,txid_current()::text AS xid');
+              onIndependentTransaction?.({ requestId: currentRequest.requestId,
+                applicationName: `campaign-0137:${currentRequest.requestId}`, ...transaction.rows[0] });
+            }
+            return result;
+          };
+          instrumentedIndependentClients.add(client);
+        }
+      }
+      return client;
+    } };
     const emails = [];
     const operatorMarker = crypto.randomBytes(32).toString('base64url');
     const mfaSecrets = new Map();
@@ -138,7 +243,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     if (!Array.isArray(testHandlers) || testHandlers.some(handler => typeof handler !== 'function')) throw new Error('Handlers E2E inválidos.');
     // Test-only domain adapters must run before the broad /api/admin handler so
     // mounted marketplace/admin subdomains can use their canonical routes.
-    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp]);
+    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {} } = {}) => {
       const response = await fetch(`${host.base}${path}`, { method, headers: { Origin: allowedOrigins[0] || host.base,
@@ -156,6 +261,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       headers: { 'X-E2E-Operator': operatorMarker } });
     assert.equal(provisioned.status, 202, JSON.stringify(provisioned.body));
     companyId = provisioned.body.companyId;
+    fixtureTenantIds.push(companyId);
     assert.equal(emails.length, 1);
     assert.equal(emails[0].kind, 'owner_invitation');
     assert.equal(JSON.stringify(provisioned.body).includes(emails[0].token), false);
@@ -163,6 +269,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const accepted = await call('/api/identity/invitations/accept', { method: 'POST', body: { token: emails[0].token, password } });
     assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
     fixtureUserId = accepted.body.userId;
+    fixtureUserIds.push(fixtureUserId);
     const enrollmentLogin = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId } });
     assert.equal(enrollmentLogin.status,200,JSON.stringify(enrollmentLogin.body));
     assert.equal(enrollmentLogin.body.mfaEnrollmentRequired,true,'unconfigured required MFA yields a limited enrollment session');
@@ -182,15 +289,20 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const savedRecoveryDigests=await runtime.query("SELECT encode(token_digest,'hex') AS digest FROM rotamoto.recovery_tokens WHERE user_id=$1 AND purpose='mfa_recovery' ORDER BY digest",[fixtureUserId]);
     assert.deepEqual(savedRecoveryDigests.rows.map(row=>row.digest),confirmed.body.recoveryCodes.map(code=>recoveryDigest(code).toString('hex')).sort(),
       'PostgreSQL stores only digests of one-time MFA recovery codes');
-    const firstLoginCounter=Math.floor(Date.now()/30000)+1;
-    const futureCode=codeAt(enrollment.body.secret,firstLoginCounter);
+    const enrollmentCounter=Math.floor(Date.now()/30000);
+    const futureCode=codeAt(enrollment.body.secret,enrollmentCounter+1);
     const invalidMfa = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId,
       mfaCode: String((Number(futureCode) + 1) % 1000000).padStart(6, '0') } });
     assert.equal(invalidMfa.status, 403, 'invalid native MFA proof cannot create an authenticated fixture');
     const replayCode=await call('/api/identity/login',{method:'POST',body:{email,password,companyId,mfaCode:currentCode}});
     assert.equal(replayCode.status,403,'the TOTP counter accepted during enrollment cannot be replayed');
-    const login = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId, mfaCode: futureCode } });
+    const persistedEnrollmentCounter=Number(credential.rows[0].mfa_totp_last_counter);
+    while (Math.floor(Date.now()/30000) <= persistedEnrollmentCounter) await new Promise(resolve => setTimeout(resolve,100));
+    const loginCounter=Math.floor(Date.now()/30000);
+    const loginCode=codeAt(enrollment.body.secret,loginCounter);
+    const login = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId, mfaCode: loginCode } });
     assert.equal(login.status, 200, JSON.stringify(login.body));
+    const firstLoginCounter=loginCounter;
     const sessionCookie = login.headers.get('set-cookie').split(';', 1)[0];
     assert(sessionCookie.startsWith(`${COOKIE_NAME}=`));
     const session = await call('/api/identity/session', { cookie: sessionCookie });
@@ -371,12 +483,14 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         body: { companyName, email: tenantEmail, idempotencyKey: `e2e-${crypto.randomUUID()}` },
         headers: { 'X-E2E-Operator': operatorMarker } });
       assert.equal(provisionedTenant.status, 202, JSON.stringify(provisionedTenant.body));
+      fixtureTenantIds.push(provisionedTenant.body.companyId);
       const ownerInvitation = emails.findLast(message => message.kind === 'owner_invitation' && message.to === tenantEmail);
       assert(ownerInvitation?.token, 'E2E email sink captured the second tenant owner invitation');
       const tenantPassword = `E2E-${crypto.randomBytes(30).toString('base64url')}`;
       const tenantAccepted = await call('/api/identity/invitations/accept', { method: 'POST',
         body: { token: ownerInvitation.token, password: tenantPassword } });
       assert.equal(tenantAccepted.status, 200, JSON.stringify(tenantAccepted.body));
+      fixtureUserIds.push(tenantAccepted.body.userId);
       const enrollmentLogin = await call('/api/identity/login', { method: 'POST',
         body: { email: tenantEmail, password: tenantPassword, companyId: provisionedTenant.body.companyId } });
       assert.equal(enrollmentLogin.status, 200, JSON.stringify(enrollmentLogin.body));
@@ -420,10 +534,37 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         membershipId: ownerMembership.membershipId, driverId: tenantDriverId, cookie: ownerCookie,
         csrf: ownerSession.body.csrfToken, email: tenantEmail });
     };
+    const enableIndependentRequestTransactions = async () => {
+      if (!independentRequestTransactions) throw new Error('Este fixture não habilitou transações independentes.');
+      if (independentPool) return;
+      await host.pauseAndDrain();
+      await runtime.query('COMMIT');
+      transactionOpen = false;
+      committedForIndependentRequests = true;
+      const target = resolveE2eTargets(env).runtime;
+      independentPool = createPool({ connectionString: target,
+        password: storedLoopbackCredential('rotamoto_app', 'rotamoto_e2e'),
+        max: 8, connectionTimeoutMillis: 5000, application_name: 'campaign-0137-browser-independent' });
+      const probe = await independentPool.connect();
+      try { await assertConnectedIdentity(probe, { role: 'rotamoto_app', database: 'rotamoto_e2e', env }); }
+      finally { probe.release(); }
+      activePool = independentPool;
+      // Keep the fixture's inspection client in a fresh READ COMMITTED
+      // transaction so tenant-scoped assertions see commits from request PIDs.
+      await runtime.query('BEGIN');
+      await runtime.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
+      transactionOpen = true;
+      host.resumeConcurrent();
+    };
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
       driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, restaurantDevice, email, password, mfaCode: browserMfaCode,
       browserSessionCookie: sessionCookie, apiOrigin: host.base, mediaDirectory, proof: proofFixture,
-      provisionAdditionalTenant, runtime, call, authenticatedCall, driverAvailabilityService }));
+      provisionAdditionalTenant, runtime, call, authenticatedCall, driverAvailabilityService,
+      enableIndependentRequestTransactions,
+      acquireIndependentRuntimeClient: async () => {
+        if (!independentPool) throw new Error('Transações independentes ainda não habilitadas.');
+        return independentPool.connect();
+      } }));
     const recoveryRequest = await call('/api/identity/recovery', { method: 'POST', body: { email } });
     assert.equal(recoveryRequest.status, 202, JSON.stringify(recoveryRequest.body));
     const recoveryEmail = emails.findLast(message => message.kind === 'password_recovery' && message.to === email);
@@ -449,15 +590,27 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       // retry is closing. The fixture is transaction-scoped; terminate those
       // test-only sockets so cleanup always reaches rollback and emits a final
       // result instead of hanging in server.close().
+      await host.pauseAndDrain();
       host.server.closeAllConnections?.();
       await new Promise(resolve => host.server.close(resolve));
     }
     if (transactionOpen) {
       try { await runtime.query('ROLLBACK'); } catch (_) { /* retain original setup error */ }
     }
+    if (independentPool) await independentPool.end().catch(() => {});
     if (connectedRuntime) await runtime.end();
     if (mediaDirectory && !fixturePersisted) await fs.rm(mediaDirectory, { recursive: true, force: true });
-    if (!fixturePersisted) {
+    if (!fixturePersisted && committedForIndependentRequests && retainIndependentFixture) {
+      onIndependentFixtureRetained?.({ tenantIds: [...new Set(fixtureTenantIds)], userIds: [...new Set(fixtureUserIds)] });
+    }
+    if (!fixturePersisted && committedForIndependentRequests && !retainIndependentFixture) {
+      await migrator.connect();
+      try {
+        await assertConnectedIdentity(migrator, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', env });
+        await cleanupCommittedFixture(migrator, [...new Set(fixtureTenantIds)], [...new Set(fixtureUserIds)]);
+      } finally { await migrator.end(); }
+    }
+    if (!fixturePersisted && !retainIndependentFixture) {
     await migrator.connect();
     try {
       await assertConnectedIdentity(migrator, { role: 'rotamoto_migrator',
