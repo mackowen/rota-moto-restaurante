@@ -33,6 +33,7 @@
 .pilot-queue-head, .pilot-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .pilot-queue-head h2, .pilot-section-head h2 { margin: 5px 0 6px; font-size: 19px; line-height: 1.25; letter-spacing: -.02em; }
 .pilot-priority .table-scroll { max-width: 100%; margin-top: 16px; }
+.pilot-priority .empty { padding: 18px 12px; gap: 6px; }
 .pilot-priority .table { min-width: 700px; table-layout: fixed; }
 .pilot-priority .table th:nth-child(1), .pilot-priority .table td:nth-child(1) { width: 112px; }
 .pilot-priority .table th:nth-child(2), .pilot-priority .table td:nth-child(2) { width: 235px; }
@@ -76,7 +77,8 @@
   .pilot-command-head { align-items: stretch; flex-direction: column; gap: 10px; padding: 2px 0 12px; }
   .pilot-command-head h1 { font-size: 26px; }
   .pilot-command-head p { font-size: 12px; }
-  .pilot-head-actions .btn { min-height: 44px; padding: 8px 11px; font-size: 12px; }
+  .pilot-head-actions { flex-wrap: wrap; }
+  .pilot-head-actions .btn { min-height: 44px; padding: 8px 11px; font-size: 13px; }
   .pilot-sync .sync-status-panel { align-items: center; flex-direction: row; gap: 10px; padding: 9px 10px; }
   .pilot-sync .sync-status-panel p { display: none; }
   .pilot-sync .sync-status-panel .btn { width: auto; min-height: 40px; padding: 8px 10px; font-size: 11px; }
@@ -84,7 +86,7 @@
   .pilot-queue-head { align-items: center; }
   .pilot-queue-head h2 { font-size: 18px; }
   .pilot-queue-head p { font-size: 12px; }
-  .pilot-queue-head .btn { min-height: 40px; padding: 8px; font-size: 11px; }
+  .pilot-queue-head .btn { min-height: 44px; padding: 8px 10px; font-size: 12px; }
   .pilot-priority .table-scroll { margin-inline: -2px; }
   .pilot-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
   .pilot-kpi { gap: 5px; padding: 11px 9px; }
@@ -98,5 +100,8 @@
 @media (max-width: 380px) {
   .pilot-queue-head { align-items: flex-start; flex-direction: column; }
   .pilot-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pilot-kpi:last-child { grid-column: 1 / -1; }
+  .pilot-kpi { padding: 10px 9px; }
+  .pilot-kpi:last-child { grid-column: auto; }
+  .pilot-kpi span { font-size: 10px; }
+  .pilot-kpi small { font-size: 10px; }
 }

@@ -3,7 +3,10 @@
   const API = String(window.ROTA_MOTO_API_BASE || '/api').replace(/\/$/u, '');
   let csrf = null;
   let current = null;
-  let offlineMode = false;
+  const LOCAL_MODE_KEY = 'rotamoto.restaurante.local-mode.v1';
+  function readLocalMode() { try { return localStorage.getItem(LOCAL_MODE_KEY) === '1'; } catch (_) { return false; } }
+  function writeLocalMode(enabled) { try { enabled ? localStorage.setItem(LOCAL_MODE_KEY, '1') : localStorage.removeItem(LOCAL_MODE_KEY); } catch (_) { /* O modo local continua disponível nesta página. */ } }
+  let offlineMode = readLocalMode();
   let invitationKind = 'membership_invitation';
   const sessionReadGuard = window.RotaMotoSessionGuard.createSessionReadGuard();
   let working = false;
@@ -75,6 +78,11 @@
   const panel = $('#rmIdentityPanel');
   const trigger = $('.rm-account-trigger');
   const appKind = document.currentScript?.dataset.app || 'restaurante';
+  function updateTriggerLabel() {
+    trigger.textContent = offlineMode ? 'Dados locais' : 'Conta';
+    trigger.setAttribute('aria-label', offlineMode ? 'Abrir conta; modo local, sem sessão autenticada' : 'Abrir conta e acesso');
+    trigger.title = offlineMode ? 'Modo local: sem sessão autenticada' : 'Abrir conta e acesso';
+  }
   if (appKind !== 'restaurante') $('[data-admin]').remove();
   function message(error) { return codeMessages[error?.code] || (error?.network ? codeMessages.NETWORK : 'Não foi possível concluir. Revise os dados e tente novamente.'); }
   async function syncAfterAuthentication() {
@@ -136,7 +144,9 @@
   function setStatus(text) { $('[data-identity-status]').textContent = text; }
   function setBusy(form, busy) { form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); }
   function showSession(session) {
-    current = session; offlineMode = false;
+    current = session;
+    if (session) { offlineMode = false; writeLocalMode(false); }
+    else offlineMode = readLocalMode();
     $('[data-login]').hidden = Boolean(session); $('[data-authenticated]').hidden = !session;
     $('[data-offline]').hidden = Boolean(session); $('[data-recovery]').hidden = Boolean(session);
     $('[data-invitation]').hidden = Boolean(session);
@@ -152,6 +162,7 @@
     $('[data-admin]').hidden = !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
     trigger.hidden = false;
     placeTrigger();
+    updateTriggerLabel();
     if (session) {
       $('[data-user-email]').textContent = session.email;
       $('[data-company-id]').textContent = session.activeCompanyId;
@@ -164,12 +175,14 @@
       setStatus(session.mfaEnrollmentRequired?'Acesso limitado · configure a verificação em duas etapas':'Sessão ativa');
       $('[data-login-error]').textContent = '';
       if (!$('[data-admin]').hidden) loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
-    } else setStatus(navigator.onLine === false ? 'Sem conexão · usando dados deste aparelho' : 'Entre para acessar sua conta.');
+    } else {
+      setStatus(offlineMode ? 'Sem conta do servidor · dados deste aparelho' : navigator.onLine === false ? 'Sem conexão · usando dados deste aparelho' : 'Entre para acessar sua conta.');
+    }
   }
   function expireSession() {
     if (!current) return;
     sessionReadGuard.invalidate();
-      csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; offlineMode = false;
+    csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; offlineMode = false; writeLocalMode(false);
     Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {});
     showSession(null); setOpen(true);
     $('[data-login-error]').textContent = 'Sua sessão expirou ou deixou de estar válida. Entre novamente.';
@@ -228,7 +241,7 @@
     } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } $('[data-login-error]').textContent = message(error); setStatus('Não foi possível autenticar'); }
     finally { working = false; setBusy(form, false); }
   });
-  $('[data-offline]').addEventListener('click', () => { sessionReadGuard.invalidate(); offlineMode = true; trigger.textContent = 'Conta · dados locais'; const appRoot = document.querySelector('#app'); if (appRoot) { appRoot.inert = false; appRoot.setAttribute('aria-hidden', 'false'); } host.dataset.gated = 'false'; setStatus('Sem conta do servidor · dados deste aparelho'); setOpen(false); });
+  $('[data-offline]').addEventListener('click', () => { sessionReadGuard.invalidate(); offlineMode = true; writeLocalMode(true); updateTriggerLabel(); const appRoot = document.querySelector('#app'); if (appRoot) { appRoot.inert = false; appRoot.setAttribute('aria-hidden', 'false'); } host.dataset.gated = 'false'; setStatus('Sem conta do servidor · dados deste aparelho'); setOpen(false); });
   $('[data-switch]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
     working = true; setBusy(form, true); $('[data-switch-error]').textContent = '';
@@ -502,7 +515,7 @@
   window.addEventListener('online', async () => { if (!current && !offlineMode) { const session = await restore(); if (session) await syncAfterAuthentication(); } else if (current) await syncAfterAuthentication(); });
   window.addEventListener('rotamoto:session-expired', expireSession);
   const initialAppRoot = document.querySelector('#app'); if (initialAppRoot) { initialAppRoot.inert = true; initialAppRoot.setAttribute('aria-hidden', 'true'); }
-  host.dataset.gated = 'true'; trigger.hidden = false; setOpen(true); restore().then(async session => { if (session) { setOpen(false); await syncAfterAuthentication(); } });
+  host.dataset.gated = String(!offlineMode); trigger.hidden = false; updateTriggerLabel(); setOpen(!offlineMode); restore().then(async session => { if (session) { setOpen(false); await syncAfterAuthentication(); } });
   const appRoot = document.querySelector('#app');
   if (appRoot) new MutationObserver(placeTrigger).observe(appRoot, { childList: true, subtree: true });
   window.RotaMotoIdentity = Object.freeze({ restore, getSession: () => current, isOfflineMode: () => offlineMode });

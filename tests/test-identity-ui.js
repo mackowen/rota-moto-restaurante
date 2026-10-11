@@ -38,6 +38,9 @@ assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns t
 assert.match(source, /function expireSession/u, 'an HTTP 401 also clears the authenticated UI state');
 assert.match(source, /response\.status === 401 && path !== '\/identity\/session'\) expireSession\(\)/u, 'session restoration applies its own generation check before changing identity');
 assert.match(source, /sessionReadGuard\.invalidate\(\); offlineMode = true/u, 'explicit local mode invalidates older session reads');
+assert.match(source, /LOCAL_MODE_KEY = 'rotamoto\.restaurante\.local-mode\.v1'/u, 'local mode has a non-authentication preference key scoped to this app');
+assert.match(source, /writeLocalMode\(true\)/u, 'explicit local mode survives a reload');
+assert.match(source, /if \(session\) \{ offlineMode = false; writeLocalMode\(false\); \}[\s\S]{0,60}else offlineMode = readLocalMode\(\)/u, 'restored local preference never creates an authenticated session');
 assert.match(source, /if \(!sessionReadGuard\.isCurrent\(readVersion\)\) return current;/u, 'late session results cannot replace newer user intent');
 assert.match(html, /identity-session-guard\.js[\s\S]{0,100}identity-ui\.js/u, 'session read guard loads before identity UI');
 assert.match(source, /clearSession/u, 'logout clears in-memory sync credentials');
