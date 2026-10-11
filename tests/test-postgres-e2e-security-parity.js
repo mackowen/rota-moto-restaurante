@@ -194,6 +194,8 @@ async function main() {
     !official.auditor.can_create_temp && !official.auditor.schema_create && official.auditor.no_role_memberships &&
     official.auditor.no_operational_table_privileges && official.auditor.no_sequence_privileges &&
     official.auditor.no_security_definer_execution, 'official audit login is non-privileged and has no operational data access');
+  assert(official.auditor.default_read_only_global || official.auditor.default_read_only_database,
+    'official audit login must default to read-only at role or database scope');
   if (official.auditor.schema_usage) {
     assert(official.auditor.ledger_any_select && official.auditor.ledger_migration_id && official.auditor.ledger_checksum &&
       official.auditor.ledger_applied_at && !official.auditor.ledger_insert && !official.auditor.ledger_update &&
