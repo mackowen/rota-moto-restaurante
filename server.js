@@ -61,8 +61,12 @@ let secretProvider=null,databaseTlsCa=null;
 try{if(CONFIG.production){secretProvider=CONFIG.secretProviderModule?loadSecretProvider(CONFIG.secretProviderModule):loadLocalSecretProvider({directory:CONFIG.secretStoreDirectory,masterKeyFile:CONFIG.secretMasterKeyFile});databaseTlsCa=fs.readFileSync(CONFIG.databaseTlsCaFile,'utf8')}}catch(error){bootstrapFailure(error)}
 function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
   const parsed=new URL(value);
-  if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!=='rotamoto_app'||parsed.password||parsed.pathname!=='/rotamoto')
-    throw new Error('DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
+  const databasePath=CONFIG.nodeEnv==='test'?'/rotamoto_e2e':'/rotamoto';
+  if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!=='rotamoto_app'||parsed.password||parsed.pathname!==databasePath||
+    CONFIG.nodeEnv==='test'&&!['127.0.0.1','localhost','::1','[::1]'].includes(parsed.hostname))
+    throw new Error(CONFIG.nodeEnv==='test'
+      ?'E2E_RUNTIME_DATABASE_URL deve apontar para rotamoto_app local em rotamoto_e2e.'
+      :'DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
   return value;
 }
 const identityPool=createPool({connectionString:runtimeDatabaseConnectionString(),...(secretProvider?{password:async()=>{const provider=await secretProvider;return provider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});

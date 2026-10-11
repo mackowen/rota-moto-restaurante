@@ -24,17 +24,21 @@ function parseOrigins(values, { production }) {
   return Object.freeze(origins);
 }
 
-function validateDatabaseUrl(value, { production }) {
+function validateDatabaseUrl(value, { production, test = false }) {
   if (!value && production) throw new Error('DATABASE_URL runtime é obrigatória em produção.');
   const connectionString = value || DEVELOPMENT_DATABASE_URL;
   let parsed;
   try { parsed = new URL(connectionString); } catch (_) { throw new Error('DATABASE_URL runtime inválida.'); }
+  const databasePath = test ? '/rotamoto_e2e' : '/rotamoto';
   if (!['postgres:', 'postgresql:'].includes(parsed.protocol) ||
       decodeURIComponent(parsed.username) !== 'rotamoto_app' || parsed.password ||
-      !parsed.hostname || parsed.pathname !== '/rotamoto' || parsed.hash) {
-    throw new Error('DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
+      !parsed.hostname || parsed.pathname !== databasePath || parsed.hash) {
+    throw new Error(test
+      ? 'E2E_RUNTIME_DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto_e2e.'
+      : 'DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
   }
   const databaseHost = parsed.hostname.replace(/^\[|\]$/gu, '').toLowerCase();
+  if (test && !LOOPBACK_HOSTS.has(databaseHost)) throw new Error('E2E_RUNTIME_DATABASE_URL deve usar PostgreSQL local.');
   if (production && (LOOPBACK_HOSTS.has(databaseHost) || databaseHost.endsWith('.localhost'))) {
     throw new Error('DATABASE_URL de produção não pode usar loopback.');
   }
@@ -75,7 +79,10 @@ function loadRuntimeConfig(env = process.env) {
     throw new Error('Use TRUSTED_PROXY_ADDRESSES para allowlist exata de proxies confiáveis.');
   }
 
-  const databaseUrl = validateDatabaseUrl(env.DATABASE_URL, { production });
+  if (nodeEnv === 'test' && env.DATABASE_URL) throw new Error('Use E2E_RUNTIME_DATABASE_URL no modo de teste.');
+  if (nodeEnv === 'test' && !env.E2E_RUNTIME_DATABASE_URL) throw new Error('E2E_RUNTIME_DATABASE_URL é obrigatória no modo de teste.');
+  const databaseUrl = validateDatabaseUrl(nodeEnv === 'test' ? env.E2E_RUNTIME_DATABASE_URL : env.DATABASE_URL,
+    { production, test: nodeEnv === 'test' });
   const origins = parseOrigins(production ? [env.ALLOWED_ORIGINS] : [env.ALLOWED_ORIGIN || 'http://localhost:8787', env.ALLOWED_ORIGINS], { production });
   if (production && !origins.length) throw new Error('ALLOWED_ORIGINS HTTPS é obrigatória em produção.');
   const allowedHosts = normalizeHosts(production ? [env.ALLOWED_HOSTS] : [env.ALLOWED_HOSTS || 'localhost,127.0.0.1,[::1]']);
