@@ -10,6 +10,7 @@ const { Readable } = require('node:stream');
 const { createFilesystemObjectStore } = require('../backend/domain/filesystem-object-store');
 const { createRecoverySet, verifyRecoverySet, restoreRecoverySet, withSnapshotLock, pruneRecoverySets } = require('../backend/runtime/recovery-set');
 const { assertRecoverySource } = require('../backend/runtime/recovery-set');
+const { parseSafeUrl } = require('../backend/runtime/backup-runner');
 
 const uuid = () => crypto.randomUUID();
 async function copyTree(source, target) { await fs.cp(source, target, { recursive: true, preserveTimestamps: true }); }
@@ -22,6 +23,20 @@ async function rejects(fn) { await assert.rejects(fn); }
     /not authorized/u, 'production never accepts the disposable campaign source');
   assert.equal(assertRecoverySource('rotamoto_disposable_0068_source', { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068' }),
     'rotamoto_disposable_0068_source');
+  assert.equal(assertRecoverySource('rotamoto_disposable_0138_20261011_41770017',
+    { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0138' }), 'rotamoto_disposable_0138_20261011_41770017');
+  assert.throws(() => assertRecoverySource('rotamoto_disposable_0138_20261011_41770017',
+    { NODE_ENV: 'production', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0138' }), /not authorized/u);
+  assert.throws(() => assertRecoverySource('rotamoto_e2e',
+    { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0138' }), /not authorized/u);
+  const priorCampaign = process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN, priorNodeEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test'; process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0138';
+  assert.equal(parseSafeUrl('postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_disposable_0138_20261011_41770017').database,
+    'rotamoto_disposable_0138_20261011_41770017');
+  assert.throws(() => parseSafeUrl('postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto'), /Backup exige/u);
+  assert.throws(() => parseSafeUrl('postgresql://rotamoto_restore@db.example:5432/rotamoto_disposable_0138_20261011_41770017'), /Backup exige/u);
+  if (priorCampaign === undefined) delete process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN; else process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = priorCampaign;
+  if (priorNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = priorNodeEnv;
   assert.throws(() => assertRecoverySource('rotamoto_disposable_arbitrary', { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068' }),
     /not authorized/u, 'campaign source cannot be widened to arbitrary databases');
   for (const file of ['backend/domain/proof-media-http.js', 'backend/domain/proof-media-gc.js', 'backend/domain/sync-service.js'])
