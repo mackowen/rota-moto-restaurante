@@ -31,7 +31,7 @@ assert.match(source, /app\.inert = open \|\| gated/u, 'opening the account dialo
 assert.match(appSource, /let modalReturnFocus=null/u, 'operational dialogs remember their invoking control');
 assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog=/u, 'operational dialogs trap keyboard focus and handle Escape');
 assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
-assert.match(appSource, /Escopo dos ajustes[\s\S]{0,300}timezone operacional da Company é configuração canônica/u, 'settings distinguish local preferences from the canonical Company timezone');
+assert.match(appSource, /Escopo dos ajustes[\s\S]{0,300}fuso horário usado nos relatórios é definido pela administração da empresa/u, 'settings distinguish local preferences from the canonical Company timezone');
 assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed');
 assert.match(source, /Última sincronização:|conexão ainda não está ativa/u, 'integration state distinguishes account authorization from an active connection and records sync time');
 assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');

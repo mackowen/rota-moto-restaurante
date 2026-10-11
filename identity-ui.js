@@ -22,42 +22,42 @@
     }
   } catch (_) {}
   const codeMessages = {
-    INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta exige verificação MFA. Se o autenticador seguro ainda não estiver configurado, o acesso permanece bloqueado.', MFA_PROVIDER_UNAVAILABLE: 'A verificação MFA está temporariamente indisponível. Tente novamente mais tarde.',
+    INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta precisa de um código de verificação. Configure o aplicativo autenticador para entrar.', MFA_PROVIDER_UNAVAILABLE: 'A verificação em duas etapas está temporariamente indisponível. Tente novamente mais tarde.',
     UNAUTHENTICATED: 'Sua sessão expirou. Entre novamente.', EMAIL_PROVIDER_NOT_CONFIGURED: 'Convites e recuperação ainda dependem da configuração segura de entrega de email.',
-    FORBIDDEN: 'Seu perfil não permite esta ação.', LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um owner ativo.',
-    DRIVER_MEMBERSHIP_INELIGIBLE: 'Esta conta precisa estar ativa, verificada e autorizada para sincronizar como Motoboy.',
-    DRIVER_NOT_FOUND: 'Motorista não encontrado nesta empresa.', DRIVER_ALREADY_LINKED: 'Este motorista já está associado a outra conta.',
+    FORBIDDEN: 'Seu perfil não permite esta ação.', LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um responsável principal ativo.',
+    DRIVER_MEMBERSHIP_INELIGIBLE: 'A conta precisa estar ativa, confirmada e autorizada para usar o app Motoboy.',
+    DRIVER_NOT_FOUND: 'Motoboy não encontrado nesta empresa.', DRIVER_ALREADY_LINKED: 'Este motorista já está associado a outra conta.',
     MEMBERSHIP_DRIVER_CONFLICT: 'Desvincule o motorista atual antes de trocar a associação.',
     INVALID_STATE_TRANSITION: 'Esta mudança de estado não é permitida.', EMAIL_DELIVERY_FAILED: 'Não foi possível entregar o convite. Nenhum link utilizável foi enviado.', AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar este convite.', CONFLICT: 'A conta já possui um vínculo ou estado incompatível.',
-    RATE_LIMITED: 'Muitas tentativas. Aguarde antes de tentar novamente.', NETWORK: 'Servidor indisponível. O modo local continua disponível.',
-    PROVIDER_CREDENTIALS_NOT_CONFIGURED: 'O administrador do servidor precisa configurar as credenciais oficiais do aplicativo.',
-    MARKETPLACE_ACCOUNT_LIFECYCLE_UNAVAILABLE: 'A autorização ainda não está configurada neste servidor. Confira HTTPS, credenciais e role do resolver.',
+    RATE_LIMITED: 'Muitas tentativas. Aguarde antes de tentar novamente.', NETWORK: 'Sem conexão com o servidor. Os dados salvos neste aparelho continuam disponíveis; ações que precisam do servidor ficam pausadas.',
+    PROVIDER_CREDENTIALS_NOT_CONFIGURED: 'Peça ao administrador para concluir a configuração segura do aplicativo.',
+    MARKETPLACE_ACCOUNT_LIFECYCLE_UNAVAILABLE: 'A integração ainda não está configurada. Peça ao administrador para concluir a configuração segura.',
     OAUTH_STATE_EXPIRED_OR_USED: 'Esta autorização expirou ou já foi usada. Inicie uma nova autorização.',
-    AUTHORIZED_MERCHANT_NOT_VISIBLE_YET: 'Autorização concluída; a lista de lojas ainda está sincronizando. Use “Verificar lojas novamente” para retomar sem repetir o grant.',
+    AUTHORIZED_MERCHANT_NOT_VISIBLE_YET: 'A autorização foi concluída, mas as lojas ainda não apareceram. Toque em “Verificar lojas novamente” daqui a pouco. Não repita a autorização.',
     PROVIDER_BLOCKED_EXTERNAL: 'A 99Food exige acesso de onboarding e contrato oficial antes de habilitar a integração.'
   };
   const host = document.createElement('div');
   host.id = 'rmIdentityRoot';
   host.innerHTML = `<button type="button" class="rm-account-trigger" aria-label="Abrir conta e acesso" aria-controls="rmIdentityPanel" aria-expanded="false">Conta</button>
     <section id="rmIdentityPanel" class="rm-identity-panel" role="dialog" aria-modal="true" aria-labelledby="rmIdentityTitle" hidden>
-      <header><div><strong id="rmIdentityTitle">Conta RotaMoto</strong><small data-identity-status>Verificando sessão…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
+      <header><div><strong id="rmIdentityTitle">Conta RotaMoto</strong><small data-identity-status>Verificando sua conta…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
       <div class="rm-identity-content">
         <form data-login novalidate><h2>Entrar</h2><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label>
           <label>Senha<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
-          <label data-mfa-label hidden>Código MFA ou de recuperação<input name="mfaCode" autocomplete="one-time-code" minlength="6" maxlength="128"></label>
-          <label>Empresa (UUID)<input name="companyId" autocomplete="off" spellcheck="false" aria-describedby="companyHelp" required></label>
-          <small id="companyHelp">Use o identificador recebido no convite. O servidor valida o vínculo da conta.</small>
+          <label data-mfa-label hidden>Código de verificação ou recuperação<input name="mfaCode" autocomplete="one-time-code" minlength="6" maxlength="128"></label>
+          <label>Código da empresa<input name="companyId" autocomplete="off" spellcheck="false" aria-describedby="companyHelp" required></label>
+          <small id="companyHelp">Use o código recebido no convite. O servidor confirma o vínculo da conta.</small>
           <button class="rm-primary" type="submit">Entrar</button><p data-login-error role="alert" aria-live="polite"></p></form>
-        <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-company-name>Empresa ativa</span><span>ID: <code data-company-id></code></span></div>
-          <section data-mfa hidden><h3>Autenticação multifator</h3><p data-mfa-status role="status"></p>
-            <button type="button" data-mfa-start>Configurar autenticador</button>
-            <form data-mfa-confirm hidden><p>Adicione esta conta ao seu aplicativo autenticador. Digite o código atual para confirmar.</p><label>Chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar MFA</button><p data-mfa-error role="alert"></p></form>
+        <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-company-name>Empresa ativa</span><span>Código: <code data-company-id></code></span></div>
+          <section data-mfa hidden><h3>Verificação em duas etapas</h3><p data-mfa-status role="status"></p>
+            <button type="button" data-mfa-start>Configurar verificação em duas etapas</button>
+            <form data-mfa-confirm hidden><p>Adicione esta conta ao seu aplicativo autenticador. Digite o código atual para confirmar.</p><label>Chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar código</button><p data-mfa-error role="alert"></p></form>
             <section data-recovery-codes hidden><h4>Códigos de recuperação</h4><p>Guarde-os fora deste navegador. Cada código só pode ser usado uma vez.</p><pre data-recovery-code-list></pre><button type="button" data-recovery-codes-dismiss>Ocultar códigos</button></section>
             <button type="button" data-mfa-regenerate hidden>Gerar novos códigos de recuperação</button>
           </section>
           <form data-accept-existing><label>Código de convite para sua conta<input name="token" required maxlength="43" autocomplete="off"></label><button type="submit">Aceitar convite</button><p role="status" data-existing-invitation-result></p></form>
-          <form data-switch><label>Trocar empresa (UUID)<input name="companyId" autocomplete="off" spellcheck="false" required></label><button type="submit">Validar e trocar</button><p data-switch-error role="alert"></p></form>
-          <button type="button" data-sync>Sincronizar agora</button><button type="button" data-logout class="rm-secondary">Sair</button><p data-account-error role="alert" aria-live="polite"></p>
+          <form data-switch><label>Trocar empresa<input name="companyId" autocomplete="off" spellcheck="false" required></label><button type="submit">Confirmar troca</button><p data-switch-error role="alert"></p></form>
+          <button type="button" data-sync>Atualizar dados agora</button><button type="button" data-logout class="rm-secondary">Sair</button><p data-account-error role="alert" aria-live="polite"></p>
         </div>
         <details data-recovery><summary>Recuperar acesso</summary><form data-recovery-request><label>Email<input name="email" type="email" autocomplete="email" required maxlength="320"></label><button type="submit">Solicitar recuperação</button><p role="status" data-recovery-status></p></form>
           <form data-recovery-consume><label>Código recebido<input name="token" autocomplete="one-time-code" required maxlength="43"></label><label>Nova senha<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button type="submit">Alterar senha</button><p role="status" data-recovery-result></p></form></details>
@@ -67,7 +67,7 @@
           <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><div data-members aria-live="polite"></div><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><p data-driver-access-note role="status" hidden>Para listar motoristas, sua sessão precisa da permissão de leitura de sync. A desassociação continua disponível para vínculos existentes.</p><section data-roles-list><h3>Perfis existentes</h3></section><form data-create-role><h3>Novo perfil</h3><label>Identificador<input name="key" required pattern="[a-z][a-z0-9_-]{1,63}" maxlength="64"></label><label>Nome<input name="name" required maxlength="100"></label><fieldset><legend>Permissões</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form>
         </section>
         <button type="button" data-offline class="rm-offline">Continuar somente com dados locais</button>
-        <p class="rm-privacy">Senha e códigos são enviados somente ao servidor por HTTPS em produção. Sessão e proteção CSRF permanecem em cookie seguro e memória; nada disso é salvo no armazenamento local.</p>
+        <p class="rm-privacy">Em produção, sua senha e seus códigos são enviados ao servidor por uma conexão segura. Eles não ficam salvos neste aparelho.</p>
       </div>
     </section>`;
   document.body.append(host);
@@ -157,14 +157,14 @@
       $('[data-company-id]').textContent = session.activeCompanyId;
       try { localStorage.setItem('rotaMoto.activeCompanyHint', session.activeCompanyId); } catch (_) {}
       const mfaBox=$('[data-mfa]');mfaBox.hidden=!(session.mfaEnrollmentRequired||session.mfaConfigured);
-      $('[data-mfa-status]').textContent=session.mfaEnrollmentRequired?'Acesso limitado até confirmar o autenticador.':session.mfaConfigured?'MFA configurado. O segredo não pode ser consultado novamente.':'MFA não configurado.';
+      $('[data-mfa-status]').textContent=session.mfaEnrollmentRequired?'Acesso limitado até confirmar o autenticador.':session.mfaConfigured?'Verificação em duas etapas configurada. A chave não pode ser consultada novamente.':'Verificação em duas etapas não configurada.';
       $('[data-mfa-start]').hidden=!session.mfaEnrollmentRequired&&session.mfaConfigured;
       $('[data-mfa-regenerate]').hidden=!(session.mfaConfigured&&session.mfaVerified&&session.permissions?.includes('company.manage'));
       $('[data-sync]').hidden=Boolean(session.mfaEnrollmentRequired);
-      setStatus(session.mfaEnrollmentRequired?'Sessão limitada · configure MFA':'Sessão ativa');
+      setStatus(session.mfaEnrollmentRequired?'Acesso limitado · configure a verificação em duas etapas':'Sessão ativa');
       $('[data-login-error]').textContent = '';
       if (!$('[data-admin]').hidden) loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
-    } else setStatus(navigator.onLine === false ? 'Offline · somente modo local' : 'Sem sessão autenticada');
+    } else setStatus(navigator.onLine === false ? 'Sem conexão · usando dados deste aparelho' : 'Entre para acessar sua conta.');
   }
   function expireSession() {
     if (!current) return;
@@ -208,7 +208,7 @@
   applyMailAction();
   $('[data-login] [name=companyId]').value = hintedCompany();
   $('[data-mfa-start]').addEventListener('click',async()=>{const button=$('[data-mfa-start]');button.disabled=true;$('[data-mfa-error]').textContent='';try{const result=await request('/identity/mfa/enrollment',{method:'POST',body:'{}'});$('[data-mfa-secret]').value=result.secret;$('[data-mfa-confirm]').hidden=false;$('[data-mfa-status]').textContent=`Escaneie ou insira a chave no autenticador. ${result.otpauthUri}`;$('[data-mfa-confirm] [name=code]').focus()}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{button.disabled=false}});
-  $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});$('[data-mfa-secret]').value='';$('[data-mfa-confirm]').hidden=true;$('[data-mfa-status]').textContent='MFA configurado. O segredo foi removido desta tela.';$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore()}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
+  $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});$('[data-mfa-secret]').value='';$('[data-mfa-confirm]').hidden=true;$('[data-mfa-status]').textContent='Verificação em duas etapas configurada. A chave foi removida desta tela.';$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore()}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
   $('[data-recovery-codes-dismiss]').addEventListener('click',()=>{$('[data-recovery-code-list]').textContent='';$('[data-recovery-codes]').hidden=true});
   $('[data-mfa-regenerate]').addEventListener('click',async event=>{const button=event.currentTarget;if(working)return;working=true;button.disabled=true;try{const result=await request('/identity/mfa/recovery-codes',{method:'POST',body:'{}'});$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{working=false;button.disabled=false}});
   $('.rm-account-trigger').addEventListener('click', () => setOpen(panel.hidden));
@@ -228,7 +228,7 @@
     } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } $('[data-login-error]').textContent = message(error); setStatus('Não foi possível autenticar'); }
     finally { working = false; setBusy(form, false); }
   });
-  $('[data-offline]').addEventListener('click', () => { sessionReadGuard.invalidate(); offlineMode = true; trigger.textContent = 'Conta · modo local'; const appRoot = document.querySelector('#app'); if (appRoot) { appRoot.inert = false; appRoot.setAttribute('aria-hidden', 'false'); } host.dataset.gated = 'false'; setStatus('Modo local sem identidade do servidor'); setOpen(false); });
+  $('[data-offline]').addEventListener('click', () => { sessionReadGuard.invalidate(); offlineMode = true; trigger.textContent = 'Conta · dados locais'; const appRoot = document.querySelector('#app'); if (appRoot) { appRoot.inert = false; appRoot.setAttribute('aria-hidden', 'false'); } host.dataset.gated = 'false'; setStatus('Sem conta do servidor · dados deste aparelho'); setOpen(false); });
   $('[data-switch]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
     working = true; setBusy(form, true); $('[data-switch-error]').textContent = '';
@@ -243,7 +243,7 @@
     catch (error) { $('[data-account-error]').textContent = message(error); }
     finally { working = false; }
   });
-  $('[data-sync]')?.addEventListener('click', async () => { try { await window.RotaMotoSync?.syncNow?.(); $('[data-account-error]').textContent = 'Sincronização solicitada.'; } catch (error) { $('[data-account-error]').textContent = message(error); } });
+  $('[data-sync]')?.addEventListener('click', async () => { try { await window.RotaMotoSync?.syncNow?.(); $('[data-account-error]').textContent = 'Pedido de atualização enviado.'; } catch (error) { $('[data-account-error]').textContent = message(error); } });
   $('[data-recovery-request]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return;
     const email = form.elements.email.value.trim(); setBusy(form, true);
@@ -300,7 +300,7 @@
       accountRows.forEach(accountRow=>{
         const account=document.createElement('section');account.className='rm-integration-account';
         const name=document.createElement('strong');name.textContent=`Loja: ${accountRow.displayName||'identificada'} · ${accountStates[accountRow.accountStatus]||'estado não verificado'}`;account.append(name);
-        const sync=document.createElement('p');sync.textContent=`Última sincronização: ${accountRow.lastSyncAt?new Date(accountRow.lastSyncAt).toLocaleString():'ainda indisponível'}`;account.append(sync);
+        const sync=document.createElement('p');sync.textContent=`Última atualização: ${accountRow.lastSyncAt?new Date(accountRow.lastSyncAt).toLocaleString():'ainda indisponível'}`;account.append(sync);
         if(accountRow.lastErrorCode){const issue=document.createElement('p');issue.setAttribute('role','status');issue.textContent=accountErrors[accountRow.lastErrorCode]||'A conta registrou um erro. Verifique a autorização e o acesso do fornecedor.';account.append(issue);}
         if(accountRow.accountStatus==='active'&&accountRow.id){const disable=document.createElement('button');disable.type='button';disable.textContent='Desativar localmente';
           disable.addEventListener('click',async()=>{disable.disabled=true;try{await request(`/admin/integrations/${encodeURIComponent(item.provider)}/accounts/${encodeURIComponent(accountRow.id)}/disable`,{method:'POST',body:'{}'});await loadAdmin();}
@@ -359,15 +359,15 @@
       });
       if (!Object.keys(item.capabilities || {}).length) capabilities.append(document.createTextNode('Capacidades ainda não verificadas.'));
       row.append(capabilities);
-      const syncState = item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : 'indisponível; conta sem sincronização registrada';
-      const notes = document.createElement('p'); notes.textContent = `${item.capabilityNotes || 'A conexão ainda não está ativa.'} Última sincronização: ${syncState}.`; row.append(notes);
+      const syncState = item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : 'ainda não há atualização registrada';
+      const notes = document.createElement('p'); notes.textContent = `${item.capabilityNotes || 'A conexão ainda não está ativa.'} Última atualização: ${syncState}.`; row.append(notes);
       list.append(row);
     });
       const orderPanel=document.createElement('section');orderPanel.className='rm-marketplace-orders';
       const orderHeading=document.createElement('h4');orderHeading.textContent='Pedidos de marketplace';orderPanel.append(orderHeading);
       const orderRows=Array.isArray(marketplaceOrders.orders)?marketplaceOrders.orders:[];
       const commandStates={queued:'Na fila',leased:'Em execução',pending:'Aguardando confirmação da plataforma',succeeded:'Confirmada pela plataforma',rejected:'Falhou',unknown_outcome:'Resultado incerto; reconciliação pendente',needs_review:'Precisa de revisão'};
-      if(!orderRows.length){const empty=document.createElement('p');empty.textContent='Nenhum pedido de marketplace sincronizado.';orderPanel.append(empty);}
+      if(!orderRows.length){const empty=document.createElement('p');empty.textContent='Nenhum pedido dessa plataforma foi recebido ainda.';orderPanel.append(empty);}
       orderRows.forEach(order=>{
         const item=document.createElement('article');item.className='rm-marketplace-order';
         const title=document.createElement('strong');title.textContent=`${order.provider==='ifood'?'iFood':'Keeta'} · ${order.displayId||order.domainOrderId} · ${order.providerStatus||'estado indisponível'}`;item.append(title);
@@ -448,7 +448,7 @@
           feedback.textContent = `Vinculado a ${driver?.record?.name || driver?.record?.displayName || `ID ${member.driverId}`}.`;
           const unlink = document.createElement('button'); unlink.type = 'button'; unlink.className = 'rm-secondary'; unlink.textContent = 'Desvincular motorista';
           unlink.addEventListener('click', async () => {
-            if (!window.confirm(`Desvincular o motorista de ${member.email}? A conta deixará de sincronizar entregas até receber outro vínculo.`)) return;
+            if (!window.confirm(`Desvincular o motoboy ${member.email}? Ele deixará de receber entregas desta empresa até ser vinculado novamente.`)) return;
             unlink.disabled = true;
             try { await request(`/admin/memberships/${member.membershipId}/driver`, { method: 'DELETE' }); await loadAdmin(); }
             catch (error) { feedback.textContent = message(error); unlink.disabled = false; }
@@ -457,7 +457,7 @@
         } else {
           const eligible = member.status === 'active' && !member.disabled && member.emailVerified &&
             member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push');
-          if (!eligible) feedback.textContent = 'Disponível quando a conta estiver ativa, verificada e autorizada para sincronizar.';
+          if (!eligible) feedback.textContent = 'Disponível quando a conta estiver ativa, confirmada e autorizada.';
           else if (!canReadDrivers) feedback.textContent = 'Seu perfil não pode listar os motoristas desta empresa.';
           else {
             const select = document.createElement('select');
