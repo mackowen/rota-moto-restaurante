@@ -42,8 +42,9 @@ assert.match(identity, /aria-label', offlineMode \? 'Dados locais. Abrir opçõe
   'the local-data action keeps an explicit accessible label');
 assert.match(identityCss, /\.rm-account-trigger-icon \{ display: none/u,
   'the account icon is available for compact header presentation');
-assert.match(designSystem, /\.rm-account-trigger--inline \.rm-account-trigger-icon\{display:block;width:20px;height:20px;stroke:currentColor\}/u,
-  'the compact account action renders a theme-aware icon when its visible label is hidden');
+assert.match(designSystem, /#app \.rm-page-header \.top-actions \.rm-account-trigger--inline\{display:grid;place-items:center;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;padding:0;font-size:0\}/u,
+  'the compact account action uses a centered 44px grid despite the base ID rule');assert.match(designSystem, /#app \.rm-page-header \.top-actions \.rm-account-trigger--inline \.rm-account-trigger-icon\{display:block;width:20px;height:20px;margin:0;justify-self:center;align-self:center;stroke:currentColor\}/u,
+  'the account icon is centered on both axes while its label remains accessible');
 assert.match(identity, /aria-label', offlineMode \? 'Dados locais. Abrir opções da conta; sem sessão autenticada'/u,
   'the icon-only account control keeps its full accessible name');
 

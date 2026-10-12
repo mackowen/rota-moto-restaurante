@@ -27,13 +27,14 @@ function diagnose(code, context = {}) {
 
 function setStatus(map, { state, message, retry = false }) {
   const container = map.getContainer();
-  let status = container.nextElementSibling?.classList.contains('rm-map-runtime-status') ? container.nextElementSibling : null;
+  const anchor = container.closest('.mapStage') || container.closest('.mapWrap') || container;
+  let status = anchor.nextElementSibling?.classList.contains('rm-map-runtime-status') ? anchor.nextElementSibling : null;
   if (!status) {
     status = document.createElement('div');
     status.className = 'rm-map-runtime-status';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    container.insertAdjacentElement('afterend', status);
+    anchor.insertAdjacentElement('afterend', status);
   }
   status.dataset.state = state;
   status.replaceChildren();
@@ -52,7 +53,8 @@ function setStatus(map, { state, message, retry = false }) {
 
 function clearStatus(map) {
   const container = map.getContainer();
-  const status = container.nextElementSibling?.classList.contains('rm-map-runtime-status') ? container.nextElementSibling : null;
+  const anchor = container.closest('.mapStage') || container.closest('.mapWrap') || container;
+  const status = anchor.nextElementSibling?.classList.contains('rm-map-runtime-status') ? anchor.nextElementSibling : null;
   if (status) status.hidden = true;
 }
 
@@ -74,19 +76,27 @@ function addRaster(map, entry, reason) {
   entry.loadedTiles = 0;
   entry.reason = reason;
   setStatus(map, { state: 'loading', message: 'Carregando mapa básico…' });
+  const finishRasterLoad = () => {
+    if (entry.mode !== 'raster' || entry.layer !== layer) return;
+    if (entry.loadTimer) clearTimeout(entry.loadTimer);
+    entry.loadTimer = null;
+    if (entry.loadedTiles > 0) {
+      const partial = entry.errors > 0;
+      setStatus(map, { state: 'fallback', message: partial ? 'Mapa básico carregado. Algumas áreas podem não aparecer.' : 'Mapa básico carregado.', retry: partial });
+      return;
+    }
+    diagnose('raster-tiles-unavailable');
+    setStatus(map, { state: 'error', message: 'Não foi possível carregar o mapa. Verifique a conexão e tente novamente.', retry: true });
+  };
   layer.on('tileerror', () => {
     entry.errors += 1;
     diagnose('raster-tile-error');
-    if (entry.errors >= 3 && entry.loadedTiles === 0) {
-      diagnose('raster-tiles-unavailable');
-      setStatus(map, { state: 'error', message: 'Não foi possível carregar o mapa. Verifique a conexão e tente novamente.', retry: true });
-    }
   });
   layer.on('tileload', () => {
     entry.loadedTiles += 1;
-    entry.errors = 0;
-    setStatus(map, { state: 'fallback', message: 'Mapa básico carregado.' });
   });
+  layer.once('load', finishRasterLoad);
+  entry.loadTimer = setTimeout(finishRasterLoad, 15000);
   layer.addTo(map);
   return layer;
 }
@@ -129,13 +139,20 @@ function addVector(map, entry) {
     renderer.on('sourcedata', () => { entry.rendererEvents.sourcedata += 1; });
     renderer.on('idle', () => { entry.rendererEvents.idle += 1; });
     entry.loadTimer = setTimeout(() => failVector(map, entry, 'vector-style-timeout'), 15000);
-    renderer.on('load', () => {
+    const confirmVectorReady = () => {
+      const state = inspectLayer(entry);
+      if (!state.styleLoaded || !state.tilesLoaded || state.styleLayerCount < 1 || state.contextLost) return;
+      if (entry.errors > 0) {
+        failVector(map, entry, 'vector-idle-with-resource-errors');
+        return;
+      }
       entry.rendererEvents.load += 1;
       if (entry.loadTimer) clearTimeout(entry.loadTimer);
       entry.loadTimer = null;
-      entry.errors = 0;
       clearStatus(map);
-    });
+    };
+    renderer.on('load', confirmVectorReady);
+    renderer.on('idle', confirmVectorReady);
     renderer.on('error', event => {
       entry.errors += 1;
       if (entry.errors === 1) {
@@ -168,6 +185,8 @@ function addBaseLayer(map) {
 function retryVector(map) {
   const entry = layers.get(map);
   if (!entry) return;
+  if (entry.loadTimer) clearTimeout(entry.loadTimer);
+  entry.loadTimer = null;
   if (entry.layer) map.removeLayer(entry.layer);
   entry.recovered = false;
   entry.errors = 0;
