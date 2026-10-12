@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="RotaMoto">
   <rect x="4" y="4" width="56" height="56" rx="17" fill="#16a34a"/>
-  <path d="M15 47 27 35l8 8 9-14" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M47 12c-5.5 0-10 4.5-10 10 0 7 10 19 10 19s10-12 10-19c0-5.5-4.5-10-10-10Z" fill="#fff"/>
-  <circle cx="47" cy="22" r="3.2" fill="#16a34a"/>
+  <path d="M32 11c-7.7 0-14 6.3-14 14 0 9.8 14 28 14 28s14-18.2 14-28c0-7.7-6.3-14-14-14Z" fill="#fff"/>
+  <circle cx="32" cy="25" r="4.5" fill="#087b59"/>
 </svg>
