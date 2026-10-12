@@ -157,7 +157,7 @@ assert.doesNotMatch(emptyHtml, /Defina o fuso horário/);
 assert.match(html, /Total de repasses/);
 assert.match(html, /&lt;sem freshness&gt;/);
 assert.match(html, /Pedidos por hora e dia indisponíveis/);
-assert.doesNotMatch(html.replace(/<[^>]*>/gu, ' '), /Order\.|Earning|Driver|Company|Route|DELIVERED|CANCELLED|FAILED|RETURNED|0\/0/u, 'relatório não expõe nomes internos nem estados técnicos ao operador');
+assert.doesNotMatch(html.replace(/<[^>]*>/gu, ' '), /Order\.|Earning|Driver|Company|Route|DELIVERED|CANCELLED|FAILED|RETURNED|0\/0|estado reconhecido/u, 'relatório não expõe nomes internos nem estados técnicos ao operador');
 assert.doesNotMatch(html, /\bBRL\b/u, 'relatório apresenta nomes de moeda, não códigos internos');
 assert.match(html, /Tipos de entrega/);
 assert.match(html, /Endereços mais recorrentes/);
@@ -166,5 +166,7 @@ assert.match(appSource, /function dashboard\(\)[\s\S]*?RotaMotoAnalytics\.aggreg
 assert.match(appSource, /function dashboard\(\)[\s\S]*?report\.driverPayout/u, 'Command Center reports canonical payout coverage');
 assert.doesNotMatch(appSource, /kpi\('Faturamento hoje'/);
 assert.match(appSource, /Taxa de entrega conhecida \(BRL\)/, 'CSV names the known fee semantics explicitly');
+assert.doesNotMatch(appSource, /earning BRL|Route\.deliveryIds|Status canônico da entrega|Fulfillment logístico|QR seguro da Delivery/u, 'telas operacionais não expõem propriedades internas de entidades');
+assert.match(appSource, /const syncOperationLabel=value=>/u, 'delivery detail translates local and server sync states before showing them');
 
 console.log('Analytics baseline tests passed');

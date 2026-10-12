@@ -45,7 +45,7 @@ async function fire(listener, event = {}) {
   await fire(healthy.listeners.get('install'));
   assert.equal(healthy.stores.size, 1, 'one complete versioned cache is staged');
   const [cacheName] = [...healthy.stores.keys()];
-  assert.match(cacheName, /v32$/u);
+  assert.match(cacheName, /v34$/u);
   assert.equal([...healthy.stores.get(cacheName).keys()].some(url => url.includes('maplibre-gl-worker.js')), false,
     'missing optional cartography worker does not block or enter the shell');
 

@@ -59,8 +59,8 @@
     const statusChart = barChart(statusRows.map(([key, value]) => ({ key, label: statusLabel(key), value })), { label: 'Entregas por status', filter: 'status-filter' });
     const sourceChart = barChart(Object.entries(report.sourceCounts).sort((a, b) => b[1] - a[1]).map(([key, value]) => ({ key, label: sources[key] || key, value })), { label: 'Pedidos por origem comercial', filter: 'source-filter' });
     const statusCoverage = report.completionRate == null
-      ? 'Sem entregas com estado reconhecido neste período.'
-      : `${report.completedCount} de ${report.knownStatusCount} entregas com estado reconhecido foram concluídas (${Math.round(report.completionRate * 100)}%). Esta comparação não mede prazo de atendimento.`;
+      ? 'Não foi possível calcular a proporção de entregas concluídas com os dados disponíveis.'
+      : `${report.completedCount} de ${report.knownStatusCount} entregas com informação suficiente foram concluídas (${Math.round(report.completionRate * 100)}%). Esta comparação não mede prazo de atendimento.`;
     const orderCoverage = report.coverage.orderAmount.total
       ? `${report.coverage.orderAmount.available} de ${report.coverage.orderAmount.total} pedidos têm valor e moeda confirmados; ${report.coverage.orderAmount.complete} têm a composição completa. Valores sem confirmação ficam fora da média.`
       : 'Sem pedidos com valores registrados neste período.';
