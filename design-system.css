@@ -9,7 +9,8 @@ body{font-family:var(--font-ui);background:var(--canvas);color:var(--text-primar
 .topbar-main h1{font-size:clamp(25px,2.2vw,34px);line-height:1.12;letter-spacing:-.035em;margin:3px 0 5px}.topbar-title-compact{display:none}.bottom-nav>.nav-item{flex:1 0 82px;min-width:82px;max-width:none}
 .topbar-main p{max-width:70ch;color:var(--text-secondary);font-size:14px;margin:0}
 .topbar .eyebrow{font-size:11px;letter-spacing:.08em;color:var(--accent);font-weight:750}
-.topbar.rm-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;margin:0 0 14px;padding:0 0 12px}
+.topbar.rm-page-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;margin:0 0 14px;padding:8px clamp(16px,2vw,28px) 12px}
+.rm-page-header .top-actions .btn,.rm-page-header .top-actions .iconbtn{min-height:44px}
 .rm-page-header .mobile-brand{display:none}
 .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .btn,.iconbtn,.select,.input,.textarea{min-height:var(--control-h);border-radius:11px}

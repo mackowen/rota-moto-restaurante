@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const source=fs.readFileSync('app.js','utf8'),styles=fs.readFileSync('styles.css','utf8'),Money=require('../order-money');
+const source=fs.readFileSync('app.js','utf8'),styles=fs.readFileSync('styles.css','utf8'),pilotStyles=fs.readFileSync('pilot-views.css','utf8'),Money=require('../order-money');
 const match=source.match(/function knownDeliveryFeeBRL\(order\)\{[\s\S]*?\n\}/u);assert(match,'dashboard has canonical fee projection');
 const context={window:{RotaMotoOrderMoney:Money}};vm.runInNewContext(`${match[0]}\nthis.project=knownDeliveryFeeBRL;`,context);
 assert.equal(context.project({money:{currency:'BRL',completeness:'partial',provenance:{kind:'manual'},components:{deliveryFeeMinor:0}}}),0,'known zero fee remains zero');
@@ -16,6 +16,9 @@ assert.match(dashboard,/attention\.length\?'Entregas para revisar':'Fila de entr
 assert.match(dashboard,/report\.coverage\.actualDistance/u,'distance coverage is explicit');
 assert.match(dashboard,/Canal de venda, separado do responsável logístico/u,'commercial source is kept separate from logistics provider');
 assert.match(dashboard,/report\.coverage\.earning\.available/u,'canonical earning coverage remains visible');
+assert.match(dashboard,/Repasse registrado<\/span><b>[\s\S]*?<\/b><\/div><small>\x27\+report\.coverage\.earning/u,'repasse coverage text is outside the label/value row so it cannot squeeze the unavailable value');
+assert.match(pilotStyles,/\.pilot-source \.analysis-line\s*\{\s*display:\s*grid;\s*grid-template-columns:\s*minmax\(0,\s*1fr\) auto/u,'source indicators use a structural two-column grid');
+assert.match(pilotStyles,/\.pilot-source \.analysis-line b\s*\{[^}]*white-space:\s*nowrap/u,'indicator values cannot break words in the middle');
 assert.doesNotMatch(dashboard,/doneToday\.reduce\(\(a,o\)=>a\+Number\(o\.value\|\|0\)/u,'dashboard never sums Order.value as delivery revenue');
 assert.doesNotMatch(dashboard,/kpi\('Motoboys ativos',state\.bikes\.filter\(b=>b\.status!=='OFFLINE'\)/u,'a cadastro is not treated as evidence of current availability');
 assert.match(source,/data-label="Pedido"/u,'delivery rows expose semantic labels for the responsive card layout');

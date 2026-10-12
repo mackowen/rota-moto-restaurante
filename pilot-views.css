@@ -61,9 +61,10 @@
 .pilot-section-head p { font-size: 12px; }
 .pilot-trend .command-trend { height: 150px; gap: 4px; overflow: visible; }
 .pilot-trend .command-trend-day small { color: var(--pc-muted); font-size: 10px; }
-.pilot-source .analysis-line { min-height: 42px; padding: 8px 0; border-color: var(--pc-line); }
+.pilot-source .analysis-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 6px 12px; min-height: 42px; padding: 8px 0; border-color: var(--pc-line); }
 .pilot-source .analysis-line span { color: var(--pc-muted); font-size: 12px; }
-.pilot-source .analysis-line b { font-size: 13px; }
+.pilot-source .analysis-line b { font-size: 13px; white-space: nowrap; }
+.pilot-coverage > small { display: block; line-height: 1.45; overflow-wrap: normal; word-break: normal; hyphens: none; }
 .pilot-coverage { display: grid; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--pc-line); }
 .pilot-coverage span, .pilot-coverage small, .pilot-footnote { color: var(--pc-muted); font-size: 11px; line-height: 1.45; }
 .pilot-coverage b { font-size: 16px; }
