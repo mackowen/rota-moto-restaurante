@@ -10,6 +10,9 @@ assert.equal(context.project({sourceId:'manual',value:4.5}),4.5,'known legacy lo
 const dashboard=source.match(/function dashboard\(\)\{[\s\S]*?\n\}/u)?.[0]||'';
 assert.match(dashboard,/RotaMotoAnalytics\.aggregate/u,'Command Center reuses the canonical analytics projection');
 assert.match(dashboard,/report\.dailyVolume/u,'daily trend uses the canonical cohort series');
+assert.match(dashboard,/report\.total===0\?/u,'no-order state is distinguished from invalid time-zone diagnostics');
+assert.doesNotMatch(dashboard,/Série diária indisponível|Não há dados válidos para o fuso horário/u,'empty periods do not show a technical or misleading warning');
+assert.match(dashboard,/attention\.length\?'Entregas para revisar':'Fila de entregas'/u,'empty queue heading does not duplicate its empty-state message');
 assert.match(dashboard,/report\.coverage\.actualDistance/u,'distance coverage is explicit');
 assert.match(dashboard,/Canal de venda, separado do responsável logístico/u,'commercial source is kept separate from logistics provider');
 assert.match(dashboard,/report\.coverage\.earning\.available/u,'canonical earning coverage remains visible');
@@ -23,6 +26,13 @@ assert.match(source,/function orderedDestinations\(items\)\{const configured=new
 assert.match(shortcutOrder,/orderedDestinations\(allowed\.filter/u,'mobile secondary destinations use the persisted preference ordering');
 assert.match(source,/orderedDestinations\(allowed\)\.map\(navButton\)/u,'configured shortcuts reorder the complete desktop navigation without duplicate links');
 assert.match(dashboard,/header\('Início'/u,'Home uses the same header component as the other tabs');
+assert.match(source,/class="brandmark brand-symbol" src="favicon\.svg"/u,'desktop brand uses the same simple route symbol as the mobile header');
+assert.match(fs.readFileSync('identity-ui.js','utf8'),/new MutationObserver\(\(\) => placeTrigger\(\)\)\.observe\(placementRoot, \{ childList: true, subtree: true \}\)/u,'account action is re-anchored after app render replaces the header');
+assert.match(fs.readFileSync('favicon.svg','utf8'),/viewBox="0 0 64 64"[\s\S]*RotaMoto/u,'RotaMoto symbol uses a square viewBox with a legible route marker');
+assert.match(fs.readFileSync('design-system.css','utf8'),/\.topbar\.rm-page-header\{display:grid/u,'mobile page header has one compact structural grid');
+assert.match(fs.readFileSync('pilot-views.css','utf8'),/\.pilot-sync \.sync-status-panel \{ display: grid; grid-template-columns: minmax\(0, 1fr\) auto/u,'mobile disconnected status uses a compact two-row grid');
+assert.match(fs.readFileSync('pilot-views.css','utf8'),/\.pilot-sync \.sync-status-panel p \{ display: block;[^}]*grid-column: 1 \/ -1/u,'mobile disconnected status keeps its local-data explanation visible');
+assert.match(source,/Alterações não enviadas ficam salvas neste aparelho/u,'disconnected notice explains local persistence in concise language');
 assert.doesNotMatch(dashboard,/pilot-command-head/u,'Home no longer has a separate header implementation');
 const routes=source.match(/function routes\(\)\{[\s\S]*?\n\}/u)?.[0]||'';
 assert.match(routes,/Planeje a ordem das entregas/u,'route heading uses everyday operational language');

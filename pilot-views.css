@@ -79,9 +79,11 @@
   .pilot-command-head p { font-size: 12px; }
   .pilot-head-actions { flex-wrap: wrap; }
   .pilot-head-actions .btn { min-height: 44px; padding: 8px 11px; font-size: 13px; }
-  .pilot-sync .sync-status-panel { align-items: center; flex-direction: row; gap: 10px; padding: 9px 10px; }
-  .pilot-sync .sync-status-panel p { display: none; }
-  .pilot-sync .sync-status-panel .btn { width: auto; min-height: 40px; padding: 8px 10px; font-size: 11px; }
+  .pilot-sync .sync-status-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 10px; padding: 8px 10px; }
+  .pilot-sync .sync-status-panel > div { display: contents; }
+  .pilot-sync .sync-status-panel b { min-width: 0; font-size: 13px; line-height: 1.2; }
+  .pilot-sync .sync-status-panel p { display: block; order: 3; grid-column: 1 / -1; margin: 0; font-size: 11px; line-height: 1.25; }
+  .pilot-sync .sync-status-panel .btn { order: 2; width: auto; min-height: 40px; justify-self: end; padding: 8px 10px; font-size: 11px; }
   .pilot-priority { padding: 14px; }
   .pilot-queue-head { align-items: center; }
   .pilot-queue-head h2 { font-size: 18px; }

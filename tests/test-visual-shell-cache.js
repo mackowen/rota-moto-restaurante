@@ -12,7 +12,7 @@ assert.match(worker,/styles\.css\?v=0140\.6/u);
 assert.match(html,/app\.js\?v=0140\.5/u);assert.match(worker,/\/app\.js\?v=0140\.5/u);
 assert.match(html,/pilot-views\.css\?v=0140\.2/u);
 assert.match(worker,/pilot-views\.css\?v=0140\.2/u);
-assert.match(worker,/\$\{CACHE_PREFIX\}v23/u);
+assert.match(worker,/\$\{CACHE_PREFIX\}v24/u);
 assert.match(worker,/optionalURLs\.has/u);
 assert.match(worker,/shellURLs\.has\(url\.href\)/u);
 assert.match(worker,/catch \(error\)[\s\S]*await caches\.delete\(CACHE_NAME\)/u);assert.doesNotMatch(worker,/skipWaiting/u);

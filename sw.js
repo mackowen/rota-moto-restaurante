@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'rotamoto-restaurante-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v23`;
+const CACHE_NAME = `${CACHE_PREFIX}v24`;
 const APP_SHELL = Object.freeze([
   '/', '/index.html', '/styles.css?v=0140.6', '/identity-ui.css', '/design-system.css?v=0140.6', '/pilot-views.css?v=0140.2', '/favicon.svg',
   '/qr-local.js', '/ifood-integration.js', '/keeta-integration.js', '/99food-integration.js',

@@ -113,6 +113,10 @@
     if (trigger.parentElement !== parent) parent.append(trigger);
     trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
   }
+  const placementRoot = document.body;
+  if (placementRoot && window.MutationObserver) {
+    new MutationObserver(() => placeTrigger()).observe(placementRoot, { childList: true, subtree: true });
+  }
   function visibleControls() {
     return [...panel.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[href],[tabindex]:not([tabindex="-1"])')]
       .filter(element => !element.closest('[hidden]') && element.getClientRects().length > 0);
