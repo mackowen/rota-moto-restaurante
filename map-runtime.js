@@ -11,7 +11,7 @@ let activeTheme = document.documentElement.dataset.resolvedTheme === 'dark' ? 'd
 const probe = document.createElement('canvas');
 const supportsVectorStyle = Boolean(probe.getContext('webgl2'));
 
-setWorkerUrl(new URL('vendor/maplibre-gl-worker.mjs?v=0139.1', document.baseURI).href);
+setWorkerUrl(new URL('vendor/maplibre/maplibre-gl-worker.js?v=0139.1', document.baseURI).href);
 window.L = L;
 
 function addBaseLayer(map) {
