@@ -1,15 +1,15 @@
 'use strict';
 
 const CACHE_PREFIX = 'rotamoto-restaurante-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v19`;
+const CACHE_NAME = `${CACHE_PREFIX}v22`;
 const APP_SHELL = Object.freeze([
-  '/', '/index.html', '/styles.css?v=0140.3', '/identity-ui.css', '/design-system.css?v=0140.3', '/pilot-views.css?v=0140.1', '/favicon.svg',
+  '/', '/index.html', '/styles.css?v=0140.5', '/identity-ui.css', '/design-system.css?v=0140.5', '/pilot-views.css?v=0140.2', '/favicon.svg',
   '/qr-local.js', '/ifood-integration.js', '/keeta-integration.js', '/99food-integration.js',
   '/contract.js', '/backup-format.js?v=1', '/sync-reconciliation.js?v=1',
   '/indexeddb-schema.js?v=2', '/order-money.js?v=1', '/ticket-renderer.js?v=1',
   '/browser-printer-provider.js?v=1', '/restaurant-operations.js?v=2',
   '/analytics.js?v=2', '/analytics-view.js?v=1', '/logistics-ui.js?v=1',
-  '/identity-session-guard.js', '/app.js?v=0140.2', '/identity-ui.js?v=0140.1',
+  '/identity-session-guard.js', '/app.js?v=0140.4', '/identity-ui.js?v=0140.1',
   '/vendor/leaflet/leaflet.css', '/vendor/maplibre/maplibre-gl.css?v=0139.1', '/vendor/maplibre/rotamoto-map-runtime.js?v=0140.3', '/vendor/maplibre/maplibre-gl-worker.js?v=0139.1', '/vendor/leaflet/leaflet.js'
 ]);
 const OPTIONAL_ASSETS = new Set([

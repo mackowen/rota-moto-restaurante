@@ -22,6 +22,15 @@ const shortcutOrder=source.match(/function orderedMobileSecondary\(allowed\)\{[\
 assert.match(source,/function orderedDestinations\(items\)\{const configured=new Set\(state\.settings\.navigation\?\.shortcuts/u,'one preference-driven ordering function serves desktop and mobile destinations');
 assert.match(shortcutOrder,/orderedDestinations\(allowed\.filter/u,'mobile secondary destinations use the persisted preference ordering');
 assert.match(source,/orderedDestinations\(allowed\)\.map\(navButton\)/u,'configured shortcuts reorder the complete desktop navigation without duplicate links');
+assert.match(dashboard,/header\('Início'/u,'Home uses the same header component as the other tabs');
+assert.doesNotMatch(dashboard,/pilot-command-head/u,'Home no longer has a separate header implementation');
+const routes=source.match(/function routes\(\)\{[\s\S]*?\n\}/u)?.[0]||'';
+assert.match(routes,/Planeje a ordem das entregas/u,'route heading uses everyday operational language');
+assert.doesNotMatch(routes,/Route\.deliveryIds|cada Delivery/u,'internal entity names are not shown in route copy');
+assert.match(routes,/id="routeMapEmpty" class="map-empty-inline" role="status" hidden/u,
+  'empty map feedback is placed in document flow rather than floating over the map');
+assert.match(source,/let activeToastTimer=null;function toast[\s\S]*data-app-toast/u,
+  'toasts use one accessible surface instead of stacking duplicate notifications');
 assert.doesNotMatch(source,/shortcutButtons\(|class="shortcutbar"/u,'the duplicate navigation strip is removed from the header');
 assert.doesNotMatch(styles,/\.shortcutbar/u,'obsolete duplicate shortcut strip styling is removed');
 assert.doesNotMatch(styles,/overflow-x:\s*clip/u,'horizontal overflow is not concealed at the document boundary');
