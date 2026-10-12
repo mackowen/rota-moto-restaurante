@@ -35,12 +35,18 @@ assert.match(designSystem, /grid-template-columns:auto minmax\(0,1fr\) auto;grid
   'the 430px header uses one horizontal row');
 assert.match(designSystem, /\.topbar-title-compact\{display:none\}/u,
   'desktop header renders only one title variant');
-assert.match(designSystem, /\.top-actions \.btn\{flex:0 0 40px;width:40px;min-width:40px;max-width:40px/u,
+assert.match(designSystem, /\.top-actions \.btn\{flex:0 0 44px;width:44px;min-width:44px;max-width:44px/u,
   'header actions remain touch sized and icon compact on narrow phones');
 assert.match(identity, /rm-account-trigger-icon/u);
-assert.match(identity, /aria-label', offlineMode \? 'Abrir conta; modo local, sem sessão autenticada'/u,
+assert.match(identity, /aria-label', offlineMode \? 'Dados locais. Abrir opções da conta; sem sessão autenticada'/u,
   'the local-data action keeps an explicit accessible label');
 assert.match(identityCss, /\.rm-account-trigger-icon \{ display: none/u,
   'the account icon is available for compact header presentation');
+assert.match(designSystem, /\.rm-account-trigger--inline \.rm-account-trigger-icon\{display:block;width:20px;height:20px;stroke:currentColor\}/u,
+  'the compact account action renders a theme-aware icon when its visible label is hidden');
+assert.match(identity, /aria-label', offlineMode \? 'Dados locais. Abrir opções da conta; sem sessão autenticada'/u,
+  'the icon-only account control keeps its full accessible name');
 
+assert.match(identityCss, /#app \.rm-page-header \.top-actions \.rm-account-trigger:active[\s\S]*background: var\(--rm-id-accent-soft\)/u, 'pressed account action receives a theme-aware surface');
+assert.match(identityCss, /#app \.rm-page-header \.top-actions \.rm-account-trigger:disabled[\s\S]*opacity: \.6/u, 'disabled account action is visibly subdued and unavailable');
 console.log('Restaurant direct navigation, single-row header and compact accessible actions: PASS');

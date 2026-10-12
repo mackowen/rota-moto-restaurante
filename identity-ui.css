@@ -199,6 +199,18 @@
   border-color: var(--rm-id-accent);
 }
 
+#app .rm-page-header .top-actions .rm-account-trigger:active,
+.app .rm-page-header .top-actions .rm-account-trigger:active {
+  background: var(--rm-id-accent-soft);
+  border-color: var(--rm-id-accent);
+}
+
+#app .rm-page-header .top-actions .rm-account-trigger:disabled,
+.app .rm-page-header .top-actions .rm-account-trigger:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+}
+
 .rm-identity-content .rm-primary {
   border-color: var(--rm-id-accent);
   background: var(--rm-id-accent);

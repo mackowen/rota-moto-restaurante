@@ -80,7 +80,7 @@
   const appKind = document.currentScript?.dataset.app || 'restaurante';
   function updateTriggerLabel() {
     trigger.innerHTML = `<span class="rm-account-trigger-label">${offlineMode ? 'Dados locais' : 'Conta'}</span><svg class="rm-account-trigger-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg>`;
-    trigger.setAttribute('aria-label', offlineMode ? 'Abrir conta; modo local, sem sessão autenticada' : 'Abrir conta e acesso');
+    trigger.setAttribute('aria-label', offlineMode ? 'Dados locais. Abrir opções da conta; sem sessão autenticada' : 'Abrir conta e acesso');
     trigger.title = offlineMode ? 'Modo local: sem sessão autenticada' : 'Abrir conta e acesso';
   }
   if (appKind !== 'restaurante') $('[data-admin]').remove();
