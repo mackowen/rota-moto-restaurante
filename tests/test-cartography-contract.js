@@ -2,11 +2,11 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const read=name=>fs.readFileSync(path.join(__dirname,'..',name),'utf8');
 const app=read('app.js'),html=read('index.html'),server=read('server.js'),sw=read('sw.js'),logisticsUI=read('logistics-ui.js'),mapRuntime=read('map-runtime.js');
-assert.match(html,/vendor\/leaflet\/leaflet\.css/u,'Leaflet styles load locally');assert.match(html,/vendor\/maplibre\/rotamoto-map-runtime\.js\?v=0140\.2/u,'bundled Leaflet and vector renderer load from the nested static-allowlisted directory');
+assert.match(html,/vendor\/leaflet\/leaflet\.css/u,'Leaflet styles load locally');assert.match(html,/vendor\/maplibre\/rotamoto-map-runtime\.js\?v=0140\.3/u,'bundled Leaflet and vector renderer load from the nested static-allowlisted directory');
 assert.match(read('vendor/leaflet/LICENSE'),/BSD 2-Clause/u,'Leaflet license accompanies the vendored renderer');
 assert.equal((mapRuntime.match(/L\.tileLayer\(/gu)||[]).length,1,'unsupported WebGL browsers use one shared OSM fallback layer');
-assert.match(mapRuntime,/https:\/\/tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png/u,'fallback map uses the canonical OSM tile endpoint');
-assert.match(mapRuntime,/OpenStreetMap[\s\S]*contributors/u);assert.match(mapRuntime,/dark:\s*['"]https:\/\/tiles\.openfreemap\.org\/styles\/dark/u);assert.match(mapRuntime,/setStyle/u);assert.match(app,/RotaMotoMapTheme\?\.addBaseLayer|RotaMotoMapTheme\.addBaseLayer/u);assert.match(server,/Referrer-Policy','strict-origin-when-cross-origin/u,'tile policy receives origin referrer without full page URL');assert.match(html,/name="referrer" content="strict-origin-when-cross-origin"/u);
+assert.match(mapRuntime,/https:\/\/tiles\.stadiamaps\.com\/tiles\/alidade_smooth\/\{z\}\/\{x\}\/\{y\}\{r\}\.png/u,'fallback map uses the canonical OSM tile endpoint');
+assert.match(mapRuntime,/Stadia Maps[\s\S]*OpenMapTiles[\s\S]*OpenStreetMap[\s\S]*contributors/u);assert.match(mapRuntime,/alidade_smooth_dark/u);assert.match(mapRuntime,/Tentar novamente/u);assert.match(mapRuntime,/vector-style-timeout/u);assert.match(mapRuntime,/dark:\s*['"]https:\/\/tiles\.openfreemap\.org\/styles\/dark/u);assert.match(mapRuntime,/setStyle/u);assert.match(app,/RotaMotoMapTheme\?\.addBaseLayer|RotaMotoMapTheme\.addBaseLayer/u);assert.match(server,/Referrer-Policy','strict-origin-when-cross-origin/u,'tile policy receives origin referrer without full page URL');assert.match(html,/name="referrer" content="strict-origin-when-cross-origin"/u);
 assert.match(logisticsUI,/value="establishment"/u,'Route origin defaults to the canonical Company location');assert.match(app,/restaurantLocationStale/u,'unconfirmed address change does not silently become coordinates');
 assert.match(app,/latestDriverLocation=new Map\(\)/u,'fleet markers use the latest canonical LocationPoint per assigned Driver');
 assert.match(app,/row\.sync\?\.canonicalId===point\.deliveryId/u,'LocationPoint delivery aliases resolve back to the canonical assigned Driver');
@@ -20,7 +20,7 @@ assert.match(app,/clearTimeout\(window\.__restaurantSettingsMapResizeTimer\)[\s\
 assert.match(read('backend/logistics/osrm-route-distance.js'),/provider|provenance/u,'road routing remains a backend boundary');
 assert.match(read('backend/logistics/osrm-route-distance.js'),/overview=full&geometries=geojson/u,'OSRM returns routable road geometry only when explicitly configured');
 assert.match(read('backend/logistics/intelligence.js'),/getPlannedRouteGeometry/u,'geometry resolves the tenant-owned Route and canonical ordered stops');
-assert.match(sw,/vendor\/maplibre\/rotamoto-map-runtime\.js\?v=0140\.2/u,'renderer is part of the offline app shell');assert.match(sw,/maplibre\/maplibre-gl-worker\.js\?v=0139\.1/u,'vector map worker is part of the offline app shell');
+assert.match(sw,/vendor\/maplibre\/rotamoto-map-runtime\.js\?v=0140\.3/u,'renderer is part of the offline app shell');assert.match(sw,/maplibre\/maplibre-gl-worker\.js\?v=0139\.1/u,'vector map worker is part of the offline app shell');
 assert.match(read('scripts/build-map-runtime.js'),/maplibreVendor[\s\S]*vendor, 'maplibre'[\s\S]*rotamoto-map-runtime\.js/u,'map build keeps static assets inside the allowed vendor subdirectory');
 assert.doesNotMatch(sw,/tile\.openstreetmap\.org/u,'external cartography tiles are not copied or cached');
 assert.match(app,/nominatim\.openstreetmap\.org/u,'geocoder use is explicit and documented for privacy review');
