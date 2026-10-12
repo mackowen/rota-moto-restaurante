@@ -21,11 +21,19 @@ assert.match(app, /window\.addEventListener\('popstate'[\s\S]*menu\.open=false/u
   'browser Back closes More without changing the selected module');
 assert.match(app, /function bindMoreMenu\(\)[\s\S]*history\.pushState[\s\S]*rotaMotoMoreMenu/u,
   'opening More adds a reversible history entry so Android/browser Back can dismiss it');
-assert.match(css, /\.nav-more\s*\{[^}]*min-width:\s*0/u,
-  'More grid item is allowed to use the full fixed bottom-navigation slot');
+assert.match(css, /\.nav-more\s*\{[^}]*flex:\s*0 0 82px;[^}]*min-width:\s*82px/u,
+  'More uses the same fixed-width touch slot as the other destinations');
 assert.match(css, /\.nav-more summary\s*\{[^}]*width:\s*100%/u,
   'More touch target fills its navigation slot');
-assert.ok(designSystem.includes('.bottom-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr))'),
-  'the later loaded design system preserves six equal destinations instead of overriding the mobile nav as flex');
+assert.match(css, /\.bottom-nav\{[^}]*overflow-x:auto;[^}]*touch-action:pan-x/u,
+  'bottom navigation remains horizontally scrollable by touch');
+assert.match(css, /\.nav-more-menu\{position:fixed;[^}]*max-height:min\(60dvh,480px\)/u,
+  'More popover is positioned outside the clipped horizontal scroll area');
+assert.match(designSystem, /\.bottom-nav\{display:flex;[^}]*overflow-x:auto/u,
+  'the later loaded design system preserves the horizontal navigation model');
+assert.match(app, /if\(right>nav\.scrollLeft\+nav\.clientWidth\)nav\.scrollLeft=right-nav\.clientWidth/u,
+  'selected mobile destination is automatically brought into view');
+assert.match(app, /<img class="brand-logo" src="favicon\.svg" alt="">/u,
+  'shared page header uses the existing RotaMoto logo asset');
 
 console.log('Restaurant More menu navigation, outside dismissal, Back and touch target: PASS');
