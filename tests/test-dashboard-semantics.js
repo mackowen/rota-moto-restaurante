@@ -21,9 +21,8 @@ assert.doesNotMatch(dashboard,/kpi\('Motoboys ativos',state\.bikes\.filter\(b=>b
 assert.match(source,/data-label="Pedido"/u,'delivery rows expose semantic labels for the responsive card layout');
 assert.match(styles,/\.table thead\{display:none\}/u,'responsive tables hide desktop headings when rows become cards');
 assert.doesNotMatch(styles,/\.table thead\{display:table-header-group\}/u,'no later mobile rule restores squeezed desktop table headings');
-const shortcutOrder=source.match(/function orderedMobileSecondary\(allowed\)\{[\s\S]*?\n\}/u)?.[0]||'';
 assert.match(source,/function orderedDestinations\(items\)\{const configured=new Set\(state\.settings\.navigation\?\.shortcuts/u,'one preference-driven ordering function serves desktop and mobile destinations');
-assert.match(shortcutOrder,/orderedDestinations\(allowed\.filter/u,'mobile secondary destinations use the persisted preference ordering');
+assert.match(source,/function layout\(\)[\s\S]*?const destinations=orderedDestinations\(allowed\)/u,'mobile navigation uses the persisted preference ordering for every destination');
 assert.match(source,/orderedDestinations\(allowed\)\.map\(navButton\)/u,'configured shortcuts reorder the complete desktop navigation without duplicate links');
 assert.match(dashboard,/header\('Início'/u,'Home uses the same header component as the other tabs');
 assert.match(source,/class="brandmark brand-symbol" src="favicon\.svg"/u,'desktop brand uses the same simple route symbol as the mobile header');
@@ -45,7 +44,7 @@ assert.doesNotMatch(source,/shortcutButtons\(|class="shortcutbar"/u,'the duplica
 assert.doesNotMatch(styles,/\.shortcutbar/u,'obsolete duplicate shortcut strip styling is removed');
 assert.doesNotMatch(styles,/overflow-x:\s*clip/u,'horizontal overflow is not concealed at the document boundary');
 assert.match(source,/await saveSettings\('Atalhos de navegação atualizados\.'\)/u,'shortcut edits use the existing Company settings persistence authority');
-assert.match(source,/function layout\(\)[\s\S]*?orderedMobileSecondary\(allowed\)/u,'mobile navigation contains one entry per destination');
+assert.match(source,/function layout\(\)[\s\S]*?destinations\.map\(navButton\)/u,'mobile navigation contains one direct entry per permitted destination');
 console.log('Command Center canonical analytics and metric semantics: PASS');
 
 assert.match(fs.readFileSync('logistics-ui.js','utf8'),/class="table territorial-table"/u,'territorial analytics reuses the responsive table component');

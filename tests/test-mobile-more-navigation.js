@@ -8,32 +8,39 @@ const root = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'styles.css'), 'utf8');
 const designSystem = fs.readFileSync(path.join(root, 'design-system.css'), 'utf8');
+const identity = fs.readFileSync(path.join(root, 'identity-ui.js'), 'utf8');
+const identityCss = fs.readFileSync(path.join(root, 'identity-ui.css'), 'utf8');
 
-assert.match(app, /function closeMoreMenu\(\)[\s\S]*menu\.open=false/u,
-  'More menu has one explicit close operation');
-assert.match(app, /function goTab\(tab\)[\s\S]*closeMoreMenu\(\)/u,
-  'choosing any destination closes More before rendering its screen');
-assert.match(app, /document\.addEventListener\('click',event=>\{const menu=document\.querySelector\('\.nav-more'\);if\(menu\?\.open&&!menu\.contains\(event\.target\)\)closeMoreMenu\(\)\},true\)/u,
-  'clicking outside the More disclosure closes it');
-assert.match(app, /event\.key==='Escape'[\s\S]*closeMoreMenu\(\)/u,
-  'Escape closes More');
-assert.match(app, /window\.addEventListener\('popstate'[\s\S]*menu\.open=false/u,
-  'browser Back closes More without changing the selected module');
-assert.match(app, /function bindMoreMenu\(\)[\s\S]*history\.pushState[\s\S]*rotaMotoMoreMenu/u,
-  'opening More adds a reversible history entry so Android/browser Back can dismiss it');
-assert.match(css, /\.nav-more\s*\{[^}]*flex:\s*0 0 82px;[^}]*min-width:\s*82px/u,
-  'More uses the same fixed-width touch slot as the other destinations');
-assert.match(css, /\.nav-more summary\s*\{[^}]*width:\s*100%/u,
-  'More touch target fills its navigation slot');
+const destinations = ['dashboard', 'orders', 'bikes', 'routes', 'reports', 'events', 'settings', 'help', 'integrationLab', 'admin'];
+for (const destination of destinations) {
+  assert.match(app, new RegExp(`\\['${destination}'`, 'u'), `module ${destination} remains registered`);
+}
+assert.match(app, /const destinations=orderedDestinations\(allowed\)[\s\S]*<nav class="bottom-nav"[^>]*>\$\{destinations\.map\(navButton\)/u,
+  'every permitted destination is rendered directly in the mobile navigation');
+assert.match(app, /<nav class="side-nav" aria-label="Navegação principal">\$\{orderedDestinations\(allowed\)\.map\(navButton\)/u,
+  'desktop navigation keeps the same direct destination list');
+assert.doesNotMatch(app, /nav-more|Mais destinos|closeMoreMenu|bindMoreMenu|rotaMotoMoreMenu/u,
+  'the grouped More disclosure and its history handlers are removed');
+assert.match(app, /active&&nav\)[\s\S]*nav\.scrollLeft=right-nav\.clientWidth/u,
+  'the active destination remains visible after navigation');
 assert.match(css, /\.bottom-nav\{[^}]*overflow-x:auto;[^}]*touch-action:pan-x/u,
-  'bottom navigation remains horizontally scrollable by touch');
-assert.match(css, /\.nav-more-menu\{position:fixed;[^}]*max-height:min\(60dvh,480px\)/u,
-  'More popover is positioned outside the clipped horizontal scroll area');
-assert.match(designSystem, /\.bottom-nav\{display:flex;[^}]*overflow-x:auto/u,
-  'the later loaded design system preserves the horizontal navigation model');
-assert.match(app, /if\(right>nav\.scrollLeft\+nav\.clientWidth\)nav\.scrollLeft=right-nav\.clientWidth/u,
-  'selected mobile destination is automatically brought into view');
-assert.match(app, /<img class="brand-logo" src="favicon\.svg" alt="">/u,
-  'shared page header uses the existing RotaMoto logo asset');
+  'the mobile bar supports horizontal touch scrolling');
+assert.match(css, /\.bottom-nav>\.nav-item\{flex:1 0 82px;min-width:82px;max-width:none/u,
+  'navigation items grow evenly when they fit and keep equal minimum widths when they do not');
+assert.match(designSystem, /\.bottom-nav>\.nav-item\{flex:1 0 82px;min-width:82px;max-width:none/u,
+  'the responsive design system preserves the same distribution rule');
+assert.match(app, /<h1 aria-label="\$\{esc\(title\)\}">/u,
+  'compact page titles retain their complete accessible name');
+assert.match(designSystem, /grid-template-columns:auto minmax\(0,1fr\) auto;grid-template-areas:none/u,
+  'the 430px header uses one horizontal row');
+assert.match(designSystem, /\.topbar-title-compact\{display:none\}/u,
+  'desktop header renders only one title variant');
+assert.match(designSystem, /\.top-actions \.btn\{flex:0 0 40px;width:40px;min-width:40px;max-width:40px/u,
+  'header actions remain touch sized and icon compact on narrow phones');
+assert.match(identity, /rm-account-trigger-icon/u);
+assert.match(identity, /aria-label', offlineMode \? 'Abrir conta; modo local, sem sessão autenticada'/u,
+  'the local-data action keeps an explicit accessible label');
+assert.match(identityCss, /\.rm-account-trigger-icon \{ display: none/u,
+  'the account icon is available for compact header presentation');
 
-console.log('Restaurant More menu navigation, outside dismissal, Back and touch target: PASS');
+console.log('Restaurant direct navigation, single-row header and compact accessible actions: PASS');

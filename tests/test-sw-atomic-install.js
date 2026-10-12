@@ -45,21 +45,21 @@ async function fire(listener, event = {}) {
   await fire(healthy.listeners.get('install'));
   assert.equal(healthy.stores.size, 1, 'one complete versioned cache is staged');
   const [cacheName] = [...healthy.stores.keys()];
-  assert.match(cacheName, /v25$/u);
+  assert.match(cacheName, /v28$/u);
   assert.equal([...healthy.stores.get(cacheName).keys()].some(url => url.includes('maplibre-gl-worker.js')), false,
     'missing optional cartography worker does not block or enter the shell');
 
-  const failed = await createWorker({ failUrl: 'https://restaurante.test/app.js?v=0140.5' });
+  const failed = await createWorker({ failUrl: 'https://restaurante.test/app.js?v=0140.6' });
   failed.stores.set('rotamoto-restaurante-shell-v17', new Map([['sentinel', new Response('old-shell')]]));
   await assert.rejects(fire(failed.listeners.get('install')), /required shell assets unavailable/u);
   assert.deepEqual([...failed.stores.keys()], ['rotamoto-restaurante-shell-v17'], 'failed update removes only its staged cache and retains the active shell');
 
   const fetchEvent = { request: new Request('https://restaurante.test/styles.css?v=0140.99'), respondWith() { throw new Error('unmanifested URL was intercepted'); } };
   await fire(healthy.listeners.get('fetch'), fetchEvent);
-  const exactEvent = { request: new Request('https://restaurante.test/styles.css?v=0140.6'), response: null, respondWith(promise) { exactEvent.response = promise; } };
+  const exactEvent = { request: new Request('https://restaurante.test/styles.css?v=0140.7'), response: null, respondWith(promise) { exactEvent.response = promise; } };
   await fire(healthy.listeners.get('fetch'), exactEvent);
   assert.ok(exactEvent.response, 'full manifest URL is handled');
-  assert.equal(await (await exactEvent.response).text(), 'asset:/styles.css?v=0140.6', 'exact asset is served from the staged cache');
+  assert.equal(await (await exactEvent.response).text(), 'asset:/styles.css?v=0140.7', 'exact asset is served from the staged cache');
   const apiEvent = { request: new Request('https://restaurante.test/api/sync/push'), respondWith() { throw new Error('API must bypass shell cache'); } };
   await fire(healthy.listeners.get('fetch'), apiEvent);
   console.log('Restaurant service worker atomic installation and exact URL matching: PASS');
