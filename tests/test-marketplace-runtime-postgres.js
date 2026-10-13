@@ -37,7 +37,7 @@ async function main() {
     const orderId = id(); const eventId = `evt-${id()}`; const eventTime = new Date().toISOString();
     const raw = Buffer.from(JSON.stringify({ id:eventId, orderId, merchantId:a.merchant, fullCode:'PLACED', code:'PLACED', createdAt:eventTime }));
     const signature = crypto.createHmac('sha256',a.secret).update(raw).digest('hex');
-    let detailRequests = 0, acknowledgments = 0;
+    let detailRequests = 0, acknowledgments = 0, providerDetailGate = null;
     const providerOrderStates = new Map([[orderId, 'PLACED']]);
     const runtime = createMarketplaceRuntime({ pool: app,
       accountResolver: {
@@ -52,7 +52,7 @@ async function main() {
             status:'active',authorized:true,webhookSecret:row.secret,credentials:{ accessToken:'synthetic' } } : null;
         }
       },
-      adapters:{ ifood:{ async order({orderId: requestedOrderId}){ detailRequests++; return { source:'ifood',externalId:requestedOrderId,externalDisplayId:'S-1',status:providerOrderStates.get(requestedOrderId)||'PLACED',orderType:'DELIVERY',createdAt:eventTime,
+      adapters:{ ifood:{ async order({orderId: requestedOrderId}){ detailRequests++; if(providerDetailGate&&providerDetailGate.orderId===requestedOrderId){providerDetailGate.started();await providerDetailGate.promise;} return { source:'ifood',externalId:requestedOrderId,externalDisplayId:'S-1',status:providerOrderStates.get(requestedOrderId)||'PLACED',orderType:'DELIVERY',createdAt:eventTime,
         customer:{ name:'Synthetic customer',phone:'+550000000000' },address:'Rua Synthetic, 1',items:[{name:'Synthetic item',quantity:1}] }; },
         async pollEvents(){ return [{id:eventId,orderId,merchantId:a.merchant,fullCode:'PLACED',createdAt:eventTime}]; }, async acknowledgeEvents(){ acknowledgments++; return {acknowledged:true,confirmation:'pending'}; } } },
       logger:()=>{}
@@ -65,6 +65,10 @@ async function main() {
     assert.equal(immediate.rows[0]?.status,'processed',`Inbox state: ${JSON.stringify(immediate.rows[0])}`);
     const duplicate = await runtime.ingest({provider:'ifood',accountId:a.account,rawBody:raw,signature});
     assert.equal(duplicate.duplicate,true);
+    const concurrentReplay=await Promise.all([1,2].map(()=>runtime.ingest({provider:'ifood',accountId:a.account,rawBody:raw,signature})));
+    assert.deepEqual(concurrentReplay.map(item=>item.duplicate),[true,true],
+      'concurrent replay of one provider event remains idempotent after its original commit');
+    assert.equal(detailRequests,1,'duplicate webhook concurrency does not fetch or project the provider Order again');
     const duplicateOutbox = await migrator.query(`SELECT count(*)::int AS count FROM rotamoto.sync_outbox
       WHERE company_id=$1 AND payload->>'entity'='Order' AND payload->>'entityId'=(
         SELECT domain_order_id::text FROM rotamoto.marketplace_order_versions WHERE company_id=$1 AND external_order_id=$2)`,[a.company,orderId]);
@@ -133,6 +137,20 @@ async function main() {
     const orderedOutbox=await migrator.query(`SELECT count(*)::int AS count FROM rotamoto.sync_outbox
       WHERE company_id=$1 AND payload->>'entity'='Order' AND payload->>'entityId'=$2`,[a.company,afterNewerEvent.rows[0].payload.id]);
     assert.equal(orderedOutbox.rows[0].count,2,'stale events produce no publication while the newer change is published once');
+    const concurrentPair=await Promise.all([
+      sendOrderedEvent('concurrent-older',1500),
+      sendOrderedEvent('concurrent-newer',2500),
+    ]);
+    const afterConcurrentEvents=await orderedVersionQuery();
+    const concurrentWinner=await migrator.query(`SELECT event_id FROM rotamoto.marketplace_event_inbox
+      WHERE company_id=$1 AND external_account_id=$2 AND external_event_id=$3`,[a.company,a.account,concurrentPair[1]]);
+    assert.equal(afterConcurrentEvents.rows[0].last_event_id,concurrentWinner.rows[0].event_id,
+      'concurrent events serialize on the canonical Order and retain the strictly newest provider timestamp');
+    assert.equal(new Date(afterConcurrentEvents.rows[0].last_event_at).toISOString(),new Date(orderedBase+2500).toISOString());
+    assert.equal(afterConcurrentEvents.rows[0].payload.extensions.x_rotamoto_external_order.providerStatus,'CANCELLED');
+    const concurrentOutbox=await migrator.query(`SELECT count(*)::int AS count FROM rotamoto.sync_outbox
+      WHERE company_id=$1 AND payload->>'entity'='Order' AND payload->>'entityId'=$2`,[a.company,afterConcurrentEvents.rows[0].payload.id]);
+    assert.equal(concurrentOutbox.rows[0].count,3,'the concurrent stale event adds no duplicate publication while the newer event adds one version');
 
     const unifiedOrders=await runtime.listOrders(a.company,50);
     assert.equal(unifiedOrders.length,2,'each external order is available once through the canonical administrative order projection');
@@ -141,6 +159,29 @@ async function main() {
     assert.deepEqual({domainOrderId:originalUnifiedOrder.domainOrderId,provider:originalUnifiedOrder.provider,displayId:originalUnifiedOrder.displayId,providerStatus:originalUnifiedOrder.providerStatus},
       {domainOrderId:version.rows[0].domain_order_id,provider:'ifood',displayId:'S-1',providerStatus:'PLACED'});
     assert.deepEqual(await runtime.listOrders(b.company,50),[],'an external order projection cannot cross tenant boundaries');
+    const raceOrderId=id(),raceEventId=`concurrent-${id()}`;
+    providerOrderStates.set(raceOrderId,'PLACED');
+    const raceRaw=Buffer.from(JSON.stringify({id:raceEventId,orderId:raceOrderId,merchantId:a.merchant,fullCode:'PLACED',createdAt:new Date().toISOString()}));
+    const raceSignature=crypto.createHmac('sha256',a.secret).update(raceRaw).digest('hex');
+    const detailsBeforeRace=detailRequests;
+    let signalDetail,releaseDetail;
+    const detailStarted=new Promise(resolve=>{signalDetail=resolve;});
+    const detailGate=new Promise(resolve=>{releaseDetail=resolve;});
+    providerDetailGate={orderId:raceOrderId,started:signalDetail,promise:detailGate};
+    const firstConcurrentIngest=runtime.ingest({provider:'ifood',accountId:a.account,rawBody:raceRaw,signature:raceSignature});
+    await detailStarted;
+    await assert.rejects(runtime.ingest({provider:'ifood',accountId:a.account,rawBody:raceRaw,signature:raceSignature}),
+      error=>error.code==='MARKETPLACE_EVENT_PENDING'&&error.status===503,
+      'concurrent duplicate during active processing remains durably pending for provider retry');
+    releaseDetail();
+    assert.deepEqual(await firstConcurrentIngest,{duplicate:false,processed:true});
+    providerDetailGate=null;
+    const completedRaceReplay=await runtime.ingest({provider:'ifood',accountId:a.account,rawBody:raceRaw,signature:raceSignature});
+    assert.deepEqual(completedRaceReplay,{duplicate:true,processed:true},'the provider retry converges after the original worker finishes');
+    assert.equal(detailRequests,detailsBeforeRace+1,'concurrent duplicate never invokes a second provider detail request');
+    const racedInbox=await migrator.query(`SELECT count(*)::int AS count,min(status) AS status FROM rotamoto.marketplace_event_inbox
+      WHERE company_id=$1 AND external_account_id=$2 AND external_event_id=$3`,[a.company,a.account,raceEventId]);
+    assert.deepEqual(racedInbox.rows[0],{count:1,status:'processed'},'one durable inbox row reaches processed after the retry');
     const idempotencyKey=`browser-command-${id()}`;
     const command=await runtime.enqueueOrderCommand({companyId:a.company,domainOrderId:version.rows[0].domain_order_id,
       operation:'CONFIRM',idempotencyKey,commandData:{}});

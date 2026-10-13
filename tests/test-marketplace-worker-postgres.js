@@ -2,6 +2,8 @@
 
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
+const {spawn}=require('node:child_process');
+const {once}=require('node:events');
 const {createPool}=require('../backend/postgres/connection');
 const {e2eMigrationConnectionString}=require('../backend/postgres/migrate');
 const {createMarketplaceRuntime}=require('../backend/integrations/marketplace-runtime');
@@ -22,31 +24,47 @@ async function assertRole(pool,expected){
   const result=await pool.query('SELECT current_user AS role,session_user AS session_role');
   assert.deepEqual(result.rows[0],{role:expected,session_role:expected},`database test must authenticate as ${expected}, never rotamoto_migrator`);
 }
+async function runInterruptedWorker(){
+  const workerUrl=roleUrl('rotamoto_provider_worker','E2E_PROVIDER_WORKER_DATABASE_URL');
+  const companyId=process.env.E2E_WORKER_COMPANY_ID;
+  if(!companyId)throw new Error('E2E worker interruption fixture is missing its synthetic tenant.');
+  const pool=createPool({connectionString:workerUrl,max:1,application_name:'marketplace-worker-e2e-interrupted-child'});
+  const accountResolver=async(provider,_accountId,tenantId)=>({provider,status:'active',companyId:tenantId,credentials:{synthetic:true}});
+  accountResolver.byMerchant=async()=>null;
+  const adapters={ifood:{async confirmOrder(){if(process.send)process.send({type:'side-effect-started'});return new Promise(()=>{});},async pollEvents(){return [];},async order(){return {status:'PLACED'};}}};
+  const worker=createMarketplaceWorker({pool,companyIds:[companyId],adapters,accountResolver,pollIntervalMs:1});
+  try{await worker.runOnce();}catch(error){if(process.send)process.send({type:'worker-error',code:error.code||'ERROR'});process.exitCode=1;}
+}
 async function main(){
   const e2e=e2eMigrationConnectionString(process.env);
   const workerUrl=roleUrl('rotamoto_provider_worker','E2E_PROVIDER_WORKER_DATABASE_URL');
   const resolverUrl=roleUrl('rotamoto_provider_resolver','E2E_PROVIDER_RESOLVER_DATABASE_URL');
   const migrator=createPool({connectionString:e2e,max:1,application_name:'marketplace-worker-e2e-seed'});
   const app=createPool({connectionString:process.env.E2E_RUNTIME_DATABASE_URL||'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e',max:2,application_name:'marketplace-worker-e2e-app'});
-  const workerPool=createPool({connectionString:workerUrl,max:2,application_name:'marketplace-worker-e2e-worker'});
+  const workerPool=createPool({connectionString:workerUrl,max:1,application_name:'marketplace-worker-e2e-worker-a'});
+  const workerPoolB=createPool({connectionString:workerUrl,max:1,application_name:'marketplace-worker-e2e-worker-b'});
   const resolverPool=createPool({connectionString:resolverUrl,max:2,application_name:'marketplace-worker-e2e-resolver'});
   const row={company:id(),otherCompany:id(),integration:id(),account:id(),merchant:`synthetic-${id()}`,secretRef:`synthetic-${id()}`,
     secret:'synthetic-runtime-secret'},orderId=id();
-  let confirms=0,confirmOutcome={accepted:true,confirmation:'pending'},detailStatus='PLACED',seeded=false;
+  let confirms=0,confirmOutcome={accepted:true,confirmation:'pending'},detailStatus='PLACED',seeded=false,confirmGate=null;
   const secretProvider={async get(ref,context){assert.equal(ref,row.secretRef);assert.equal(context.name,`marketplace/ifood/${row.account}`);assert.equal(context.scope,'tenant');assert.equal(context.tenantId,row.company);
     return JSON.stringify({clientId:'synthetic-client',clientSecret:row.secret,accessToken:'synthetic-access',accountScope:row.account,companyId:row.company});}};
   const resolver=createMarketplaceAccountResolver({privilegedPool:resolverPool,secretProvider});
   const adapters={ifood:{async order(){return {source:'ifood',externalId:orderId,externalDisplayId:'E2E-WORKER',status:detailStatus,orderType:'DELIVERY',createdAt:new Date().toISOString(),
       customer:{name:'PII must not persist',phone:'+55000000000'},address:'Synthetic address',items:[{name:'Meal',quantity:1}]};},
-    async confirmOrder(){confirms++;if(confirmOutcome instanceof Error)throw confirmOutcome;return confirmOutcome;},async pollEvents(){return [];},async acknowledgeEvents(){return {accepted:true};}}};
+    async confirmOrder(){confirms++;if(confirmGate){confirmGate.started();await confirmGate.promise;}if(confirmOutcome instanceof Error)throw confirmOutcome;return confirmOutcome;},async pollEvents(){return [];},async acknowledgeEvents(){return {accepted:true};}}};
   const runtime=createMarketplaceRuntime({pool:app,adapters,accountResolver:resolver});
   const workerResolver=async(provider,accountId,companyId)=>resolver.byId(provider,accountId,companyId);
   workerResolver.byMerchant=(provider,merchantId)=>resolver.byMerchant(provider,merchantId);
   const worker=createMarketplaceWorker({pool:workerPool,companyIds:[row.company],adapters,accountResolver:workerResolver,random:()=>0});
+  const workerB=createMarketplaceWorker({pool:workerPoolB,companyIds:[row.company],adapters,accountResolver:workerResolver,random:()=>0});
   const event=(status,eventId)=>Buffer.from(JSON.stringify({id:eventId,orderId,merchantId:row.merchant,fullCode:status,createdAt:new Date().toISOString()}));
   const signature=raw=>crypto.createHmac('sha256',row.secret).update(raw).digest('hex');
   try{
     await assertRole(workerPool,'rotamoto_provider_worker');
+    await assertRole(workerPoolB,'rotamoto_provider_worker');
+    const pids=await Promise.all([workerPool.query('SELECT pg_backend_pid() AS pid'),workerPoolB.query('SELECT pg_backend_pid() AS pid')]);
+    assert.notEqual(pids[0].rows[0].pid,pids[1].rows[0].pid,'workers use two independent PostgreSQL sessions');
     await assertRole(resolverPool,'rotamoto_provider_resolver');
     await assertRole(app,'rotamoto_app');
     const roleCatalog=await migrator.query(`SELECT r.rolname,r.rolcanlogin,r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolinherit,r.rolreplication,r.rolbypassrls,
@@ -157,6 +175,56 @@ async function main(){
     const staleFence=await workerPool.query("UPDATE rotamoto.marketplace_command_outbox SET status='succeeded' WHERE company_id=$1 AND command_id=$2 AND lease_token=$3",[row.company,leaseCommand.command_id,oldLease]);await workerPool.query('COMMIT');
     assert.equal(staleFence.rowCount,0,'fenced old lease cannot settle the recovered command');
 
+    // Hold the provider call after worker A has claimed the command. Worker B runs
+    // concurrently on a second PostgreSQL session and must not issue the side effect.
+    let signalStarted,releaseProvider;
+    const providerStarted=new Promise(resolve=>{signalStarted=resolve;});
+    const providerGate=new Promise(resolve=>{releaseProvider=resolve;});
+    confirmGate={started:signalStarted,promise:providerGate};confirmOutcome={accepted:true,confirmation:'pending'};
+    const concurrentCommand=await enqueueAndRun(`worker-race-${id()}`);
+    const beforeRaceConfirms=confirms;
+    const runA=worker.runOnce();
+    await providerStarted;
+    const workerBResult=await workerB.runOnce();
+    assert.equal(workerBResult,false,'the competing worker cannot claim a row leased by worker A');
+    assert.equal(confirms,beforeRaceConfirms+1,'the contested command invokes exactly one provider side effect');
+    releaseProvider();
+    assert.equal(await runA,true);
+    confirmGate=null;
+    assert.deepEqual(await commandState(concurrentCommand.command_id),{status:'pending',attempts:1,last_error_code:null},
+      'the winning worker settles the command once after the provider response');
+
+    // Kill a real worker process after its synthetic provider side effect starts.
+    // Its remote result is uncertain; lease recovery must not call the adapter again.
+    confirmGate=null;
+    await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    await migrator.query("UPDATE rotamoto.marketplace_command_outbox SET updated_at=now() WHERE company_id=$1 AND status='unknown_outcome'",[row.company]);
+    await migrator.query('COMMIT');
+    const interruptedCommand=await enqueueAndRun(`worker-interrupted-${id()}`);
+    const beforeInterruptedConfirms=confirms;
+    const child=spawn(process.execPath,[__filename,'--interrupted-worker'],{env:{...process.env,E2E_WORKER_COMPANY_ID:row.company},stdio:['ignore','ignore','pipe','ipc']});
+    let childError='',childSideEffectCalls=0;child.stderr.on('data',chunk=>{childError+=chunk.toString().slice(0,1000)});
+    const childStarted=new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>reject(new Error(`interrupted worker did not enter provider call (${childError})`)),20000);
+      child.on('message',message=>{if(message?.type==='side-effect-started'){childSideEffectCalls++;clearTimeout(timer);resolve(message)}else if(message?.type==='worker-error'){clearTimeout(timer);reject(new Error(`interrupted worker failed before provider call (${message.code})`))}});
+      child.once('error',error=>{clearTimeout(timer);reject(error)});
+    });
+    assert.equal((await childStarted).type,'side-effect-started');
+    const childExit=once(child,'exit');child.kill('SIGKILL');
+    const [childCode,childSignal]=await childExit;
+    assert.equal(childSignal,'SIGKILL',`worker process is terminated during the unresolved adapter call (exit=${childCode})`);
+    await workerPool.query('BEGIN');await workerPool.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
+    const expireLease=await workerPool.query("UPDATE rotamoto.marketplace_command_outbox SET lease_until=now()-interval '1 second' WHERE company_id=$1 AND command_id=$2 AND status='leased'",[row.company,interruptedCommand.command_id]);
+    assert.equal(expireLease.rowCount,1,'the in-flight operation has a persisted lease before simulated interruption');await workerPool.query('COMMIT');
+    await workerB.runOnce();
+    assert.equal(childSideEffectCalls,1,'only the interrupted worker reached the synthetic external side effect');
+    assert.deepEqual(await commandState(interruptedCommand.command_id),{status:'unknown_outcome',attempts:1,last_error_code:'WORKER_LEASE_EXPIRED'},
+      'expired in-flight side effect is durable as unknown outcome');
+    confirmGate=null;
+    assert.equal(confirms,beforeInterruptedConfirms,'recovery did not repeat the external command');
+    assert.deepEqual(await commandState(interruptedCommand.command_id),{status:'unknown_outcome',attempts:1,last_error_code:'WORKER_LEASE_EXPIRED'},
+      'late response from the stale worker cannot overwrite the fenced recovery state');
+
     await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
     await migrator.query("UPDATE rotamoto.external_accounts SET account_status='disabled' WHERE company_id=$1 AND id=$2",[row.company,row.account]);
     await migrator.query('COMMIT');
@@ -179,8 +247,8 @@ async function main(){
         await migrator.query(sql,[row.company]).catch(()=>{});
       await migrator.query('COMMIT').catch(()=>{});
     }
-    await Promise.all([app.end(),workerPool.end(),resolverPool.end(),migrator.end()]);
+    await Promise.all([app.end(),workerPool.end(),workerPoolB.end(),resolverPool.end(),migrator.end()]);
   }
 }
-if(require.main===module)main().catch(error=>{process.stderr.write(`Marketplace worker PostgreSQL E2E: FAIL (${error.code||'ERROR'}: ${error.message||'operation failed'})\n${error.stack||''}\n`);process.exitCode=1;});
+if(require.main===module)(process.argv[2]==='--interrupted-worker'?runInterruptedWorker():main()).catch(error=>{process.stderr.write(`Marketplace worker PostgreSQL E2E: FAIL (${error.code||'ERROR'}: ${error.message||'operation failed'})\n${error.stack||''}\n`);process.exitCode=1;});
 module.exports={roleUrl,assertRole};
