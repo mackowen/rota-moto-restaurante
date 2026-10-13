@@ -67,6 +67,11 @@ async function main() {
     assert.equal(domain.rows[0].payload.logistics,null);
     assert.equal(Object.hasOwn(domain.rows[0].payload,'customer'),false,'customer name and phone from provider detail are not projected');
     assert.equal(Object.hasOwn(domain.rows[0].payload,'address'),false,'delivery address is not retained without a domain need');
+    const unifiedOrders=await runtime.listOrders(a.company,50);
+    assert.equal(unifiedOrders.length,1,'the external order is available through the canonical administrative order projection');
+    assert.deepEqual({domainOrderId:unifiedOrders[0].domainOrderId,provider:unifiedOrders[0].provider,displayId:unifiedOrders[0].displayId,providerStatus:unifiedOrders[0].providerStatus},
+      {domainOrderId:version.rows[0].domain_order_id,provider:'ifood',displayId:'S-1',providerStatus:'PLACED'});
+    assert.deepEqual(await runtime.listOrders(b.company,50),[],'an external order projection cannot cross tenant boundaries');
     const idempotencyKey=`browser-command-${id()}`;
     const command=await runtime.enqueueOrderCommand({companyId:a.company,domainOrderId:version.rows[0].domain_order_id,
       operation:'CONFIRM',idempotencyKey,commandData:{}});
