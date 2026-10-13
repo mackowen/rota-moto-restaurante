@@ -15,6 +15,8 @@ const { createAdminRepository } = require('../backend/admin/repository');
 const { createAdminService } = require('../backend/admin/service');
 const { hashPassword } = require('../backend/identity/passwords');
 const { createAdminHttpHandler } = require('../backend/admin/http');
+const { createLogisticsService } = require('../backend/logistics/service');
+const { createLogisticsHttpHandler } = require('../backend/logistics/http');
 
 function savepointPool(client) {
   let counter = 0;
@@ -102,10 +104,14 @@ async function main() {
       rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
     const adminHttp = createAdminHttpHandler({ identityService, adminService,
       rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
+    const logisticsService = createLogisticsService();
+    const logisticsHttp = createLogisticsHttpHandler({ identityService, logisticsService,
+      rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
     const server = http.createServer(async (req, res) => {
       req.requestId = crypto.randomUUID();
       if (await adminHttp(req, res)) return;
       if (await queryHttp(req, res)) return;
+      if (await logisticsHttp(req, res)) return;
       return handler(req, res);
     });
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -379,7 +385,7 @@ async function main() {
       const routePacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],deliveries:[],deliveryEvents:[],earnings:[],routes:[{id:'route-local-1',deliveryIds:['delivery-local-1'],createdAt:baseTime,updatedAt:baseTime,version:1}]}};
       const routePush=await call('/api/sync/push',{method:'POST',body:routePacket});
       assert.equal(routePush.status,200);
-      assert.equal(routePush.body.operationResults[0].status,'accepted');
+      assert.equal(routePush.body.operationResults[0].status,'accepted',JSON.stringify(routePush.body.operationResults));
       const canonicalRouteId=routePush.body.operationResults[0].canonicalId;
       const canonicalRoute=await client.query("SELECT payload->'deliveryIds' AS delivery_ids FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Route'",[companyId,canonicalRouteId]);
       assert.deepEqual(canonicalRoute.rows[0].delivery_ids,[deliveryId],'Route stores canonical Delivery IDs without a redundant inverse field');
@@ -601,6 +607,46 @@ async function main() {
       assert.equal(lateFact.body.operationResults[0].status,'rejected');
       assert.equal(lateFact.body.operationResults[0].error.code,'DRIVER_NOT_ASSIGNED');
 
+      const beforeReplayAssignment=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,deliveryId]);
+      const replayAssignment={...beforeReplayAssignment.rows[0].payload,driverId,status:'ASSIGNED',
+        assignedAt:new Date(Date.now()+16000).toISOString(),version:Number(beforeReplayAssignment.rows[0].version)+1,
+        baseVersion:Number(beforeReplayAssignment.rows[0].version),updatedAt:new Date(Date.now()+16000).toISOString()};
+      const assignmentPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{...packet.data,orders:[],deliveries:[replayAssignment],
+        drivers:[],routes:[],deliveryEvents:[],earnings:[],proofs:[],locationUpdates:[]}};
+      const assignmentAck=await call('/api/sync/push',{method:'POST',body:assignmentPacket});
+      assert.equal(assignmentAck.body.operationResults[0].status,'accepted',JSON.stringify(assignmentAck.body.operationResults));
+      const staleAssignmentSnapshot={...replayAssignment};
+      delete staleAssignmentSnapshot.baseVersion;
+      const replayLifecycle=[['DELIVERY_ACCEPTED',17000],['DELIVERY_PICKED_UP',18000],['DELIVERY_STARTED',19000],
+        ['DELIVERY_ARRIVED',20000],['DELIVERY_COMPLETED',21000]];
+      for(const [type,offset] of replayLifecycle){
+        const event={eventId:`evt_${crypto.randomUUID()}`,entity:'delivery',entityId:deliveryId,type,
+          occurredAt:new Date(Date.now()+offset).toISOString()};
+        const result=await call('/api/sync/push',{method:'POST',body:{...riderPacket,packetId:`pkt_${crypto.randomUUID()}`,
+          data:{...riderPacket.data,deliveries:[],deliveryEvents:[event],earnings:[]}}});
+        assert.equal(result.body.operationResults[0].status,'accepted',`${type}: ${JSON.stringify(result.body.operationResults)}`);
+      }
+      const deliveredBeforeReplay=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,deliveryId]);
+      assert.equal(deliveredBeforeReplay.rows[0].payload.status,'DELIVERED');
+      const outboxBeforeReplay=await client.query("SELECT count(*)::int AS count FROM rotamoto.sync_outbox WHERE company_id=$1 AND payload->>'entity'='Delivery' AND payload->>'entityId'=$2",[companyId,deliveryId]);
+      const staleReplayPacket={...assignmentPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...assignmentPacket.data,deliveries:[staleAssignmentSnapshot]}};
+      const staleReplay=await call('/api/sync/push',{method:'POST',body:staleReplayPacket});
+      assert.equal(staleReplay.body.operationResults[0].status,'duplicate',JSON.stringify(staleReplay.body.operationResults));
+      assert.equal(staleReplay.body.operationResults[0].canonicalVersion,Number(deliveredBeforeReplay.rows[0].version));
+      const deliveredAfterReplay=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,deliveryId]);
+      assert.equal(deliveredAfterReplay.rows[0].payload.status,'DELIVERED','stale projection cannot downgrade canonical execution state');
+      assert.equal(Number(deliveredAfterReplay.rows[0].version),Number(deliveredBeforeReplay.rows[0].version),'replay does not advance the canonical revision');
+      const outboxAfterReplay=await client.query("SELECT count(*)::int AS count FROM rotamoto.sync_outbox WHERE company_id=$1 AND payload->>'entity'='Delivery' AND payload->>'entityId'=$2",[companyId,deliveryId]);
+      assert.equal(outboxAfterReplay.rows[0].count,outboxBeforeReplay.rows[0].count,'replay emits no duplicate canonical event');
+      const tamperedReplay={...staleReplayPacket,packetId:`pkt_${crypto.randomUUID()}`,data:{...staleReplayPacket.data,
+        deliveries:[{...staleAssignmentSnapshot,assignedAt:new Date(Date.now()+22000).toISOString(),updatedAt:new Date(Date.now()+23000).toISOString()}]}};
+      const tamperedResult=await call('/api/sync/push',{method:'POST',body:tamperedReplay});
+      assert.equal(tamperedResult.body.operationResults[0].status,'rejected',JSON.stringify(tamperedResult.body.operationResults));
+      assert.equal(tamperedResult.body.operationResults[0].error.code,'FORBIDDEN_FIELD',
+        'a changed Restaurant-owned assignment field remains explicitly rejected');
+      const stillDelivered=await client.query("SELECT payload->>'status' AS status,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,deliveryId]);
+      assert.equal(stillDelivered.rows[0].status,'DELIVERED');assert.equal(Number(stillDelivered.rows[0].version),Number(deliveredBeforeReplay.rows[0].version));
+
       const beforeTombstone=await client.query('SELECT version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,deliveryId]);
       const tombstoneVersion=Number(beforeTombstone.rows[0].version);
       const tombstonePacket = { ...packet, packetId: `pkt_${crypto.randomUUID()}`, data: { ...packet.data, orders: [], deliveries: [],
@@ -612,6 +658,98 @@ async function main() {
       const tombstoneState = await client.query('SELECT deleted_at,payload->>\'deleted\' AS deleted FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2', [companyId, deliveryId]);
       assert.equal(tombstoneState.rows[0].deleted, 'true');
       assert(tombstoneState.rows[0].deleted_at);
+
+      const restaurantInstallation=await client.query("SELECT id FROM rotamoto.sync_installations WHERE company_id=$1 AND app_key='restaurante' ORDER BY last_seen_at DESC LIMIT 1",[companyId]);
+      assert.equal(restaurantInstallation.rowCount,1);
+      const originalReturnId=crypto.randomUUID(),peerOrderId=crypto.randomUUID(),peerDeliveryId=crypto.randomUUID(),
+        peer2OrderId=crypto.randomUUID(),peer2DeliveryId=crypto.randomUUID(),routeId=crypto.randomUUID(),returnNow=new Date().toISOString();
+      const originalReturnPayload={id:originalReturnId,companyId,orderId,driverId,status:'CANCELLED',pickedUpAt:returnNow,
+        createdAt:returnNow,updatedAt:returnNow,version:1,extensions:{x_rotamoto_custody_state:'DISPUTED',x_rotamoto_custody_route_id:routeId,
+          x_rotamoto_custody_divergence:{state:'OPEN',reportedEventType:'DELIVERY_PICKED_UP',confirmedByServer:false,sourceEventId:'evt_offline_fixture'}}};
+      const peerOrder={id:peerOrderId,companyId,number:'RETURN-ROUTE-PEER',status:'CREATED',customer:{name:'Pedido da rota'},
+        createdAt:returnNow,updatedAt:returnNow,version:1};
+      const peerDelivery={id:peerDeliveryId,companyId,orderId:peerOrderId,driverId,status:'OUT_FOR_DELIVERY',createdAt:returnNow,updatedAt:returnNow,version:1};
+      const peer2Order={id:peer2OrderId,companyId,number:'RETURN-ROUTE-PEER-2',status:'CREATED',customer:{name:'Segundo pedido da rota'},createdAt:returnNow,updatedAt:returnNow,version:1};
+      const peer2Delivery={id:peer2DeliveryId,companyId,orderId:peer2OrderId,driverId,status:'ASSIGNED',createdAt:returnNow,updatedAt:returnNow,version:1};
+      const routePayload={id:routeId,companyId,driverId,status:'ACTIVE',deliveryIds:[peerDeliveryId,peer2DeliveryId,originalReturnId],createdAt:returnNow,updatedAt:returnNow,version:1};
+      await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,
+        related_entity_type,related_record_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Delivery','restaurante',$3,'Order',$4,$5::jsonb,1,$6,$6),
+          ($1,$7,'Order','restaurante',$3,NULL,NULL,$8::jsonb,1,$6,$6),
+          ($1,$9,'Delivery','restaurante',$3,'Order',$7,$10::jsonb,1,$6,$6),
+          ($1,$11,'Order','restaurante',$3,NULL,NULL,$12::jsonb,1,$6,$6),
+          ($1,$13,'Delivery','restaurante',$3,'Order',$11,$14::jsonb,1,$6,$6),
+          ($1,$15,'Route','restaurante',$3,NULL,NULL,$16::jsonb,1,$6,$6)`,
+      [companyId,originalReturnId,restaurantInstallation.rows[0].id,orderId,JSON.stringify(originalReturnPayload),returnNow,
+        peerOrderId,JSON.stringify(peerOrder),peerDeliveryId,JSON.stringify(peerDelivery),peer2OrderId,JSON.stringify(peer2Order),
+        peer2DeliveryId,JSON.stringify(peer2Delivery),routeId,JSON.stringify(routePayload)]);
+      const returnDecisionKey=`return-${crypto.randomUUID()}`;
+      const custodyView=await call(`/api/logistics/deliveries/${originalReturnId}/custody`);
+      assert.equal(custodyView.status,200);assert.equal(custodyView.body.delivery.custodyDivergence.state,'OPEN');
+      const returnDecisionBody={decision:'RETURN',reason:'Teste PostgreSQL de retorno após coleta.',expectedVersion:1,idempotencyKey:returnDecisionKey,reconcileIncident:true};
+      const createdReturn=await call(`/api/logistics/deliveries/${originalReturnId}/custody-decisions`,{method:'POST',body:returnDecisionBody});
+      let custodyDebug=null;if(createdReturn.status!==200)await identityService.withAuthenticatedTenant(sessionToken,async(tx,principal)=>{
+        try{await logisticsService.decideCustody(tx,principal,originalReturnId,returnDecisionBody)}catch(error){custodyDebug={code:error.code,message:error.message,stack:error.stack};throw error}
+      },'orders.manage').catch(()=>{});
+      assert.equal(createdReturn.status,200,JSON.stringify({body:createdReturn.body,log:logs.slice(-5),custodyDebug}));
+      const returnDeliveryId=createdReturn.body.returnDeliveryId;
+      assert.equal(createdReturn.body.routePosition,3,'RETURN is appended after existing route work');
+      const repeatedReturn=await call(`/api/logistics/deliveries/${originalReturnId}/custody-decisions`,{method:'POST',body:returnDecisionBody});
+      assert.equal(repeatedReturn.status,200);assert.equal(repeatedReturn.body.duplicate,true);
+      const conflictingReturn=await call(`/api/logistics/deliveries/${originalReturnId}/custody-decisions`,{method:'POST',body:{...returnDecisionBody,reason:'Payload divergente'}});
+      assert.equal(conflictingReturn.status,409);assert.equal(conflictingReturn.body.error.code,'IDEMPOTENCY_CONFLICT');
+      const routeAfterCreate=await client.query('SELECT payload->\'deliveryIds\' AS ids FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,routeId]);
+      assert.deepEqual(routeAfterCreate.rows[0].ids,[peerDeliveryId,peer2DeliveryId,returnDeliveryId]);
+      const reconciledOriginal=await client.query('SELECT payload->\'extensions\'->\'x_rotamoto_custody_divergence\' AS divergence FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,originalReturnId]);
+      assert.equal(reconciledOriginal.rows[0].divergence.state,'RESOLVED');assert.equal(reconciledOriginal.rows[0].divergence.resolution,'RETURN');
+      const reorderPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,data:{orders:[],deliveries:[],drivers:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[],
+        routes:[{id:routeId,deliveryIds:[peerDeliveryId,returnDeliveryId,peer2DeliveryId],status:'ACTIVE',createdAt:returnNow,updatedAt:returnNow,version:3,baseVersion:2}]}};
+      const reordered=await call('/api/sync/push',{method:'POST',body:reorderPacket});
+      assert.equal(reordered.status,200);assert.equal(reordered.body.operationResults[0].status,'accepted',JSON.stringify(reordered.body.operationResults));
+      const routeAfterReorder=await client.query('SELECT payload->\'deliveryIds\' AS ids,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,routeId]);
+      assert.deepEqual(routeAfterReorder.rows[0].ids,[peerDeliveryId,returnDeliveryId,peer2DeliveryId]);assert.equal(Number(routeAfterReorder.rows[0].version),3,
+        'manual reorder moves RETURN after the currently executing first stop and preserves that stop position');
+      const staleReorder=await call('/api/sync/push',{method:'POST',body:{...reorderPacket,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...reorderPacket.data,routes:[{...reorderPacket.data.routes[0],deliveryIds:[returnDeliveryId,peerDeliveryId,peer2DeliveryId],version:4,baseVersion:2}]}}});
+      assert.equal(staleReorder.body.operationResults[0].status,'conflict');assert.equal(staleReorder.body.operationResults[0].error.code,'REVISION_CONFLICT');
+      const pushReturnFact=async(type,expectedVersion,eventId=`evt_${crypto.randomUUID()}`)=>call('/api/sync/push',{method:'POST',body:{...riderPacket,
+        packetId:`pkt_${crypto.randomUUID()}`,data:{...riderPacket.data,deliveries:[],deliveryEvents:[{eventId,id:eventId,entity:'delivery',
+          entityId:returnDeliveryId,type,occurredAt:new Date(Date.now()+expectedVersion*1000).toISOString(),payload:{expectedVersion}}],earnings:[]}}});
+      for(const [type,expectedVersion,nextStatus] of [['DELIVERY_RETURN_STARTED',1,'OUT_FOR_DELIVERY'],
+        ['DELIVERY_RETURN_ARRIVED',2,'ARRIVED'],['DELIVERY_RETURN_HANDED_OVER',3,'ARRIVED']]){
+        const ack=await pushReturnFact(type,expectedVersion);
+        assert.equal(ack.status,200,JSON.stringify(ack.body));
+        assert.equal(ack.body.operationResults[0].status,'accepted',JSON.stringify(ack.body.operationResults));
+        const projection=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,returnDeliveryId]);
+        assert.equal(projection.rows[0].payload.status,nextStatus);
+        assert.equal(Number(projection.rows[0].version),expectedVersion+1);
+      }
+      const handedOver=await client.query('SELECT payload FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,returnDeliveryId]);
+      assert.equal(handedOver.rows[0].payload.extensions.x_rotamoto_custody_state,'AWAITING_RESTAURANT_RECEIPT');
+      assert.equal(handedOver.rows[0].payload.extensions.x_rotamoto_driver_handover_confirmed,true);
+      const staleReturn=await pushReturnFact('DELIVERY_RETURN_HANDED_OVER',3);
+      assert.equal(staleReturn.body.operationResults[0].error.code,'REVISION_CONFLICT');
+      const ordinaryCompletion=await pushReturnFact('DELIVERY_COMPLETED',4);
+      assert.equal(ordinaryCompletion.body.operationResults[0].error.code,'FORBIDDEN_EVENT');
+      const receiptKey=`receipt-${crypto.randomUUID()}`;
+      const receiptBody={expectedVersion:4,idempotencyKey:receiptKey,reason:'Recebimento físico confirmado no teste E2E.'};
+      const receipt=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody});
+      assert.equal(receipt.status,200,JSON.stringify(receipt.body));
+      assert.equal(receipt.body.status,'RETURNED');assert.equal(receipt.body.custodyState,'RECEIVED');
+      const receiptReplay=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody});
+      assert.equal(receiptReplay.status,200,JSON.stringify(receiptReplay.body));assert.equal(receiptReplay.body.duplicate,true);
+      const receiptConflict=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:{...receiptBody,reason:'Payload divergente da chave.'}});
+      assert.equal(receiptConflict.status,409);assert.equal(receiptConflict.body.error.code,'IDEMPOTENCY_CONFLICT');
+      const finalReturn=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,returnDeliveryId]);
+      const finalOriginal=await client.query('SELECT payload FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,originalReturnId]);
+      assert.equal(finalReturn.rows[0].payload.status,'RETURNED');assert.equal(finalReturn.rows[0].payload.extensions.x_rotamoto_custody_state,'RECEIVED');
+      assert.equal(finalOriginal.rows[0].payload.status,'CANCELLED');assert.equal(finalOriginal.rows[0].payload.extensions.x_rotamoto_custody_state,'RECEIVED');
+      const routeAfterReceipt=await client.query('SELECT payload->\'deliveryIds\' AS ids FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,routeId]);
+      assert.deepEqual(routeAfterReceipt.rows[0].ids,[peerDeliveryId,peer2DeliveryId],'receipt closes the RETURN route stop without dropping other deliveries');
+      const returnFacts=await client.query("SELECT payload->>'type' AS type FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2 ORDER BY created_at,record_id",[companyId,returnDeliveryId]);
+      assert.deepEqual(returnFacts.rows.map(row=>row.type).sort(),['DELIVERY_RETURN_STARTED','DELIVERY_RETURN_ARRIVED','DELIVERY_RETURN_HANDED_OVER','DELIVERY_RETURN_RECEIPT_CONFIRMED'].sort());
+      console.log('RETURN PostgreSQL sync/HTTP lifecycle: server revisions, handover pending receipt, authorized idempotent receipt and terminal custody PASS');
+
       const unlink=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'DELETE'});
       assert.equal(unlink.status,200,JSON.stringify(unlink.body));assert.equal(unlink.body.driverId,null);assert.equal(unlink.body.changed,true);
       const unlinkRepeat=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'DELETE'});

@@ -31,11 +31,11 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
       const deliveryId=(up||get)[1].toLowerCase();if(!UUID.test(deliveryId))throw fail('NOT_FOUND',404);
       const method=up?'POST':'GET';if(req.method!==method){res.writeHead(405,{Allow:method,'Cache-Control':'no-store'});res.end();return true;}
       const rate=rateLimiter.consume(`${req.clientIp||req.socket.remoteAddress||'unknown'}:proof-media:${method}`,'default');if(!rate.allowed)throw fail('RATE_LIMITED',429,'Limite de solicitações excedido.');
-      if(up){sameOrigin(req,allowedOrigin);const proofId=url.searchParams.get('proofId');const type=String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase();if(!['image/png','image/jpeg'].includes(type))throw fail('UNSUPPORTED_MEDIA_TYPE',415);
+      if(up){sameOrigin(req,allowedOrigin);const proofId=(url.searchParams.get('proofId')||'').toLowerCase();const type=String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase();if(!['image/png','image/jpeg'].includes(type))throw fail('UNSUPPORTED_MEDIA_TYPE',415);
         const length=Number(req.headers['content-length']);if(!Number.isSafeInteger(length)||length<1)throw fail('INVALID_INPUT',400);if(length>MAX_PROOF_BYTES){req.resume();throw fail('PAYLOAD_TOO_LARGE',413)}
         const token=cookie(req);if(!token)throw fail('UNAUTHENTICATED',401);
         const csrf=req.headers['x-csrf-token'];if(typeof csrf!=='string')throw fail('CSRF_INVALID',403);
-        let objectRef=null,stored=null;
+        let objectRef=null,objectCreated=false,stored=null;
         try{
           stored=await identityService.withAuthenticatedTenant(token,async(client,principal)=>{
             if(!await identityService.verifyCsrf(client,principal.session_id,csrf))throw fail('CSRF_INVALID',403);
@@ -48,14 +48,40 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
               WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Delivery'`,[principal.company_id,deliveryId]);
             if(!delivery.rowCount||delivery.rows[0].deleted_at||delivery.rows[0].driver_id!==principal.driver_id)throw fail('NOT_FOUND',404);
             await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`proof-media:${principal.company_id}:${deliveryId}`]);
-            const result=await mediaStorage.storeProof({companyId:principal.company_id,deliveryId,contentType:type,source:req});objectRef=result.storageRef;
+            const prior=await client.query(`SELECT delivery_id::text,object_key FROM rotamoto.proof_media_upload_intents
+              WHERE company_id=$1 AND proof_id=$2::uuid FOR UPDATE`,[principal.company_id,proofId]);
+            const extension=type==='image/png'?'.png':'.jpg';
+            if(prior.rowCount&&(prior.rows[0].delivery_id!==deliveryId||!prior.rows[0].object_key.endsWith(`/${proofId}${extension}`)))
+              throw fail('MEDIA_PROOF_CONFLICT',409,'Este comprovante já foi associado a outra entrega ou tipo de mídia.');
+            const mappings=await client.query(`SELECT DISTINCT canonical_id::text FROM rotamoto.local_id_maps
+              WHERE company_id=$1 AND app_key='motoboy' AND entity_type='DeliveryProof' AND local_id=$2`,[principal.company_id,proofId]);
+            if(mappings.rowCount>1)throw fail('MEDIA_PROOF_CONFLICT',409,'Identificador do comprovante possui mapeamentos canônicos ambíguos.');
+            const canonicalId=mappings.rows[0]?.canonical_id||proofId;
+            const canonical=await client.query(`SELECT payload,related_record_id::text AS delivery_id,deleted_at FROM rotamoto.domain_records
+              WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='DeliveryProof'`,[principal.company_id,canonicalId]);
+            if(canonical.rowCount&&canonical.rows[0].deleted_at)throw fail('MEDIA_PROOF_CONFLICT',409,'Este comprovante canônico foi removido.');
+            const canonicalMedia=canonical.rows[0]?.payload?.media||null;
+            if(canonical.rowCount&&(canonical.rows[0].delivery_id!==deliveryId||canonicalMedia?.storageRef?.provider!=='filesystem-v1'))
+              throw fail('MEDIA_PROOF_CONFLICT',409,'Este comprovante já foi associado a outra entrega ou armazenamento.');
+            const result=await mediaStorage.storeProof({companyId:principal.company_id,deliveryId,proofId,
+              ...(canonicalMedia?.storageRef?.objectKey?{objectKey:canonicalMedia.storageRef.objectKey}:{}),contentType:type,source:req});objectRef=result.storageRef;objectCreated=result.created;
             if(result.sizeBytes!==length)throw fail('INVALID_INPUT',400,'Tamanho do upload divergente.');
+            if(canonicalMedia){
+              if(canonicalMedia.mimeType!==result.mimeType||canonicalMedia.sizeBytes!==result.sizeBytes||canonicalMedia.sha256!==result.sha256||
+                canonicalMedia.storageRef?.provider!==result.storageRef.provider||canonicalMedia.storageRef?.objectKey!==result.storageRef.objectKey)
+                throw fail('MEDIA_PROOF_CONFLICT',409,'O conteúdo não corresponde ao comprovante canônico.');
+              return result;
+            }
             await client.query(`INSERT INTO rotamoto.proof_media_upload_intents(company_id,delivery_id,proof_id,object_key)
-              VALUES($1,$2::uuid,$3::uuid,$4) ON CONFLICT(company_id,proof_id) DO UPDATE SET
-              delivery_id=EXCLUDED.delivery_id,object_key=EXCLUDED.object_key,created_at=now()`,
-            [principal.company_id,deliveryId,proofId,result.storageRef.objectKey]);return result;
+              VALUES($1,$2::uuid,$3::uuid,$4) ON CONFLICT(company_id,proof_id) DO NOTHING`,
+            [principal.company_id,deliveryId,proofId,result.storageRef.objectKey]);
+            const intent=await client.query(`SELECT delivery_id::text,object_key FROM rotamoto.proof_media_upload_intents
+              WHERE company_id=$1 AND proof_id=$2::uuid`,[principal.company_id,proofId]);
+            if(!intent.rowCount||intent.rows[0].delivery_id!==deliveryId||intent.rows[0].object_key!==result.storageRef.objectKey)
+              throw fail('MEDIA_PROOF_CONFLICT',409,'Este comprovante já foi associado a outra entrega.');
+            return result;
           },'sync.push');
-        }catch(error){if(objectRef)await mediaStorage.remove?.(objectRef).catch(()=>{});throw error;}
+        }catch(error){if(objectRef&&objectCreated)await mediaStorage.remove?.(objectRef).catch(()=>{});throw error;}
         sendJson(res,201,{provider:stored.provider,storageRef:stored.storageRef,mimeType:stored.mimeType,sizeBytes:stored.sizeBytes,sha256:stored.sha256,requestId});return true;
       }
       const token=cookie(req);if(!token)throw fail('UNAUTHENTICATED',401);
@@ -79,7 +105,7 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
         return mediaStorage.read(media.storageRef,{mimeType:media.mimeType,sizeBytes:media.sizeBytes,sha256:media.sha256});
       },'sync.pull');
       res.writeHead(200,{'Content-Type':result.contentType,'Content-Length':result.sizeBytes,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Disposition':'attachment; filename="delivery-proof"'});res.end(result.data);return true;
-    }catch(error){if(up)req.resume();const status=error.status||({'UNAUTHENTICATED':401,'FORBIDDEN':403,'MFA_REQUIRED':403,'CSRF_INVALID':403,'ORIGIN_INVALID':403,'DRIVER_LINK_REQUIRED':403,'NOT_FOUND':404,'INVALID_INPUT':400,'UNSUPPORTED_MEDIA_TYPE':415,'PAYLOAD_TOO_LARGE':413,'MEDIA_STORAGE_UNAVAILABLE':503,'RATE_LIMITED':429}[error.code]||500);sendJson(res,status,{error:{code:status>=500?'INTERNAL_ERROR':error.code,message:status>=500?'Falha interna ao processar mídia.':error.message}});return true;}
+    }catch(error){if(up)req.resume();const status=error.status||({'UNAUTHENTICATED':401,'FORBIDDEN':403,'MFA_REQUIRED':403,'CSRF_INVALID':403,'ORIGIN_INVALID':403,'DRIVER_LINK_REQUIRED':403,'NOT_FOUND':404,'INVALID_INPUT':400,'UNSUPPORTED_MEDIA_TYPE':415,'PAYLOAD_TOO_LARGE':413,'MEDIA_STORAGE_UNAVAILABLE':503,'RATE_LIMITED':429,'MEDIA_PROOF_CONFLICT':409}[error.code]||500);sendJson(res,status,{error:{code:status>=500?'INTERNAL_ERROR':error.code,message:status>=500?'Falha interna ao processar mídia.':error.message}});return true;}
   };
 }
 module.exports={createProofMediaHttpHandler};

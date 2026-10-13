@@ -1,23 +1,51 @@
 'use strict';
 
 const CACHE_PREFIX = 'rotamoto-restaurante-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v12`;
+const CACHE_NAME = `${CACHE_PREFIX}v41`;
 const APP_SHELL = Object.freeze([
-  '/', '/index.html', '/styles.css', '/identity-ui.css', '/design-system.css', '/pilot-views.css?v=0110.8', '/favicon.svg',
+  '/', '/index.html', '/styles.css?v=0140.10', '/identity-ui.css?v=0140.6', '/design-system.css?v=0140.16', '/pilot-views.css?v=0140.3', '/favicon.svg?v=0140.1',
   '/qr-local.js', '/ifood-integration.js', '/keeta-integration.js', '/99food-integration.js',
   '/contract.js', '/backup-format.js?v=1', '/sync-reconciliation.js?v=1',
   '/indexeddb-schema.js?v=2', '/order-money.js?v=1', '/ticket-renderer.js?v=1',
   '/browser-printer-provider.js?v=1', '/restaurant-operations.js?v=2',
-  '/analytics.js?v=2', '/analytics-view.js?v=1', '/logistics-ui.js?v=1',
-  '/identity-session-guard.js', '/app.js?v=41.1', '/identity-ui.js',
-  '/vendor/leaflet/leaflet.css', '/vendor/leaflet/leaflet.js'
+  '/analytics.js?v=2', '/analytics-view.js?v=4', '/logistics-ui.js?v=0140.8',
+  '/identity-session-guard.js', '/app.js?v=0140.10', '/identity-ui.js?v=0140.2',
+  '/vendor/leaflet/leaflet.css', '/vendor/maplibre/maplibre-gl.css?v=0139.1', '/vendor/maplibre/rotamoto-map-runtime.js?v=0140.9', '/vendor/maplibre/maplibre-gl-worker.js?v=0139.1', '/vendor/leaflet/leaflet.js'
 ]);
+const OPTIONAL_ASSETS = new Set([
+  '/vendor/maplibre/maplibre-gl.css?v=0139.1',
+  '/vendor/maplibre/maplibre-gl-worker.js?v=0139.1'
+]);
+const shellURLs = new Set(APP_SHELL.map(path => new URL(path, self.location.origin).href));
+const optionalURLs = new Set([...OPTIONAL_ASSETS].map(path => new URL(path, self.location.origin).href));
+
+async function stageShell() {
+  await caches.delete(CACHE_NAME);
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const fetched = await Promise.all(APP_SHELL.map(async path => {
+      const request = new Request(new URL(path, self.location.origin), { cache: 'reload' });
+      const response = await fetch(request);
+      if (!response.ok || response.type === 'opaque' || (response.redirected && new URL(response.url).origin !== self.location.origin)) throw new Error(`shell asset unavailable (${response.status})`);
+      return { request, response };
+    }).map(promise => promise.catch(error => ({ error }))));
+    const failedRequired = fetched.filter((result, index) => result.error && !optionalURLs.has(new URL(APP_SHELL[index], self.location.origin).href));
+    if (failedRequired.length) throw new Error(`required shell assets unavailable (${failedRequired.length})`);
+    await Promise.all(fetched.filter(result => !result.error).map(({ request, response }) => cache.put(request, response)));
+    fetched.forEach((result, index) => {
+      if (result.error && optionalURLs.has(new URL(APP_SHELL[index], self.location.origin).href)) {
+        console.warn('Optional offline asset unavailable:', new URL(APP_SHELL[index], self.location.origin).pathname);
+      }
+    });
+  } catch (error) {
+    await caches.delete(CACHE_NAME);
+    throw error;
+  }
+}
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(APP_SHELL);
-    await self.skipWaiting();
+    await stageShell();
   })());
 });
 
@@ -46,7 +74,9 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  const isShellAsset = APP_SHELL.some(path => new URL(path, self.location.origin).pathname === url.pathname);
-  if (!isShellAsset) return;
-  event.respondWith((async () => (await caches.match(request)) || fetch(request))());
+  if (!shellURLs.has(url.href)) return;
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    return (await cache.match(request)) || fetch(request);
+  })().catch(() => new Response('', { status: 503, statusText: 'Offline asset unavailable', headers: { 'Cache-Control': 'no-store' } })));
 });

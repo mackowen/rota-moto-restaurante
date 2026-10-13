@@ -72,6 +72,14 @@ assert.equal(Operations.plannedDeliveryStatus({ status: 'AGUARDANDO' }, 'OUT_FOR
 assert.equal(Operations.plannedDeliveryStatus({ status: 'FINALIZADA' }, 'FAILED', 'DELIVERED'), 'FAILED');
 assert.equal(Operations.plannedDeliveryStatus({ deliveryStatus: 'REDELIVERY' }, 'FAILED', 'FAILED'), 'REDELIVERY');
 assert.equal(Operations.plannedDeliveryStatus({ status: 'CANCELADA' }, null, 'CREATED'), 'CANCELLED');
+assert.equal(Operations.shouldIncludeDeliveryForSync({ orderChangedHere: true, deliveryChangedHere: false, hasLocalDelivery: false, status: 'CREATED' }), true,
+  'new locally created Orders still publish their initial Delivery');
+assert.equal(Operations.shouldIncludeDeliveryForSync({ orderChangedHere: true, deliveryChangedHere: true, hasLocalDelivery: true, status: 'ASSIGNED' }), true,
+  'a locally changed assignment is published');
+assert.equal(Operations.shouldIncludeDeliveryForSync({ orderChangedHere: true, deliveryChangedHere: false, hasLocalDelivery: true, status: 'ASSIGNED' }), false,
+  'an Order-only edit must not resend an unchanged canonical assignment');
+assert.equal(Operations.shouldIncludeDeliveryForSync({ orderChangedHere: true, deliveryChangedHere: false, hasLocalDelivery: true, status: 'DELIVERED' }), false,
+  'a stale Order projection must not resend terminal Delivery state');
 
 const route = Operations.canonicalRoute({ id: 'route_1', createdAt, updatedAt: createdAt, version: 1, deliveryIds: ['d_local'], internalCache: true }, 'company_fallback');
 assert.equal(route.internalCache, undefined);
@@ -84,7 +92,21 @@ assert.equal(Operations.validateRouteMembership(null, ['d_local'], deliveries, [
 assert.equal(Operations.validateRouteMembership(null, ['d_canonical'], deliveries, [], 'company_1'), true);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local', 'd_canonical'], deliveries, [], 'company_1'), /duas vezes/);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], [{ ...base, companyId: 'company_2' }], [], 'company_1'), /outra empresa/);
+assert.equal(Operations.validateRouteMembership(null, ['d_local'], [{ ...base, companyId: 'company_local', sync: { canonicalId: 'd_server' } }], [], 'company_1'), true,
+  'a canonical server identity binds a legacy local-company projection to the authenticated tenant context');
+assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], [{ ...base, companyId: 'company_local' }], [], 'company_1'), /outra empresa/,
+  'an unbound local delivery is not silently adopted into an authenticated tenant');
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], [{ ...base, status: 'DELIVERED' }], [], 'company_1'), /finalizadas/);
+const returnDelivery = { ...base, id: 'return_local', status: 'ASSIGNED', extensions: { x_rotamoto_delivery_type: 'RETURN',
+  x_rotamoto_custody_state: 'WITH_DRIVER', x_rotamoto_return_destination: { companyId: 'company_1' } } };
+const linkedReturnOrder = { id: 'order_local', num: 'RETURN-42', sync: { canonicalId: 'order_canonical' } };
+assert.equal(Operations.findOrderForDeliveryId('return_local', [linkedReturnOrder], [
+  { ...returnDelivery, orderId: 'order_canonical', sync: { canonicalId: 'return_canonical' } },
+]), linkedReturnOrder, 'RETURN projections resolve their commercial Order through canonical order identity');
+assert.equal(Operations.validateRouteMembership(null, ['return_local'], [returnDelivery], [], 'company_1'), true,
+  'an unreceived return remains eligible for manual route positioning');
+assert.throws(() => Operations.validateRouteMembership(null, ['return_local'], [{ ...returnDelivery, status: 'RETURNED',
+  extensions: { ...returnDelivery.extensions, x_rotamoto_custody_state: 'RECEIVED' } }], [], 'company_1'), /finalizadas/);
 assert.equal(Operations.validateRouteMembership({ id: 'route_current', deliveryIds: ['d_local'] }, ['d_local'], [{ ...base, status: 'DELIVERED' }], [], 'company_1'), true);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], deliveries, [{ id: 'route_old', deliveryIds: ['d_canonical'] }], 'company_1'), /outra rota ativa/);
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');

@@ -94,7 +94,21 @@ async function main() {
     assert.equal(provisioned.status, 202);
     assert.equal(provisioned.body.delivery, 'sent');
     assert.equal(JSON.stringify(provisioned.body).includes(delivered[0].token), false);
+    assert.equal(JSON.stringify(provisioned.body).includes(email), false, 'provision response does not reveal the recipient');
     companyId = provisioned.body.companyId;
+    const firstDeliveryCount = delivered.length;
+    const provisionReplay = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody,
+      extraHeaders: { 'X-Synthetic-Operator': 'test-only' } });
+    assert.equal(provisionReplay.status, 202);
+    assert.equal(provisionReplay.body.replayed, true, 'same idempotency key and request returns the existing operation');
+    assert.equal(delivered.length, firstDeliveryCount, 'provision replay does not send another invitation');
+    const provisionConflict = await call('/api/admin/tenants/provision', { method: 'POST',
+      body: { ...provisionBody, companyName: 'Different tenant name' },
+      extraHeaders: { 'X-Synthetic-Operator': 'test-only' } });
+    assert.equal(provisionConflict.status, 409, 'idempotency key cannot be rebound to another request');
+    assert.deepEqual(provisionConflict.body.error,
+      { code: 'IDEMPOTENCY_CONFLICT', message: 'Chave idempotente já utilizada para outra solicitação.' });
+    assert.equal(JSON.stringify(provisionConflict.body).includes(companyId), false, 'idempotency conflict does not leak tenant identifiers');
 
     const accepted = await call('/api/identity/invitations/accept', { method: 'POST',
       body: { token: delivered[0].token, password } });
@@ -103,6 +117,22 @@ async function main() {
     const acceptedAgain = await call('/api/identity/invitations/accept', { method: 'POST',
       body: { token: delivered[0].token, password } });
     assert.equal(acceptedAgain.status, 401, 'invite token is single-use');
+    const invalidInvitation = await call('/api/identity/invitations/accept', { method: 'POST',
+      body: { token: crypto.randomBytes(32).toString('base64url'), password } });
+    assert.equal(invalidInvitation.status, 401);
+    assert.deepEqual(invalidInvitation.body.error, acceptedAgain.body.error,
+      'invalid and consumed invite tokens have indistinguishable public errors');
+    const expiredInvitation = crypto.randomBytes(32).toString('base64url');
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
+    await client.query(`INSERT INTO rotamoto.identity_tokens
+      (id,company_id,user_id,purpose,token_digest,created_at,expires_at)
+      VALUES ($1,$2,$3,'owner_invitation',$4,now()-interval '2 days',now()-interval '1 day')`,
+    [crypto.randomUUID(), companyId, provisioned.body.userId, crypto.createHash('sha256').update(expiredInvitation).digest()]);
+    const expiredInvitationResponse = await call('/api/identity/invitations/accept', { method: 'POST',
+      body: { token: expiredInvitation, password } });
+    assert.equal(expiredInvitationResponse.status, 401);
+    assert.deepEqual(expiredInvitationResponse.body.error, acceptedAgain.body.error,
+      'expired, invalid and consumed invite tokens share a generic error');
 
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
     await client.query(`UPDATE rotamoto.credentials SET mfa_required=false WHERE user_id=$1`, [accepted.body.userId]);
@@ -195,6 +225,28 @@ async function main() {
     assert.equal(invited.body.delivery, 'sent');
     assert.equal(JSON.stringify(invited.body).includes(delivered.at(-1).token), false, 'raw invitation token is never returned');
     assert.equal(delivered.at(-1).kind, 'membership_invitation');
+    const invitedMembershipToken = delivered.at(-1).token;
+    const secondCompanyEmail = `identity-second-owner-${crypto.randomUUID()}@example.invalid`;
+    const secondCompanyPassword = 'synthetic-second-owner-password-748';
+    const secondProvision = await call('/api/admin/tenants/provision', { method: 'POST',
+      body: { companyName: 'Second Synthetic Tenant', email: secondCompanyEmail, idempotencyKey: `http-${crypto.randomUUID()}` },
+      extraHeaders: { 'X-Synthetic-Operator': 'test-only' } });
+    assert.equal(secondProvision.status, 202);
+    const secondOwnerAccepted = await call('/api/identity/invitations/accept', { method: 'POST',
+      body: { token: delivered.at(-1).token, password: secondCompanyPassword } });
+    assert.equal(secondOwnerAccepted.status, 200);
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [secondProvision.body.companyId]);
+    await client.query(`UPDATE rotamoto.credentials SET mfa_required=false,
+      mfa_secret_ref='local-v1:synthetic-test-reference' WHERE user_id=$1`, [secondOwnerAccepted.body.userId]);
+    const secondOwnerLogin = await call('/api/identity/login', { method: 'POST', body: {
+      email: secondCompanyEmail, password: secondCompanyPassword, companyId: secondProvision.body.companyId, mfaCode: '654321' } });
+    assert.equal(secondOwnerLogin.status, 200);
+    const secondOwnerCookie = secondOwnerLogin.headers.get('set-cookie').split(';', 1)[0];
+    const wrongTenantUser = await call('/api/identity/membership-invitations/accept-authenticated', { method: 'POST',
+      body: { token: invitedMembershipToken }, cookie: secondOwnerCookie, csrf: secondOwnerLogin.body.csrfToken });
+    assert.equal(wrongTenantUser.status, 401, 'a session from another tenant cannot consume a token addressed to a different user');
+    assert.deepEqual(wrongTenantUser.body.error,
+      { code: 'INVALID_TOKEN', message: 'Token inválido ou expirado.' }, 'cross-tenant token failure does not reveal its owner');
     const deliveryFailureEmail = `identity-delivery-failure-${crypto.randomUUID()}@example.invalid`;
     const failingDeliveryService = createIdentityService({ pool, emailProvider: createEmailDeliveryProvider(async () => { throw new Error('synthetic delivery failure'); }) });
     await assert.rejects(failingDeliveryService.inviteMembershipWithSession(sessionCookie.slice(sessionCookie.indexOf('=') + 1),
@@ -208,7 +260,7 @@ async function main() {
     assert.equal(failedDeliveryState.rows[0].token_revoked, true, 'failed email delivery leaves no usable invitation token');
     const invitedPassword = 'synthetic-invited-password-991';
     const invitationAccepted = await call('/api/identity/membership-invitations/accept', { method: 'POST',
-      body: { token: delivered.at(-1).token, password: invitedPassword } });
+      body: { token: invitedMembershipToken, password: invitedPassword } });
     assert.equal(invitationAccepted.status, 200);
     const invitedLogin = await call('/api/identity/login', { method: 'POST', body: { email: invitedEmail,
       password: invitedPassword, companyId } });

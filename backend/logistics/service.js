@@ -6,6 +6,7 @@ const D = require('./domain');
 const { createProviderIntegrationService, resolveTestProviderConfiguration } = require('./provider-integration');
 const { createLogisticsIntelligenceService } = require('./intelligence');
 const { createHumanDecisionService } = require('./human-decision');
+const { createDeliveryCustodyService } = require('./custody');
 
 class LogisticsServiceError extends Error {
   constructor(code, message) { super(message); this.name = 'LogisticsServiceError'; this.code = code; }
@@ -426,6 +427,7 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
     return { commands: result.rows };
   }
   const intelligence = createLogisticsIntelligenceService({ clock, testProvider, ensureInternalProvider, routeDistanceProvider });
+  const custody = createDeliveryCustodyService({ clock, ensureInternalProvider });
   const humanDecisions = createHumanDecisionService({ clock,
     compare: intelligence.compareLogisticsAlternatives, selectFulfillment, selectProviderQuote, requestProviderDispatch,
     assignDeliveryToRoute });
@@ -435,6 +437,6 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
     evaluateLogisticsDecision: humanDecisions.evaluate, listLogisticsDecisions: humanDecisions.list,
     approveLogisticsDecision: humanDecisions.approve, rejectLogisticsDecision: humanDecisions.reject,
     recalculateLogisticsDecision: humanDecisions.recalculate, executeLogisticsDecision: humanDecisions.execute,
-    logisticsDecisionQuality: humanDecisions.quality });
+     logisticsDecisionQuality: humanDecisions.quality, ...custody });
 }
 module.exports = { LogisticsServiceError, createLogisticsService };

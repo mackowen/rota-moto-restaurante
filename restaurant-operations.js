@@ -135,6 +135,11 @@
     return savedStatus || mapped || generatedStatus || 'CREATED';
   }
 
+  function shouldIncludeDeliveryForSync({ orderChangedHere, deliveryChangedHere, hasLocalDelivery, status }) {
+    if (deliveryChangedHere === true) return true;
+    return hasLocalDelivery !== true && orderChangedHere === true && ['CREATED', 'ASSIGNED'].includes(String(status || '').toUpperCase());
+  }
+
   function canonicalDelivery(delivery, order, companyId) {
     const record = {
       id: delivery.id || order.deliveryId,
@@ -186,10 +191,16 @@
     for (const id of deliveryIds) {
       const delivery = deliveryById.get(id);
       if (!delivery || delivery.deleted || delivery.deletedAt) throw new Error('A rota contém uma entrega inexistente ou removida.');
-      if (delivery.companyId && delivery.companyId !== companyId) throw new Error('A rota não pode incluir entrega de outra empresa.');
+      const canonicalLocalCompanyAlias = delivery.companyId === 'company_local' &&
+        typeof delivery.sync?.canonicalId === 'string' && delivery.sync.canonicalId.trim().length > 0;
+      if (delivery.companyId && delivery.companyId !== companyId && !canonicalLocalCompanyAlias)
+        throw new Error('A rota não pode incluir entrega de outra empresa.');
       const orderStatus = delivery.status;
       const retainedInCurrentRoute = route && (route.deliveryIds || []).some(existingId => (deliveryById.get(existingId)?.id || existingId) === delivery.id);
-      if (['DELIVERED', 'CANCELLED'].includes(orderStatus) && !retainedInCurrentRoute) throw new Error('Entregas finalizadas ou canceladas não podem entrar em uma rota ativa.');
+      const isOpenReturn = delivery.extensions?.x_rotamoto_delivery_type === 'RETURN' && orderStatus !== 'RETURNED' &&
+        delivery.extensions?.x_rotamoto_custody_state !== 'RECEIVED';
+      if (['DELIVERED', 'CANCELLED', 'RETURNED'].includes(orderStatus) && !retainedInCurrentRoute && !isOpenReturn)
+        throw new Error('Entregas finalizadas ou canceladas não podem entrar em uma rota ativa.');
       const owner = (routes || []).find(candidate => candidate.id !== route?.id && !candidate.deleted && !candidate.deletedAt && (candidate.deliveryIds || []).some(existingId => (deliveryById.get(existingId)?.id || existingId) === delivery.id));
       if (owner) throw new Error('Uma entrega já pertence a outra rota ativa. Remova-a do outro planejamento primeiro.');
     }
@@ -202,7 +213,13 @@
 
   function findOrderForDeliveryId(id, orders, deliveries) {
     const delivery = (deliveries || []).find(row => row.id === id || row.canonicalId === id || row.sync?.canonicalId === id);
-    return (orders || []).find(order => order.deliveryId === id || order.deliveryId === delivery?.id || order.id === delivery?.orderId || order.sync?.canonicalId === id) || null;
+    const deliveryIds = new Set([id, delivery?.id, delivery?.canonicalId, delivery?.sync?.canonicalId].filter(Boolean));
+    const orderIds = new Set([delivery?.orderId, delivery?.canonicalOrderId].filter(Boolean));
+    return (orders || []).find(order =>
+      deliveryIds.has(order.deliveryId) || deliveryIds.has(order.canonicalDeliveryId) ||
+      orderIds.has(order.id) || orderIds.has(order.canonicalId) || orderIds.has(order.sync?.canonicalId) ||
+      order.sync?.canonicalId === id
+    ) || null;
   }
 
   function minorUnitsFromDecimal(value) {
@@ -246,6 +263,6 @@
       version: Math.max(1, Number(order.version || order.sync?.version || 1)) };
   }
 
-  return Object.freeze({ canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, canonicalRoute,
+  return Object.freeze({ canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, shouldIncludeDeliveryForSync, canonicalRoute,
     validateRouteMembership, localIdForDelivery, findOrderForDeliveryId, minorUnitsFromDecimal, driverPayoutSnapshot, canonicalEarningFromCompletedOrder });
 });

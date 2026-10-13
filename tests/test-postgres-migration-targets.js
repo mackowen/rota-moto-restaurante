@@ -1,7 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { getMigrations, resolveMigrationInvocation, assert0110RehearsalState } = require('../backend/postgres/migrate');
+const { getMigrations, resolveMigrationInvocation, assert0110RehearsalState, assert0115RehearsalState,
+  assert0116RehearsalState, assertOfficial0116State } = require('../backend/postgres/migrate');
 
 const database = 'rotamoto_disposable_0110_20261009_004823_6e50bdf3';
 const url = `postgresql://rotamoto_migrator@127.0.0.1:5432/${database}`;
@@ -28,5 +29,75 @@ assert.throws(() => assert0110RehearsalState(new Map(), migrations), /ledger 003
 assert.equal(assert0110RehearsalState(new Map([...priorLedger, [migrations[targetIndex].id, migrations[targetIndex].checksum]]), migrations), null,
   'a second rehearsal up is a no-op after 0039 is applied');
 assert.throws(() => assert0110RehearsalState(new Map([...priorLedger].slice(1)), migrations), /ledger 0038 íntegro/u);
+
+const database0115 = 'rotamoto_disposable_0115_20261009_e67e6a45';
+const url0115 = `postgresql://rotamoto_migrator@127.0.0.1:5432/${database0115}`;
+const env0115 = { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0115', ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL: url0115 };
+assert.equal(resolveMigrationInvocation(['up', '--rehearsal-0115'], env0115).connectionString, url0115);
+assert.equal(resolveMigrationInvocation(['status', '--rehearsal-0115'], env0115).rehearsal0115, true);
+assert.throws(() => resolveMigrationInvocation(['down', '--rehearsal-0115'], env0115), /Uso:/u);
+assert.throws(() => resolveMigrationInvocation(['up', '--rehearsal-0115'], { ...env0115, NODE_ENV: 'production' }), /NODE_ENV=test/u);
+assert.throws(() => resolveMigrationInvocation(['up', '--rehearsal-0115'], { ...env0115, ROTAMOTO_DISPOSABLE_CAMPAIGN: '0114' }), /0115/u);
+for (const target of [
+  'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto',
+  'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e',
+  'postgresql://rotamoto_migrator@192.0.2.1:5432/rotamoto_disposable_0115_20261009_e67e6a45',
+  'postgresql://rotamoto_migrator:secret@127.0.0.1:5432/rotamoto_disposable_0115_20261009_e67e6a45',
+  'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_disposable_0115_20261009_e67e6a45',
+  'postgresql://rotamoto_migrator@127.0.0.1:5433/rotamoto_disposable_0115_20261009_e67e6a45',
+  'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_disposable_0114_clone'
+]) assert.throws(() => resolveMigrationInvocation(['up', '--rehearsal-0115'], { ...env0115, ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL: target }));
+const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
+assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
+const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
+assert.equal(migrations.at(-1)?.id, '0041_delivery_custody_return', '0041 is appended without rewriting the 0040 baseline');
+const ledger0039 = new Map(migrationsThrough0040.slice(0, migration0040Index).map(migration => [migration.id, migration.checksum]));
+const ledger0040 = new Map([...ledger0039, [migrationsThrough0040.at(-1).id, migrationsThrough0040.at(-1).checksum]]);
+assert.equal(assert0115RehearsalState(ledger0039, migrationsThrough0040), '0040_restaurant_driver_queue');
+assert.throws(() => assert0115RehearsalState(new Map([...ledger0039].slice(1)), migrationsThrough0040), /ledger (?:exato|íntegro) 0001–0039/u);
+assert.throws(() => assert0115RehearsalState(new Map([...ledger0039].map(([id, checksum], index) => [id, index === 0 ? '0'.repeat(64) : checksum])), migrationsThrough0040), /ledger íntegro 0001–0039/u);
+assert.equal(assert0115RehearsalState(new Map([...ledger0039, [migrations[migration0040Index].id, migrations[migration0040Index].checksum]]), migrationsThrough0040), null,
+  'a second rehearsal up is a no-op after 0040 is applied');
+assert.throws(() => assert0115RehearsalState(new Map([...ledger0039, ['0041_future', '0'.repeat(64)]]), migrationsThrough0040), /ledger exato/u);
+assert.throws(() => assert0115RehearsalState(ledger0039, [...migrationsThrough0040, { id: '0041_future', checksum: '0'.repeat(64) }]), /0040 como última migration/u);
+
+const database0116 = 'rotamoto_disposable_0116_20261009_152123_114b093a';
+const url0116 = `postgresql://rotamoto_migrator@127.0.0.1:5432/${database0116}`;
+const env0116 = { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0116', ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL: url0116 };
+assert.equal(resolveMigrationInvocation(['up', '--rehearsal-0116'], env0116).connectionString, url0116);
+assert.equal(resolveMigrationInvocation(['status', '--rehearsal-0116'], env0116).rehearsal0116, true);
+assert.throws(() => resolveMigrationInvocation(['down', '--rehearsal-0116'], env0116), /Uso:/u);
+for (const target of [
+  'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto',
+  'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e',
+  'postgresql://rotamoto_migrator@192.0.2.1:5432/rotamoto_disposable_0116_20261009_152123_114b093a',
+  'postgresql://rotamoto_migrator:secret@127.0.0.1:5432/rotamoto_disposable_0116_20261009_152123_114b093a',
+  'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_disposable_0116_20261009_152123_114b093a',
+  'postgresql://rotamoto_migrator@127.0.0.1:5433/rotamoto_disposable_0116_20261009_152123_114b093a',
+  'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_disposable_0115_clone'
+]) assert.throws(() => resolveMigrationInvocation(['up', '--rehearsal-0116'], { ...env0116, ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL: target }));
+assert.equal(assert0116RehearsalState(ledger0039, migrationsThrough0040), '0040_restaurant_driver_queue');
+assert.equal(assert0116RehearsalState(ledger0040, migrationsThrough0040), null);
+assert.throws(() => assert0116RehearsalState(new Map([...ledger0039].slice(1)), migrationsThrough0040), /ledger (?:exato|íntegro) 0001–0039/u);
+
+const official0116Env = { NODE_ENV: 'production', MIGRATOR_DATABASE_URL: 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto',
+  ROTAMOTO_OFFICIAL_MIGRATION_CAMPAIGN: '0116', ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE: 'rotamoto',
+  ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_MIGRATION: '0040_restaurant_driver_queue' };
+assert.equal(resolveMigrationInvocation(['status', '--verify-0116'], official0116Env).verifyOfficial0116, true);
+assert.equal(resolveMigrationInvocation(['up', '--apply-0116'], official0116Env).applyOfficial0116, true);
+assert.throws(() => resolveMigrationInvocation(['down', '--apply-0116'], official0116Env), /Uso:/u);
+for (const patch of [
+  { NODE_ENV: 'test' },
+  { ROTAMOTO_OFFICIAL_MIGRATION_CAMPAIGN: '0115' },
+  { ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE: 'rotamoto_e2e' },
+  { ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_MIGRATION: '0041_future' },
+  { MIGRATOR_DATABASE_URL: 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e' },
+  { MIGRATOR_DATABASE_URL: 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto?sslmode=disable' }
+]) assert.throws(() => resolveMigrationInvocation(['up', '--apply-0116'], { ...official0116Env, ...patch }));
+assert.equal(assertOfficial0116State(ledger0039, migrationsThrough0040), 'pending');
+assert.equal(assertOfficial0116State(ledger0040, migrationsThrough0040, { allowApplied: true }), 'applied');
+assert.throws(() => assertOfficial0116State(ledger0040, migrationsThrough0040), /ledger íntegro/u);
+assert.throws(() => assertOfficial0116State(new Map([...ledger0039, ['0041_future', '0'.repeat(64)]]), migrationsThrough0040), /ledger íntegro/u);
+assert.throws(() => assertOfficial0116State(ledger0039, [...migrationsThrough0040, { id: '0041_future', checksum: '0'.repeat(64) }]), /0040 como única migration/u);
 
 console.log('PostgreSQL migration target guards: OK');

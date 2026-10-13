@@ -1,0 +1,13 @@
+Bundled license information:
+
+leaflet/dist/leaflet-src.js:
+  /* @preserve
+   * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
+   * (c) 2010-2023 Vladimir Agafonkin, (c) 2010-2011 CloudMade
+   */
+
+maplibre-gl/dist/maplibre-gl.mjs:
+  /**
+  * MapLibre GL JS
+  * @license 3-Clause BSD. Full text of license: https://github.com/maplibre/maplibre-gl-js/blob/v6.14.0/LICENSE.txt
+  */

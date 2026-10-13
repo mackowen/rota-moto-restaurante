@@ -44,6 +44,10 @@
 }
 
 #app .rm-account-trigger--inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   position: static;
   z-index: auto;
   flex: 0 0 auto;
@@ -54,6 +58,9 @@
   box-shadow: none;
   white-space: nowrap;
 }
+
+.rm-account-trigger-label { display: inline; }
+.rm-account-trigger-icon { display: none; width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .rm-identity-panel {
   position: fixed;
@@ -190,6 +197,18 @@
 .rm-identity-content summary:hover,
 .rm-account-trigger:hover {
   border-color: var(--rm-id-accent);
+}
+
+#app .rm-page-header .top-actions .rm-account-trigger:active,
+.app .rm-page-header .top-actions .rm-account-trigger:active {
+  background: var(--rm-id-accent-soft);
+  border-color: var(--rm-id-accent);
+}
+
+#app .rm-page-header .top-actions .rm-account-trigger:disabled,
+.app .rm-page-header .top-actions .rm-account-trigger:disabled {
+  cursor: not-allowed;
+  opacity: .6;
 }
 
 .rm-identity-content .rm-primary {

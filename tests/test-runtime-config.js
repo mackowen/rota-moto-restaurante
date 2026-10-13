@@ -9,6 +9,13 @@ assert.equal(dev.databaseUrl,'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto'
 assert.equal(dev.trustProxy,false);
 assert.equal(dev.routeDistance.enabled,false);
 assert.equal(dev.routeDistance.baseUrl,null);
+const e2e=loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e'});
+assert.equal(e2e.databaseUrl,'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e');
+assert.equal(e2e.nodeEnv,'test');
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test'}),/E2E_RUNTIME_DATABASE_URL é obrigatória/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto'}),/rotamoto_e2e/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@db.example:5432/rotamoto_e2e'}),/PostgreSQL local/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e'}),/Use E2E_RUNTIME_DATABASE_URL/u);
 const localRoad=loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',
   ROUTEMOTO_ROUTE_DISTANCE_URL:'http://127.0.0.1:5000',ROUTEMOTO_ROUTE_DISTANCE_VERSION:'local-map-1'});
 assert.deepEqual(localRoad.routeDistance,{enabled:true,baseUrl:'http://127.0.0.1:5000',version:'local-map-1',timeoutMs:2500});

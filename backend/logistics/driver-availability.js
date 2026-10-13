@@ -77,6 +77,7 @@ function createDriverAvailabilityService({ clock = () => new Date(), uuid = rand
       fail('DRIVER_INACTIVE','O perfil do motoboy não está ativo no Restaurante.');
     const changed=row.status!==desired||desired==='online'&&row.lease_session_id!==principal.session_id;
     const revision=Number(row.revision)+(changed?1:0),now=clock();
+    const wasEffectivelyOnline=project(row,driverStatus,now.getTime()).effectiveOnline;
     const expiry=desired==='online'?new Date(now.getTime()+LEASE_SECONDS*1000):null;
     await client.query(`UPDATE rotamoto.driver_availability SET status=$3,revision=$4,lease_expires_at=$5,
         lease_session_id=$6,updated_by_user_id=$7,updated_at=$8
@@ -84,6 +85,11 @@ function createDriverAvailabilityService({ clock = () => new Date(), uuid = rand
       desired==='online'?principal.session_id:null,principal.user_id,now]);
     await client.query(`INSERT INTO rotamoto.driver_availability_commands(company_id,driver_id,command_id,desired_status,result_revision,applied_at)
       VALUES($1,$2,$3,$4,$5,$6)`,[principal.company_id,driverId,input.commandId,desired,revision,now]);
+    if(desired==='offline'||!wasEffectivelyOnline){
+      const schema=await client.query("SELECT to_regclass('rotamoto.restaurant_driver_presence') IS NOT NULL AS ready");
+      if(schema.rows[0]?.ready)await client.query(`UPDATE rotamoto.restaurant_driver_presence SET is_present=false,checked_out_at=$3,revision=revision+1,updated_at=$3
+        WHERE company_id=$1 AND driver_id=$2 AND is_present`,[principal.company_id,driverId,now]);
+    }
     return {command:{duplicate:false,revision},availability:await read(client,principal.company_id,driverId,driverStatus)};
   }
   async function heartbeat(client,principal,input) {

@@ -35,6 +35,15 @@ assert.match(appSource,/findLocalByCanonical\(data\.deliveries,payload\.delivery
   'canonical Earnings reconcile to the local Delivery alias');
 assert.match(appSource,/item\.deliveryId===localDeliveryId/,
   'canonical Earning updates the existing per-delivery projection instead of duplicating it');
+assert.match(appSource,/await reconcileRestaurantOrderProjections\(result\.data\)/,
+  'the latest cached canonical Delivery is projected to Order after the entire pull page is merged');
+assert.match(appSource,/function reconcileRestaurantOrderProjections\(data\)/);
+assert.match(appSource,/isSupersededRestaurantDeliveryOperation\(localDelivery,delivery,deliveryOperation\)/,
+  'a superseded pull conflict is cleared only against the latest canonical assignment tuple');
+assert.match(appSource,/const pending=!confirmed&&\(order\.sync\?\.state==='local'\|\|\['rejected','conflict'\]\.includes\(operation\?\.status\)\)/,
+  'canonical projection preserves unresolved local Order operations');
+assert.match(appSource,/!document\.querySelector\('\.modal-back'\)/,
+  'sync refreshes the Order view without replacing an open dialog');
 assert.match(appSource,/multiStoreTransaction\(\[\.\.\.localStores,'inbox','syncState'\]/);
 assert.match(appSource,/function multiStoreTransaction\(storeNames,mode,work\)/,'multi-store persistence helper used by sync is defined');
 assert.match(appSource,/X-CSRF-Token/);
@@ -59,8 +68,8 @@ if(appSource.includes("function recordDeliveryEvent(type,r,payload={}")){
     'derived Delivery links on imported canonical Orders do not mark the Order dirty');
   assert.match(builder,/deliveryFromOrder\(order\.deliveryId\?order:\{\.\.\.order,deliveryId\}/,
     'packet construction can project a Delivery without mutating an imported Order');
-assert.match(builder,/if\(\(orderChangedHere\|\|deliveryChangedHere\)/,
-    'Delivery uploads require an Order or Delivery changed in this installation');
+assert.match(builder,/shouldIncludeDeliveryForSync\(\{orderChangedHere,deliveryChangedHere,hasLocalDelivery:!!localDelivery,status:delivery\.status\}\)/,
+    'canonical Delivery rows are not resent just because their related Order changes');
   assert.match(builder,/filter\(isLocallyDirtyForSync\)/,
     'unchanged canonical Routes are not re-created by another installation');
   assert.match(builder,/\(state\.earnings\|\|\[\]\)\.filter\(earning=>!earning\.deleted&&!earning\.deletedAt&&isLocallyDirtyForSync\(earning\)\)/,
@@ -73,8 +82,14 @@ const preflight=syncTransport.indexOf('prePulled=0');
 const packetBuild=syncTransport.indexOf('buildRestaurantSyncPacket()');
 assert(preflight>=0&&packetBuild>preflight&&syncTransport.slice(preflight,packetBuild).includes('reconcileRestaurantPullPage(page)'),
   'Restaurant reconciles newer canonical facts before building an upload packet');
-assert(syncTransport.indexOf('const ack=await send')<syncTransport.indexOf('persistSyncAck(queued.packet,ack.operationResults'),
+assert(syncTransport.indexOf('const ack=await send')<syncTransport.indexOf('persistSyncAck(queued.packet,ack,'),
   'local ACK state is written only after a successful HTTP response');
+const ackPersistence=appSource.slice(appSource.indexOf('async function persistSyncAck'),appSource.indexOf('function findLocalByCanonical'));
+assert(ackPersistence.indexOf('validateOperationAck')>=0&&ackPersistence.indexOf('validateOperationAck')<ackPersistence.indexOf('multiStoreTransaction'),
+  'the complete ACK is validated before any local ACK transaction starts');
+assert(syncTransport.indexOf('await persistSyncAck(queued.packet,ack,')<syncTransport.indexOf("await del('outbox',queueId)"),
+  'the durable packet is retired only after the complete ACK transaction commits');
+assert.match(appSource,/queued\.packet\?\.companyId!==session\.companyId/,'a queued packet from another tenant is preserved and never sent');
 assert(syncTransport.includes('sync-packet:')&&syncTransport.includes('status:\'pending\''),
   'packet retry is retained in IndexedDB outbox until a response is received');
 console.log('sync contract and client transport tests: OK');

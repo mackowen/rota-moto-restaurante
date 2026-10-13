@@ -56,14 +56,15 @@ async function createFilesystemObjectStore({ directory } = {}) {
   };
   return Object.freeze({
     provider: 'filesystem-v1',
-    async putProof({ companyId, deliveryId, contentType, source, maxBytes = MAX_PROOF_BYTES }) {
+    async putProof({ companyId, deliveryId, proofId, objectKey: requestedObjectKey, contentType, source, maxBytes = MAX_PROOF_BYTES }) {
       if (!UUID.test(companyId || '') || !UUID.test(deliveryId || '') || !Object.hasOwn(CONTENT_TYPES, contentType) ||
           !source || typeof source.pipe !== 'function' || maxBytes !== MAX_PROOF_BYTES) {
         throw storageError('MEDIA_INPUT_INVALID', 'Media metadata invalid.');
       }
-      const objectId = crypto.randomUUID();
       const extension = CONTENT_TYPES[contentType];
-      const objectKey = `tenant/${companyId}/delivery/${deliveryId}/proof/${objectId}${extension}`;
+      const objectKey = requestedObjectKey || `tenant/${companyId}/delivery/${deliveryId}/proof/${UUID.test(proofId || '') ? proofId.toLowerCase() : crypto.randomUUID()}${extension}`;
+      if (!objectKey.startsWith(`tenant/${companyId}/delivery/${deliveryId}/proof/`) || !objectKey.endsWith(extension))
+        throw storageError('STORAGE_REFERENCE_INVALID', 'Storage reference does not match its tenant, Delivery or media type.');
       const reference = Object.freeze({ provider: 'filesystem-v1', objectKey });
       const target = objectPath(reference);
       const parent = path.dirname(target);
@@ -82,6 +83,7 @@ async function createFilesystemObjectStore({ directory } = {}) {
       let sizeBytes = 0;
       let prefix = Buffer.alloc(0);
       let file;
+      let created = true;
       try {
         file = await fsp.open(temp, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | (fs.constants.O_NOFOLLOW || 0), 0o600);
         for await (const chunk of source) {
@@ -99,8 +101,20 @@ async function createFilesystemObjectStore({ directory } = {}) {
         }
         await file.sync();
         await file.close(); file = null;
-        if (await ensureSafeChild(root, target, { allowMissing: true })) throw storageError('STORAGE_OBJECT_EXISTS', 'Storage object collision.');
-        await fsp.rename(temp, target);
+        try {
+          // A proof ID names one immutable object. COPYFILE_EXCL refuses to
+          // replace an object already created by a prior request or retry.
+          await fsp.copyFile(temp, target, fs.constants.COPYFILE_EXCL);
+        } catch (error) {
+          if (error.code !== 'EEXIST') throw error;
+          created = false;
+          await ensureSafeChild(root, target);
+          const existing = await fsp.readFile(target);
+          const sameContent = existing.length === sizeBytes &&
+            crypto.createHash('sha256').update(existing).digest('hex') === hash.copy().digest('hex');
+          if (!sameContent) throw storageError('MEDIA_PROOF_CONFLICT', 'This proof ID is already bound to different media.');
+        }
+        await fsp.unlink(temp);
         const dir = await fsp.open(parent, fs.constants.O_RDONLY);
         try { await dir.sync(); } finally { await dir.close(); }
       } catch (error) {
@@ -108,7 +122,7 @@ async function createFilesystemObjectStore({ directory } = {}) {
         await fsp.unlink(temp).catch(() => {});
         throw error;
       }
-      return Object.freeze({ reference, contentType, sizeBytes, sha256: hash.digest('hex') });
+      return Object.freeze({ reference, contentType, sizeBytes, sha256: hash.digest('hex'), created });
     },
     async get(reference, expected) {
       const file = objectPath(reference);
