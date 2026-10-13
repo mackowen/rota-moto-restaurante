@@ -137,6 +137,10 @@ async function main() {
     const orderedOutbox=await migrator.query(`SELECT count(*)::int AS count FROM rotamoto.sync_outbox
       WHERE company_id=$1 AND payload->>'entity'='Order' AND payload->>'entityId'=$2`,[a.company,afterNewerEvent.rows[0].payload.id]);
     assert.equal(orderedOutbox.rows[0].count,2,'stale events produce no publication while the newer change is published once');
+    const externalDeliveries=await migrator.query(`SELECT count(*)::int AS count FROM rotamoto.domain_records
+      WHERE company_id=$1 AND entity_type='Delivery' AND related_entity_type='Order' AND related_record_id=$2 AND deleted_at IS NULL`,
+    [a.company,afterNewerEvent.rows[0].payload.id]);
+    assert.equal(externalDeliveries.rows[0].count,0,'a platform Order cancellation never fabricates an operational Delivery');
     const concurrentPair=await Promise.all([
       sendOrderedEvent('concurrent-older',1500),
       sendOrderedEvent('concurrent-newer',2500),
@@ -150,7 +154,8 @@ async function main() {
     assert.equal(afterConcurrentEvents.rows[0].payload.extensions.x_rotamoto_external_order.providerStatus,'CANCELLED');
     const concurrentOutbox=await migrator.query(`SELECT count(*)::int AS count FROM rotamoto.sync_outbox
       WHERE company_id=$1 AND payload->>'entity'='Order' AND payload->>'entityId'=$2`,[a.company,afterConcurrentEvents.rows[0].payload.id]);
-    assert.equal(concurrentOutbox.rows[0].count,3,'the concurrent stale event adds no duplicate publication while the newer event adds one version');
+    assert(concurrentOutbox.rows[0].count>=3&&concurrentOutbox.rows[0].count<=4,
+      'serialization may accept either only the newest event or both strictly increasing events, publishing each accepted version once');
 
     const unifiedOrders=await runtime.listOrders(a.company,50);
     assert.equal(unifiedOrders.length,2,'each external order is available once through the canonical administrative order projection');

@@ -114,6 +114,17 @@ function createDeliveryCustodyService({clock=()=>new Date(),ensureInternalProvid
       ORDER BY revision DESC LIMIT 1`,[principal.company_id,deliveryId]);
     if(fulfillment.rowCount&&fulfillment.rows[0].mode==='external')fail('EXTERNAL_PLATFORM_CONTROLLED','A plataforma controla a execução; use somente as informações e comandos documentados pela integração.');
   }
+  async function ensureReturnAfterCancellation(client,principal,deliveryId,version,reason,cancelKey){
+    const row=await lockDelivery(client,principal.company_id,deliveryId),ext=row.payload.extensions||{};
+    if(!row.payload.pickedUpAt||!row.payload.driverId)return null;
+    const existingId=ext.x_rotamoto_return_delivery_id||null;
+    if(existingId)return {returnDeliveryId:existingId,custodyState:ext.x_rotamoto_custody_state||STATES.RETURN_REQUESTED,duplicate:true};
+    const custodyState=ext.x_rotamoto_custody_state||STATES.DECISION_REQUIRED;
+    if(custodyState==='DISPUTED')fail('CUSTODY_RECONCILIATION_REQUIRED','Resolva a divergência de coleta antes de criar a devolução.');
+    if(custodyState!==STATES.DECISION_REQUIRED)return null;
+    const returnKey=`cancel-return-${crypto.createHash('sha256').update(cancelKey).digest('hex')}`;
+    return decideCustody(client,principal,deliveryId,{decision:'RETURN',reason,expectedVersion:version,idempotencyKey:returnKey});
+  }
   async function getCustody(client,principal,deliveryId){
     uuid(deliveryId,'deliveryId');
     const result=await client.query(`SELECT d.record_id::text,d.payload,d.version,d.related_entity_type,d.related_record_id::text,
@@ -153,8 +164,14 @@ function createDeliveryCustodyService({clock=()=>new Date(),ensureInternalProvid
     if(possibleRoute)possibleRoute=await locateRoute(client,principal.company_id,deliveryId,possibleRoute.record_id,true);
     const delivery=await lockDelivery(client,principal.company_id,deliveryId);await assertInternal(client,principal,deliveryId);
     if(Number(delivery.version)!==input.expectedVersion)fail('REVISION_CONFLICT','A Delivery mudou; atualize antes de cancelar.');
-    if(delivery.payload.status==='CANCELLED')return {deliveryId,status:'CANCELLED',version:Number(delivery.version),duplicate:true,
-      custodyState:delivery.payload.extensions?.x_rotamoto_custody_state||STATES.DECISION_REQUIRED};
+    if(delivery.payload.status==='CANCELLED'){
+      const existing=await ensureReturnAfterCancellation(client,principal,deliveryId,Number(delivery.version),reason,operation.key);
+      const result={deliveryId,status:'CANCELLED',version:Number(delivery.version),duplicate:true,
+        custodyState:existing?.custodyState||delivery.payload.extensions?.x_rotamoto_custody_state||STATES.DECISION_REQUIRED,
+        returnRequired:!!delivery.payload.pickedUpAt,...(existing?.returnDeliveryId?{returnDeliveryId:existing.returnDeliveryId}:{}),
+        ...(existing?.routePosition?{routePosition:existing.routePosition}:{})};
+      return operationFinish(client,principal,'CANCEL',deliveryId,operation,result);
+    }
     if(!['CREATED','ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED'].includes(delivery.payload.status))fail('INVALID_STATE_TRANSITION','O estado atual não permite cancelamento operacional.');
     const now=await serverTime(client),driverId=delivery.payload.driverId||null,picked=!!delivery.payload.pickedUpAt;
     const custodyState=picked?STATES.DECISION_REQUIRED:STATES.NOT_COLLECTED,ext={...(delivery.payload.extensions||{}),
@@ -165,11 +182,16 @@ function createDeliveryCustodyService({clock=()=>new Date(),ensureInternalProvid
     if(possibleRoute){const ids=(possibleRoute.payload.deliveryIds||[]).filter(id=>id!==deliveryId);await saveRoute(client,principal,await restaurantInstallation(client,principal.company_id),possibleRoute,ids);}
     await appendFact(client,principal,await restaurantInstallation(client,principal.company_id),deliveryId,driverId,'DELIVERY_CANCELLATION_RECORDED',
       {reason,custodyState,pickedUpConfirmed:picked,confirmedAt:now.toISOString()});
-    const result={deliveryId,status:'CANCELLED',version:updated.version,updatedAt:updated.updatedAt,custodyState,returnRequired:picked};
+    let returnTask=null;
     const fulfillment=await client.query(`UPDATE rotamoto.delivery_fulfillments SET status='cancelled',revision=revision+1,updated_by=$3,updated_at=transaction_timestamp()
       WHERE company_id=$1 AND delivery_id=$2 AND mode='internal' AND status IN ('selected','accepted','in_progress','arrived')`,
     [principal.company_id,deliveryId,principal.user_id]);
     if(fulfillment.rowCount)await audit(client,principal,'logistics.fulfillment.internal_cancelled',deliveryId,{reason:'delivery_cancelled',revisionAdvanced:fulfillment.rowCount});
+    if(picked)returnTask=await ensureReturnAfterCancellation(client,principal,deliveryId,Number(updated.version),reason,operation.key);
+    const result={deliveryId,status:'CANCELLED',version:returnTask?.originalVersion||updated.version,updatedAt:updated.updatedAt,
+      custodyState:returnTask?.custodyState||custodyState,returnRequired:picked,
+      ...(returnTask?.returnDeliveryId?{returnDeliveryId:returnTask.returnDeliveryId}:{}),
+      ...(returnTask?.routePosition?{routePosition:returnTask.routePosition}:{})};
     return operationFinish(client,principal,'CANCEL',deliveryId,operation,result);
   }
   async function decideCustody(client,principal,deliveryId,input){

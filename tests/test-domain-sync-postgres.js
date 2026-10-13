@@ -750,6 +750,60 @@ async function main() {
       assert.deepEqual(returnFacts.rows.map(row=>row.type).sort(),['DELIVERY_RETURN_STARTED','DELIVERY_RETURN_ARRIVED','DELIVERY_RETURN_HANDED_OVER','DELIVERY_RETURN_RECEIPT_CONFIRMED'].sort());
       console.log('RETURN PostgreSQL sync/HTTP lifecycle: server revisions, handover pending receipt, authorized idempotent receipt and terminal custody PASS');
 
+      const autoReturnNow=new Date().toISOString(),preAssignOrderId=crypto.randomUUID(),preAssignDeliveryId=crypto.randomUUID(),
+        assignedOrderId=crypto.randomUUID(),assignedDeliveryId=crypto.randomUUID(),pickedOrderId=crypto.randomUUID(),pickedDeliveryId=crypto.randomUUID(),
+        routePeerOrderId=crypto.randomUUID(),routePeerDeliveryId=crypto.randomUUID(),routePeer2OrderId=crypto.randomUUID(),routePeer2DeliveryId=crypto.randomUUID(),
+        autoReturnRouteId=crypto.randomUUID();
+      const seedOrder=async(id,number)=>client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Order','restaurante',$3,$4::jsonb,1,$5,$5)`,[companyId,id,restaurantInstallation.rows[0].id,
+        JSON.stringify({id,companyId,number,status:'AGUARDANDO',createdAt:autoReturnNow,updatedAt:autoReturnNow,version:1}),autoReturnNow]);
+      const seedDelivery=async({id,orderId:idOrder,status,driverId:idDriver=null,pickedUpAt=null,routeId:idRoute=null})=>client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,related_entity_type,related_record_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Delivery','restaurante',$3,'Order',$4,$5::jsonb,1,$6,$6)`,[companyId,id,restaurantInstallation.rows[0].id,idOrder,
+        JSON.stringify({id,companyId,orderId:idOrder,status,driverId:idDriver,pickedUpAt,assignedAt:idDriver?autoReturnNow:null,
+          createdAt:autoReturnNow,updatedAt:autoReturnNow,version:1,...(idRoute?{extensions:{x_rotamoto_custody_route_id:idRoute}}:{})}),autoReturnNow]);
+      await seedOrder(preAssignOrderId,'CANCEL-BEFORE-ASSIGNMENT');
+      await seedDelivery({id:preAssignDeliveryId,orderId:preAssignOrderId,status:'CREATED'});
+      await seedOrder(assignedOrderId,'CANCEL-BEFORE-PICKUP');
+      await seedDelivery({id:assignedDeliveryId,orderId:assignedOrderId,status:'ASSIGNED',driverId,routeId:autoReturnRouteId});
+      await seedOrder(pickedOrderId,'CANCEL-AFTER-PICKUP');
+      await seedDelivery({id:pickedDeliveryId,orderId:pickedOrderId,status:'OUT_FOR_DELIVERY',driverId,pickedUpAt:autoReturnNow,routeId:autoReturnRouteId});
+      await seedOrder(routePeerOrderId,'CANCEL-ROUTE-PEER-A');
+      await seedDelivery({id:routePeerDeliveryId,orderId:routePeerOrderId,status:'OUT_FOR_DELIVERY',driverId,routeId:autoReturnRouteId});
+      await seedOrder(routePeer2OrderId,'CANCEL-ROUTE-PEER-B');
+      await seedDelivery({id:routePeer2DeliveryId,orderId:routePeer2OrderId,status:'ASSIGNED',driverId,routeId:autoReturnRouteId});
+      const initialAutoRoute=[assignedDeliveryId,pickedDeliveryId,routePeerDeliveryId,routePeer2DeliveryId];
+      await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+        VALUES($1,$2,'Route','restaurante',$3,$4::jsonb,1,$5,$5)`,[companyId,autoReturnRouteId,restaurantInstallation.rows[0].id,
+        JSON.stringify({id:autoReturnRouteId,companyId,status:'ACTIVE',deliveryIds:initialAutoRoute,createdAt:autoReturnNow,updatedAt:autoReturnNow,version:1}),autoReturnNow]);
+      const cancelBeforeAssign=await call(`/api/logistics/deliveries/${preAssignDeliveryId}/cancel`,{method:'POST',body:{expectedVersion:1,idempotencyKey:`cancel-preassign-${crypto.randomUUID()}`,reason:'Cancelado antes da atribuição.'}});
+      assert.equal(cancelBeforeAssign.status,200,JSON.stringify(cancelBeforeAssign.body));assert.equal(cancelBeforeAssign.body.returnRequired,false);
+      assert.equal(cancelBeforeAssign.body.returnDeliveryId,undefined,'unassigned and uncollected cancellation creates no return Delivery');
+      const cancelBeforePickup=await call(`/api/logistics/deliveries/${assignedDeliveryId}/cancel`,{method:'POST',body:{expectedVersion:1,idempotencyKey:`cancel-prepickup-${crypto.randomUUID()}`,reason:'Cancelado antes da coleta.'}});
+      assert.equal(cancelBeforePickup.status,200,JSON.stringify(cancelBeforePickup.body));assert.equal(cancelBeforePickup.body.returnRequired,false);
+      let autoRoute=await client.query('SELECT payload->\'deliveryIds\' AS ids FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,autoReturnRouteId]);
+      assert.deepEqual(autoRoute.rows[0].ids,[pickedDeliveryId,routePeerDeliveryId,routePeer2DeliveryId],
+        'pre-pickup cancellation removes only that stop and keeps other route stops in order');
+      const postPickupBody={expectedVersion:1,idempotencyKey:`cancel-postpickup-${crypto.randomUUID()}`,reason:'Pedido externo cancelado após coleta confirmada.'};
+      const cancelAfterPickup=await call(`/api/logistics/deliveries/${pickedDeliveryId}/cancel`,{method:'POST',body:postPickupBody});
+      assert.equal(cancelAfterPickup.status,200,JSON.stringify(cancelAfterPickup.body));assert.equal(cancelAfterPickup.body.custodyState,'RETURN_REQUESTED');
+      assert.ok(cancelAfterPickup.body.returnDeliveryId,'post-pickup own-fleet cancellation atomically creates a RETURN task');
+      const automaticReturnId=cancelAfterPickup.body.returnDeliveryId;
+      autoRoute=await client.query('SELECT payload->\'deliveryIds\' AS ids FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,autoReturnRouteId]);
+      assert.deepEqual(autoRoute.rows[0].ids,[routePeerDeliveryId,routePeer2DeliveryId,automaticReturnId],
+        'RETURN is appended after preserved route work without reordering other deliveries');
+      const autoReturn=await client.query('SELECT payload,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type=\'Delivery\'',[companyId,automaticReturnId]);
+      assert.equal(autoReturn.rows[0].payload.extensions.x_rotamoto_delivery_type,'RETURN');
+      assert.equal(autoReturn.rows[0].payload.driverId,driverId,'RETURN remains assigned to the collecting driver');
+      const postPickupReplay=await call(`/api/logistics/deliveries/${pickedDeliveryId}/cancel`,{method:'POST',body:postPickupBody});
+      assert.equal(postPickupReplay.status,200);assert.equal(postPickupReplay.body.duplicate,true);
+      assert.equal(postPickupReplay.body.returnDeliveryId,automaticReturnId,'same cancellation replay returns the existing RETURN');
+      const postPickupRepeat=await call(`/api/logistics/deliveries/${pickedDeliveryId}/cancel`,{method:'POST',body:{...postPickupBody,expectedVersion:3,idempotencyKey:`cancel-postpickup-replay-${crypto.randomUUID()}`}});
+      assert.equal(postPickupRepeat.status,200,JSON.stringify(postPickupRepeat.body));assert.equal(postPickupRepeat.body.returnDeliveryId,automaticReturnId);
+      const returnCount=await client.query(`SELECT count(*)::int AS count FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='Delivery'
+        AND related_entity_type='Delivery' AND related_record_id=$2 AND payload->'extensions'->>'x_rotamoto_delivery_type'='RETURN'`,[companyId,pickedDeliveryId]);
+      assert.equal(returnCount.rows[0].count,1,'repeated cancellation cannot create a second return task');
+      console.log('Cancellation PostgreSQL E2E: before assignment, before pickup, post-pickup automatic RETURN, route append, replay/idempotency PASS');
+
       const unlink=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'DELETE'});
       assert.equal(unlink.status,200,JSON.stringify(unlink.body));assert.equal(unlink.body.driverId,null);assert.equal(unlink.body.changed,true);
       const unlinkRepeat=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'DELETE'});
