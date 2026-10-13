@@ -144,6 +144,8 @@ const typePt = value => value === 'RETORNO' ? 'Devolução' : 'Entrega';
 const html = View.render({ report, filters: { period: '30', bike: '', status: '', type: '', source: '' }, statusLabel: statusPt, typeLabel: typePt, sources: { ifood: 'iFood', manual: 'Manual', keeta: 'Keeta', unknown: 'Sem origem' }, bikes: [], types: ['NORMAL', 'RETORNO'], freshNote: '<sem freshness>' });
 assert.match(html, /sem data válida ou fora do período/);
 assert.match(html, /Vendas/);
+assert.match(html, /class="card report-kpi-panel"[\s\S]*class="grid kpis report-kpis"/u, 'period indicators are grouped in a section card');
+assert.equal((html.match(/class="metric"/gu)||[]).length >= 6, true, 'all six operational indicators use the shared metric component');
 assert.match(html, /Taxas/);
 assert.match(html, /Repasses/);
 const timezoneHtml = View.render({ report: timezone, filters: { period: '30', bike: '', status: '', type: '', source: '' }, statusLabel: statusPt, typeLabel: typePt, sources: { unknown: 'Sem origem registrada' }, bikes: [], types: [], freshNote: 'dados locais' });
