@@ -16,6 +16,17 @@
     return Number.isSafeInteger(version) && version > 0 ? { baseVersion: version } : {};
   };
 
+  function isExternalOrder(order) {
+    const source = String(typeof order?.source === 'string' ? order.source :
+      order?.source?.origin || order?.sourceId || order?.channel || '').toLowerCase();
+    return ['ifood', 'keeta', '99', '99food'].includes(source);
+  }
+
+  function shouldGenerateDeliveryForOrder(order, hasLocalDelivery = false) {
+    if (!isExternalOrder(order)) return true;
+    return hasLocalDelivery === true && order?.extensions?.x_rotamoto_external_order?.fulfillment === 'merchant';
+  }
+
   function safeSourceExtension(value, depth = 0) {
     if (depth > 5) return undefined;
     if (value === null || typeof value === 'boolean') return value;
@@ -270,6 +281,6 @@
       version: Math.max(1, Number(order.version || order.sync?.version || 1)) };
   }
 
-  return Object.freeze({ canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, shouldIncludeDeliveryForSync, canonicalRoute,
+  return Object.freeze({ isExternalOrder, shouldGenerateDeliveryForOrder, canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, shouldIncludeDeliveryForSync, canonicalRoute,
     validateRouteMembership, localIdForDelivery, findOrderForDeliveryId, minorUnitsFromDecimal, driverPayoutSnapshot, canonicalEarningFromCompletedOrder });
 });

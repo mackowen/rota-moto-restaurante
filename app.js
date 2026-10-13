@@ -29,9 +29,12 @@ function knownDeliveryFeeBRL(order){const value=window.RotaMotoOrderMoney?.canon
 const uid=(p='id')=>`${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
 function canonicalizeRestaurantData(){
  const companyId=syncSession?.companyId||state.settings.global?.companyId||'company_local';
- state.orders=(state.orders||[]).filter(Boolean).map(o=>{const deliveryId=o.deliveryId||RotaMotoContract.id('del');const canonical=RotaMotoContract.normalizeDeliveryStatus(o.status,'restaurante');return {...o,id:o.id||RotaMotoContract.id('ord'),companyId:o.companyId||companyId,deliveryId,canonicalStatus:canonical,createdAt:o.createdAt||Date.now(),updatedAt:o.updatedAt||o.createdAt||Date.now(),version:Number(o.version||o.sync?.version||1)};});
- const byId=new Map((state.deliveries||[]).map(d=>[d.id,d]));
- state.deliveries=state.orders.map(o=>({...RotaMotoContract.deliveryFromOrder(o,companyId),...(byId.get(o.deliveryId)||{}),id:o.deliveryId,orderId:o.id,companyId:o.companyId,driverId:o.bikeId||o.driverId||byId.get(o.deliveryId)?.driverId||null,status:o.canonicalStatus,updatedAt:o.updatedAt,version:Math.max(Number(byId.get(o.deliveryId)?.version||0),Number(o.version||1))}));
+ const priorDeliveries=state.deliveries||[];
+ const byId=new Map(priorDeliveries.map(d=>[d.id,d]));
+ state.orders=(state.orders||[]).filter(Boolean).map(o=>{const external=RotaMotoRestaurantOperations.isExternalOrder(o);const existingDelivery=priorDeliveries.find(d=>d.id===o.deliveryId||(o.id&&d.orderId===o.id));const deliveryId=o.deliveryId||existingDelivery?.id||(!external?RotaMotoContract.id('del'):null);const canonical=RotaMotoContract.normalizeDeliveryStatus(o.status,'restaurante');return {...o,id:o.id||RotaMotoContract.id('ord'),companyId:o.companyId||companyId,...(deliveryId?{deliveryId}:{}),canonicalStatus:canonical,createdAt:o.createdAt||Date.now(),updatedAt:o.updatedAt||o.createdAt||Date.now(),version:Number(o.version||o.sync?.version||1)};});
+ const canonicalDeliveries=state.orders.filter(o=>RotaMotoRestaurantOperations.shouldGenerateDeliveryForOrder(o,!!priorDeliveries.find(d=>d.id===o.deliveryId||(o.id&&d.orderId===o.id)))).map(o=>({...RotaMotoContract.deliveryFromOrder(o,companyId),...(byId.get(o.deliveryId)||{}),id:o.deliveryId,orderId:o.id,companyId:o.companyId,driverId:o.bikeId||o.driverId||byId.get(o.deliveryId)?.driverId||null,status:o.canonicalStatus,updatedAt:o.updatedAt,version:Math.max(Number(byId.get(o.deliveryId)?.version||0),Number(o.version||1))}));
+ const canonicalDeliveryIds=new Set(canonicalDeliveries.map(delivery=>delivery.id));
+ state.deliveries=[...canonicalDeliveries,...priorDeliveries.filter(delivery=>!canonicalDeliveryIds.has(delivery.id))];
  state.settings.global={...state.settings.global,schemaVersion:1,sync:{...state.settings.global.sync,protocolVersion:1,schemaVersion:1,transport:'local-first',mode:'local-first',deviceId:state.settings.global.sync?.deviceId||RotaMotoContract.id('panel')}};
 }
 function canonicalEarningFromOrder(order,companyId){return RotaMotoRestaurantOperations.canonicalEarningFromCompletedOrder(order,companyId)}
@@ -209,6 +212,10 @@ async function buildRestaurantSyncPacket(){
    if(order.deleted||order.deletedAt)continue;
    const localDelivery=(state.deliveries||[]).find(row=>row.orderId===order.id||row.id===order.deliveryId);
    const orderChangedHere=isLocallyDirtyForSync(order);
+   if(!RotaMotoRestaurantOperations.shouldGenerateDeliveryForOrder(order,!!localDelivery)){
+    if(orderChangedHere)orders.push(RotaMotoRestaurantOperations.canonicalOrder(order,companyId));
+    continue;
+   }
    const deliveryId=order.deliveryId||localDelivery?.id||RotaMotoContract.id('del');
    if(!order.deliveryId&&orderChangedHere){order.deliveryId=deliveryId;await put('orders',order)}
    const generated=RotaMotoContract.deliveryFromOrder(order.deliveryId?order:{...order,deliveryId},companyId);
@@ -393,7 +400,7 @@ function orderSourceKey(order){const raw=order?.sourceId??order?.source?.origin?
 function orderSourceLabel(orderOrId){const raw=typeof orderOrId==='object'?orderSourceKey(orderOrId):orderOrId;const src=orderSourceById(raw);if(src?.name)return src.name;return channelLabel(raw)}
 function externalOrderInfo(order){return order?.extensions?.x_rotamoto_external_order||null}
 function externalOrderStatus(order){const value=externalOrderInfo(order)?.providerStatus;return typeof value==='string'&&value.trim()?value.trim():null}
-function isExternalOrder(order){const source=String(typeof order?.source==='string'?order.source:order?.source?.origin||order?.sourceId||order?.channel||'').toLowerCase();return ['ifood','keeta','99','99food'].includes(source)}
+function isExternalOrder(order){return RotaMotoRestaurantOperations.isExternalOrder(order)}
 function canAssignOwnDelivery(order){return !isExternalOrder(order)||externalOrderInfo(order)?.fulfillment==='merchant'}
 function orderQrPayload(){return '';}
 function qrDraw(target,payload,size=72){return new Promise((resolve,reject)=>{if(typeof RotaMotoQRCode==='undefined'){reject(new Error('Gerador local de QR indisponível'));return}try{const qr=new RotaMotoQRCode(0,RotaMotoQRErrorCorrectLevel.M);qr.addData(payload);qr.make();const modules=qr.modules,n=qr.moduleCount,ctx=target.getContext('2d'),quiet=4,total=n+quiet*2,scale=size/total;target.width=size;target.height=size;ctx.fillStyle='#fff';ctx.fillRect(0,0,size,size);ctx.fillStyle='#111827';for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(modules[r][c])ctx.fillRect((c+quiet)*scale,(r+quiet)*scale,Math.ceil(scale),Math.ceil(scale));resolve()}catch(err){reject(err)}})}
@@ -422,7 +429,7 @@ function table(rows,compact=false){
   const fields=compact
    ?`<td data-label="Pedido"><b>#${esc(o.num||o.number||o.externalDisplayId||o.externalId||o.id)}</b><small>${dateFmt(o.createdAt)}</small></td><td data-label="Cliente"><b>${esc(o.customer||'Cliente')}</b><small>${esc(o.address||'')}</small></td><td data-label="Status">${status(o.status)}${externalOrderStatus(o)?`<small class="external-order-status">Plataforma: ${esc(externalOrderStatus(o))}</small>`:''}</td>`
    :`<td data-label="Pedido"><b>#${esc(o.num||o.number||o.externalDisplayId||o.externalId||o.id)}</b><small>${dateFmt(o.createdAt)}</small></td><td data-label="Cliente"><b>${esc(o.customer||'Cliente')}</b><small>${esc(o.address||'')}</small></td><td data-label="Origem"><span class="source-badge">${esc(orderSourceLabel(o))}</span></td><td data-label="Motoboy">${esc(o.bike||'—')}</td><td data-label="Status">${status(o.status)}${externalOrderStatus(o)?`<small class="external-order-status">Plataforma: ${esc(externalOrderStatus(o))}</small>`:''}</td><td data-label="Valor">${isExternalOrder(o)&&!Object.hasOwn(o,'value')?'—':money(o.value)}</td><td data-label="Km">${Number(o.km||0).toFixed(1)}</td>`;
-  const hasDelivery=!!o.deliveryId||(state.deliveries||[]).some(row=>row.orderId===o.id||row.orderId===o.sync?.canonicalId);const qr=compact||!hasDelivery?'':`<button class="order-qr-wrap" type="button" data-qr-open="${o.id}" aria-label="Emitir QR seguro da entrega #${esc(o.num)}"><span aria-hidden="true">▦</span><small>QR seguro</small></button>`;
+  const hasDelivery=RotaMotoRestaurantOperations.shouldGenerateDeliveryForOrder(o,(state.deliveries||[]).some(row=>row.id===o.deliveryId||row.orderId===o.id||row.orderId===o.sync?.canonicalId||row.sync?.canonicalId===o.deliveryId));const qr=compact||!hasDelivery?'':`<button class="order-qr-wrap" type="button" data-qr-open="${o.id}" aria-label="Emitir QR seguro da entrega #${esc(o.num)}"><span aria-hidden="true">▦</span><small>QR seguro</small></button>`;
   return `<tr>${fields}<td data-label="Ação" class="table-actions"><div class="order-card-actions"><button class="btn order-open-btn" data-detail="${esc(o.id)}" aria-label="Abrir entrega #${esc(o.num)}">Abrir</button><button class="btn order-print-btn" type="button" data-print-order="${esc(o.id)}">Imprimir</button>${qr}</div></td></tr>`;
  }).join('');
  return `<div class="table-scroll ${compact?'dashboard-orders-table':'orders-table-scroll'}"><table class="table"><thead><tr>${headings}</tr></thead><tbody>${body}</tbody></table></div>`

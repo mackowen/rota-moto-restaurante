@@ -38,6 +38,7 @@ async function main() {
     const raw = Buffer.from(JSON.stringify({ id:eventId, orderId, merchantId:a.merchant, fullCode:'PLACED', code:'PLACED', createdAt:eventTime }));
     const signature = crypto.createHmac('sha256',a.secret).update(raw).digest('hex');
     let detailRequests = 0, acknowledgments = 0;
+    const providerOrderStates = new Map([[orderId, 'PLACED']]);
     const runtime = createMarketplaceRuntime({ pool: app,
       accountResolver: {
         async byId(provider, accountId) {
@@ -51,7 +52,7 @@ async function main() {
             status:'active',authorized:true,webhookSecret:row.secret,credentials:{ accessToken:'synthetic' } } : null;
         }
       },
-      adapters:{ ifood:{ async order(){ detailRequests++; return { source:'ifood',externalId:orderId,externalDisplayId:'S-1',status:'PLACED',orderType:'DELIVERY',createdAt:eventTime,
+      adapters:{ ifood:{ async order({orderId: requestedOrderId}){ detailRequests++; return { source:'ifood',externalId:requestedOrderId,externalDisplayId:'S-1',status:providerOrderStates.get(requestedOrderId)||'PLACED',orderType:'DELIVERY',createdAt:eventTime,
         customer:{ name:'Synthetic customer',phone:'+550000000000' },address:'Rua Synthetic, 1',items:[{name:'Synthetic item',quantity:1}] }; },
         async pollEvents(){ return [{id:eventId,orderId,merchantId:a.merchant,fullCode:'PLACED',createdAt:eventTime}]; }, async acknowledgeEvents(){ acknowledgments++; return {acknowledged:true,confirmation:'pending'}; } } },
       logger:()=>{}
@@ -94,9 +95,50 @@ async function main() {
     assert.equal(published.rows[0].payload.payload.id,version.rows[0].domain_order_id);
     assert.equal(published.rows[0].payload.payload.companyId,a.company);
     assert.equal(published.rows[0].payload.payload.version,1);
+
+    // A distinct event with an equal timestamp has no trustworthy ordering
+    // relation to the accepted event. It must not win by arrival order. An
+    // older event is ignored as well; only a strictly newer one may project.
+    const orderedOrderId=id();
+    providerOrderStates.set(orderedOrderId,'PLACED');
+    const orderedBase=Date.parse(eventTime);
+    async function sendOrderedEvent(suffix, offsetMs) {
+      const occurredAt=new Date(orderedBase+offsetMs).toISOString();
+      const orderedEventId=`ordered-${suffix}-${id()}`;
+      const orderedRaw=Buffer.from(JSON.stringify({id:orderedEventId,orderId:orderedOrderId,merchantId:a.merchant,
+        fullCode:providerOrderStates.get(orderedOrderId)==='CANCELLED'?'CANCELLED':'PLACED',createdAt:occurredAt}));
+      const orderedSignature=crypto.createHmac('sha256',a.secret).update(orderedRaw).digest('hex');
+      await runtime.ingest({provider:'ifood',accountId:a.account,rawBody:orderedRaw,signature:orderedSignature});
+      return orderedEventId;
+    }
+    const firstOrderedEvent=await sendOrderedEvent('first',0);
+    const firstOrderedEventId=(await migrator.query(`SELECT event_id FROM rotamoto.marketplace_event_inbox
+      WHERE company_id=$1 AND external_account_id=$2 AND external_event_id=$3`,[a.company,a.account,firstOrderedEvent])).rows[0].event_id;
+    const orderedVersionQuery=()=>migrator.query(`SELECT v.last_event_id,v.last_event_at,d.payload
+      FROM rotamoto.marketplace_order_versions v JOIN rotamoto.domain_records d ON d.record_id=v.domain_order_id
+      WHERE v.company_id=$1 AND v.external_order_id=$2`,[a.company,orderedOrderId]);
+    const acceptedOrder=await orderedVersionQuery();
+    assert.equal(acceptedOrder.rowCount,1);
+    assert.equal(acceptedOrder.rows[0].payload.extensions.x_rotamoto_external_order.providerStatus,'PLACED');
+    providerOrderStates.set(orderedOrderId,'CANCELLED');
+    await sendOrderedEvent('equal',0);
+    await sendOrderedEvent('late',-1000);
+    const afterStaleEvents=await orderedVersionQuery();
+    assert.equal(afterStaleEvents.rows[0].last_event_id,firstOrderedEventId,'equal and older provider events do not replace the accepted event cursor');
+    assert.equal(afterStaleEvents.rows[0].payload.extensions.x_rotamoto_external_order.providerStatus,'PLACED','stale cancellation does not regress the canonical Order');
+    await sendOrderedEvent('newer',1000);
+    const afterNewerEvent=await orderedVersionQuery();
+    assert.notEqual(afterNewerEvent.rows[0].last_event_id,firstOrderedEventId);
+    assert.equal(afterNewerEvent.rows[0].payload.extensions.x_rotamoto_external_order.providerStatus,'CANCELLED','a strictly newer provider cancellation is projected');
+    const orderedOutbox=await migrator.query(`SELECT count(*)::int AS count FROM rotamoto.sync_outbox
+      WHERE company_id=$1 AND payload->>'entity'='Order' AND payload->>'entityId'=$2`,[a.company,afterNewerEvent.rows[0].payload.id]);
+    assert.equal(orderedOutbox.rows[0].count,2,'stale events produce no publication while the newer change is published once');
+
     const unifiedOrders=await runtime.listOrders(a.company,50);
-    assert.equal(unifiedOrders.length,1,'the external order is available through the canonical administrative order projection');
-    assert.deepEqual({domainOrderId:unifiedOrders[0].domainOrderId,provider:unifiedOrders[0].provider,displayId:unifiedOrders[0].displayId,providerStatus:unifiedOrders[0].providerStatus},
+    assert.equal(unifiedOrders.length,2,'each external order is available once through the canonical administrative order projection');
+    const originalUnifiedOrder=unifiedOrders.find(item=>item.externalOrderId===orderId);
+    assert(originalUnifiedOrder,'the initial external order remains in the unified projection');
+    assert.deepEqual({domainOrderId:originalUnifiedOrder.domainOrderId,provider:originalUnifiedOrder.provider,displayId:originalUnifiedOrder.displayId,providerStatus:originalUnifiedOrder.providerStatus},
       {domainOrderId:version.rows[0].domain_order_id,provider:'ifood',displayId:'S-1',providerStatus:'PLACED'});
     assert.deepEqual(await runtime.listOrders(b.company,50),[],'an external order projection cannot cross tenant boundaries');
     const idempotencyKey=`browser-command-${id()}`;
@@ -172,7 +214,7 @@ async function main() {
       has_column_privilege('rotamoto_app','rotamoto.external_accounts','secret_ref','UPDATE') AS secret_write`);
     assert.deepEqual(secretAcl.rows[0],{secret_read:false,secret_write:false});
     await migrator.query('COMMIT');
-    process.stdout.write('Marketplace runtime PostgreSQL E2E: PASS (tenant routing, raw HMAC, inbox idempotency, canonical Order projection, PII-free durable event, post-process poll ack, secret ACL)\n');
+    process.stdout.write('Marketplace runtime PostgreSQL E2E: PASS (tenant routing, raw HMAC, inbox idempotency, out-of-order/equal-timestamp protection, canonical Order projection, PII-free durable event, post-process poll ack, secret ACL)\n');
   } finally {
     for (const row of [a,b]) {
       await migrator.query('BEGIN').catch(()=>{});

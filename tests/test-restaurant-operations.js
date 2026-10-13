@@ -8,6 +8,17 @@ const Operations = require('../restaurant-operations.js');
 const createdAt = '2026-10-04T10:00:00.000Z';
 const base = { id: 'd_local', companyId: 'company_1', orderId: 'o_local', status: 'ASSIGNED', createdAt, updatedAt: createdAt, version: 2 };
 
+for (const source of ['ifood', 'keeta', '99', '99food']) {
+  assert.equal(Operations.shouldGenerateDeliveryForOrder({source}, false), false,
+    `${source} Order does not fabricate operational Delivery`);
+  assert.equal(Operations.shouldGenerateDeliveryForOrder({source,extensions:{x_rotamoto_external_order:{fulfillment:'unknown'}}}, true), false,
+    `${source} Order with unknown fulfillment does not gain a Delivery even if a local row is present`);
+  assert.equal(Operations.shouldGenerateDeliveryForOrder({source,extensions:{x_rotamoto_external_order:{fulfillment:'merchant'}}}, true), true,
+    `${source} Order may retain an explicitly existing local Delivery`);
+}
+assert.equal(Operations.shouldGenerateDeliveryForOrder({source:'manual'}, false), true,
+  'own Orders retain the existing Delivery projection');
+
 const order = Operations.canonicalOrder({
   id: 'o_local', companyId: 'company_1', createdAt, updatedAt: createdAt, num: '42',
   customer: 'Ana', obs: 'Portaria', channel: 'ifood', bike: 'Driver name',

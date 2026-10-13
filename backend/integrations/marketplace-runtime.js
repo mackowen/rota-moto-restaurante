@@ -139,7 +139,10 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
         [account.companyId, account.id, account.provider, row.external_order_id]);
         const occurred = row.event_data.occurredAt ? new Date(row.event_data.occurredAt) : new Date(row.received_at);
         const previous = current.rows[0];
-        const isCurrent=!previous?.last_event_at||occurred>=new Date(previous.last_event_at);
+        // Provider timestamps are the only ordering signal shared by these
+        // adapters. A tie does not establish that a distinct event is newer;
+        // keep the already accepted projection until a strictly newer event.
+        const isCurrent=!previous?.last_event_at||occurred>new Date(previous.last_event_at);
         let domainOrderId = previous?.domain_order_id || crypto.randomUUID();
         const installation = await client.query(`INSERT INTO rotamoto.sync_installations(id,company_id,app_key,local_device_id)
           VALUES($1,$2,'restaurante',$3) ON CONFLICT(company_id,app_key,local_device_id) DO UPDATE SET last_seen_at=now() RETURNING id`,
@@ -151,7 +154,7 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
           await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,
             payload,version,created_at,updated_at) VALUES($1,$2,'Order','restaurante',$3,$4::jsonb,1,$5,$5)`,
           [account.companyId, domainOrderId, sourceInstallationId, JSON.stringify(publishedPayload), occurred]);
-        } else if (!previous.last_event_at || occurred >= new Date(previous.last_event_at)) {
+        } else if (!previous.last_event_at || occurred > new Date(previous.last_event_at)) {
           const existing = await client.query('SELECT payload,version,created_at FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 FOR UPDATE', [account.companyId, domainOrderId]);
           if (existing.rowCount) {
             publishedPayload = { ...existing.rows[0].payload,
@@ -162,8 +165,8 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
         }
         await client.query(`INSERT INTO rotamoto.marketplace_order_versions(company_id,external_account_id,provider,external_order_id,last_event_at,last_event_id,domain_order_id)
           VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(provider,external_account_id,external_order_id) DO UPDATE SET
-          last_event_at=CASE WHEN marketplace_order_versions.last_event_at IS NULL OR EXCLUDED.last_event_at >= marketplace_order_versions.last_event_at THEN EXCLUDED.last_event_at ELSE marketplace_order_versions.last_event_at END,
-          last_event_id=CASE WHEN marketplace_order_versions.last_event_at IS NULL OR EXCLUDED.last_event_at >= marketplace_order_versions.last_event_at THEN EXCLUDED.last_event_id ELSE marketplace_order_versions.last_event_id END,
+          last_event_at=CASE WHEN marketplace_order_versions.last_event_at IS NULL OR EXCLUDED.last_event_at > marketplace_order_versions.last_event_at THEN EXCLUDED.last_event_at ELSE marketplace_order_versions.last_event_at END,
+          last_event_id=CASE WHEN marketplace_order_versions.last_event_at IS NULL OR EXCLUDED.last_event_at > marketplace_order_versions.last_event_at THEN EXCLUDED.last_event_id ELSE marketplace_order_versions.last_event_id END,
           domain_order_id=marketplace_order_versions.domain_order_id,updated_at=now()`,
         [account.companyId, account.id, account.provider, row.external_order_id, occurred, row.event_id, domainOrderId]);
         if (isCurrent && publishedPayload) {
