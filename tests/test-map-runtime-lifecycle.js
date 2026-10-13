@@ -18,10 +18,11 @@ function runtime({ webgl = false } = {}) {
     insertAdjacentElement(_where, node) { this.nextElementSibling = node; }
   }
   class Layer {
-    constructor(mode, url = '') { this.mode = mode; this.url = url; this.handlers = new Map(); this.removed = false; this.loading = false; this.opacity = 1; this.errors = 0; this.loadedTiles = 0; this.renderer = mode === 'vector' ? new Renderer() : null; allLayers.push(this); }
+    constructor(mode, url = '') { this.mode = mode; this.url = url; this.handlers = new Map(); this.removed = false; this.loading = false; this.opacity = 1; this.errors = 0; this.loadedTiles = 0; this._tiles = {}; this.renderer = mode === 'vector' ? new Renderer() : null; allLayers.push(this); }
     on(type, handler) { const list = this.handlers.get(type) || []; list.push({ handler, once: false }); this.handlers.set(type, list); return this; }
     once(type, handler) { const list = this.handlers.get(type) || []; list.push({ handler, once: true }); this.handlers.set(type, list); return this; }
-    fire(type, value = {}) { if (type === 'load') this.loading = false; const list = this.handlers.get(type) || []; for (const item of [...list]) { item.handler(value); if (item.once) this.handlers.set(type, (this.handlers.get(type) || []).filter(candidate => candidate !== item)); } }
+    fire(type, value = {}) { if (type === 'load') this.loading = false; if (type === 'tileload' || type === 'tileerror') this.setVisibleTile(type === 'tileload'); const list = this.handlers.get(type) || []; for (const item of [...list]) { item.handler(value); if (item.once) this.handlers.set(type, (this.handlers.get(type) || []).filter(candidate => candidate !== item)); } }
+    setVisibleTile(loaded) { this._tiles = { viewport: { el: { complete: true, naturalWidth: loaded ? 256 : 0, classList: { contains: name => loaded && name === 'leaflet-tile-loaded' }, getBoundingClientRect: () => ({ left: 0, top: 0, right: 256, bottom: 256 }) } } }; }
     addTo(map) { this.loading = true; map.layers.add(this); return this; }
     isLoading() { return this.loading; }
     setOpacity(value) { this.opacity = value; return this; }
@@ -39,15 +40,19 @@ function runtime({ webgl = false } = {}) {
     isSourceLoaded() { return this.ready; }
   }
   const anchor = new Node();
+  const mapContainer = { closest: () => anchor, getBoundingClientRect: () => ({ left: 0, top: 0, right: 256, bottom: 256 }) };
   const map = {
     layers: new Set(), removed: [],
     attributionControl: { values: new Set(), addAttribution(value) { this.values.add(value); }, removeAttribution(value) { this.values.delete(value); } },
-    getContainer: () => ({ closest: () => anchor }),
+    handlers: new Map(),
+    on(types, handler) { for (const type of types.split(/\s+/u)) { const list = this.handlers.get(type) || []; list.push(handler); this.handlers.set(type, list); } return this; },
+    fire(type) { for (const handler of this.handlers.get(type) || []) handler(); },
+    getContainer: () => mapContainer,
     hasLayer(layer) { return this.layers.has(layer); },
     removeLayer(layer) { layer.removed = true; this.layers.delete(layer); this.removed.push(layer); },
     view: { center: [1, 2], zoom: 9 }
   };
-  const window = { dispatchEvent() {}, addEventListener() {}, L: null };
+  const window = { dispatchEvent() {}, addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '0', transitionDuration: '200ms' }), L: null };
   const document = { baseURI: 'http://localhost/', documentElement: { dataset: { resolvedTheme: 'light' } }, createElement: tag => tag === 'canvas' ? { getContext: kind => webgl && kind === 'webgl2' ? {} : null } : new Node() };
   const L = { tileLayer: url => new Layer('raster', url) };
   const source = fs.readFileSync(path.join(__dirname, '..', 'map-runtime.js'), 'utf8')
@@ -72,11 +77,16 @@ function runtime({ webgl = false } = {}) {
   const first = test.window.RotaMotoMapTheme.addBaseLayer(test.map);
   first.fire('tileload'); first.fire('load');
   assert.equal(test.state().ready, true, 'map readiness requires a successful raster tile');
+  assert.equal(test.state().cartographyVisible, true, 'loaded Leaflet imagery remains renderable during its initial opacity fade');
   assert.equal(test.map.layers.has(first), true);
   assert.equal(test.getStatus().hidden, true);
-  first.fire('tileerror');
-  assert.equal(test.map.layers.has(first), true, 'a later tile error cannot remove the working layer');
-  assert.equal(test.getStatus().dataset.state, 'fallback');
+  first.fire('tileerror'); first.fire('load');
+  test.runTimersWithDelay(300);
+  assert.equal(test.map.layers.has(first), true, 'a later tile error cannot remove the existing layer');
+  assert.equal(test.state().ready, false, 'a map with no rendered tiles is not reported as ready');
+  assert.equal(test.state().cartographyVisible, false);
+  assert.equal(test.getStatus().dataset.state, 'error', 'empty cartography is an error, not a successful fallback');
+  assert.doesNotMatch(test.getStatus().children[0].textContent, /mapa anterior continua disponível/u);
   assert.equal(test.getStatus().children.at(-1).textContent, 'Tentar novamente');
   test.window.RotaMotoMapTheme.setTheme('dark');
   assert.equal(test.map.layers.has(first), true, 'theme change preserves the raster layer and current map view');
@@ -85,10 +95,43 @@ function runtime({ webgl = false } = {}) {
   assert.equal(test.map.layers.has(darkCandidate), true, 'dark layer is prepared while the valid light map remains visible');
   darkCandidate.fire('tileerror'); darkCandidate.fire('load');
   assert.equal(test.map.layers.has(first), true, 'failed theme update cannot remove the previously usable cartography');
-  assert.equal(test.state().ready, true);
+  assert.equal(test.state().ready, false, 'failed active tiles must not be treated as preserved cartography');
   test.runTimersWithDelay(0);
   assert.equal(test.map.layers.has(darkCandidate), false, 'failed layer is removed after its tile event finishes');
   assert.deepEqual(test.map.view, { center: [1, 2], zoom: 9 });
+}
+
+{
+  const test = runtime();
+  const active = test.window.RotaMotoMapTheme.addBaseLayer(test.map);
+  active.fire('tileload'); active.fire('load');
+  test.runTimersWithDelay(0);
+  assert.equal(test.state().cartographyVisible, true);
+  active.fire('tileerror'); active.fire('load');
+  test.runTimersWithDelay(300);
+  assert.equal(test.getStatus().dataset.state, 'error');
+  assert.equal(test.state().ready, false);
+  active.fire('tileload');
+  test.runTimersWithDelay(300);
+  assert.equal(test.state().ready, true, 'rendered tiles restore readiness after connectivity returns');
+  assert.equal(test.getStatus().hidden, true, 'the stale failure message clears after the tiles recover');
+}
+
+{
+  const test = runtime();
+  const active = test.window.RotaMotoMapTheme.addBaseLayer(test.map);
+  active.fire('tileload'); active.fire('load');
+  test.runTimersWithDelay(300);
+  active.setVisibleTile(false);
+  active.loading = true;
+  test.map.fire('zoomend');
+  test.runTimersWithDelay(300);
+  assert.equal(test.state().ready, false, 'map movement with no rendered tiles is not reported ready');
+  assert.equal(test.getStatus().dataset.state, 'loading', 'pending replacement tiles have a bounded loading state');
+  active.loading = false;
+  active.fire('load');
+  test.runTimersWithDelay(300);
+  assert.equal(test.getStatus().dataset.state, 'error', 'an empty completed tile batch reports a recoverable error');
 }
 
 {
@@ -169,4 +212,4 @@ function runtime({ webgl = false } = {}) {
   assert.equal(test.state().ready, false);
 }
 
-console.log('Map runtime lifecycle: initial success/failure, post-load tile errors, stale retries/timeouts, themes and recovery PASS');
+console.log('Map runtime lifecycle: rendered tile visibility, active tile failure/recovery, stale retries/timeouts and themes PASS');

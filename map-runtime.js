@@ -16,6 +16,7 @@ const rasterAttribution = {
 };
 const vectorAttribution = '© <a href="https://openfreemap.org">OpenFreeMap</a> · © <a href="https://openmaptiles.org">OpenMapTiles</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const layers = new Map();
+const statusElements = new WeakMap();
 let activeTheme = document.documentElement.dataset.resolvedTheme === 'dark' ? 'dark' : 'light';
 const probe = document.createElement('canvas');
 const supportsVectorStyle = Boolean(probe.getContext('webgl2'));
@@ -28,21 +29,26 @@ function diagnose(code, context = {}) {
   console.warn('[RotaMoto mapas]', code, context);
 }
 
+function statusFor(map, create = false) {
+  let status = statusElements.get(map);
+  if (status && (status.isConnected !== false || !create)) return status;
+  const anchor = anchorFor(map);
+  status = document.createElement('div');
+  status.className = 'rm-map-runtime-status';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  anchor.insertAdjacentElement('afterend', status);
+  statusElements.set(map, status);
+  return status;
+}
+
 function anchorFor(map) {
   const container = map.getContainer();
   return container.closest('.mapStage') || container.closest('.mapWrap') || container;
 }
 
 function setStatus(map, { state, message, retry = false }) {
-  const anchor = anchorFor(map);
-  let status = anchor.nextElementSibling?.classList.contains('rm-map-runtime-status') ? anchor.nextElementSibling : null;
-  if (!status) {
-    status = document.createElement('div');
-    status.className = 'rm-map-runtime-status';
-    status.setAttribute('role', 'status');
-    status.setAttribute('aria-live', 'polite');
-    anchor.insertAdjacentElement('afterend', status);
-  }
+  const status = statusFor(map, true);
   status.dataset.state = state;
   status.replaceChildren();
   const text = document.createElement('span');
@@ -59,14 +65,50 @@ function setStatus(map, { state, message, retry = false }) {
 }
 
 function clearStatus(map) {
-  const status = anchorFor(map).nextElementSibling?.classList.contains('rm-map-runtime-status')
-    ? anchorFor(map).nextElementSibling : null;
+  const status = statusFor(map);
   if (status) status.hidden = true;
 }
 
 function clearTimer(pending) {
   if (pending?.timer) clearTimeout(pending.timer);
   if (pending) pending.timer = null;
+}
+
+function rasterTileState(map, layer) {
+  const container = map?.getContainer?.();
+  const mapRect = container?.getBoundingClientRect?.();
+  if (!mapRect || !layer?._tiles) return { visible: 0, loaded: 0, hasCartography: false, complete: false };
+  const visibleTiles = Object.values(layer._tiles).map(tile => tile?.el).filter(tile => {
+    if (!tile?.getBoundingClientRect) return false;
+    const rect = tile.getBoundingClientRect();
+    const style = window.getComputedStyle?.(tile);
+    return rect.right > mapRect.left && rect.left < mapRect.right && rect.bottom > mapRect.top && rect.top < mapRect.bottom
+      && style?.display !== 'none' && style?.visibility !== 'hidden';
+  });
+  const loaded = visibleTiles.filter(tile => tile.classList?.contains('leaflet-tile-loaded') && tile.complete === true && Number(tile.naturalWidth) > 0);
+  return { visible: visibleTiles.length, loaded: loaded.length, hasCartography: loaded.length > 0, complete: visibleTiles.length > 0 && loaded.length === visibleTiles.length };
+}
+
+function scheduleActiveRasterStatus(map, entry, layer, attempt, loadingTimedOut = false) {
+  if (entry.activeStatusTimer) clearTimeout(entry.activeStatusTimer);
+  entry.activeStatusTimer = null;
+  if (entry.layer !== layer || entry.activeAttempt !== attempt) return;
+  entry.activeStatusTimer = setTimeout(() => {
+    entry.activeStatusTimer = null;
+    if (entry.layer !== layer || entry.activeAttempt !== attempt) return;
+    const tiles = rasterTileState(map, layer);
+    entry.cartographyVisible = tiles.hasCartography;
+    entry.ready = tiles.hasCartography;
+    if (!tiles.hasCartography) {
+      if (!loadingTimedOut && layer.isLoading?.()) {
+        setStatus(map, { state: 'loading', message: 'Atualizando as ruas do mapa…' });
+        entry.activeStatusTimer = setTimeout(() => scheduleActiveRasterStatus(map, entry, layer, attempt, true), 15000);
+        return;
+      }
+      setStatus(map, { state: 'error', message: 'As ruas do mapa não estão visíveis. Verifique a conexão e tente novamente.', retry: true });
+    } else if (tiles.complete) clearStatus(map);
+    else setStatus(map, { state: 'fallback', message: 'Algumas ruas não carregaram. Você pode tentar atualizar o mapa.', retry: true });
+  }, 300);
 }
 
 function removeLayerAfterTileCycle(map, layer) {
@@ -114,7 +156,10 @@ function commitAttempt(map, entry, pending, message = null) {
   entry.mode = pending.mode;
   entry.theme = pending.theme;
   entry.ready = true;
+  entry.cartographyVisible = pending.mode === 'raster' ? rasterTileState(map, pending.layer).hasCartography : true;
   entry.activeAttempt = pending.attempt;
+  if (entry.activeStatusTimer) clearTimeout(entry.activeStatusTimer);
+  entry.activeStatusTimer = null;
   entry.activeContextLost = false;
   entry.pending = null;
   if (previousLayer && previousLayer !== entry.layer) removeLayerAfterTileCycle(map, previousLayer);
@@ -131,11 +176,13 @@ function rejectAttempt(map, entry, pending, { code, autoFallback = false, messag
   entry.pending = null;
   if (code) diagnose(code, { attempt: pending.attempt, mode: pending.mode, loadedTiles: pending.loadedTiles, tileErrors: pending.errors });
   if (entry.layer && entry.ready) {
+    const previousTiles = entry.mode === 'raster' ? rasterTileState(map, entry.layer) : null;
+    if (previousTiles && !previousTiles.hasCartography) entry.ready = false;
+  }
+  if (entry.layer && entry.ready) {
     setStatus(map, {
       state: entry.activeContextLost ? 'error' : 'fallback',
-      message: message || (entry.activeContextLost
-        ? 'A visualização anterior não está respondendo. Não foi possível atualizar o mapa.'
-        : 'O mapa anterior continua disponível; a atualização não foi concluída.'),
+      message: message || 'A atualização do mapa não foi concluída. Tente novamente.',
       retry: true
     });
     return true;
@@ -163,7 +210,7 @@ function addRaster(map, entry, reason) {
   setStatus(map, { state: 'loading', message: entry.ready ? 'Atualizando o mapa…' : 'Carregando mapa básico…' });
   const finishLoad = () => {
     if (!isPending(entry, pending.attempt, layer)) return;
-    if (pending.loadedTiles > 0) {
+    if (pending.loadedTiles > 0 && rasterTileState(map, layer).hasCartography) {
       const text = pending.errors > 0
         ? 'Mapa básico atualizado. Algumas áreas não carregaram.'
         : 'Mapa básico carregado.';
@@ -172,9 +219,10 @@ function addRaster(map, entry, reason) {
     }
     rejectAttempt(map, entry, pending, {
       code: 'raster-tiles-unavailable',
-      message: entry.ready ? 'O mapa anterior continua disponível; a atualização não foi concluída.' : 'Não foi possível carregar as ruas do mapa. Verifique a conexão e tente novamente.'
+      message: 'Não foi possível carregar as ruas do mapa. Verifique a conexão e tente novamente.'
     });
   };
+  const activeAttempt = pending.attempt;
   layer.on('tileerror', () => {
     if (isPending(entry, pending.attempt, layer)) {
       pending.errors += 1;
@@ -182,11 +230,21 @@ function addRaster(map, entry, reason) {
       return;
     }
     if (entry.layer !== layer || entry.activeAttempt !== pending.attempt) return;
-    diagnose('active-raster-tile-error', { attempt: pending.attempt });
-    setStatus(map, { state: 'fallback', message: 'O mapa continua disponível; algumas áreas não carregaram.', retry: true });
+    diagnose('active-raster-tile-error', { attempt: activeAttempt });
+    scheduleActiveRasterStatus(map, entry, layer, activeAttempt);
+  });
+  layer.on('loading', () => {
+    if (entry.layer === layer && entry.activeAttempt === activeAttempt) scheduleActiveRasterStatus(map, entry, layer, activeAttempt);
+  });
+  layer.on('tileloadstart', () => {
+    if (entry.layer === layer && entry.activeAttempt === activeAttempt) scheduleActiveRasterStatus(map, entry, layer, activeAttempt);
   });
   layer.on('tileload', () => {
     if (isPending(entry, pending.attempt, layer)) pending.loadedTiles += 1;
+    else if (entry.layer === layer && entry.activeAttempt === activeAttempt) scheduleActiveRasterStatus(map, entry, layer, activeAttempt);
+  });
+  layer.on('load', () => {
+    if (entry.layer === layer && entry.activeAttempt === activeAttempt) scheduleActiveRasterStatus(map, entry, layer, activeAttempt);
   });
   layer.once('load', finishLoad);
   pending.timer = setTimeout(finishLoad, 15000);
@@ -256,7 +314,7 @@ function addVector(map, entry) {
       if (!isPending(entry, pending.attempt, layer)) {
         if (entry.layer === layer && entry.activeAttempt === pending.attempt) {
           diagnose('active-vector-resource-error', { attempt: pending.attempt });
-          setStatus(map, { state: 'fallback', message: 'O mapa continua disponível; algumas áreas podem não aparecer.', retry: true });
+          setStatus(map, { state: 'fallback', message: 'Alguns detalhes do mapa não foram atualizados. Tente novamente.', retry: true });
         }
         return;
       }
@@ -277,8 +335,14 @@ function addVector(map, entry) {
 }
 
 function addBaseLayer(map) {
-  const entry = { layer: null, mode: null, theme: activeTheme, errors: 0, loadedTiles: 0, ready: false, recovered: false, generation: 0, activeAttempt: 0, pending: null, activeContextLost: false };
+  const entry = { layer: null, mode: null, theme: activeTheme, errors: 0, loadedTiles: 0, ready: false, cartographyVisible: false, recovered: false, generation: 0, activeAttempt: 0, pending: null, activeContextLost: false, activeStatusTimer: null, mapEventsBound: false };
   layers.set(map, entry);
+  if (!entry.mapEventsBound && typeof map.on === 'function') {
+    entry.mapEventsBound = true;
+    map.on('moveend zoomend resize', () => {
+      if (entry.layer && entry.mode === 'raster') scheduleActiveRasterStatus(map, entry, entry.layer, entry.activeAttempt);
+    });
+  }
   if (!supportsVectorStyle) {
     diagnose('webgl2-unavailable');
     return addRaster(map, entry, 'webgl2-unavailable');
@@ -311,17 +375,18 @@ window.RotaMotoMapTheme = Object.freeze({
   raster,
   supportsVectorStyle,
   retry: retryMap,
-  inspect: map => inspectLayer(layers.get(map)),
-  inspectAll: () => [...layers.values()].map(inspectLayer)
+  inspect: map => inspectLayer(layers.get(map), map),
+  inspectAll: () => [...layers.entries()].map(([map, entry]) => inspectLayer(entry, map))
 });
 
-function inspectLayer(entry) {
+function inspectLayer(entry, map) {
   const rendererLayer = entry?.pending?.mode === 'vector' ? entry.pending.layer : entry?.layer;
   const renderer = rendererLayer?.getMaplibreMap?.();
   const state = inspectRenderer(renderer);
   return {
     mode: entry?.pending?.mode || entry?.mode || null,
-    ready: Boolean(entry?.ready),
+    ready: entry?.mode === 'raster' ? rasterTileState(map, entry.layer).hasCartography : Boolean(entry?.ready),
+    cartographyVisible: entry?.mode === 'raster' ? rasterTileState(map, entry.layer).hasCartography : Boolean(entry?.ready),
     generation: entry?.generation || 0,
     pending: Boolean(entry?.pending),
     styleLoaded: state.styleLoaded,
