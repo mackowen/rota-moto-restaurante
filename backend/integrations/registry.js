@@ -18,7 +18,9 @@ const MAX_RETRY_ATTEMPTS = 8;
 
 const PUBLICLY_DOCUMENTED = Object.freeze({
   ifood: new Set(['account','merchant','orders','webhook','polling','selfDelivery','platformDelivery','quote','dispatch','cancelOrder','cancelDelivery','tracking','sandbox','homologation']),
-  '99food': new Set(),
+  // Public portal confirms the high-level Orders API, webhooks, sandbox and certification path;
+  // the detailed schema and credentials remain gated behind partner onboarding.
+  '99food': new Set(['orders','webhook','sandbox','homologation']),
   keeta: new Set(['account','merchant','orders','webhook','polling','selfDelivery','dispatch','cancelOrder','tracking','sandbox'])
 });
 const LOCAL_ADAPTERS = Object.freeze({
@@ -67,7 +69,7 @@ function publicCatalog(persisted = []) {
       capabilityContract: { ...provider.capabilityMatrix },
       capabilities: auditedCapabilities(provider),
       capabilityNotes: provider.key === 'ifood' ? 'A autorização e o worker estão disponíveis quando o servidor tem credenciais e roles configuradas. Contas listadas ainda precisam sincronizar para confirmar conexão; 202 permanece pendente.' :
-        provider.key === '99food' ? 'A Open Platform anuncia pedidos e webhooks, mas exige acesso aos contratos detalhados e certificação antes de implementar transporte.' :
+        provider.key === '99food' ? 'O portal oficial anuncia API de pedidos, webhooks e sandbox. O contrato detalhado, credenciais e certificação dependem do onboarding de parceiro; nenhum endpoint ou payload foi presumido.' :
           'OAuth, vínculo da loja, pedidos e worker estão disponíveis quando credenciais e roles estão configuradas. O grant shop-level e a decifragem de PII permanecem fechados sem validação externa. Dispatch e tracking são para entrega própria; não existe contratação avulsa de courier Keeta.' ,
       state: disabled ? 'disabled' : row?.status === 'error' ? 'error' : row?.status === 'active' && accountConfirmed ? 'authorized_unverified' : 'configuration_required',
       connectionVerified,

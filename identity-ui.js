@@ -350,7 +350,8 @@
         });
         row.append(connect);
       } else {
-        const blocked = document.createElement('p'); blocked.textContent = 'Conexão indisponível: a 99Food ainda não forneceu o contrato/API e o acesso de onboarding necessários.'; row.append(blocked);
+        const blocked = document.createElement('p'); blocked.textContent = 'O portal oficial anuncia API de pedidos, webhooks e sandbox. O contrato detalhado, credenciais e certificação exigem onboarding de parceiro; por isso o adapter e a conexão continuam desabilitados.';
+        const docs = document.createElement('a'); docs.href = 'https://developer-food.99app.com/'; docs.target = '_blank'; docs.rel = 'noopener noreferrer'; docs.textContent = 'Abrir portal oficial de desenvolvimento 99Food'; row.append(blocked, docs);
       }
       row.append(accounts);
       const names = { account: 'autorização da conta', merchant: 'lojas/merchant', orders: 'pedidos', webhook: 'webhook', polling: 'consulta de eventos', selfDelivery: 'entrega própria', platformDelivery: 'entrega da plataforma', quote: 'cotação', dispatch: 'despacho', cancelOrder: 'cancelar pedido', cancelDelivery: 'cancelar entrega', tracking: 'rastreamento', sandbox: 'sandbox', homologation: 'homologação' };
@@ -381,7 +382,7 @@
       list.append(row);
     });
       const orderPanel=document.createElement('section');orderPanel.className='rm-marketplace-orders';
-      const orderHeading=document.createElement('h4');orderHeading.textContent='Pedidos de marketplace';orderPanel.append(orderHeading);
+      const orderHeading=document.createElement('h4');orderHeading.textContent='Pedidos de plataformas externas';orderPanel.append(orderHeading);
       const orderRows=Array.isArray(marketplaceOrders.orders)?marketplaceOrders.orders:[];
       const commandStates={queued:'Na fila',leased:'Em execução',pending:'Aguardando confirmação da plataforma',succeeded:'Confirmada pela plataforma',rejected:'Falhou',unknown_outcome:'Resultado incerto; reconciliação pendente',needs_review:'Precisa de revisão'};
       if(!orderRows.length){const empty=document.createElement('p');empty.textContent='Nenhum pedido dessa plataforma foi recebido ainda.';orderPanel.append(empty);}

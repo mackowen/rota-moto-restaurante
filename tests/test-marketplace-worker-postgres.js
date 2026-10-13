@@ -91,11 +91,12 @@ async function main(){
     detailStatus='CONFIRMED';const confirmed=event('CONFIRMED',`worker-${id()}`);
     await runtime.ingest({provider:'ifood',accountId:row.account,rawBody:confirmed,signature:signature(confirmed)});
     await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
-    const final=await migrator.query(`SELECT c.status,d.payload->>'source' AS source,d.payload ? 'customer' AS customer_persisted,d.payload ? 'address' AS address_persisted
+    const final=await migrator.query(`SELECT c.status,d.payload->>'source' AS source,d.payload->>'customer' AS customer,d.payload ? 'address' AS address_persisted
       FROM rotamoto.marketplace_command_outbox c JOIN rotamoto.marketplace_order_versions v ON v.company_id=c.company_id AND v.external_order_id=c.external_order_id
       JOIN rotamoto.domain_records d ON d.company_id=v.company_id AND d.record_id=v.domain_order_id
       WHERE c.company_id=$1 AND c.command_id=$2`,[row.company,command.command_id]);
-    assert.deepEqual(final.rows[0],{status:'succeeded',source:'ifood',customer_persisted:false,address_persisted:false});
+    assert.deepEqual(final.rows[0],{status:'succeeded',source:'ifood',customer:'Pedido externo',address_persisted:false},
+      'external Order stays free of provider PII while the unified list has a safe display label');
     assert.equal(confirms,1,'event reconciliation never replays the side effect');await migrator.query('COMMIT');
 
     const outsider=await workerPool.connect();

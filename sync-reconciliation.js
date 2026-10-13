@@ -79,6 +79,15 @@
   String(operation.canonicalId||'')===String(canonicalId||'')&&Number(operation.sourceVersion)===Number(record.sync?.version||record.version||1)}
  function shouldRetry(status,changed){return status==='pending'||(['accepted','duplicate'].includes(status)&&changed)||(['rejected','conflict'].includes(status)&&changed)}
  function findCanonicalFact(rows,canonicalId,syncMap,operationKey){return (rows||[]).find(row=>(row.eventId||row.id)===canonicalId||syncMap?.get(operationKey(row))?.canonicalId===canonicalId)||null}
+ function findExternalOrder(rows,canonical){
+  const provider=String(canonical?.source||'').trim().toLowerCase(),externalId=String(canonical?.externalId||'').trim();
+  if(!provider||!externalId)return null;
+  return (rows||[]).find(row=>{
+   const source=typeof row?.source==='string'?row.source:row?.source?.origin||row?.sourceId||row?.channel;
+   const id=row?.externalId||row?.source?.id;
+   return String(source||'').trim().toLowerCase()===provider&&String(id||'').trim()===externalId;
+  })||null;
+ }
  function compactInbox(rows,{keep=1500}={}){
   const resolved=(rows||[]).filter(row=>row.status==='reconciled').sort((a,b)=>Number(b.receivedAt||0)-Number(a.receivedAt||0));
   const remove=new Set(resolved.slice(keep).map(row=>row.id));return remove;
@@ -129,5 +138,5 @@
    .every(field=>JSON.stringify(local[field])===JSON.stringify(remote[field]));
  }
  function createCoordinator({locks,lockName='rotamoto-sync'}={}){let active=null;return Object.freeze({run(task){if(typeof task!=='function')return Promise.reject(new TypeError('Tarefa de sync inválida.'));if(active)return active;const execute=()=>Promise.resolve().then(task);active=locks?.request?locks.request(lockName,{mode:'exclusive'},execute):execute();return active.finally(()=>{active=null})}})}
- return Object.freeze({canonicalEvent,decide,statusFromAck,expectedAckOperations,validateOperationAck,sourceVersionMatches,canonicalBaseVersion,captureSourceVersions,retryAfterMilliseconds,retryDelay,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
+ return Object.freeze({canonicalEvent,decide,statusFromAck,expectedAckOperations,validateOperationAck,sourceVersionMatches,canonicalBaseVersion,captureSourceVersions,retryAfterMilliseconds,retryDelay,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,findExternalOrder,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
 });

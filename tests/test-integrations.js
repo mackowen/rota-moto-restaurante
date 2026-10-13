@@ -19,6 +19,11 @@ assert.deepEqual(catalog[2].capabilities.account, { DOCUMENTED: true, IMPLEMENTE
 assert.equal(catalog[2].capabilityContract.platformDelivery, 'NOT_SUPPORTED', 'Keeta merchant fulfillment is not represented as a platform courier API');
 assert.equal(catalog[0].actions.connect,true); assert.equal(catalog[0].actions.reconnect,true);
 assert.equal(catalog[1].actions.connect,false); assert.equal(catalog[2].actions.connect,true);
+assert.equal(catalog[1].capabilities.orders.DOCUMENTED,true,'99Food portal documents order API access at a high level');
+assert.equal(catalog[1].capabilities.webhook.DOCUMENTED,true);
+assert.equal(catalog[1].capabilities.sandbox.DOCUMENTED,true);
+assert.equal(catalog[1].capabilities.orders.IMPLEMENTED,false,'the partner-gated technical contract is not exposed');
+assert.match(catalog[1].capabilityNotes,/certificação.*onboarding/u);
 assert.equal(catalog[0].state, 'authorized_unverified', 'an account link does not assert a successful provider health check');
 assert.equal(publicCatalog([{ provider: 'ifood', status: 'disabled' }])[0].state, 'disabled');
 assert.equal(JSON.stringify(catalog).includes('secret_ref'), false);

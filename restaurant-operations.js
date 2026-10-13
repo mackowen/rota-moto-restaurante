@@ -105,6 +105,13 @@
       delete row.source;
       if (!local?.sourceId) delete row.sourceId;
     }
+    const external = canonical?.extensions?.x_rotamoto_external_order;
+    if (external && typeof external === 'object') {
+      row.num = canonical?.number || external.displayId || canonical?.externalId || row.num;
+      row.externalDisplayId = external.displayId || row.externalDisplayId || null;
+      row.externalStatus = external.providerStatus || row.externalStatus || null;
+      row.statusSource = 'external';
+    } else if (typeof row.num !== 'string' || !row.num.trim()) row.num = canonical?.number || canonical?.externalId || row.num;
     return row;
   }
 

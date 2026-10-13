@@ -24,6 +24,17 @@ const mergedKnownSource = Operations.mergeCanonicalOrder({ id: 'local-order', so
 assert.deepEqual(mergedKnownSource.source, { origin: 'ifood', id: 'ext-1', status: 'ACCEPTED' });
 assert.equal(mergedKnownSource.sourceId, 'ifood');
 assert.equal(mergedKnownSource.localOnly, true);
+const mergedExternal = Operations.mergeCanonicalOrder({ id:'local-provider',source:{origin:'ifood',id:'provider-order-1'},
+  sync:{state:'local',version:1} }, { id:'canonical-provider',companyId:'company_1',number:'F-41',source:'ifood',externalId:'provider-order-1',
+  status:'AGUARDANDO',extensions:{x_rotamoto_external_order:{providerStatus:'PLACED',displayId:'F-41',fulfillment:'unknown'}} });
+assert.equal(mergedExternal.id,'local-provider','provider identity matching preserves the local IndexedDB key');
+assert.equal(mergedExternal.num,'F-41');
+assert.equal(mergedExternal.externalStatus,'PLACED');
+assert.equal(mergedExternal.statusSource,'external');
+assert.equal(mergedExternal.sync.state,'local','sync metadata is updated by the reconciliation transaction, not fabricated here');
+const revisedExternal = Operations.mergeCanonicalOrder(mergedExternal,{id:'canonical-provider',number:'F-42',source:'ifood',externalId:'provider-order-1',
+  extensions:{x_rotamoto_external_order:{providerStatus:'CONFIRMED',displayId:'F-42',fulfillment:'unknown'}}});
+assert.equal(revisedExternal.id,'local-provider');assert.equal(revisedExternal.num,'F-42');assert.equal(revisedExternal.externalStatus,'CONFIRMED');
 const mergedUnknownSource = Operations.mergeCanonicalOrder({ id: 'local-order', source: { origin: 'whatsapp', id: 'thread-1' },
   sourceId: 'whatsapp', channel: 'whatsapp' }, { id: 'canonical-order', customer: 'Cliente' });
 assert.deepEqual(mergedUnknownSource.source, { origin: 'whatsapp', id: 'thread-1' }, 'missing canonical source preserves known local commercial origin');

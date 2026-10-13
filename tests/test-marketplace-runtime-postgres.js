@@ -3,10 +3,19 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { createPool } = require('../backend/postgres/connection');
-const { createMarketplaceRuntime } = require('../backend/integrations/marketplace-runtime');
+const { createMarketplaceRuntime, canonicalOrder } = require('../backend/integrations/marketplace-runtime');
 const { e2eMigrationConnectionString } = require('../backend/postgres/migrate');
 
 function id() { return crypto.randomUUID(); }
+
+for (const [providerStatus, localStatus] of [['CANCELLED','CANCELADA'],['CANCELED','CANCELADA'],['DELIVERED','FINALIZADA'],
+  ['COMPLETED','FINALIZADA'],['DISPATCHED','EM ROTA'],['OUT_FOR_DELIVERY','EM ROTA'],['ARRIVED','CHEGOU'],['PLACED','AGUARDANDO']]) {
+  const projected = canonicalOrder('ifood',{externalId:'external-1',externalDisplayId:'F-1',status:providerStatus},
+    {id:id(),companyId:id()});
+  assert.equal(projected.status,localStatus,`external ${providerStatus} maps to local Order status ${localStatus}`);
+  assert.equal(projected.extensions.x_rotamoto_external_order.providerStatus,providerStatus);
+  assert.equal(projected.extensions.x_rotamoto_external_order.fulfillment,'unknown');
+}
 
 async function main() {
   const migrator = createPool({ connectionString: e2eMigrationConnectionString(process.env), max: 1, application_name: 'marketplace-e2e-seed' });
@@ -55,6 +64,10 @@ async function main() {
     assert.equal(immediate.rows[0]?.status,'processed',`Inbox state: ${JSON.stringify(immediate.rows[0])}`);
     const duplicate = await runtime.ingest({provider:'ifood',accountId:a.account,rawBody:raw,signature});
     assert.equal(duplicate.duplicate,true);
+    const duplicateOutbox = await migrator.query(`SELECT count(*)::int AS count FROM rotamoto.sync_outbox
+      WHERE company_id=$1 AND payload->>'entity'='Order' AND payload->>'entityId'=(
+        SELECT domain_order_id::text FROM rotamoto.marketplace_order_versions WHERE company_id=$1 AND external_order_id=$2)`,[a.company,orderId]);
+    assert.equal(duplicateOutbox.rows[0].count,1,'webhook replay does not duplicate canonical outbox publication');
     await runtime.ingestPolled({provider:'ifood',id:a.account,companyId:a.company,integrationId:a.integration,merchantId:a.merchant,
       status:'active',authorized:true,credentials:{accessToken:'synthetic'}}, [{id:eventId,orderId,merchantId:a.merchant,fullCode:'PLACED',createdAt:eventTime}]);
     assert.equal(acknowledgments,1,'poll event is acked only after durable processing; duplicate webhook/poll converges on same inbox key');
@@ -64,9 +77,23 @@ async function main() {
     assert.equal(domain.rows[0].company_id,a.company,'tenant comes from the trusted account resolver');
     assert.equal(domain.rows[0].entity_type,'Order');
     assert.equal(domain.rows[0].payload.source,'ifood');
-    assert.equal(domain.rows[0].payload.logistics,null);
-    assert.equal(Object.hasOwn(domain.rows[0].payload,'customer'),false,'customer name and phone from provider detail are not projected');
+    assert.equal(domain.rows[0].payload.id,version.rows[0].domain_order_id,'canonical Order has the identity required by sync v1');
+    assert.equal(domain.rows[0].payload.companyId,a.company);
+    assert.equal(domain.rows[0].payload.version,1);
+    assert.equal(domain.rows[0].payload.number,'S-1');
+    assert.equal(domain.rows[0].payload.customer,'Pedido externo','provider PII is not copied into the local projection');
+    assert.deepEqual(domain.rows[0].payload.extensions.x_rotamoto_external_order,
+      {providerStatus:'PLACED',displayId:'S-1',orderType:'DELIVERY',fulfillment:'unknown'});
     assert.equal(Object.hasOwn(domain.rows[0].payload,'address'),false,'delivery address is not retained without a domain need');
+    const published = await migrator.query(`SELECT o.payload,i.app_key,o.recipient_driver_id
+      FROM rotamoto.sync_outbox o JOIN rotamoto.sync_installations i ON i.id=o.installation_id
+      WHERE o.company_id=$1 AND o.payload->>'entity'='Order' AND o.payload->>'entityId'=$2`,[a.company,version.rows[0].domain_order_id]);
+    assert.equal(published.rowCount,1,'external canonical Order is published to the ordinary sync outbox exactly once');
+    assert.equal(published.rows[0].app_key,'restaurante');
+    assert.equal(published.rows[0].recipient_driver_id,null,'external order is not assigned to a driver');
+    assert.equal(published.rows[0].payload.payload.id,version.rows[0].domain_order_id);
+    assert.equal(published.rows[0].payload.payload.companyId,a.company);
+    assert.equal(published.rows[0].payload.payload.version,1);
     const unifiedOrders=await runtime.listOrders(a.company,50);
     assert.equal(unifiedOrders.length,1,'the external order is available through the canonical administrative order projection');
     assert.deepEqual({domainOrderId:unifiedOrders[0].domainOrderId,provider:unifiedOrders[0].provider,displayId:unifiedOrders[0].displayId,providerStatus:unifiedOrders[0].providerStatus},

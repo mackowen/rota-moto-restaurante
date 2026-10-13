@@ -2,6 +2,12 @@
 const assert=require('node:assert/strict');
 const R=require('../sync-reconciliation.js');
 const uuid='00000000-0000-4000-8000-000000000001';
+const externalOrder={id:'local-external',source:{origin:'ifood',id:'provider-order-1'},externalId:'provider-order-1'};
+assert.equal(R.findExternalOrder([externalOrder],{source:'ifood',externalId:'provider-order-1'}),externalOrder,
+  'a pulled canonical Order reuses the local order with the same provider and external ID');
+assert.equal(R.findExternalOrder([externalOrder],{source:'keeta',externalId:'provider-order-1'}),null,
+  'external IDs from different providers remain separate');
+assert.equal(R.findExternalOrder([externalOrder],{source:'ifood',externalId:'other-order'}),null);
 const event={eventId:uuid,type:'CANONICAL_RECORD_UPSERTED',entity:'Delivery',entityId:uuid,occurredAt:'2026-10-04T10:00:00.000Z',protocolVersion:1,payload:{id:uuid,companyId:'tenant-a',version:3,status:'ASSIGNED',driverId:'driver-a',priority:'HIGH',assignedAt:'2026-10-04T09:00:00.000Z',estimatedDistanceM:2400,orderId:'00000000-0000-4000-8000-000000000002'}};
 assert.equal(R.canonicalEvent(event,'tenant-a').version,3);
 assert.throws(()=>R.canonicalEvent(event,'tenant-b'),/TENANT_MISMATCH/);

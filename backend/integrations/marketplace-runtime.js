@@ -145,15 +145,20 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
           VALUES($1,$2,'restaurante',$3) ON CONFLICT(company_id,app_key,local_device_id) DO UPDATE SET last_seen_at=now() RETURNING id`,
         [crypto.randomUUID(), account.companyId, `marketplace-${account.provider}`]);
         const sourceInstallationId = installation.rows[0].id;
+        let publishedPayload = null;
         if (!previous) {
+          publishedPayload = canonicalOrder(account.provider, order, { id: domainOrderId, companyId: account.companyId, version: 1 });
           await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,
             payload,version,created_at,updated_at) VALUES($1,$2,'Order','restaurante',$3,$4::jsonb,1,$5,$5)`,
-          [account.companyId, domainOrderId, sourceInstallationId, JSON.stringify(canonicalOrder(account.provider, order)), occurred]);
+          [account.companyId, domainOrderId, sourceInstallationId, JSON.stringify(publishedPayload), occurred]);
         } else if (!previous.last_event_at || occurred >= new Date(previous.last_event_at)) {
           const existing = await client.query('SELECT payload,version,created_at FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 FOR UPDATE', [account.companyId, domainOrderId]);
-          if (existing.rowCount) await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=version+1,updated_at=GREATEST(updated_at,$4)
-            WHERE company_id=$1 AND record_id=$2`, [account.companyId, domainOrderId,
-            JSON.stringify({ ...existing.rows[0].payload, ...canonicalOrder(account.provider, order) }), occurred]);
+          if (existing.rowCount) {
+            publishedPayload = { ...existing.rows[0].payload,
+              ...canonicalOrder(account.provider, order, { id: domainOrderId, companyId: account.companyId, version: Number(existing.rows[0].version) + 1, updatedAt: occurred.toISOString() }) };
+            await client.query(`UPDATE rotamoto.domain_records SET payload=$3::jsonb,version=version+1,updated_at=GREATEST(updated_at,$4)
+              WHERE company_id=$1 AND record_id=$2`, [account.companyId, domainOrderId, JSON.stringify(publishedPayload), occurred]);
+          }
         }
         await client.query(`INSERT INTO rotamoto.marketplace_order_versions(company_id,external_account_id,provider,external_order_id,last_event_at,last_event_id,domain_order_id)
           VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(provider,external_account_id,external_order_id) DO UPDATE SET
@@ -161,6 +166,15 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
           last_event_id=CASE WHEN marketplace_order_versions.last_event_at IS NULL OR EXCLUDED.last_event_at >= marketplace_order_versions.last_event_at THEN EXCLUDED.last_event_id ELSE marketplace_order_versions.last_event_id END,
           domain_order_id=marketplace_order_versions.domain_order_id,updated_at=now()`,
         [account.companyId, account.id, account.provider, row.external_order_id, occurred, row.event_id, domainOrderId]);
+        if (isCurrent && publishedPayload) {
+          const eventId = crypto.randomUUID();
+          const publishedAt = now();
+          const event = { eventId, type: 'CANONICAL_RECORD_UPSERTED', entity: 'Order', entityId: domainOrderId,
+            occurredAt: publishedAt, actor: { type: 'system', id: null }, payload: publishedPayload, protocolVersion: 1 };
+          await client.query(`INSERT INTO rotamoto.sync_outbox(company_id,event_id,app_key,installation_id,payload,created_at)
+            VALUES($1,$2,'restaurante',$3,$4::jsonb,$5)`,
+          [account.companyId, eventId, sourceInstallationId, JSON.stringify(event), publishedAt]);
+        }
         if(isCurrent) {
           const matching={confirmed:['CONFIRM'],preparing:['START_PREPARATION'],ready:['READY'],dispatched:['DISPATCH_MERCHANT'],cancelled:['CANCEL_ORDER']}[row.event_data.status]||[];
           if(matching.length)await client.query(`UPDATE rotamoto.marketplace_command_outbox SET status='succeeded',completed_at=now(),lease_token=NULL,lease_until=NULL,
@@ -260,7 +274,9 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
     if (!UUID.test(companyId || '') || !Number.isInteger(limit) || limit < 1 || limit > 100) throw Object.assign(new Error('Invalid order query.'),{code:'INVALID_INPUT'});
     return tenantTransaction(companyId, async client => {
       const result=await client.query(`SELECT v.domain_order_id::text AS "domainOrderId",v.provider,v.external_order_id AS "externalOrderId",
-        d.payload->>'externalDisplayId' AS "displayId",d.payload->>'status' AS "providerStatus",d.payload->>'orderType' AS "orderType",
+        d.payload->'extensions'->'x_rotamoto_external_order'->>'displayId' AS "displayId",
+        d.payload->'extensions'->'x_rotamoto_external_order'->>'providerStatus' AS "providerStatus",
+        d.payload->'extensions'->'x_rotamoto_external_order'->>'orderType' AS "orderType",
         a.display_name AS "merchantName",a.account_status AS "accountStatus",
         latest.operation AS "lastOperation",latest.status AS "commandStatus",latest.last_error_code AS "lastErrorCode",latest.updated_at AS "commandUpdatedAt",
         quote.result_data->>'externalQuoteReference' AS "quoteId",
@@ -354,12 +370,21 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
   return Object.freeze({ ingest, ingestPolled, pollAccount, processPending, processClaimed, enqueueCommand, enqueueOrderCommand, listOrders });
 }
 
-function canonicalOrder(provider, order) {
+function canonicalOrder(provider, order, { id, companyId, version = 1, updatedAt = null } = {}) {
   const items = Array.isArray(order.items) ? order.items.map(item => ({ name: String(item.name).slice(0,240), quantity: item.quantity })) : [];
-  const result = { source: provider, externalId: order.externalId, externalDisplayId: order.externalDisplayId || null,
-    status: order.status || null, orderType: order.orderType || null, items,
-    // Marketplace totals and delivery prices are intentionally not converted or fabricated.
-    amount: null, currency: null, logistics: null, createdAt: order.createdAt || null };
+  const sourceCreatedAt = new Date(order.createdAt || Date.now());
+  const createdAt = Number.isFinite(sourceCreatedAt.getTime()) ? sourceCreatedAt.toISOString() : new Date().toISOString();
+  const providerStatus = String(order.status || '').slice(0, 128) || null;
+  const normalized = String(providerStatus || '').toUpperCase();
+  const status = ['CANCELLED','CANCELED'].includes(normalized) ? 'CANCELADA' :
+    ['DELIVERED','CONCLUDED','COMPLETED'].includes(normalized) ? 'FINALIZADA' :
+      ['DISPATCHED','OUT_FOR_DELIVERY'].includes(normalized) ? 'EM ROTA' :
+        normalized === 'ARRIVED' ? 'CHEGOU' : 'AGUARDANDO';
+  const result = { id, companyId, createdAt, updatedAt: updatedAt || createdAt, version,
+    number: order.externalDisplayId || order.externalId, source: provider, externalId: order.externalId,
+    customer: 'Pedido externo', status, items,
+    extensions: { x_rotamoto_external_order: { providerStatus, displayId: order.externalDisplayId || null,
+      orderType: order.orderType || null, fulfillment: 'unknown' } } };
   return result;
 }
 
