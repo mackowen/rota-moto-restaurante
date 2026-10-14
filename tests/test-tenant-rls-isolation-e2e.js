@@ -1,10 +1,11 @@
 'use strict';
 
-// Security regression against the real E2E database and the production runtime
-// role. Fixtures are unique, tenant-scoped and removed in finally.
+// Security regression against the isolated E2E database and runtime role.
+// Synthetic fixtures are manifested and retained; teardown never deletes rows.
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { createE2eClients, assertConnectedIdentity } = require('./e2e-support/guards');
+const { createFixtureManifest } = require('./e2e-support/fixture-manifest');
 
 if (process.env.NODE_ENV !== 'test') throw new Error('Tenant RLS E2E exige NODE_ENV=test.');
 
@@ -31,6 +32,13 @@ async function setTenant(client, id) {
 
 async function main() {
   const created = [];
+  let completed = false;
+  const manifest = await createFixtureManifest({ campaign: '0160', evidence: [
+    { kind: 'test', name: 'tenant-rls-isolation-e2e' },
+    { kind: 'retention', reason: 'Synthetic tenant rows and audit events are retained; destructive cleanup is prohibited.' }
+  ] });
+  await manifest.update({ status: 'RUNNING', tenants: tenantIds.map(id => ({ id, counts: { companies: 1, roles: 1, role_permissions: 1 } })),
+    records: { companies: tenantIds, roles: roleIds, schema: 'rotamoto' } });
   try {
     await Promise.all([runtime.connect(), migrator.connect()]);
     await Promise.all([
@@ -157,18 +165,14 @@ async function main() {
     });
 
     console.log('Tenant RLS E2E: PASS (47-table catalog, 38 forced tenant policies, two-tenant SELECT/INSERT/UPDATE/DELETE, positive writes, missing/invalid context, runtime/internal ACLs)');
+    completed = true;
   } finally {
-    if (migrator.readyForQuery) {
-      for (const index of created) {
-        await transaction(migrator, async () => {
-          await setTenant(migrator, tenantIds[index]);
-          await migrator.query('DELETE FROM rotamoto.role_permissions WHERE company_id=$1', [tenantIds[index]]);
-          await migrator.query('DELETE FROM rotamoto.roles WHERE company_id=$1', [tenantIds[index]]);
-          await migrator.query('DELETE FROM rotamoto.companies WHERE id=$1', [tenantIds[index]]);
-        }).catch(() => {});
-      }
-    }
     await Promise.all([runtime.end().catch(() => {}), migrator.end().catch(() => {})]);
+    await manifest.update({ status: created.length ? 'RETAINED' : 'FAILED', databaseCommitted: created.length > 0,
+      retentionReason: created.length ? 'Synthetic tenant rows and append-only audit records retained; no fixture cleanup is authorized.' : null,
+      evidence: [{ kind: 'test_result', result: completed ? 'PASS' : created.length ? 'FAILED_OR_INTERRUPTED' : 'NO_COMMIT' }],
+      lastError: completed || !created.length ? null : 'Runner failed after fixture commit; rows remain retained for inspection.',
+      counts: { companies: created.length, roles: created.length, role_permissions: created.length } });
   }
 }
 

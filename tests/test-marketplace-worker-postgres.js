@@ -47,7 +47,7 @@ async function main(){
   const resolverPool=createPool({connectionString:resolverUrl,max:2,application_name:'marketplace-worker-e2e-resolver'});
   const row={company:id(),otherCompany:id(),integration:id(),account:id(),merchant:`synthetic-${id()}`,secretRef:`synthetic-${id()}`,
     secret:'synthetic-runtime-secret'},orderId=id();
-  const fixture=await createFixtureManifest({campaign:'0153',evidence:[{kind:'test',name:'marketplace-worker-postgres'}]});
+  const fixture=await createFixtureManifest({campaign:'0160',evidence:[{kind:'test',name:'marketplace-worker-postgres'}]});
   await fixture.update({status:'RUNNING',tenants:[{id:row.company,counts:{companies:1,integrations:1,accounts:1}},
     {id:row.otherCompany,counts:{companies:1}}],records:{companies:[row.company,row.otherCompany],integrations:[row.integration],
     accounts:[row.account],merchantIds:[row.merchant],domainOrders:[orderId]}});
@@ -243,20 +243,11 @@ async function main(){
     process.stdout.write('Marketplace worker PostgreSQL E2E: PASS (real resolver/worker identities, RLS isolation, 401/403/429/503/timeout, UNKNOWN_OUTCOME reconciliation, lease expiry/fencing, secret boundary)\n');
     passed=true;
   }finally{
-    if(seeded){
-      await migrator.query('BEGIN').catch(()=>{});await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]).catch(()=>{});
-      for(const sql of [
-        'DELETE FROM rotamoto.marketplace_order_versions WHERE company_id=$1','DELETE FROM rotamoto.marketplace_command_outbox WHERE company_id=$1',
-        'DELETE FROM rotamoto.marketplace_event_inbox WHERE company_id=$1','DELETE FROM rotamoto.marketplace_account_bindings WHERE company_id=$1',
-        "DELETE FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='Order' AND source_installation_id IN (SELECT id FROM rotamoto.sync_installations WHERE company_id=$1 AND local_device_id LIKE 'marketplace-%')",
-        "DELETE FROM rotamoto.sync_installations WHERE company_id=$1 AND local_device_id LIKE 'marketplace-%' AND NOT EXISTS(SELECT 1 FROM rotamoto.domain_records d WHERE d.company_id=$1 AND d.source_installation_id=sync_installations.id)",
-        'DELETE FROM rotamoto.external_accounts WHERE company_id=$1','DELETE FROM rotamoto.integrations WHERE company_id=$1','DELETE FROM rotamoto.companies WHERE id=$1'])
-        await migrator.query(sql,[row.company]).catch(()=>{});
-      await migrator.query('COMMIT').catch(()=>{});
-    }
     await Promise.all([app.end(),workerPool.end(),workerPoolB.end(),resolverPool.end(),migrator.end()]);
-    await fixture.update({status:passed?'RETAINED':'FAILED',databaseCommitted:seeded,
-      retentionReason:'E2E-owned synthetic fixture cleanup was attempted; append-only audit records are never deleted and this run remains inventoried.',
+    await fixture.update({status:seeded?'RETAINED':'FAILED',databaseCommitted:seeded,
+      retentionReason:seeded?'Synthetic worker/provider rows and append-only audit records are retained; no cleanup is authorized.':null,
+      evidence:[{kind:'test_result',result:passed?'PASS':seeded?'FAILED_OR_INTERRUPTED':'NO_COMMIT'}],
+      lastError:passed||!seeded?null:'Runner failed after a fixture commit; synthetic rows are retained for inspection.',
       counts:{companies:2,integrations:1,accounts:1,domainOrders:1,audit_log:'retained-or-not-applicable'}});
   }
 }

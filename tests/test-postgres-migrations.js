@@ -54,6 +54,11 @@ async function main() {
   if(runtimeUrl.pathname!=='/rotamoto_e2e'||migratorUrl.pathname!=='/rotamoto_e2e'||e2eMigratorUrl?.pathname!=='/rotamoto_e2e'){
     throw new Error('Guard: migrations, fixtures e conexões desta suíte exigem DATABASE_URL, MIGRATOR_DATABASE_URL e E2E_MIGRATOR_DATABASE_URL apontando exclusivamente para rotamoto_e2e.');
   }
+  // This legacy suite exercises migration DOWN commands and deletes its
+  // fixtures. rotamoto_e2e is a protected, shared evidence database, not a
+  // disposable migration sandbox. Refuse before opening any connection; move
+  // these rollback cases to a separately provisioned disposable database.
+  throw new Error('BLOCKED: migration rollback/fixture-cleanup suite cannot run against protected rotamoto_e2e; no disposable target is configured.');
   assert.equal(decodeURIComponent(runtimeUrl.username), 'rotamoto_app', 'runtime tests must use the restricted role');
   assert.equal(decodeURIComponent(migratorUrl.username), 'rotamoto_migrator', 'migration tests must use the migrator role');
   const configuredMigratorUrl = process.env.MIGRATOR_DATABASE_URL;

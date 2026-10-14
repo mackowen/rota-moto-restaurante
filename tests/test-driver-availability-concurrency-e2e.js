@@ -1,9 +1,8 @@
 'use strict';
 
-// Real two-session PostgreSQL interleavings against an isolated schema built
-// from the checked-in migrations. The schema lives only inside rotamoto_e2e
-// and is dropped in finally; the official database is rejected by the target
-// guards before any DDL or fixture write.
+// Real two-session PostgreSQL interleavings against a newly owned schema built
+// from checked-in migrations. The schema and synthetic rows remain in
+// rotamoto_e2e under a durable fixture manifest; teardown never drops them.
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const http = require('node:http');
@@ -20,6 +19,7 @@ const { createRestaurantDriverQueueService } = require('../backend/logistics/res
 const { createRestaurantDriverQueueHttpHandler } = require('../backend/logistics/restaurant-driver-queue-http');
 const { createLogisticsService } = require('../backend/logistics/service');
 const { createLogisticsHttpHandler } = require('../backend/logistics/http');
+const { createFixtureManifest } = require('./e2e-support/fixture-manifest');
 
 const RUNTIME_URL = process.env.E2E_RUNTIME_DATABASE_URL;
 const DATABASE = 'rotamoto_e2e';
@@ -411,12 +411,22 @@ async function main() {
   const migrations = getMigrations();
   const m0039 = migrations.find(row => row.id === '0039_driver_operational_availability');
   assert(m0039, 'repository includes migration 0039');
-  const schema = `campaign0112_${UUID().replaceAll('-', '')}`;
-  assert.match(schema, /^campaign0112_[a-f0-9]{32}$/u);
+  const schema = `campaign0160_${UUID().replaceAll('-', '')}`;
+  assert.match(schema, /^campaign0160_[a-f0-9]{32}$/u);
   const f = createFixture();
+  const fixture = await createFixtureManifest({ campaign: '0160', evidence: [
+    { kind: 'test', name: 'availability-concurrency-e2e' },
+    { kind: 'retention', reason: 'Isolated schema and append-only audit rows are retained; cleanup is prohibited.' }
+  ] });
+  await fixture.update({ status: 'RUNNING', tenants: [
+    { id: f.companyId, counts: { companies: 1, users: 1, roles: 1, drivers: 1 } },
+    { id: f.otherCompanyId, counts: { companies: 1, drivers: 1 } }
+  ], records: { schemas: [schema], companies: [f.companyId, f.otherCompanyId], users: [f.userId],
+    roles: [f.roleId], drivers: [f.driverId, f.otherDriverId], orders: f.deliveries.map(row => row.orderId),
+    deliveries: f.deliveries.map(row => row.id), routes: [], evidence: ['two-session concurrency trace'] } });
   const tenantPrincipal = { company_id: f.companyId, user_id: f.userId, role_id:f.roleId, driver_id: f.driverId,
     permissions: ['sync.pull', 'sync.push','orders.manage'], mfa_verified_at: new Date(), mfa_enrollment_required: false };
-  let schemaCommitted = false, pool, httpHost, origin;
+  let schemaCommitted = false, completed = false, pool, httpHost, origin;
   const trace = [];
   const markLocal = (name, detail = '') => { const item = `${trace.length + 1}:${name}${detail ? `:${detail}` : ''}`; trace.push(item); mark(name, detail); console.log(item); };
   const migrator = targets.migrator;
@@ -476,6 +486,7 @@ async function main() {
         `GRANT EXECUTE ON FUNCTION ${schema}.current_tenant_id() TO rotamoto_app`
       ]) await migrator.query(grant);
       await migrator.query('COMMIT'); schemaCommitted = true;
+      await fixture.update({ databaseCommitted: true });
     } catch (error) { await migrator.query('ROLLBACK').catch(() => {}); throw error; }
     markLocal('isolated schema migrated inside rotamoto_e2e', `migrations=${migrations.length}`);
     await seedFixture(migrator, schema, f);
@@ -1320,22 +1331,23 @@ async function main() {
     assert.equal(lockCheck.rows[0].n, 0, 'no campaign transaction remains waiting on a lock');
     markLocal('all API/PG operations settled; no lingering lock waits');
 
-    console.log(JSON.stringify({ result: 'PASS_E2E_SCENARIOS_0115_FIFO_ELIGIBILITY', database: DATABASE, schemaSandbox: 'isolated migration-derived schema, dropped in finally',
+    console.log(JSON.stringify({ result: 'PASS_E2E_SCENARIOS_0160_FIFO_ELIGIBILITY', database: DATABASE, schemaSandbox: 'isolated migration-derived schema retained; manifest records ownership',
+      fixtureRunId: fixture.runId, fixtureManifest: fixture.file,
       independentlyBlockedTransactions: blockedByA.length + blockedByB.length + blockedByD2.length + blockedSessions.length,
       scenarios: { A: 'PASS', B: 'PASS', C: 'PASS_REAL_AUTOMATIC_CREATED_DISPATCH_BOTH_INTERLEAVINGS', D: 'PASS', E: 'PASS', F: 'PASS',
         '0115_offline_occupied_expired_locked_fifo': 'PASS', '0115_retry_artifacts': 'PASS', '0115_tenant_isolation': 'PASS' },
       timeline: trace }));
+    completed = true;
     await endRuntimeClient(observer.raw);
   } finally {
     if (httpHost) { httpHost.closeAllConnections?.(); await new Promise(resolve => httpHost.close(resolve)); }
     if (pool) await pool.end();
     await Promise.all([...runtimeClients].map(endRuntimeClient));
-    if (schemaCommitted) {
-      await migrator.query(`DROP SCHEMA ${schema} CASCADE`);
-      const remains = await migrator.query('SELECT 1 FROM pg_namespace WHERE nspname=$1', [schema]);
-      assert.equal(remains.rowCount, 0, 'the exclusively test-created schema was removed after the E2E run');
-      markLocal('isolated E2E schema dropped; campaign data cleaned');
-    }
+    if (schemaCommitted) markLocal('isolated schema retained; no fixture or audit cleanup performed', schema);
+    await fixture.update({ status: schemaCommitted ? 'RETAINED' : 'FAILED', databaseCommitted: schemaCommitted,
+      retentionReason: schemaCommitted ? 'Campaign 0160 isolated schema, tenant fixtures, and audit rows retained; no DROP, TRUNCATE, or cleanup is authorized.' : null,
+      evidence: [{ kind: 'test_result', result: completed ? 'PASS' : 'FAILED_OR_INTERRUPTED' }],
+      lastError: completed ? null : schemaCommitted ? 'Runner failed or was interrupted; committed schema and fixtures remain retained for inspection.' : 'No isolated schema commit was recorded; inspect database before recovery.' });
     if (migratorConnected) await migrator.end();
   }
 }

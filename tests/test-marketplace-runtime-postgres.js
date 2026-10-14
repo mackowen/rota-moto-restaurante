@@ -21,14 +21,16 @@ for (const [providerStatus, localStatus] of [['CANCELLED','CANCELADA'],['CANCELE
 async function main() {
   const a = { company: id(), integration: id(), account: id(), merchant: id(), externalAccountId: id(), secret: 'synthetic-marketplace-webhook-secret' };
   const b = { company: id(), integration: id(), account: id(), merchant: id(), externalAccountId: id(), secret: 'synthetic-other-tenant-secret' };
-  const fixture = await createFixtureManifest({ campaign: '0153', evidence: [{ kind: 'test', name: 'marketplace-runtime-postgres' }] });
+  const orderId = id(); const eventId = `evt-${id()}`; const eventTime = new Date().toISOString();
+  const fixture = await createFixtureManifest({ campaign: '0160', evidence: [{ kind: 'test', name: 'marketplace-runtime-postgres' }] });
   await fixture.update({ status: 'RUNNING', tenants: [{ id: a.company, counts: { companies: 1, integrations: 1, accounts: 1 } },
     { id: b.company, counts: { companies: 1, integrations: 1, accounts: 1 } }], records: {
     companies: [a.company,b.company], integrations: [a.integration,b.integration], accounts: [a.account,b.account],
-    externalAccountIds: [a.externalAccountId,b.externalAccountId], merchants: [a.merchant,b.merchant] } });
+    externalAccountIds: [a.externalAccountId,b.externalAccountId], merchants: [a.merchant,b.merchant],
+    orders: [orderId], providerEvents: [eventId] } });
   const migrator = createPool({ connectionString: e2eMigrationConnectionString(process.env), max: 1, application_name: 'marketplace-e2e-seed' });
   const app = createPool({ connectionString: 'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e', max: 2, application_name: 'marketplace-e2e-runtime' });
-  let passed = false;
+  let passed = false, seeded = false;
   try {
     for (const row of [a,b]) {
       await migrator.query('BEGIN');
@@ -40,8 +42,8 @@ async function main() {
       await migrator.query(`INSERT INTO rotamoto.marketplace_account_bindings(company_id,integration_id,external_account_id,provider,merchant_id,authorized)
         VALUES($1,$2,$3,'ifood',$4,true)`, [row.company,row.integration,row.account,row.merchant]);
       await migrator.query('COMMIT');
+      seeded = true;
     }
-    const orderId = id(); const eventId = `evt-${id()}`; const eventTime = new Date().toISOString();
     const raw = Buffer.from(JSON.stringify({ id:eventId, orderId, merchantId:a.merchant, fullCode:'PLACED', code:'PLACED', createdAt:eventTime }));
     const signature = crypto.createHmac('sha256',a.secret).update(raw).digest('hex');
     let detailRequests = 0, acknowledgments = 0, providerDetailGate = null;
@@ -270,24 +272,12 @@ async function main() {
     process.stdout.write('Marketplace runtime PostgreSQL E2E: PASS (tenant routing, raw HMAC, inbox idempotency, out-of-order/equal-timestamp protection, canonical Order projection, PII-free durable event, post-process poll ack, secret ACL)\n');
     passed = true;
   } finally {
-    for (const row of [a,b]) {
-      await migrator.query('BEGIN').catch(()=>{});
-      await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.marketplace_order_versions WHERE company_id=$1',[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.marketplace_command_outbox WHERE company_id=$1',[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.marketplace_event_inbox WHERE company_id=$1',[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.marketplace_account_bindings WHERE company_id=$1',[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type=\'Order\' AND source_installation_id IN (SELECT id FROM rotamoto.sync_installations WHERE company_id=$1 AND local_device_id LIKE \'marketplace-%\')',[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.sync_installations WHERE company_id=$1 AND local_device_id LIKE \'marketplace-%\' AND NOT EXISTS(SELECT 1 FROM rotamoto.domain_records d WHERE d.company_id=$1 AND d.source_installation_id=sync_installations.id)',[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.external_accounts WHERE company_id=$1',[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.integrations WHERE company_id=$1',[row.company]).catch(()=>{});
-      await migrator.query('DELETE FROM rotamoto.companies WHERE id=$1',[row.company]).catch(()=>{});
-      await migrator.query('COMMIT').catch(()=>{});
-    }
     await app.end(); await migrator.end();
-    await fixture.update({ status: passed ? 'RETAINED' : 'FAILED', databaseCommitted: true,
-      retentionReason: 'E2E-owned synthetic tenant cleanup was attempted; append-only audit records are never deleted and this run remains inventoried.',
-      counts: { companies: 2, integrations: 2, accounts: 2, audit_log: 'retained-or-not-applicable' } });
+    await fixture.update({ status: seeded ? 'RETAINED' : 'FAILED', databaseCommitted: seeded,
+      retentionReason: seeded ? 'Synthetic tenant rows, provider events, and append-only audit records are retained; no cleanup is authorized.' : null,
+      evidence: [{ kind: 'test_result', result: passed ? 'PASS' : seeded ? 'FAILED_OR_INTERRUPTED' : 'NO_COMMIT' }],
+      lastError: passed || !seeded ? null : 'Runner failed after a fixture commit; synthetic rows are retained for inspection.',
+      counts: { companies: seeded ? 2 : 0, integrations: seeded ? 2 : 0, accounts: seeded ? 2 : 0, audit_log: 'retained' } });
   }
 }
 
