@@ -49,7 +49,7 @@ installed.then(async () => {
   assert.ok(added.includes('/index.html'));
   assert.ok(added.includes('/ticket-renderer.js?v=1'));
   assert.ok(added.includes('/browser-printer-provider.js?v=1'));
-  assert.ok(added.includes('/app.js?v=0140.10'));
+  assert.ok(added.includes('/app.js?v=0153.2'));
   assert.ok(added.includes('/design-system.css?v=0140.16'));
   assert.ok(!added.includes('/vendor/maplibre/maplibre-gl-worker.js?v=0139.1'), 'missing optional map asset does not prevent app shell installation');
   assert.match(html, /serviceWorker\.register\('\/sw\.js'/);

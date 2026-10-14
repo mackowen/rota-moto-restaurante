@@ -1,18 +1,15 @@
-/* Browser-facing capability boundary. The backend protocol adapter has local
- * contract coverage, but no authenticated persistence/runtime wiring yet. */
+/* Browser-facing boundary: credentials and webhook secrets remain server-side. */
 (function (global) {
   'use strict';
-  const blocked = () => Promise.reject(Object.assign(
-    new Error('99Food ainda não está conectado ao processamento persistente de pedidos.'),
-    { code: 'PROVIDER_RUNTIME_NOT_WIRED' }
-  ));
+  const serverOnly = () => Promise.reject(Object.assign(new Error('A 99Food é operada pela área autenticada Administração → Integrações.'),
+    { code: 'SERVER_MANAGED_INTEGRATION' }));
   global.RotaMoto99Food = Object.freeze({
-    available: () => false,
+    available: () => true,
     diagnostics: () => Object.freeze({ provider: '99food', protocol: '99food_recommended', contractAvailable: true,
-      protocolAdapter: 'local_tested', runtimeEnabled: false, connectionVerified: false,
-      blockers: Object.freeze(['database_runtime_support', 'application_credentials', 'merchant_binding', 'certification']) }),
-    status: blocked, orders: blocked, order: blocked, confirm: blocked, ready: blocked,
-    dispatch: blocked, cancel: blocked,
-    normalize: () => { throw Object.assign(new Error('A normalização canônica de 99Food ainda requer o runtime persistente.'), { code: 'PROVIDER_RUNTIME_NOT_WIRED' }); }
+      protocolAdapter: 'runtime_enabled', runtimeEnabled: true, connectionVerified: false,
+      polling: false, pollingReason: 'not_applicable_to_99food_recommended_protocol',
+      blockers: Object.freeze(['application_credentials', 'merchant_binding', 'sandbox_whitelist', 'certification']) }),
+    status: serverOnly, orders: serverOnly, order: serverOnly, confirm: serverOnly, ready: serverOnly,
+    dispatch: serverOnly, cancel: serverOnly
   });
 })(window);

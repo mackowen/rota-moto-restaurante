@@ -18,12 +18,13 @@ assert.deepEqual(catalog[0].capabilities.homologation, { DOCUMENTED: true, IMPLE
 assert.deepEqual(catalog[2].capabilities.account, { DOCUMENTED: true, IMPLEMENTED: true, RUNTIME_WIRED: true, LOCAL_TESTED: true, SANDBOX_TESTED: false, PRODUCTION_AUTHORIZED: false });
 assert.equal(catalog[2].capabilityContract.platformDelivery, 'NOT_SUPPORTED', 'Keeta merchant fulfillment is not represented as a platform courier API');
 assert.equal(catalog[0].actions.connect,true); assert.equal(catalog[0].actions.reconnect,true);
-assert.equal(catalog[1].actions.connect,false); assert.equal(catalog[2].actions.connect,true);
+assert.equal(catalog[1].actions.connect,true); assert.equal(catalog[2].actions.connect,true);
 assert.equal(catalog[1].capabilities.orders.DOCUMENTED,true,'99Food portal documents order API access at a high level');
 assert.equal(catalog[1].capabilities.webhook.DOCUMENTED,true);
 assert.equal(catalog[1].capabilities.sandbox.DOCUMENTED,true);
-assert.equal(catalog[1].capabilities.orders.IMPLEMENTED,false,'the partner-gated technical contract is not exposed');
-assert.match(catalog[1].capabilityNotes,/schema atual.*Credenciais.*certificação/u);
+assert.equal(catalog[1].capabilities.orders.IMPLEMENTED,true,'99Food order flow is wired to the local runtime');
+assert.equal(catalog[1].capabilities.orders.RUNTIME_WIRED,true);
+assert.match(catalog[1].capabilityNotes,/ativo no runtime local.*whitelist.*certificação/iu);
 assert.equal(catalog[0].state, 'authorized_unverified', 'an account link does not assert a successful provider health check');
 assert.equal(publicCatalog([{ provider: 'ifood', status: 'disabled' }])[0].state, 'disabled');
 assert.equal(JSON.stringify(catalog).includes('secret_ref'), false);
@@ -73,12 +74,13 @@ assert.deepEqual(sanitizeProviderError({ code: 'PROVIDER_ERROR', message: 'secre
   ]) {
     const context = { window: {} };
     vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
-    assert.equal(context.window[globalName].available(), false);
+    assert.equal(context.window[globalName].available(), globalName==='RotaMoto99Food');
     assert.equal(context.window[globalName].diagnostics().connectionVerified, false);
     if (globalName === 'RotaMoto99Food') {
       assert.equal(context.window[globalName].diagnostics().contractAvailable, true);
-      assert.equal(context.window[globalName].diagnostics().runtimeEnabled, false);
-      await assert.rejects(context.window[globalName][method](), error => error.code === 'PROVIDER_RUNTIME_NOT_WIRED');
+      assert.equal(context.window[globalName].diagnostics().runtimeEnabled, true);
+      assert.equal(context.window[globalName].diagnostics().polling, false);
+      await assert.rejects(context.window[globalName][method](), error => error.code === 'SERVER_MANAGED_INTEGRATION');
     } else await assert.rejects(context.window[globalName][method](), error => error.code === 'PROVIDER_BLOCKED_EXTERNAL');
     if (globalName === 'RotaMotoIFood') {
       const sample = context.window[globalName].simulateOrder();

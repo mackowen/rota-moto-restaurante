@@ -49,7 +49,7 @@ async function fire(listener, event = {}) {
   assert.equal([...healthy.stores.get(cacheName).keys()].some(url => url.includes('maplibre-gl-worker.js')), false,
     'missing optional cartography worker does not block or enter the shell');
 
-  const failed = await createWorker({ failUrl: 'https://restaurante.test/app.js?v=0140.10' });
+  const failed = await createWorker({ failUrl: 'https://restaurante.test/app.js?v=0153.2' });
   failed.stores.set('rotamoto-restaurante-shell-v17', new Map([['sentinel', new Response('old-shell')]]));
   await assert.rejects(fire(failed.listeners.get('install')), /required shell assets unavailable/u);
   assert.deepEqual([...failed.stores.keys()], ['rotamoto-restaurante-shell-v17'], 'failed update removes only its staged cache and retains the active shell');

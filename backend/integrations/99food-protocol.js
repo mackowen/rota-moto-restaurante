@@ -8,6 +8,7 @@ const crypto = require('node:crypto');
 const API = 'https://openapi.99food.com';
 const MAX_BODY = 256 * 1024;
 const OPAQUE = /^[^\u0000-\u001f\u007f]{1,128}$/u;
+const SHOP_ID = /^[^\u0000-\u0020\u007f]{1,128}$/u;
 const ORDER_STATUS = Object.freeze({
   100: 'placed', 200: 'confirmed', 400: 'dispatched', 500: 'arrived', 600: 'completed',
   901: 'cancelled', 902: 'cancelled', 903: 'cancelled', 921: 'cancelled', 922: 'cancelled',
@@ -16,9 +17,68 @@ const ORDER_STATUS = Object.freeze({
 });
 const WEBHOOK_TYPES = new Set(['orderNew','orderCancel','orderFinish','deliveryStatus','orderCancelApply',
   'orderRefundApply','orderPartialCancel']);
+const CURRENCY_BY_COUNTRY = Object.freeze({ BR:'BRL',MX:'MXN',CO:'COP',CR:'CRC',PE:'PEN' });
 
 function fail(code, status = 400) { return Object.assign(new Error('99Food request rejected.'), { code, status }); }
 function isRecord(value) { return !!value && typeof value === 'object' && !Array.isArray(value); }
+function minor(value) { return Number.isSafeInteger(value) && value >= 0 ? value : null; }
+
+function normalizeItem(item, depth=0) {
+  if(!isRecord(item)||typeof item.name!=='string'||item.name.length>240||!Number.isSafeInteger(item.amount)||item.amount<1||item.amount>1_000_000||
+    depth>5||!Array.isArray(item.sub_item_list)||item.sub_item_list.length>100)throw fail('INVALID_PROVIDER_RESPONSE',502);
+  const skuPrice=minor(item.sku_price),lineTotal=minor(item.total_price),paid=minor(item.real_price);
+  if(skuPrice===null||lineTotal===null)throw fail('INVALID_PROVIDER_RESPONSE',502);
+  const options=item.sub_item_list.map(child=>normalizeItem(child,depth+1));
+  const readPromotion=value=>{
+    if(!isRecord(value)||!Number.isSafeInteger(value.promo_type)||minor(value.promo_discount)===null||minor(value.shop_subside_price)===null)
+      throw fail('INVALID_PROVIDER_RESPONSE',502);
+    return Object.freeze({type:value.promo_type,discountMinor:value.promo_discount,storeSubsidyMinor:value.shop_subside_price});
+  };
+  const summary=Array.isArray(item.promotion_detail)?item.promotion_detail.slice(0,100).map(readPromotion):
+    isRecord(item.promotion_detail)?[readPromotion(item.promotion_detail)]:[];
+  const promos=Array.isArray(item.promo_list)?item.promo_list.slice(0,100).map(readPromotion):[];
+  return Object.freeze({name:item.name.slice(0,240),quantity:item.amount,unitPriceMinor:skuPrice,lineTotalMinor:lineTotal,
+    ...(paid===null?{}:{paidMinor:paid}),...(typeof item.app_item_id==='string'?{providerItemId:item.app_item_id.slice(0,128)}:{}),
+    ...(typeof item.remark==='string'&&item.remark?{notes:item.remark.slice(0,500)}:{}),options:Object.freeze(options),
+    promotionSummary:Object.freeze(summary),promotions:Object.freeze(promos)});
+}
+
+function normalizeMoney(info, deliveryType, fulfillmentMode) {
+  const price=info.price;
+  if(!isRecord(price))return null;
+  const currency=typeof info.currency==='string'&&/^[A-Z]{3}$/u.test(info.currency)?info.currency:
+    typeof price.currency==='string'&&/^[A-Z]{3}$/u.test(price.currency)?price.currency:CURRENCY_BY_COUNTRY[info.country]||null;
+  if(!currency)return null;
+  const components={};
+  const subtotal=minor(price.order_price);if(subtotal!==null)components.itemsSubtotalMinor=subtotal;
+  const discount=minor(price.items_discount);if(discount!==null)components.discountMinor=discount;
+  const delivery=minor(price.delivery_price)??minor(price.store_charged_delivery_price);if(delivery!==null)components.deliveryFeeMinor=delivery;
+  const service=minor(price.service_price)??minor(price.others_fees?.service_price);if(service!==null)components.serviceFeeMinor=service;
+  const fees=price.others_fees;
+  if(isRecord(fees)){
+    const small=minor(fees.small_order_price),tip=minor(fees.total_tip_money),topup=minor(fees.meal_top_up_price),coupon=minor(fees.coupon_discount);
+    const totalFees=small+tip+topup;
+    if(small!==null&&tip!==null&&topup!==null&&coupon!==null&&totalFees>=coupon&&Number.isSafeInteger(totalFees-coupon))components.otherFeeMinor=totalFees-coupon;
+  }
+  const total=minor(price.customer_need_paying_money)??minor(price.real_pay_price)??minor(price.real_price);
+  if(total!==null)components.totalMinor=total;
+  if(!Object.keys(components).length)return null;
+  return Object.freeze({currency,completeness:'partial',provenance:Object.freeze({kind:'external',sourceId:'99food'}),components:Object.freeze(components)});
+}
+
+function normalizePriceBreakdown(info) {
+  if(!isRecord(info.price))return null;
+  const fields=['order_price','items_discount','delivery_discount','delivery_price','store_charged_delivery_price','real_price',
+    'real_pay_price','refund_price','shop_paid_money','customer_need_paying_money','meal_top_up_price','service_price','in_sale_refund_to_c_fee','logistics_cost'];
+  const result={};for(const field of fields){const value=minor(info.price[field]);if(value!==null)result[field]=value;}
+  if(isRecord(info.price.others_fees)){
+    const other={};for(const field of ['small_order_price','total_tip_money','service_price','coupon_discount','meal_top_up_price']){
+      const value=minor(info.price.others_fees[field]);if(value!==null)other[field]=value;
+    }
+    if(Object.keys(other).length)result.others_fees=Object.freeze(other);
+  }
+  return Object.keys(result).length?Object.freeze(result):null;
+}
 
 // Preserve integers outside Number's safe range for documented Long IDs.
 // Only integer values on *_id keys are converted; monetary/count fields remain numbers.
@@ -52,7 +112,7 @@ function signParams(params, appSecret) {
 function webhookEvent(rawBody, signature, appSecret) {
   if (!verifyWebhook(rawBody, signature, appSecret)) throw fail('INVALID_SIGNATURE', 401);
   const payload = parseLosslessJson(rawBody);
-  if (!isRecord(payload) || typeof payload.app_shop_id !== 'string' || !OPAQUE.test(payload.app_shop_id) ||
+  if (!isRecord(payload) || typeof payload.app_shop_id !== 'string' || !SHOP_ID.test(payload.app_shop_id) ||
       !Number.isSafeInteger(payload.timestamp) || payload.timestamp <= 0 || payload.timestamp > 8_640_000_000 || typeof payload.type !== 'string' ||
       !WEBHOOK_TYPES.has(payload.type) || !isRecord(payload.data)) throw fail('INVALID_WEBHOOK');
   const info = isRecord(payload.data.order_info) ? payload.data.order_info : payload.data;
@@ -60,42 +120,52 @@ function webhookEvent(rawBody, signature, appSecret) {
   const orderId = typeof rawId === 'string' ? rawId : Number.isSafeInteger(rawId) ? String(rawId) : null;
   if (!orderId || !OPAQUE.test(orderId)) throw fail('INVALID_WEBHOOK');
   const digest = crypto.createHash('sha256').update(rawBody).digest('hex');
+  const applicationId=payload.data.apply_id===undefined?null:String(payload.data.apply_id);
+  if(['orderCancelApply','orderRefundApply'].includes(payload.type)&&(!applicationId||!OPAQUE.test(applicationId)))throw fail('INVALID_WEBHOOK');
+  const reasons=(values,key,label)=>Array.isArray(values)?Object.freeze(values.slice(0,30).flatMap(item=>{
+    if(!isRecord(item)||typeof item[key]!=='string'||!item[key]||item[key].length>160||typeof item[label]!=='string'||!item[label]||item[label].length>240)return[];
+    return [Object.freeze({id:item[key],label:item[label]})];
+  })):Object.freeze([]);
+  const application=applicationId?Object.freeze({id:applicationId,
+    ...(payload.type==='orderCancelApply'?{reasons:reasons(payload.data.reason_list,'reason','reason')}:{baseReasons:reasons(payload.data.base_reason_list,'base_reason_id','base_reason')})}):null;
   const states = { orderNew: 'placed', orderCancel: 'cancelled', orderFinish: 'completed',
     orderCancelApply: 'cancellation_requested', orderRefundApply: 'refund_requested',
     orderPartialCancel: 'partial_cancelled', deliveryStatus: ORDER_STATUS[info.status] || 'unmapped' };
   return Object.freeze({ provider: '99food', externalAccountId: payload.app_shop_id,
-    externalOrderId: orderId, externalEventId: `${payload.type}:${payload.timestamp}:${orderId}:${digest}`,
+    externalOrderId: orderId, externalEventId: `99f:${digest}`,
     eventType: payload.type, externalStatus: info.status == null ? payload.type : String(info.status),
-    status: states[payload.type], occurredAt: new Date(payload.timestamp * 1000).toISOString(),
+    status: states[payload.type], occurredAt: new Date(payload.timestamp * 1000).toISOString(),...(application?{application}:{}),
     // An order notification is a trigger to fetch the complete authoritative order.
     requiresOrderFetch: ['orderNew','orderCancel','orderFinish','deliveryStatus','orderPartialCancel'].includes(payload.type) });
 }
 
-function normalizeOrder(response) {
+function normalizeOrder(response,{expectedAppShopId=null}={}) {
   const data = isRecord(response?.data) ? response.data : response;
   const info = isRecord(data?.order_info) ? data.order_info : data;
   const rawId = data?.order_id ?? info?.order_id;
   const externalId = typeof rawId === 'string' ? rawId : Number.isSafeInteger(rawId) ? String(rawId) : null;
-  if (!externalId || !OPAQUE.test(externalId) || !Number.isInteger(info?.status) || !Array.isArray(data?.order_items))
+  const orderItems=Array.isArray(data?.order_items)?data.order_items:info?.order_items;
+  if (!externalId || !OPAQUE.test(externalId) || !Number.isInteger(info?.status) || !Array.isArray(orderItems))
     throw fail('INVALID_PROVIDER_RESPONSE', 502);
   const deliveryType = info.delivery_type;
   const fulfillmentMode = info.fulfillment_mode;
+  const returnedShopId=info.shop?.app_shop_id??data.shop?.app_shop_id;
+  if(expectedAppShopId!==null&&(typeof returnedShopId!=='string'||returnedShopId!==expectedAppShopId))throw fail('MERCHANT_ORDER_MISMATCH',502);
   if (![0,1,2].includes(deliveryType) || ![0,1].includes(fulfillmentMode)) throw fail('INVALID_PROVIDER_RESPONSE', 502);
   const state = ORDER_STATUS[info.status] || 'unmapped';
   if (state === 'unmapped' || (fulfillmentMode === 1 && deliveryType !== 0) || (fulfillmentMode === 0 && ![1,2].includes(deliveryType)) ||
-      data.order_items.length > 1000 || data.order_items.some(item => !isRecord(item) || typeof item.name !== 'string' ||
-        !Number.isFinite(item.amount) || item.amount <= 0 || item.amount > 1_000_000)) throw fail('INVALID_PROVIDER_RESPONSE', 502);
+      orderItems.length > 1000) throw fail('INVALID_PROVIDER_RESPONSE', 502);
+  const items=orderItems.map(item=>normalizeItem(item));
   const created = Number(info.create_time);
   return Object.freeze({ provider: '99food', externalId, externalDisplayId: String(info.order_index ?? externalId),
     status: state, providerStatus: info.status, createdAt: Number.isSafeInteger(created) && created > 0 && created <= 8_640_000_000
       ? new Date(created * 1000).toISOString() : null,
     orderType: fulfillmentMode === 1 ? 'pickup' : 'delivery',
     fulfillment: fulfillmentMode === 1 ? 'customer_pickup' : deliveryType === 1 ? 'platform' : deliveryType === 2 ? 'merchant' : 'unknown',
-    deliveryType, fulfillmentMode,
-    items: Object.freeze(data.order_items.map(item => Object.freeze({
-      name: typeof item?.name === 'string' ? item.name.slice(0,240) : '',
-      quantity: Number.isFinite(item?.amount) ? item.amount : 0
-    }))) });
+    deliveryType, fulfillmentMode, money:normalizeMoney(info,deliveryType,fulfillmentMode),priceBreakdown:normalizePriceBreakdown(info),
+    payment:Object.freeze({payType:Number.isInteger(info.pay_type)?info.pay_type:null,payChannel:Number.isInteger(info.pay_channel)?info.pay_channel:null,
+      payMethod:Number.isInteger(info.pay_method)?info.pay_method:null}),
+    items: Object.freeze(items) });
 }
 
 function create99FoodAdapter({ fetchImpl = globalThis.fetch, clock = () => Date.now(), baseUrl = API } = {}) {
@@ -131,10 +201,19 @@ function create99FoodAdapter({ fetchImpl = globalThis.fetch, clock = () => Date.
     if (response.status === 429 || response.status >= 500) throw Object.assign(new Error('99Food provider temporarily unavailable.'), {
       code: response.status === 429 ? 'PROVIDER_RATE_LIMIT' : 'PROVIDER_UNAVAILABLE', status: response.status,
       retryAfterSeconds: Math.min(3600, Math.max(1, Number(response.headers?.get?.('retry-after')) || 30)) });
-    let body; try { body = await response.json(); } catch (_) { throw fail('INVALID_PROVIDER_RESPONSE', 502); }
-    if (!response.ok || !isRecord(body) || body.errno !== 0) throw Object.assign(new Error('99Food rejected the operation.'), {
-      code: Number(body?.errno) === 10102 ? 'PROVIDER_AUTH_EXPIRED' : 'PROVIDER_REJECTED', status: Number(body?.errno) === 10102 ? 401 : response.status || 502,
-      providerCode: Number.isInteger(body?.errno) ? body.errno : null });
+    let body;
+    try {
+      if(typeof response.text==='function')body=parseLosslessJson(Buffer.from(await response.text(),'utf8'));
+      else body=await response.json();
+    } catch (_) { throw fail('INVALID_PROVIDER_RESPONSE', 502); }
+    if (!response.ok || !isRecord(body) || body.errno !== 0) {
+      const providerCode=Number.isInteger(body?.errno)?body.errno:null;
+      const cooldown=providerCode===10103;
+      throw Object.assign(new Error('99Food rejected the operation.'), {
+        code: providerCode===10102 ? 'PROVIDER_AUTH_EXPIRED' : cooldown ? 'PROVIDER_TOKEN_REFRESH_COOLDOWN' : 'PROVIDER_REJECTED',
+        status: providerCode===10102 ? 401 : cooldown ? 429 : response.status || 502,
+        ...(cooldown?{retryAfterSeconds:120}:{}),providerCode });
+    }
     return body;
   }
   async function token({ credentials, appShopId = credentials?.appShopId, refresh = false }) {
@@ -152,12 +231,13 @@ function create99FoodAdapter({ fetchImpl = globalThis.fetch, clock = () => Date.
   async function order({ id, credentials }) {
     const authToken = credentials?.authToken;
     if (typeof id !== 'string' || !OPAQUE.test(id) || typeof authToken !== 'string' || !authToken) throw fail('CREDENTIALS_UNAVAILABLE', 503);
-    return normalizeOrder(await request('/v1/order/order/detail', { credentials, params: { auth_token: authToken, order_id: id } }));
+    return normalizeOrder(await request('/v1/order/order/detail', { credentials, params: { auth_token: authToken, order_id: id } }),
+      {expectedAppShopId:credentials.appShopId});
   }
   async function command({ operation, id, credentials, reasonId, reason, applyId, agree, baseReasonId, baseReason, customReason }) {
     const authToken = credentials?.authToken;
     if (typeof id !== 'string' || !OPAQUE.test(id) || typeof authToken !== 'string' || !authToken) throw fail('CREDENTIALS_UNAVAILABLE', 503);
-    const routes = { CONFIRM: '/v1/order/order/confirm', READY: '/v1/order/order/ready',
+    const routes = { CONFIRM: '/v1/order/order/confirm', READY: '/v1/order/order/ready', CONFIRM_CASH_PAYMENT:'/v1/order/order/payConfirm',
       DELIVERED: '/v1/order/order/delivered', CANCEL_ORDER: '/v1/order/order/cancel',
       CANCEL_REQUEST: '/v1/order/apply/cancel', REFUND_REQUEST: '/v1/order/apply/refund' };
     const route = routes[operation]; if (!route) throw fail('UNSUPPORTED_OPERATION', 409);

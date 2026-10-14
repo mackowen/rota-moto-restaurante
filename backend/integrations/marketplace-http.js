@@ -35,7 +35,7 @@ function createMarketplaceHttpHandler({pool,adapters,accountResolver,accountWrit
         }
         json(res,200,{code:0,message:'success',...(event.opType===2?{revoked:outcome.matched,duplicate:outcome.duplicate}:{authorizationNotice:true})});return true;
       }
-      const match=/^\/api\/marketplace\/(ifood|keeta)\/webhooks(?:\/([0-9a-f-]{36}))?$/iu.exec(url.pathname);
+      const match=/^\/api\/marketplace\/(ifood|keeta|99food)\/webhooks(?:\/([0-9a-f-]{36}))?$/iu.exec(url.pathname);
       if(req.method!=='POST'||!match)throw Object.assign(new Error('Invalid route.'),{code:'NOT_FOUND',status:404});
       if(!/^application\/json(?:\s*;|$)/iu.test(req.headers['content-type']||''))throw Object.assign(new Error('JSON required.'),{code:'UNSUPPORTED_MEDIA_TYPE',status:415});
       const chunks=[];let size=0;
@@ -43,7 +43,8 @@ function createMarketplaceHttpHandler({pool,adapters,accountResolver,accountWrit
       const rawBody=Buffer.concat(chunks);
       const provider=match[1].toLowerCase();
       const result=await runtime.ingest({provider,accountId:match[2]||null,rawBody,
-        signature:provider==='ifood'?req.headers['x-ifood-signature']:req.headers['x-app-signature'],headers:req.headers,deferProcessing:true});
+        signature:provider==='ifood'?req.headers['x-ifood-signature']:provider==='99food'?req.headers['didi-header-sign']:req.headers['x-app-signature'],headers:req.headers,deferProcessing:true});
+      if(provider==='99food'){json(res,200,{errno:0,errmsg:'ok'});return true;}
       if(provider==='keeta') { res.writeHead(204,{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Request-ID':requestId});res.end();return true; }
       json(res,202,{accepted:true,queued:result.queued,duplicate:result.duplicate,requestId});return true;
     }catch(error){

@@ -46,11 +46,27 @@ function createMarketplaceAccountService({pool,accountWriter,secretProvider,adap
     }
     return stateHash;
   }
-  async function begin(companyId,provider){
-    if(!['ifood','keeta'].includes(provider))throw failure('PROVIDER_UNAVAILABLE',409);
+  async function begin(companyId,provider,input={}){
+    if(!['ifood','keeta','99food'].includes(provider))throw failure('PROVIDER_UNAVAILABLE',409);
     await cleanupExpired(companyId).catch(()=>{});
     const integrationId=await ensureIntegration(companyId,provider);
     const credentials=await applicationCredentials(provider,companyId);
+    if(provider==='99food'){
+      const appShopId=input.appShopId;
+      const displayName=input.displayName;
+      if(Object.keys(input).some(key=>!['appShopId','displayName'].includes(key))||typeof appShopId!=='string'||
+        !/^[^\u0000-\u0020\u007f]{1,128}$/u.test(appShopId)||displayName!==undefined&&
+        (typeof displayName!=='string'||displayName.length>160||/[\u0000-\u001f\u007f]/u.test(displayName)))throw failure('INVALID_MERCHANT_BINDING',400);
+      if(!credentials||typeof credentials.appId!=='string'||typeof credentials.appSecret!=='string')throw failure('PROVIDER_CREDENTIALS_NOT_CONFIGURED',503);
+      // The official protocol exposes no OAuth consent screen; the store ID and
+      // app credentials are provisioned by the operator through the server boundary.
+      const token=await adapters['99food'].token({credentials:{...credentials,appShopId}});
+      if(token.appShopId!==appShopId)throw failure('MERCHANT_TOKEN_MISMATCH',409);
+      const stored=await accountWriter.provision({companyId,provider,merchantId:appShopId,displayName,
+        credentials:{...credentials,authToken:token.authToken,tokenExpiresAt:token.expiresAt,appShopId},active:true});
+      await tenantTx(companyId,client=>client.query("UPDATE rotamoto.integrations SET status='active',updated_at=now() WHERE id=$1 AND company_id=$2",[integrationId,companyId]));
+      return Object.freeze({provider,accounts:Object.freeze([{id:stored.id,displayName:displayName||null,status:'active'}])});
+    }
     if(!credentials||typeof credentials.clientId!=='string'||typeof credentials.clientSecret!=='string')throw failure('PROVIDER_CREDENTIALS_NOT_CONFIGURED',503);
     const state=crypto.randomBytes(32).toString('base64url');
     if(provider==='ifood'){

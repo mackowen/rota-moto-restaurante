@@ -13,7 +13,10 @@ function createMarketplaceAccountWriter({privilegedPool,secretProvider}={}){
     }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}finally{client.release();}
   }
   async function provision({companyId,provider,merchantId,displayName,credentials,externalAccountId=null,serviceMerchantId=null,active=true}){
-    if(!UUID.test(companyId||'')||!['ifood','keeta'].includes(provider)||typeof merchantId!=='string'||!merchantId||merchantId.length>255)throw new TypeError('Invalid marketplace account binding.');
+    if(!UUID.test(companyId||'')||!['ifood','keeta','99food'].includes(provider)||typeof merchantId!=='string'||!merchantId||merchantId.length>255)throw new TypeError('Invalid marketplace account binding.');
+    if(provider==='99food'&&(!credentials||typeof credentials.appId!=='string'||!/^[0-9]{1,20}$/u.test(credentials.appId)||
+      typeof credentials.appSecret!=='string'||!credentials.appSecret||typeof credentials.authToken!=='string'||!credentials.authToken||
+      credentials.appShopId!==merchantId||!Number.isFinite(credentials.tokenExpiresAt)))throw new TypeError('Invalid 99Food account credentials.');
     const integration=await scoped(companyId,async client=>{
       const result=await client.query('SELECT id::text FROM rotamoto.integrations WHERE company_id=$1 AND provider=$2',[companyId,provider]);
       return result.rows[0]?.id||null;
@@ -132,7 +135,29 @@ function createMarketplaceAccountWriter({privilegedPool,secretProvider}={}){
     }
     throw Object.assign(new Error('Marketplace token changed too frequently.'),{code:'TOKEN_PERSISTENCE_CONFLICT'});
   }
-  return Object.freeze({provision,activate,setError,revokeKeetaAuthorization,disableAccount,scoped,persistTokens});
+  async function persist99FoodToken({companyId,accountScope,authToken,expiresAt,expectedSecretRef}){
+    if(!UUID.test(companyId||'')||!UUID.test(accountScope||'')||typeof authToken!=='string'||!authToken||authToken.length>8192||
+      !Number.isFinite(expiresAt)||expiresAt<=Date.now())throw new TypeError('Invalid 99Food token update.');
+    const row=await scoped(companyId,async client=>{
+      const result=await client.query(`SELECT ea.secret_ref FROM rotamoto.external_accounts ea JOIN rotamoto.integrations i
+        ON i.company_id=ea.company_id AND i.id=ea.integration_id WHERE ea.company_id=$1 AND ea.id=$2 AND i.provider='99food'
+        AND ea.account_status='active' AND ea.link_status='confirmed' FOR UPDATE OF ea`,[companyId,accountScope]);
+      return result.rows[0]||null;
+    });
+    if(!row?.secret_ref||expectedSecretRef&&row.secret_ref!==expectedSecretRef)throw Object.assign(new Error('99Food account changed during token refresh.'),{code:'TOKEN_PERSISTENCE_CONFLICT'});
+    const name=`marketplace/99food/${accountScope}`;
+    const current=JSON.parse(await secretProvider.get(row.secret_ref,{name,scope:'tenant',tenantId:companyId}));
+    if(current.appShopId==null||current.appId==null||current.appSecret==null)throw Object.assign(new Error('99Food account credentials unavailable.'),{code:'CREDENTIAL_INVALID'});
+    const updated={...current,authToken,tokenExpiresAt:expiresAt};
+    const next=await secretProvider.put({name,scope:'tenant',tenantId:companyId,value:JSON.stringify(updated)});
+    const changed=await scoped(companyId,async client=>(await client.query(`UPDATE rotamoto.external_accounts SET secret_ref=$3,
+      token_expires_at=to_timestamp($4/1000.0),updated_at=now() WHERE company_id=$1 AND id=$2 AND secret_ref=$5
+      AND account_status='active' AND link_status='confirmed'`,[companyId,accountScope,next.secretRef,expiresAt,row.secret_ref])).rowCount===1);
+    if(!changed){if(secretProvider.remove)await secretProvider.remove(next.secretRef).catch(()=>{});throw Object.assign(new Error('99Food account changed during token refresh.'),{code:'TOKEN_PERSISTENCE_CONFLICT'});}
+    if(next.secretRef!==row.secret_ref&&secretProvider.remove)await secretProvider.remove(row.secret_ref).catch(()=>{});
+    return true;
+  }
+  return Object.freeze({provision,activate,setError,revokeKeetaAuthorization,disableAccount,scoped,persistTokens,persist99FoodToken});
 }
 
 module.exports={createMarketplaceAccountWriter};

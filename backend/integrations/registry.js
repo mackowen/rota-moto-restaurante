@@ -6,7 +6,7 @@ const PROVIDERS = Object.freeze([
     blockers: Object.freeze(['merchant_credentials', 'merchant_authorization', 'homologation', 'provider_worker_account_routing']) }),
   Object.freeze({ key: '99food', name: '99Food', capability: 'blocked_external',
     capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'REQUIRES_PARTNERSHIP', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'NOT_APPLICABLE_TO_99FOOD_PROTOCOL', selfDelivery: 'SUPPORTED', platformDelivery: 'SUPPORTED', quote: 'NOT_DOCUMENTED', dispatch: 'NOT_DOCUMENTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'NOT_DOCUMENTED', tracking: 'NOT_DOCUMENTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
-    blockers: Object.freeze(['database_runtime_support', 'application_credentials', 'merchant_binding', 'certification']) }),
+    blockers: Object.freeze(['application_credentials', 'merchant_binding', 'sandbox_whitelist', 'certification']) }),
   Object.freeze({ key: 'keeta', name: 'Keeta', capability: 'blocked_external',
     capabilityMatrix: Object.freeze({ account: 'SUPPORTED', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'NOT_SUPPORTED', quote: 'NOT_PUBLICLY_DOCUMENTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'NOT_PUBLICLY_DOCUMENTED', tracking: 'SUPPORTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
     blockers: Object.freeze(['application_credentials', 'merchant_authorization', 'SIT_certification', 'provider_account_routing']) })
@@ -26,17 +26,17 @@ const PUBLICLY_DOCUMENTED = Object.freeze({
 });
 const LOCAL_ADAPTERS = Object.freeze({
   ifood: new Set(['merchant', 'orders', 'webhook', 'polling', 'selfDelivery', 'platformDelivery', 'quote', 'dispatch', 'cancelOrder', 'cancelDelivery', 'tracking']),
-  '99food': new Set(),
+  '99food': new Set(['account','merchant','orders','webhook','selfDelivery','platformDelivery','cancelOrder']),
   keeta: new Set(['account', 'merchant', 'orders', 'webhook', 'polling', 'selfDelivery', 'dispatch', 'cancelOrder', 'tracking'])
 });
 const LOCALLY_TESTED = Object.freeze({
   ifood: new Set(['merchant', 'orders', 'webhook', 'polling', 'selfDelivery', 'platformDelivery', 'quote', 'dispatch', 'cancelOrder', 'cancelDelivery', 'tracking']),
-  '99food': new Set(),
+  '99food': new Set(['account','merchant','orders','webhook','selfDelivery','platformDelivery','cancelOrder']),
   keeta: new Set(['account', 'orders', 'webhook', 'polling', 'selfDelivery', 'dispatch', 'cancelOrder', 'tracking'])
 });
 const RUNTIME_WIRED = Object.freeze({
   ifood: new Set(['merchant','orders','webhook','polling','selfDelivery','platformDelivery','quote','dispatch','cancelOrder','cancelDelivery','tracking']),
-  '99food': new Set(),
+  '99food': new Set(['account','merchant','orders','webhook','selfDelivery','platformDelivery','cancelOrder']),
   keeta: new Set(['account','merchant','orders','webhook','polling','selfDelivery','dispatch','cancelOrder'])
 });
 
@@ -70,7 +70,7 @@ function publicCatalog(persisted = []) {
       capabilityContract: { ...provider.capabilityMatrix },
       capabilities: auditedCapabilities(provider),
       capabilityNotes: provider.key === 'ifood' ? 'A autorização e o worker estão disponíveis quando o servidor tem credenciais e roles configuradas. Contas listadas ainda precisam sincronizar para confirmar conexão; 202 permanece pendente.' :
-        provider.key === '99food' ? 'Contrato público 99Food Protocol (Recommended): pedidos, webhooks assinados, consulta de pedidos, confirmação, pronto, cancelamento e entrega própria. O adapter de protocolo foi testado localmente; inbox/outbox e worker ainda não aceitam 99Food no schema atual. Credenciais, vínculo de loja e certificação exigem onboarding. Open Delivery é protocolo distinto.' :
+        provider.key === '99food' ? '99Food Protocol (Recommended) ativo no runtime local: credenciais de aplicação vêm do keystore do servidor, vínculo por loja usa autorização de Integrações, webhooks assinados entram na inbox e o worker publica pedidos. Polling não se aplica a este protocolo. Whitelist, sandbox, credenciais comerciais e certificação ainda dependem de onboarding; Open Delivery é protocolo distinto.' :
           'OAuth, vínculo da loja, pedidos e worker estão disponíveis quando credenciais e roles estão configuradas. O grant shop-level e a decifragem de PII permanecem fechados sem validação externa. Dispatch e tracking são para entrega própria; não existe contratação avulsa de courier Keeta.' ,
       state: disabled ? 'disabled' : row?.status === 'error' ? 'error' : row?.status === 'active' && accountConfirmed ? 'authorized_unverified' : 'configuration_required',
       connectionVerified,
@@ -79,7 +79,7 @@ function publicCatalog(persisted = []) {
         linkStatus:account.linkStatus,accountStatus:account.accountStatus,tokenExpiresAt:account.tokenExpiresAt,
         lastSyncAt:account.lastSyncAt,lastErrorCode:account.lastErrorCode,confirmedAt:account.confirmedAt})),
       externalAccount: accounts[0] ? {displayName:accounts[0].displayName,linkStatus:accounts[0].linkStatus,confirmedAt:accounts[0].confirmedAt} : null,
-      actions: Object.freeze({ connect: ['ifood','keeta'].includes(provider.key), reconnect: ['ifood','keeta'].includes(provider.key), disable: accounts.some(account=>account.accountStatus==='active') }),
+      actions: Object.freeze({ connect: ['ifood','keeta','99food'].includes(provider.key), reconnect: ['ifood','keeta','99food'].includes(provider.key), disable: accounts.some(account=>account.accountStatus==='active') }),
       blockers: [...provider.blockers]
     };
   });

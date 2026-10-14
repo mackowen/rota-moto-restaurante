@@ -4,15 +4,15 @@ const crypto = require('node:crypto');
 const { retryDelayMs, sanitizeProviderError } = require('./registry');
 const { createMarketplaceRuntime } = require('./marketplace-runtime');
 
-const SIDE_EFFECTS = new Set(['CONFIRM','START_PREPARATION','READY','DISPATCH_MERCHANT','CANCEL_ORDER','SHIPPING_REQUEST','SHIPPING_CANCEL']);
+const SIDE_EFFECTS = new Set(['CONFIRM','START_PREPARATION','READY','DISPATCH_MERCHANT','CANCEL_ORDER','CANCEL_REQUEST','REFUND_REQUEST','DELIVERED','CONFIRM_CASH_PAYMENT','SHIPPING_REQUEST','SHIPPING_CANCEL']);
 function sanitizedError(error) { return sanitizeProviderError(error); }
 
-function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, logger = () => {}, clock = () => Date.now(), random = Math.random,
+function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, persist99FoodToken = null, logger = () => {}, clock = () => Date.now(), random = Math.random,
   leaseSeconds = 45, pollIntervalMs = 1000 } = {}) {
   if (!pool || !Array.isArray(companyIds) || !companyIds.length || !adapters || typeof accountResolver !== 'function')
     throw new TypeError('Marketplace worker configuration is incomplete.');
   let stopped = false;
-  const runtime=createMarketplaceRuntime({pool,adapters,accountResolver:{
+  const runtime=createMarketplaceRuntime({pool,adapters,persist99FoodToken,accountResolver:{
     byId:(provider,accountId,companyId)=>accountResolver(provider,accountId,companyId),
     byMerchant:(provider,merchantId)=>accountResolver.byMerchant(provider,merchantId)
   },logger});
@@ -37,14 +37,16 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
     if(!command)return false;
     let confirmed=false;
     try {
-      const account=await accountResolver(command.provider,command.external_account_id,companyId);
+      let account=await accountResolver(command.provider,command.external_account_id,companyId);
       if(account?.status==='active'&&account.companyId===companyId&&account.provider===command.provider) {
+        account=await runtime.refreshCredentials(account);
         const order=command.provider==='ifood'
           ? await adapters.ifood.order({companyId,orderId:command.external_order_id,credentials:account.credentials})
-          : await adapters.keeta.order({companyId,id:command.external_order_id,credentials:account.credentials});
+          : command.provider==='keeta'?await adapters.keeta.order({companyId,id:command.external_order_id,credentials:account.credentials})
+            : await adapters['99food'].order({companyId,id:command.external_order_id,credentials:account.credentials});
         const state=String(order.status||'').toUpperCase();
         const expected={CONFIRM:['CONFIRMED'],START_PREPARATION:['PREPARATION_STARTED'],READY:['READY_TO_PICKUP','READY_FOR_PICKUP'],
-          DISPATCH_MERCHANT:['DISPATCHED'],CANCEL_ORDER:['CANCELLED']}[command.operation]||[];
+          DISPATCH_MERCHANT:['DISPATCHED'],CANCEL_ORDER:['CANCELLED'],DELIVERED:['COMPLETED']}[command.operation]||[];
         confirmed=expected.includes(state);
       }
     } catch(error) {
@@ -65,6 +67,8 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
 
   async function execute(command, account) {
     const adapter = adapters[command.provider];
+    if(command.provider==='99food')return adapter.command({operation:command.operation,id:command.external_order_id,
+      credentials:{...account.credentials,deliveryType:command.command_data.deliveryType},...command.command_data});
     const common = command.provider === 'ifood'
       ? { companyId: command.company_id, orderId: command.external_order_id, credentials: account.credentials }
       : { companyId: command.company_id, id: command.external_order_id, credentials: account.credentials };
@@ -178,7 +182,8 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
         const account = await accountResolver(command.provider, command.external_account_id, command.company_id);
         if (!account || account.status !== 'active' || account.companyId !== command.company_id || account.provider !== command.provider)
           throw Object.assign(new Error('Marketplace account unavailable.'),{code:'ACCOUNT_UNAVAILABLE',status:403});
-        const value = await execute(command, account); // provider HTTP is outside PostgreSQL transactions.
+        const readyAccount=await runtime.refreshCredentials(account);
+        const value = await execute(command, readyAccount); // provider HTTP is outside PostgreSQL transactions.
         await settle(command,{ok:true,value});
       } catch (error) {
         await settle(command,{ok:false,error}).catch(() => {});

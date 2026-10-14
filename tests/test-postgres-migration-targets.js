@@ -50,7 +50,14 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.equal(migrations.at(-1)?.id, '0041_delivery_custody_return', '0041 is appended without rewriting the 0040 baseline');
+assert.deepEqual(migrations.slice(-2).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands'], '99Food migrations append without rewriting 0040/0041 history');
+const migration0042 = migrations.find(migration => migration.id === '0042_marketplace_99food_runtime');
+const migration0043 = migrations.find(migration => migration.id === '0043_99food_application_and_cash_commands');
+assert.match(migration0042.up,/claim_marketplace_99food_token_refresh/u);
+assert.match(migration0042.up,/CHECK \(provider IN \('ifood','keeta','99food'\)\)/u);
+assert.match(migration0042.down,/rollback 0042 bloqueado/iu);
+assert.match(migration0043.up,/CONFIRM_CASH_PAYMENT/u);
+assert.match(migration0043.down,/rollback 0043 blocked/iu);
 const ledger0039 = new Map(migrationsThrough0040.slice(0, migration0040Index).map(migration => [migration.id, migration.checksum]));
 const ledger0040 = new Map([...ledger0039, [migrationsThrough0040.at(-1).id, migrationsThrough0040.at(-1).checksum]]);
 assert.equal(assert0115RehearsalState(ledger0039, migrationsThrough0040), '0040_restaurant_driver_queue');

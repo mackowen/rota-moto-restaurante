@@ -4,9 +4,10 @@ const crypto = require('node:crypto');
 const { normalizeWebhook, verifyWebhookAndParse } = require('./keeta-protocol');
 const { verifyWebhookSignature, normalizeOrderEvent, normalizeDeliveryEvent, normalizeOrder } = require('../logistics/providers/ifood');
 const { normalizeKeetaOrder } = require('./keeta-adapter');
+const { webhookEvent: normalize99FoodWebhook } = require('./99food-protocol');
 
 const MAX_WEBHOOK_BYTES = 256 * 1024;
-const PROVIDERS = new Set(['ifood', 'keeta']);
+const PROVIDERS = new Set(['ifood', 'keeta', '99food']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 function digest(value) { return crypto.createHash('sha256').update(value).digest(); }
@@ -18,13 +19,42 @@ function eventFor(provider, raw) {
     const delivery=normalizeDeliveryEvent(raw);
     return delivery.status!=='unmapped'?Object.freeze({...delivery,kind:'shipping'}):Object.freeze({...order,kind:'order'});
   }
+  if(provider==='99food')return Object.freeze({...normalize99FoodWebhook(raw.rawBody,raw.signature,raw.secret),kind:'order'});
   return Object.freeze({...normalizeWebhook(raw),kind:'order'});
 }
 
-function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () => new Date(), logger = () => {} } = {}) {
+function createMarketplaceRuntime({ pool, adapters, accountResolver, persist99FoodToken = null, clock = () => new Date(), logger = () => {} } = {}) {
   if (!pool || !adapters || !accountResolver || typeof accountResolver.byId !== 'function' || typeof accountResolver.byMerchant !== 'function')
     throw new TypeError('Marketplace runtime requires pool, adapters and privileged account resolver.');
-  const now = () => clock().toISOString();
+  const clockMs=()=>{const value=clock();return value instanceof Date?value.getTime():Number(value);};
+  const now = () => new Date(clockMs()).toISOString();
+
+  async function fresh99FoodAccount(account){
+    const currentTime=clockMs();
+    if(account.provider!=='99food'||Number(account.credentials?.tokenExpiresAt)>currentTime+120_000)return account;
+    if(typeof persist99FoodToken!=='function'||typeof adapters['99food']?.token!=='function')
+      throw Object.assign(new Error('99Food token refresh is unavailable.'),{code:'TOKEN_REFRESH_UNAVAILABLE',status:503});
+    const lease=crypto.randomUUID();
+    const claimed=await pool.query('SELECT rotamoto.claim_marketplace_99food_token_refresh($1,$2,$3,$4)',[account.companyId,account.id,lease,135]);
+    if(!claimed.rows[0]?.claim_marketplace_99food_token_refresh){
+      const latest=await accountResolver.byId('99food',account.id,account.companyId);
+      if(latest&&Number(latest.credentials?.tokenExpiresAt)>clockMs()+15_000)return latest;
+      throw Object.assign(new Error('99Food token refresh is leased by another worker.'),{code:'TOKEN_REFRESH_BUSY',status:429,retryAfterSeconds:30});
+    }
+    try{
+      const token=await adapters['99food'].token({credentials:account.credentials,appShopId:account.merchantId,refresh:true});
+      if(token.appShopId!==account.merchantId)throw Object.assign(new Error('99Food token belongs to another store.'),{code:'MERCHANT_TOKEN_MISMATCH',status:409});
+      await persist99FoodToken({companyId:account.companyId,accountScope:account.id,authToken:token.authToken,
+        expiresAt:token.expiresAt,expectedSecretRef:account.secretRef});
+      const updated=await accountResolver.byId('99food',account.id,account.companyId);
+      if(!updated||Number(updated.credentials?.tokenExpiresAt)<=clockMs())throw Object.assign(new Error('Refreshed 99Food token was not persisted.'),{code:'TOKEN_PERSISTENCE_CONFLICT'});
+      return updated;
+    }finally{
+      await tenantTransaction(account.companyId,client=>client.query(`UPDATE rotamoto.external_accounts SET
+        provider_token_lease_token=NULL,provider_token_lease_until=NULL WHERE company_id=$1 AND id=$2 AND provider_token_lease_token=$3`,
+      [account.companyId,account.id,lease])).catch(()=>{});
+    }
+  }
 
   async function tenantTransaction(companyId, operation) {
     if (!UUID.test(companyId || '')) throw Object.assign(new Error('Invalid tenant.'), { code: 'INVALID_TENANT' });
@@ -63,6 +93,15 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
       // only the trusted signing key anchor; the signed merchantId routes each
       // event to its unique active tenant account after signature validation.
       account = event.merchantId ? validateAccount(await accountResolver.byMerchant(provider,event.merchantId),provider) : signingAccount;
+    } else if(provider==='99food') {
+      let hint;
+      try { hint=JSON.parse(rawBody.toString('utf8')); } catch (_) { throw Object.assign(new Error('Invalid event body.'),{code:'INVALID_WEBHOOK',status:400}); }
+      const shopId=hint?.app_shop_id;
+      if(typeof shopId!=='string'||!shopId||shopId.length>255)throw Object.assign(new Error('Missing 99Food shop identity.'),{code:'ACCOUNT_UNAVAILABLE',status:404});
+      account=validateAccount(await accountResolver.byMerchant(provider,shopId),provider);
+      if(account.merchantId!==shopId||account.credentials?.appShopId!==shopId)throw Object.assign(new Error('Invalid 99Food merchant binding.'),{code:'ACCOUNT_UNAVAILABLE',status:404});
+      event=eventFor(provider,{rawBody,signature,secret:account.webhookSecret});
+      if(event.externalAccountId!==account.merchantId)throw Object.assign(new Error('Invalid 99Food merchant binding.'),{code:'ACCOUNT_UNAVAILABLE',status:404});
     } else {
       const merchantId = headers['x-app-merchantid'] || headers['X-App-MerchantId'];
       if (typeof merchantId !== 'string') throw Object.assign(new Error('Missing merchant identity.'), { code: 'ACCOUNT_UNAVAILABLE', status: 404 });
@@ -74,7 +113,8 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
     }
     const normalized = Object.freeze({ id: event.externalEventId, orderId: event.externalOrderId,
       eventType: event.externalStatus || event.eventType || event.status || 'unknown',
-      status: event.status || 'unmapped', occurredAt: event.occurredAt || null,kind:event.kind||'order',externalStatus:event.externalStatus||null });
+      status: event.status || 'unmapped', occurredAt: event.occurredAt || null,kind:event.kind||'order',externalStatus:event.externalStatus||null,
+      ...(event.application?{application:event.application}:{}) });
     const bodyDigest = digest(rawBody);
     const stored = await tenantTransaction(account.companyId, async client => {
       const result = await client.query(`INSERT INTO rotamoto.marketplace_event_inbox
@@ -82,7 +122,8 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
         ON CONFLICT(provider,external_account_id,external_event_id) DO NOTHING RETURNING event_id`,
       [account.companyId, crypto.randomUUID(), account.id, provider, normalized.id, normalized.orderId,
-        normalized.eventType, bodyDigest, JSON.stringify({ status: normalized.status, occurredAt: normalized.occurredAt,kind:normalized.kind,externalStatus:normalized.externalStatus })]);
+        normalized.eventType, bodyDigest, JSON.stringify({ status: normalized.status, occurredAt: normalized.occurredAt,kind:normalized.kind,
+          externalStatus:normalized.externalStatus,...(normalized.application?{application:normalized.application}:{}) })]);
       return result.rowCount === 1;
     });
     if(!deferProcessing)await processPending(account, normalized.id);
@@ -129,6 +170,7 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
         });
         return true;
       }
+      account=await fresh99FoodAccount(account);
       const adapter = adapters[account.provider];
       const order = account.provider === 'ifood'
         ? await adapter.order({ companyId: account.companyId, orderId: row.external_order_id, credentials: account.credentials })
@@ -270,7 +312,8 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
 
   const ORDER_COMMANDS = Object.freeze({
     ifood: new Set(['CONFIRM','START_PREPARATION','READY','DISPATCH_MERCHANT','CANCEL_ORDER','SHIPPING_QUOTE','SHIPPING_REQUEST','SHIPPING_CANCEL','SHIPPING_TRACKING']),
-    keeta: new Set(['CONFIRM','READY','DISPATCH_MERCHANT','CANCEL_ORDER'])
+    keeta: new Set(['CONFIRM','READY','DISPATCH_MERCHANT','CANCEL_ORDER']),
+    '99food': new Set(['CONFIRM','READY','DELIVERED','CANCEL_ORDER','CANCEL_REQUEST','REFUND_REQUEST','CONFIRM_CASH_PAYMENT'])
   });
 
   async function listOrders(companyId, limit = 50) {
@@ -280,6 +323,13 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
         d.payload->'extensions'->'x_rotamoto_external_order'->>'displayId' AS "displayId",
         d.payload->'extensions'->'x_rotamoto_external_order'->>'providerStatus' AS "providerStatus",
         d.payload->'extensions'->'x_rotamoto_external_order'->>'orderType' AS "orderType",
+        d.payload->'extensions'->'x_rotamoto_external_order'->>'fulfillment' AS fulfillment,
+        d.payload->'extensions'->'x_rotamoto_external_order'->'payment'->>'payType' AS "payType",
+        d.payload->'extensions'->'x_rotamoto_external_order'->'priceBreakdown'->>'shop_paid_money' AS "shopPaidMoney",
+        EXISTS(SELECT 1 FROM rotamoto.domain_records delivery WHERE delivery.company_id=v.company_id AND delivery.entity_type='Delivery'
+          AND delivery.related_entity_type='Order' AND delivery.related_record_id=v.domain_order_id AND delivery.deleted_at IS NULL
+          AND upper(coalesce(delivery.payload->>'status','')) IN ('FINALIZADA','DELIVERED','COMPLETED')) AS "ownDeliveryComplete",
+        latest_event.event_type AS "latestEventType",latest_event.event_data->'application' AS application,
         a.display_name AS "merchantName",a.account_status AS "accountStatus",
         latest.operation AS "lastOperation",latest.status AS "commandStatus",latest.last_error_code AS "lastErrorCode",latest.updated_at AS "commandUpdatedAt",
         quote.result_data->>'externalQuoteReference' AS "quoteId",
@@ -291,10 +341,13 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
         LEFT JOIN LATERAL (SELECT operation,status,last_error_code,updated_at FROM rotamoto.marketplace_command_outbox c
           WHERE c.company_id=v.company_id AND c.external_account_id=v.external_account_id AND c.external_order_id=v.external_order_id
           ORDER BY c.created_at DESC LIMIT 1) latest ON true
+        LEFT JOIN LATERAL (SELECT event_type,event_data FROM rotamoto.marketplace_event_inbox e
+          WHERE e.company_id=v.company_id AND e.external_account_id=v.external_account_id AND e.external_order_id=v.external_order_id
+          ORDER BY e.received_at DESC LIMIT 1) latest_event ON true
         LEFT JOIN LATERAL (SELECT result_data FROM rotamoto.marketplace_command_outbox q
           WHERE q.company_id=v.company_id AND q.external_account_id=v.external_account_id AND q.external_order_id=v.external_order_id
             AND q.operation='SHIPPING_QUOTE' AND q.status='succeeded' ORDER BY q.created_at DESC LIMIT 1) quote ON true
-        WHERE v.company_id=$1 AND v.provider IN ('ifood','keeta') ORDER BY v.updated_at DESC LIMIT $2`,[companyId,limit]);
+        WHERE v.company_id=$1 AND v.provider IN ('ifood','keeta','99food') ORDER BY v.updated_at DESC LIMIT $2`,[companyId,limit]);
       return result.rows;
     });
   }
@@ -316,18 +369,49 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
       if(order.account_status!=='active'||order.link_status!=='confirmed'||order.integration_status!=='active'||order.payload?.source!==order.provider)
         throw Object.assign(new Error('Marketplace order account unavailable.'),{code:'ACCOUNT_UNAVAILABLE',status:409});
       if(!ORDER_COMMANDS[order.provider]?.has(operation))throw Object.assign(new Error('Unsupported marketplace operation.'),{code:'UNSUPPORTED_OPERATION'});
+      const fulfillment=order.payload?.extensions?.x_rotamoto_external_order?.fulfillment;
+      if(order.provider==='99food'&&operation==='DELIVERED'&&fulfillment!=='merchant')
+        throw Object.assign(new Error('Only store-fulfilled 99Food orders can be marked delivered by this system.'),{code:'FULFILLMENT_MISMATCH',status:409});
+      if(order.provider==='99food'&&operation==='CONFIRM_CASH_PAYMENT'&&
+        (fulfillment!=='platform'||order.payload?.extensions?.x_rotamoto_external_order?.payment?.payType!==2||
+          Number(order.payload?.extensions?.x_rotamoto_external_order?.priceBreakdown?.shop_paid_money)<=0||
+          String(order.payload?.extensions?.x_rotamoto_external_order?.providerStatus)!=='200'))
+        throw Object.assign(new Error('Cash receipt can be confirmed only for accepted, cash-paid 99Food platform-delivery orders with a positive courier payment.'),{code:'PAYMENT_CONTEXT_MISMATCH',status:409});
       const allowedByOperation={
-        CANCEL_ORDER:order.provider==='keeta'?new Set(['reason','code']):new Set(['reason']),
+        CANCEL_ORDER:order.provider==='keeta'?new Set(['reason','code']):order.provider==='99food'?new Set(['reason','reasonId']):new Set(['reason']),
         SHIPPING_REQUEST:new Set(['quoteId']),
         CONFIRM:order.provider==='keeta'?new Set(['orderExternalCode','preparationTime']):new Set(),
         DISPATCH_MERCHANT:order.provider==='keeta'?new Set(['deliveryTrackingInfo']):new Set(),
+        CANCEL_REQUEST:new Set(['applyId','agree','reason']), REFUND_REQUEST:new Set(['applyId','agree','reason','baseReasonId','baseReason','customReason']),
+        DELIVERED:new Set(),CONFIRM_CASH_PAYMENT:new Set(),
         START_PREPARATION:new Set(),READY:new Set(),SHIPPING_QUOTE:new Set(),SHIPPING_CANCEL:new Set(),SHIPPING_TRACKING:new Set()
       };
       const allowed=allowedByOperation[operation]||new Set();
       if(Object.keys(commandData).some(key=>!allowed.has(key)))throw Object.assign(new Error('Unsafe command data.'),{code:'INVALID_INPUT'});
-      if(operation==='CANCEL_ORDER'&&(typeof commandData.reason!=='string'||!commandData.reason.trim()||commandData.reason.length>64||/[\u0000-\u001f\u007f]/u.test(commandData.reason)))throw Object.assign(new Error('Cancellation reason required.'),{code:'INVALID_INPUT'});
+      if(operation==='CANCEL_ORDER'&&(order.provider!=='99food'||commandData.reasonId===1080)&&
+        (typeof commandData.reason!=='string'||!commandData.reason.trim()||commandData.reason.length>500||/[\u0000-\u001f\u007f]/u.test(commandData.reason)))throw Object.assign(new Error('Cancellation reason required.'),{code:'INVALID_INPUT'});
+      if(order.provider==='99food'&&operation==='CANCEL_ORDER'&&(!Number.isInteger(commandData.reasonId)||
+        ![1010,1020,1030,1040,1050,1060,1070,1071,1072,1073,1074,1080].includes(commandData.reasonId)))throw Object.assign(new Error('A documented 99Food cancellation reason is required.'),{code:'INVALID_INPUT'});
+      if(order.provider==='99food'&&operation==='CANCEL_ORDER'&&[1060,1071,1072].includes(commandData.reasonId)&&fulfillment!=='merchant')
+        throw Object.assign(new Error('This 99Food cancellation reason is valid only for store delivery.'),{code:'FULFILLMENT_MISMATCH',status:409});
+      if(order.provider==='99food'&&['CANCEL_REQUEST','REFUND_REQUEST'].includes(operation)&&
+        (typeof commandData.applyId!=='string'||!commandData.applyId||typeof commandData.agree!=='boolean'))throw Object.assign(new Error('A valid 99Food application decision is required.'),{code:'INVALID_INPUT'});
+      if(order.provider==='99food'&&['CANCEL_REQUEST','REFUND_REQUEST'].includes(operation)){
+        const eventType=operation==='CANCEL_REQUEST'?'orderCancelApply':'orderRefundApply';
+        const application=await client.query(`SELECT event_data->'application' AS application FROM rotamoto.marketplace_event_inbox
+          WHERE company_id=$1 AND external_account_id=$2 AND provider='99food' AND external_order_id=$3 AND event_type=$4
+            AND event_data->'application'->>'id'=$5 ORDER BY received_at DESC LIMIT 1`,
+        [companyId,order.account_id,order.external_order_id,eventType,commandData.applyId]);
+        if(!application.rowCount)throw Object.assign(new Error('The 99Food application is not pending for this order.'),{code:'APPLICATION_NOT_FOUND',status:409});
+        if(operation==='CANCEL_REQUEST'&&commandData.reason!==undefined&&
+          !application.rows[0].application.reasons?.some(item=>item.label===commandData.reason))throw Object.assign(new Error('Cancellation response reason was not provided by 99Food.'),{code:'INVALID_INPUT'});
+        if(operation==='REFUND_REQUEST'&&commandData.agree===false&&
+          !application.rows[0].application.baseReasons?.some(item=>item.id===commandData.baseReasonId&&item.label===commandData.baseReason))
+          throw Object.assign(new Error('Refund refusal reason was not provided by 99Food.'),{code:'INVALID_INPUT'});
+      }
       if(order.provider==='keeta'&&operation==='CANCEL_ORDER'&&!['SYSTEMIC_ISSUES','DUPLICATE_APPLICATION','UNAVAILABLE_ITEM','RESTAURANT_WITHOUT_DELIVERY_PERSON','OUTDATED_MENU','ORDER_OUTSIDE_THE_DELIVERY_AREA','BLOCKED_CUSTOMER','OUTSIDE_DELIVERY_HOURS','INTERNAL_DIFFICULTIES_OF_THE_RESTAURANT','RISK_AREA','DELIVERY_PROBLEM'].includes(commandData.code))throw Object.assign(new Error('Invalid Keeta cancellation code.'),{code:'INVALID_INPUT'});
       const persistedData={...commandData};
+      if(order.provider==='99food')persistedData.deliveryType=fulfillment==='merchant'?2:fulfillment==='platform'?1:0;
       if(order.provider==='keeta'&&operation==='CONFIRM'){
         if(typeof persistedData.orderExternalCode!=='string'||!persistedData.orderExternalCode||typeof order.payload.createdAt!=='string')throw Object.assign(new Error('Keeta confirmation fields are unavailable.'),{code:'ORDER_DATA_UNAVAILABLE',status:409});
         if(persistedData.orderExternalCode.length>128||/[\u0000-\u001f\u007f]/u.test(persistedData.orderExternalCode)||persistedData.preparationTime!==undefined&&!Number.isInteger(persistedData.preparationTime))throw Object.assign(new Error('Invalid Keeta confirmation data.'),{code:'INVALID_INPUT'});
@@ -370,11 +454,18 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, clock = () 
     });
   }
 
-  return Object.freeze({ ingest, ingestPolled, pollAccount, processPending, processClaimed, enqueueCommand, enqueueOrderCommand, listOrders });
+  return Object.freeze({ ingest, ingestPolled, pollAccount, processPending, processClaimed, enqueueCommand, enqueueOrderCommand, listOrders,
+    refreshCredentials:fresh99FoodAccount });
 }
 
 function canonicalOrder(provider, order, { id, companyId, version = 1, updatedAt = null } = {}) {
-  const items = Array.isArray(order.items) ? order.items.map(item => ({ name: String(item.name).slice(0,240), quantity: item.quantity })) : [];
+  const items = Array.isArray(order.items) ? order.items.map(item => provider==='99food'?{
+    name:String(item.name).slice(0,240),quantity:item.quantity,unitPriceMinor:item.unitPriceMinor,lineTotalMinor:item.lineTotalMinor,
+    ...(Number.isSafeInteger(item.paidMinor)?{paidMinor:item.paidMinor}:{}),...(item.providerItemId?{providerItemId:item.providerItemId}:{}),
+    ...(item.notes?{notes:item.notes}:{}),options:Array.isArray(item.options)?item.options:[],
+    ...(Array.isArray(item.promotionSummary)?{promotionSummary:item.promotionSummary}:{}),
+    promotions:Array.isArray(item.promotions)?item.promotions:[]
+  }:{ name: String(item.name).slice(0,240), quantity: item.quantity }) : [];
   const sourceCreatedAt = new Date(order.createdAt || Date.now());
   const createdAt = Number.isFinite(sourceCreatedAt.getTime()) ? sourceCreatedAt.toISOString() : new Date().toISOString();
   const providerStatus = String(provider === '99food' ? order.providerStatus ?? order.status : order.status || '').slice(0, 128) || null;
@@ -389,9 +480,11 @@ function canonicalOrder(provider, order, { id, companyId, version = 1, updatedAt
   const result = { id, companyId, createdAt, updatedAt: updatedAt || createdAt, version,
     number: order.externalDisplayId || order.externalId, source: provider, externalId: order.externalId,
     customer: 'Pedido externo', status, items,
+    ...(provider==='99food'&&order.money?{money:order.money}:{}),
     extensions: { x_rotamoto_external_order: { providerStatus, displayId: order.externalDisplayId || null,
       orderType: order.orderType || null, fulfillment: provider === '99food' && ['platform','merchant','customer_pickup'].includes(order.fulfillment)
-        ? order.fulfillment : 'unknown' } } };
+        ? order.fulfillment : 'unknown',...(provider==='99food'&&order.payment?{payment:order.payment}:{}),
+      ...(provider==='99food'&&order.priceBreakdown?{priceBreakdown:order.priceBreakdown}:{}) } } };
   return result;
 }
 

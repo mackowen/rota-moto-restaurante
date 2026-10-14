@@ -9,6 +9,7 @@ const { createProviderCredentialResolver, createProviderWorker } = require('../b
 const { createMarketplaceAccountResolver } = require('../backend/integrations/marketplace-account-resolver');
 const { createMarketplaceWorker } = require('../backend/integrations/marketplace-worker');
 const { createKeetaAdapter } = require('../backend/integrations/keeta-adapter');
+const { create99FoodAdapter } = require('../backend/integrations/99food-protocol');
 const { createMarketplaceAccountWriter } = require('../backend/integrations/marketplace-account-writer');
 
 function providerTenantIds(value) {
@@ -60,12 +61,14 @@ async function main(env = process.env) {
   const marketplaceIfood=createIfoodAdapter({credentialResolver:async companyId=>marketplaceAccounts.credentials('ifood',companyId),
     persistToken:record=>marketplaceAccountWriter.persistTokens(record)});
   const keeta=createKeetaAdapter({credentialResolver:async companyId=>marketplaceAccounts.credentials('keeta',companyId)});
+  const food99=create99FoodAdapter();
   const worker = createProviderWorker({ pool, adapterRegistry: createLogisticsProviderAdapterRegistry({ ifoodAdapter: ifood }),
     credentialResolver, tenantResolver: async () => tenants,
     logger: event => process.stdout.write(`${JSON.stringify(event)}\n`) });
   const marketAccountResolver=async(provider,accountId,companyId)=>marketplaceAccounts.byId(provider,accountId,companyId);
   marketAccountResolver.byMerchant=marketplaceAccounts.byMerchant;
-  const marketplaceWorker=createMarketplaceWorker({pool,companyIds:tenants,adapters:{ifood:marketplaceIfood,keeta},accountResolver:marketAccountResolver,
+  const marketplaceWorker=createMarketplaceWorker({pool,companyIds:tenants,adapters:{ifood:marketplaceIfood,keeta,'99food':food99},accountResolver:marketAccountResolver,
+    persist99FoodToken:record=>marketplaceAccountWriter.persist99FoodToken(record),
     logger:event=>process.stdout.write(`${JSON.stringify(event)}\n`)});
   let stopping = false;
   const shutdown = () => { if (stopping) return; stopping = true; worker.stop(); marketplaceWorker.stop(); };

@@ -324,12 +324,23 @@
             catch(error){disable.disabled=false;const issue=document.createElement('p');issue.setAttribute('role','status');issue.textContent=message(error);account.append(issue);}});account.append(disable);}
         accounts.append(account);
       });
-      if (['ifood','keeta'].includes(item.provider)) {
+      if (['ifood','keeta','99food'].includes(item.provider)) {
         const connect = document.createElement('button'); connect.type = 'button';
-        connect.textContent = accountRows.some(account => ['disabled','revoked','reauthorization_required','error'].includes(account.accountStatus)) ? 'Reautorizar conta' : 'Conectar conta';
+        connect.textContent = item.provider==='99food'?'Vincular loja':accountRows.some(account => ['disabled','revoked','reauthorization_required','error'].includes(account.accountStatus)) ? 'Reautorizar conta' : 'Conectar conta';
         connect.addEventListener('click', async () => {
           connect.disabled = true;
           try {
+            if(item.provider==='99food'){
+              const form=document.createElement('form');form.className='rm-marketplace-auth';
+              form.innerHTML='<label>ID da loja 99Food<input name="appShopId" required maxlength="128" autocomplete="off"></label><label>Nome para identificação (opcional)<input name="displayName" maxlength="160" autocomplete="off"></label><button type="submit">Validar e vincular loja</button><p role="status"></p>';
+              form.addEventListener('submit',async event=>{event.preventDefault();const button=form.querySelector('button'),shop=form.elements.appShopId.value.trim(),name=form.elements.displayName.value.trim();
+                if(!shop||button.disabled)return;button.disabled=true;
+                try{await request('/admin/integrations/99food/authorize',{method:'POST',body:JSON.stringify({appShopId:shop,...(name?{displayName:name}:{})})});
+                  form.elements.appShopId.value='';form.elements.displayName.value='';form.querySelector('[role=status]').textContent='Loja vinculada. Confira a última sincronização e o diagnóstico da conta.';await loadAdmin();}
+                catch(error){form.querySelector('[role=status]').textContent=message(error);button.disabled=false;}
+              });
+              row.append(form);connect.textContent='Vincular outra loja';connect.disabled=false;return;
+            }
             const started = await request(`/admin/integrations/${item.provider}/authorize`, { method: 'POST', body: '{}' });
             if (item.provider === 'keeta') { location.assign(started.authorizationUrl); return; }
             const instructions = document.createElement('div'); instructions.className = 'rm-marketplace-auth';
@@ -388,22 +399,44 @@
       if(!orderRows.length){const empty=document.createElement('p');empty.textContent='Nenhum pedido dessa plataforma foi recebido ainda.';orderPanel.append(empty);}
       orderRows.forEach(order=>{
         const item=document.createElement('article');item.className='rm-marketplace-order';
-        const title=document.createElement('strong');title.textContent=`${order.provider==='ifood'?'iFood':'Keeta'} · ${order.displayId||order.domainOrderId} · ${order.providerStatus||'estado indisponível'}`;item.append(title);
+        const providerName={ifood:'iFood',keeta:'Keeta','99food':'99Food'}[order.provider]||'Plataforma';
+        const title=document.createElement('strong');title.textContent=`${providerName} · ${order.displayId||order.domainOrderId} · ${order.providerStatus||'estado indisponível'}`;item.append(title);
         const status=document.createElement('p');status.textContent=order.commandStatus?`${order.lastOperation}: ${commandStates[order.commandStatus]||'estado desconhecido'}${order.lastErrorCode?` (${order.lastErrorCode})`:''}`:'Nenhum comando enviado.';item.append(status);
         const actions=[];
         const raw=String(order.providerStatus||'').toUpperCase();
-        if(raw==='PLACED'||raw==='CREATED')actions.push(['CONFIRM','Confirmar pedido']);
+        if(order.provider==='99food'&&raw==='100'){const deadline=document.createElement('p');deadline.className='rm-integration-deadline';deadline.textContent='A 99Food exige confirmação em até 5 minutos após o aviso de novo pedido.';item.append(deadline);}
+        if(raw==='PLACED'||raw==='CREATED'||order.provider==='99food'&&raw==='100')actions.push(['CONFIRM','Confirmar pedido']);
         if(order.provider==='ifood'&&raw==='CONFIRMED')actions.push(['START_PREPARATION','Iniciar preparo']);
-        if((order.provider==='ifood'&&['CONFIRMED','PREPARATION_STARTED','PREPARING'].includes(raw))||(order.provider==='keeta'&&['CONFIRMED','PREPARING'].includes(raw)))actions.push(['READY','Marcar pronto']);
+        if((order.provider==='ifood'&&['CONFIRMED','PREPARATION_STARTED','PREPARING'].includes(raw))||(order.provider==='keeta'&&['CONFIRMED','PREPARING'].includes(raw))||order.provider==='99food'&&raw==='200')actions.push(['READY','Marcar pronto']);
+        if(order.provider==='99food'&&order.fulfillment==='merchant'&&order.ownDeliveryComplete===true&&['200','400'].includes(raw))actions.push(['DELIVERED','Confirmar entrega própria concluída']);
+        if(order.provider==='99food'&&order.fulfillment==='platform'&&raw==='200'&&Number(order.payType)===2&&Number(order.shopPaidMoney)>0)actions.push(['CONFIRM_CASH_PAYMENT','Confirmar recebimento em dinheiro']);
         if(['READY_TO_PICKUP','READY_FOR_PICKUP'].includes(raw))actions.push(['DISPATCH_MERCHANT','Despachar com entrega própria']);
-        if(!['CANCELLED','CANCELED','DELIVERED','CONCLUDED','COMPLETED'].includes(raw))actions.push(['CANCEL_ORDER','Solicitar cancelamento']);
+        if(order.provider==='99food'&&order.latestEventType==='orderCancelApply'&&order.application?.id)actions.push(['CANCEL_REQUEST','Responder ao pedido de cancelamento']);
+        if(order.provider==='99food'&&order.latestEventType==='orderRefundApply'&&order.application?.id)actions.push(['REFUND_REQUEST','Responder ao pedido de reembolso']);
+        if(!['CANCELLED','CANCELED','DELIVERED','CONCLUDED','COMPLETED','901','902','903','921','922','923','941','942','943','944','945','946','961','971','981','600'].includes(raw))actions.push(['CANCEL_ORDER','Solicitar cancelamento']);
         if(order.provider==='ifood')actions.push(['SHIPPING_QUOTE','Consultar cotação iFood']);
         if(order.provider==='ifood'&&order.quoteId)actions.push(['SHIPPING_REQUEST','Solicitar entrega iFood']);
         if(order.provider==='ifood'&&order.shippingRequested)actions.push(['SHIPPING_CANCEL','Cancelar entrega iFood'],['SHIPPING_TRACKING','Consultar rastreamento iFood']);
-        actions.forEach(([operation,label])=>{const button=document.createElement('button');button.type='button';button.textContent=label;
+        const canManageOrders=current.permissions.includes('orders.manage');
+        if(canManageOrders)actions.forEach(([operation,label])=>{const button=document.createElement('button');button.type='button';button.textContent=label;
           button.addEventListener('click',async()=>{let commandData={};
             if(operation==='CONFIRM'&&order.provider==='keeta'){const code=window.prompt('Informe o código do pedido exigido pela confirmação Keeta:');if(!code)return;commandData.orderExternalCode=code;}
-            if(operation==='CANCEL_ORDER'){const reason=window.prompt('Informe o motivo oficial do cancelamento:');if(!reason)return;commandData={reason};if(order.provider==='keeta'){const code=window.prompt('Informe o código oficial de cancelamento Keeta:');if(!code)return;commandData.code=code;}}
+            if(operation==='CANCEL_ORDER'&&order.provider==='99food'){
+              const choices=['1010 — Item esgotado','1020 — Loja fechada','1030 — Loja sem capacidade de preparo','1040 — Acidente grave ou interrupção de serviço','1050 — Problema relacionado ao cliente','1060 — Sem entregador (somente entrega da loja)','1070 — Atualizar cardápio','1071 — Fora da área (somente entrega da loja)','1072 — Endereço inseguro (somente entrega da loja)','1073 — Suspeita de fraude','1074 — Dúvida sobre taxas ou promoções','1080 — Outro motivo'];
+              const selected=window.prompt(`Motivo oficial 99Food; informe o código:\\n${choices.join('\\n')}`);if(!selected)return;const reasonId=Number(selected);
+              if(!choices.some(choice=>choice.startsWith(String(reasonId)))){status.textContent='Código de motivo inválido.';return;}
+              commandData={reasonId};if(reasonId===1080){const reason=window.prompt('Descreva o motivo para a 99Food:');if(!reason?.trim())return;commandData.reason=reason.trim();}
+            }else if(operation==='CANCEL_ORDER'){
+              const reason=window.prompt('Informe o motivo oficial do cancelamento:');if(!reason)return;commandData={reason};if(order.provider==='keeta'){const code=window.prompt('Informe o código oficial de cancelamento Keeta:');if(!code)return;commandData.code=code;}
+            }
+            if(operation==='CANCEL_REQUEST'){
+              const agree=window.confirm('Aprovar este pedido de cancelamento? OK aprova; Cancelar recusa.');commandData={applyId:order.application.id,agree};
+              if(!agree&&order.application.reasons?.length){const selected=window.prompt(`Escolha o motivo informado pela 99Food:\\n${order.application.reasons.map((entry,index)=>`${index+1} — ${entry.label}`).join('\\n')}`);if(selected){const choice=order.application.reasons[Number(selected)-1];if(!choice){status.textContent='Opção de motivo inválida.';return;}commandData.reason=choice.label;}}
+            }
+            if(operation==='REFUND_REQUEST'){
+              const agree=window.confirm('Aprovar este pedido de reembolso? OK aprova; Cancelar recusa.');commandData={applyId:order.application.id,agree};
+              if(!agree){const options=order.application.baseReasons||[];if(!options.length){status.textContent='A 99Food não enviou motivos para recusa deste reembolso.';return;}const selected=window.prompt(`Escolha o motivo fornecido pela 99Food:\\n${options.map((entry,index)=>`${index+1} — ${entry.label}`).join('\\n')}`);if(!selected)return;const choice=options[Number(selected)-1];if(!choice){status.textContent='Opção de motivo inválida.';return;}commandData.baseReasonId=choice.id;commandData.baseReason=choice.label;}
+            }
             if(operation==='DISPATCH_MERCHANT'&&order.provider==='keeta'){const url=window.prompt('Link HTTPS de rastreamento da entrega própria:');if(!url)return;commandData.deliveryTrackingInfo={externalTrackingURL:url};}
             button.disabled=true;try{const result=await request(`/admin/marketplace/orders/${encodeURIComponent(order.domainOrderId)}/commands`,{method:'POST',body:JSON.stringify({operation,idempotencyKey:crypto.randomUUID(),commandData})});
               status.textContent=result.status==='pending'?'Comando aceito; aguardando confirmação da plataforma.':'Comando registrado para execução.';await loadAdmin();}

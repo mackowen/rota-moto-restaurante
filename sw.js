@@ -9,7 +9,7 @@ const APP_SHELL = Object.freeze([
   '/indexeddb-schema.js?v=2', '/order-money.js?v=1', '/ticket-renderer.js?v=1',
   '/browser-printer-provider.js?v=1', '/restaurant-operations.js?v=2',
   '/analytics.js?v=2', '/analytics-view.js?v=4', '/logistics-ui.js?v=0140.8',
-  '/identity-session-guard.js', '/app.js?v=0140.10', '/identity-ui.js?v=0140.2',
+  '/identity-session-guard.js', '/app.js?v=0153.2', '/identity-ui.js?v=0153.2',
   '/vendor/leaflet/leaflet.css', '/vendor/maplibre/maplibre-gl.css?v=0139.1', '/vendor/maplibre/rotamoto-map-runtime.js?v=0140.9', '/vendor/maplibre/maplibre-gl-worker.js?v=0139.1', '/vendor/leaflet/leaflet.js'
 ]);
 const OPTIONAL_ASSETS = new Set([

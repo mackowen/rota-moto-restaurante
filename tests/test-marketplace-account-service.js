@@ -31,8 +31,10 @@ function harness({exchangeError=false}={}){
   const accountWriter={async scoped(_tenant,fn){const client=await pool.connect();try{return await fn(client);}finally{client.release();}},async provision(input){provisioned.push(input);return {id:crypto.randomUUID()};}};
   const adapters={ifood:{async requestUserCode(){return {authorizationCodeVerifier:'synthetic-verifier',userCode:'ABCD-EFGH',verificationUrlComplete:'https://ifood.example.invalid/auth',expiresIn:600};},
     async exchangeAuthorizationCode(){exchangeCalls++;if(exchangeError)throw Object.assign(new Error('synthetic exchange failure'),{code:'PROVIDER_AUTH_REJECTED',status:401});return {accessToken:'synthetic-access',refreshToken:'synthetic-refresh',expiresIn:3600};},
-    async merchants(){merchantCalls++;return merchantCalls===1?[]:[{id:'merchant-1',name:'Synthetic Restaurant'}];}}};
-  const service=createMarketplaceAccountService({pool,accountWriter,secretProvider,adapters,applicationCredentials:async()=>({clientId:'synthetic-client',clientSecret:'synthetic-client-secret'}),
+    async merchants(){merchantCalls++;return merchantCalls===1?[]:[{id:'merchant-1',name:'Synthetic Restaurant'}];}},'99food':{async token({credentials,appShopId=credentials?.appShopId}){
+      assert.equal(credentials.appId,'123456');return {authToken:'synthetic-99food-token',expiresAt:Date.now()+3600000,appShopId};}}};
+  const service=createMarketplaceAccountService({pool,accountWriter,secretProvider,adapters,applicationCredentials:async provider=>provider==='99food'
+    ?{appId:'123456',appSecret:'synthetic-app-secret'}:{clientId:'synthetic-client',clientSecret:'synthetic-client-secret'},
     publicCallbackUrl:'https://callbacks.example.invalid/marketplace',keetaWebhookBaseUrl:'https://callbacks.example.invalid/keeta',clock:()=>new Date(currentTime)});
   return {service,company,otherCompany,states,oauthSecrets,secrets,provisioned,setNow(value){currentTime=new Date(value);},get exchangeCalls(){return exchangeCalls;},get merchantCalls(){return merchantCalls;}};
 }
@@ -53,5 +55,14 @@ function harness({exchangeError=false}={}){
   const failure=harness({exchangeError:true});const failedStart=await failure.service.begin(failure.company,'ifood');
   await assert.rejects(failure.service.finishIfood(failure.company,{state:failedStart.state,authorizationCode:'bad-code'}),e=>e.code==='PROVIDER_AUTH_REJECTED');
   assert.equal(failure.secrets.size,0,'failed token exchange removes verifier secret');
+  const registered=harness();
+  await assert.rejects(registered.service.begin(registered.company,'99food',{appShopId:'shop-a',appSecret:'client-secret'}),e=>e.code==='INVALID_MERCHANT_BINDING',
+    '99Food account setup rejects unexpected secret-bearing request fields');
+  const linked=await registered.service.begin(registered.company,'99food',{appShopId:'shop-a',displayName:'Synthetic Shop'});
+  assert.equal(linked.provider,'99food');assert.equal(linked.accounts.length,1);
+  assert.equal(registered.provisioned[0].provider,'99food');
+  assert.equal(registered.provisioned[0].credentials.appSecret,'synthetic-app-secret','app secret comes from the server credential provider');
+  assert.equal(registered.provisioned[0].credentials.authToken,'synthetic-99food-token');
+  assert.equal(JSON.stringify(linked).includes('synthetic-app-secret'),false,'credential values never return to browser response');
   process.stdout.write('Marketplace account lifecycle synthetic: PASS (state hash, cross-tenant, one-shot, resumable merchant visibility, secret cleanup)\n');
 })().catch(error=>{process.stderr.write(`Marketplace account lifecycle synthetic: FAIL (${error.stack||error})\n`);process.exitCode=1;});

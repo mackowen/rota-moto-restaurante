@@ -14,7 +14,7 @@ assert.match(html,/styles\.css\?v=0140\.10/u);
 assert.match(worker,/styles\.css\?v=0140\.10/u);
 assert.match(html,/analytics-view\.js\?v=4/u);
 assert.match(worker,/analytics-view\.js\?v=4/u);
-assert.match(html,/app\.js\?v=0140\.10/u);assert.match(worker,/\/app\.js\?v=0140\.10/u);
+assert.match(html,/app\.js\?v=0153\.2/u);assert.match(worker,/\/app\.js\?v=0153\.2/u);
 assert.match(html,/pilot-views\.css\?v=0140\.3/u);
 assert.match(worker,/pilot-views\.css\?v=0140\.3/u);
 assert.match(worker,/\$\{CACHE_PREFIX\}v41/u);

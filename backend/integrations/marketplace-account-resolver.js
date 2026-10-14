@@ -2,12 +2,17 @@
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-function parseCredentials(serialized) {
+function parseCredentials(serialized, provider = null) {
   let value;
   try { value = JSON.parse(serialized); } catch (_) { throw Object.assign(new Error('Marketplace credential is invalid.'),{code:'CREDENTIAL_INVALID'}); }
-  const allowed = new Set(['clientId','clientSecret','refreshToken','authorizationCode','authorizationCodeVerifier','accessToken','tokenExpiresAt','accountScope','companyId']);
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key=>!allowed.has(key)) ||
-      typeof value.clientId !== 'string' || !value.clientId || typeof value.clientSecret !== 'string' || !value.clientSecret) {
+  const common = new Set(['accountScope','companyId']);
+  const allowed = provider==='99food' ? new Set([...common,'appId','appSecret','authToken','tokenExpiresAt','appShopId']) :
+    new Set([...common,'clientId','clientSecret','refreshToken','authorizationCode','authorizationCodeVerifier','accessToken','tokenExpiresAt']);
+  const valid=provider==='99food'
+    ? typeof value?.appId==='string'&&/^\d{1,20}$/u.test(value.appId)&&typeof value?.appSecret==='string'&&Boolean(value.appSecret)&&
+      typeof value?.appShopId==='string'&&Boolean(value.appShopId)&&typeof value?.authToken==='string'&&Boolean(value.authToken)&&Number.isFinite(value?.tokenExpiresAt)
+    : typeof value?.clientId==='string'&&Boolean(value.clientId)&&typeof value?.clientSecret==='string'&&Boolean(value.clientSecret);
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(key=>!allowed.has(key)) || !valid) {
     throw Object.assign(new Error('Marketplace credential is invalid.'),{code:'CREDENTIAL_INVALID'});
   }
   return Object.freeze({ ...value, accountScope:value.accountScope||null, companyId:value.companyId||null });
@@ -26,10 +31,10 @@ function createMarketplaceAccountResolver({ privilegedPool, secretProvider } = {
     } catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;} finally{client.release();}
   }
   async function material(row) {
-    const credentials=parseCredentials(await secretProvider.get(row.secret_ref,{name:`marketplace/${row.provider}/${row.id}`,scope:'tenant',tenantId:row.company_id}));
-    return Object.freeze({ id:row.id,companyId:row.company_id,integrationId:row.integration_id,provider:row.provider,
+    const credentials=parseCredentials(await secretProvider.get(row.secret_ref,{name:`marketplace/${row.provider}/${row.id}`,scope:'tenant',tenantId:row.company_id}),row.provider);
+    return Object.freeze({ id:row.id,companyId:row.company_id,integrationId:row.integration_id,secretRef:row.secret_ref,provider:row.provider,
       merchantId:row.merchant_id,serviceMerchantId:row.service_merchant_id,status:row.account_status,
-      authorized:row.authorized&&row.link_status==='confirmed',credentials,webhookSecret:credentials.clientSecret });
+      authorized:row.authorized&&row.link_status==='confirmed',credentials,webhookSecret:row.provider==='99food'?credentials.appSecret:credentials.clientSecret });
   }
   async function lookup(where,values) {
     const companyId=where.companyId;

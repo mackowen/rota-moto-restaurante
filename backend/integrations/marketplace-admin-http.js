@@ -40,8 +40,14 @@ function createMarketplaceAdminHandler({identityService,accountService,adminServ
         if(Object.keys(body).sort().join(',')!=='commandData,idempotencyKey,operation'||typeof body.idempotencyKey!=='string'||typeof body.operation!=='string'||!body.commandData||typeof body.commandData!=='object'||Array.isArray(body.commandData))throw Object.assign(new Error('Invalid input.'),{code:'INVALID_INPUT'});
         result=await marketplaceRuntime.enqueueOrderCommand({companyId:principal.company_id,domainOrderId:orderCommand[1],operation:body.operation,idempotencyKey:body.idempotencyKey,commandData:body.commandData});
       }else if(operation==='authorize'){
-        if(Object.keys(body).length)throw Object.assign(new Error('Invalid input.'),{code:'INVALID_INPUT'});
-        result=await accountService.begin(principal.company_id,provider);
+        if(provider==='99food'){
+          if(!['appShopId','appShopId,displayName'].includes(Object.keys(body).sort().join(','))||typeof body.appShopId!=='string'||
+            body.displayName!==undefined&&typeof body.displayName!=='string')throw Object.assign(new Error('Invalid input.'),{code:'INVALID_INPUT'});
+          result=await accountService.begin(principal.company_id,provider,body);
+        }else{
+          if(Object.keys(body).length)throw Object.assign(new Error('Invalid input.'),{code:'INVALID_INPUT'});
+          result=await accountService.begin(principal.company_id,provider);
+        }
       }else if(operation==='complete'){
         if(provider==='ifood'){
           if(!['state','authorizationCode,state'].includes(Object.keys(body).sort().join(','))||typeof body.state!=='string'||body.authorizationCode!==undefined&&typeof body.authorizationCode!=='string')throw Object.assign(new Error('Invalid input.'),{code:'INVALID_INPUT'});

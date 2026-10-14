@@ -47,7 +47,7 @@ async function main(){
   const resolverPool=createPool({connectionString:resolverUrl,max:2,application_name:'marketplace-worker-e2e-resolver'});
   const row={company:id(),otherCompany:id(),integration:id(),account:id(),merchant:`synthetic-${id()}`,secretRef:`synthetic-${id()}`,
     secret:'synthetic-runtime-secret'},orderId=id();
-  const fixture=await createFixtureManifest({campaign:'0152',evidence:[{kind:'test',name:'marketplace-worker-postgres'}]});
+  const fixture=await createFixtureManifest({campaign:'0153',evidence:[{kind:'test',name:'marketplace-worker-postgres'}]});
   await fixture.update({status:'RUNNING',tenants:[{id:row.company,counts:{companies:1,integrations:1,accounts:1}},
     {id:row.otherCompany,counts:{companies:1}}],records:{companies:[row.company,row.otherCompany],integrations:[row.integration],
     accounts:[row.account],merchantIds:[row.merchant],domainOrders:[orderId]}});
