@@ -9,6 +9,12 @@ function invalid(message) { const error = new Error(message); error.code = 'INVA
 function createDomainQueryService({ repository }) {
   if (!repository || typeof repository.list !== 'function' || typeof repository.get !== 'function') throw new TypeError('Repository de consulta de domínio obrigatório.');
   async function assertDomainPrincipal(client, principal) {
+    if (typeof principal.company_manage === 'boolean') {
+      if (principal.company_manage) return null;
+      if (principal.driver_id) return principal.driver_id;
+      const error = new Error('A associação desta conta a um motorista precisa ser configurada pela empresa.');
+      error.code = 'DRIVER_LINK_REQUIRED'; throw error;
+    }
     const admin = await client.query(`SELECT 1 FROM rotamoto.role_permissions
       WHERE company_id=$1 AND role_id=$2 AND catalog_version=1 AND permission_key='company.manage'`,
     [principal.company_id, principal.role_id]);

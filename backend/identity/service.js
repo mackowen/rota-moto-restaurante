@@ -683,10 +683,10 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
     let digest;
     try { digest = tokenDigest(sessionToken); } catch (_) { return null; }
     const now = clock();
-    const scope = await client.query(`SELECT active_company_id::text AS company_id FROM rotamoto.sessions
+    const scope = await client.query(`SELECT set_config('app.tenant_id',active_company_id::text,true) AS company_id
+      FROM rotamoto.sessions
       WHERE token_digest=$1 AND revoked_at IS NULL AND idle_expires_at>$2 AND absolute_expires_at>$2`, [digest, now]);
     if (!scope.rowCount) return null;
-    await setTenant(client, scope.rows[0].company_id);
     const result = await client.query(`UPDATE rotamoto.sessions s SET last_seen_at=$2,
       idle_expires_at=least(s.absolute_expires_at,$2 + interval '30 minutes')
       FROM rotamoto.users u,rotamoto.memberships m,rotamoto.companies c,rotamoto.credentials cred
@@ -768,10 +768,15 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
         if (permissionKey) {
           const permission = requiredText(permissionKey, 'Permissão', 120);
           if (permission === 'identity.mfa.enroll') return operation(client, principal);
-          const allowed = await client.query(`SELECT 1 FROM rotamoto.role_permissions rp
-            WHERE rp.company_id=$1 AND rp.role_id=$2 AND rp.permission_key=$3 AND rp.catalog_version=1`,
-          [principal.company_id, principal.role_id, permission]);
-          if (!allowed.rowCount) throw new IdentityError('FORBIDDEN', 'Operação não autorizada.');
+          const permissions = await client.query(`SELECT
+              coalesce(bool_or(rp.permission_key=$3),false) AS allowed,
+              coalesce(bool_or(rp.permission_key='company.manage'),false) AS company_manage
+            FROM rotamoto.role_permissions rp
+            WHERE rp.company_id=$1 AND rp.role_id=$2 AND rp.permission_key=ANY($4::text[])
+              AND rp.catalog_version=1`,
+          [principal.company_id, principal.role_id, permission, [permission, 'company.manage']]);
+          if (!permissions.rows[0]?.allowed) throw new IdentityError('FORBIDDEN', 'Operação não autorizada.');
+          Object.defineProperty(principal, 'company_manage', { value: permissions.rows[0].company_manage });
           if (MFA_PERMISSIONS.includes(permission) && !principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Esta operação exige MFA verificado.');
         }
         return operation(client, principal);

@@ -31,6 +31,7 @@ const { createPool } = require('../../backend/postgres/connection');
 const { resolveE2eTargets, storedLoopbackCredential } = require('./guards');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const { createFixtureManifest, safeMetadata } = require('./fixture-manifest');
+const { performance } = require('node:perf_hooks');
 
 function savepointPool(client) {
   let sequence = 0;
@@ -55,7 +56,7 @@ function rateLimiter() {
     invitation: { limit: 50, windowMs: 60000 }, provision: { limit: 50, windowMs: 60000 }, mfa: { limit: 50, windowMs: 60000 }, default: { limit: 1000, windowMs: 60000 } } });
 }
 
-async function start(handler, requestContext) {
+async function start(handler, requestContext, onRequestProfile = null) {
   // The rollback fixture uses one PostgreSQL client and savepoints, so keep its
   // legacy serialized mode until it explicitly switches to independent pool
   // transactions. Concurrent mode is used only by the opt-in E2E scenario.
@@ -67,10 +68,20 @@ async function start(handler, requestContext) {
     req.clientIp = '127.0.0.1';
     const suppliedId = req.headers['x-campaign-0137-request-id'];
     req.requestId = typeof suppliedId === 'string' && /^[0-9a-f-]{36}$/iu.test(suppliedId) ? suppliedId : crypto.randomUUID();
-    const execute = async () => requestContext.run({ requestId: req.requestId, path: req.url }, async () => {
-      if (paused) { if (!res.writableEnded) res.writeHead(503, { 'Cache-Control': 'no-store' }).end(); return; }
-      for (const route of handler) if (await route(req, res)) return;
-      if (!res.writableEnded) res.writeHead(404).end();
+    const clientLabel = /^[a-z0-9_-]{1,24}$/iu.test(req.headers['x-campaign-0156-client'] || '')
+      ? req.headers['x-campaign-0156-client'] : 'unlabelled';
+    const profile = onRequestProfile ? { requestId: req.requestId, path: new URL(req.url, 'http://127.0.0.1').pathname,
+      clientLabel, poolWaitMs: 0, queryMs: 0, queryCount: 0, queryClasses: Object.create(null) } : null;
+    const requestStarted = performance.now();
+    const execute = async () => requestContext.run({ requestId: req.requestId, path: req.url, profile }, async () => {
+      try {
+        if (paused) { if (!res.writableEnded) res.writeHead(503, { 'Cache-Control': 'no-store' }).end(); return; }
+        for (const route of handler) if (await route(req, res)) return;
+        if (!res.writableEnded) res.writeHead(404).end();
+      } finally {
+        if (profile) onRequestProfile(Object.freeze({ ...profile, status: res.statusCode,
+          totalMs: performance.now() - requestStarted }));
+      }
     });
     const task = serialized ? pending.then(execute) : execute();
     if (serialized) pending = task.catch(() => {});
@@ -92,7 +103,8 @@ async function start(handler, requestContext) {
 async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
   persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false,
   businessFixture = true, onTestEmail = null, independentRequestTransactions = false, retainIndependentFixture = false,
-  onIndependentFixtureRetained = null, onIndependentConnection = null, onIndependentTransaction = null } = {}) {
+  onIndependentFixtureRetained = null, onIndependentConnection = null, onIndependentTransaction = null,
+  onRequestProfile = null, independentPoolSize = 8 } = {}) {
   if (env.NODE_ENV !== 'test' || typeof extraHttpHandlers !== 'function') throw new Error('Handlers extras do fixture só são aceitos no modo test.');
   if (onTestEmail !== null && typeof onTestEmail !== 'function') throw new Error('Observador de email E2E inválido.');
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
@@ -112,6 +124,9 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
   if (onIndependentFixtureRetained !== null && typeof onIndependentFixtureRetained !== 'function') throw new Error('Observador de fixture retida inválido.');
   if (onIndependentConnection !== null && typeof onIndependentConnection !== 'function') throw new Error('Observador de conexão independente inválido.');
   if (onIndependentTransaction !== null && typeof onIndependentTransaction !== 'function') throw new Error('Observador de transação independente inválido.');
+  if (onRequestProfile !== null && typeof onRequestProfile !== 'function') throw new Error('Observador de perfil E2E inválido.');
+  if (!Number.isSafeInteger(independentPoolSize) || independentPoolSize < 1 || independentPoolSize > 20)
+    throw new Error('Tamanho de pool independente E2E inválido.');
   const fixtureManifest = disposableCampaign ? null : await createFixtureManifest({
     campaign: env.ROTAMOTO_E2E_CAMPAIGN || 'unassigned' });
   if (fixtureManifest) await fixtureManifest.update({ status: 'RUNNING' });
@@ -163,9 +178,29 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     await assertConnectedIdentity(runtime, { role: 'rotamoto_app', database, env });
     await runtime.query('BEGIN'); transactionOpen = true;
     activePool = savepointPool(runtime);
+    const instrumentedClients = new WeakSet();
     const pool = { async connect(...args) {
+      const connectStarted = performance.now();
       const client = await activePool.connect(...args);
       const context = requestContext.getStore();
+      if (context?.profile) context.profile.poolWaitMs += performance.now() - connectStarted;
+      if (context?.profile && !instrumentedClients.has(client)) {
+        const query = client.query.bind(client);
+        client.query = async (...queryArgs) => {
+          const queryStarted = performance.now();
+          const statement = typeof queryArgs[0] === 'string' ? queryArgs[0] : queryArgs[0]?.text || '';
+          const queryClass = /\bFROM\s+rotamoto\.domain_records\b/iu.test(statement) ? 'domain_records' :
+            /\brotamoto\.(?:sessions|credentials|users)\b/iu.test(statement) ? 'identity' :
+            /\brotamoto\.(?:role_permissions|memberships|roles)\b/iu.test(statement) ? 'authorization' : 'other';
+          try { return await query(...queryArgs); }
+          finally {
+            const current = requestContext.getStore()?.profile;
+            if (current) { const elapsed = performance.now() - queryStarted; current.queryMs += elapsed;
+              current.queryCount++; current.queryClasses[queryClass] = (current.queryClasses[queryClass] || 0) + elapsed; }
+          }
+        };
+        instrumentedClients.add(client);
+      }
       const requestId = context?.requestId;
       if (requestId && independentPool) {
         const applicationName = `campaign-0137:${requestId}`;
@@ -221,12 +256,16 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       allowedOrigin: originConfig });
     const driverAvailabilityHttp=createDriverAvailabilityHttpHandler({identityService,service:driverAvailabilityService,logger:()=>{},rateLimiter:limiter,allowedOrigin:originConfig});
     const queryHttp = createDomainQueryHttpHandler({ identityService,
-      queryService: createDomainQueryService({ repository: createDomainQueryRepository() }), logger: () => {}, rateLimiter: limiter });
+      queryService: createDomainQueryService({ repository: createDomainQueryRepository() }), logger: () => {}, rateLimiter: limiter,
+      onProfile: profile => {
+        const current = requestContext.getStore()?.profile;
+        if (current) { current.identityAndDomainMs = profile.identityAndDomainMs; current.serializationMs = profile.serializationMs; }
+      } });
     const testHandlers = await extraHttpHandlers(Object.freeze({ identityService, runtime, pool }));
     if (!Array.isArray(testHandlers) || testHandlers.some(handler => typeof handler !== 'function')) throw new Error('Handlers E2E inválidos.');
     // Test-only domain adapters must run before the broad /api/admin handler so
     // mounted marketplace/admin subdomains can use their canonical routes.
-    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext);
+    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext, onRequestProfile);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {} } = {}) => {
       const response = await fetch(`${host.base}${path}`, { method, headers: { Origin: allowedOrigins[0] || host.base,
@@ -548,6 +587,75 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         membershipId: ownerMembership.membershipId, driverId: tenantDriverId, cookie: ownerCookie,
         csrf: ownerSession.body.csrfToken, email: tenantEmail });
     };
+    const createSyntheticAdminSessions = async ({ ownerCookie, ownerCsrf, labels }) => {
+      if (typeof ownerCookie !== 'string' || typeof ownerCsrf !== 'string' || !Array.isArray(labels) || labels.length < 1 ||
+          labels.length > 10 || labels.some(label => !/^[a-z0-9_-]{1,24}$/iu.test(label))) {
+        throw new Error('Sessões sintéticas de benchmark inválidas.');
+      }
+      const activeOwnerSession = await call('/api/identity/session', { cookie: ownerCookie });
+      assert.equal(activeOwnerSession.status, 200);
+      const companyId = activeOwnerSession.body.activeCompanyId;
+      const role = await call('/api/admin/roles', { method: 'POST', cookie: ownerCookie, csrf: ownerCsrf,
+        body: { key: `perf_0156_${crypto.randomBytes(5).toString('hex')}`, name: 'Administradores sintéticos de benchmark',
+          permissions: ['company.manage', 'orders.read'] } });
+      assert.equal(role.status, 201, JSON.stringify(role.body));
+      trackFixtureRecord(companyId, 'roles', role.body.id);
+      const accounts = [];
+      for (const label of labels) {
+        const email = `perf-${label}-${crypto.randomUUID()}@example.invalid`;
+        const invitationResponse = await call('/api/admin/invitations', { method: 'POST', cookie: ownerCookie, csrf: ownerCsrf,
+          body: { email, roleId: role.body.id } });
+        assert.equal(invitationResponse.status, 202, JSON.stringify(invitationResponse.body));
+        const invitation = emails.findLast(message => message.kind === 'membership_invitation' && message.to === email);
+        assert(invitation?.token, 'synthetic account invitation remains inside the test-only email sink');
+        const password = `E2E-${crypto.randomBytes(30).toString('base64url')}`;
+        const accepted = await call('/api/identity/membership-invitations/accept', { method: 'POST',
+          body: { token: invitation.token, password } });
+        assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+        fixtureUserIds.push(accepted.body.userId);
+        fixtureTenantByUser.set(accepted.body.userId, companyId);
+        trackFixtureRecord(companyId, 'authRecords', accepted.body.userId);
+        const setupLogin = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId } });
+        assert.equal(setupLogin.status, 200, JSON.stringify(setupLogin.body));
+        assert.equal(setupLogin.body.mfaEnrollmentRequired, true);
+        const setupCookie = setupLogin.headers.get('set-cookie').split(';', 1)[0];
+        const setupSession = await call('/api/identity/session', { cookie: setupCookie });
+        const enrollment = await call('/api/identity/mfa/enrollment', { method: 'POST', cookie: setupCookie,
+          csrf: setupSession.body.csrfToken, body: {} });
+        assert.equal(enrollment.status, 200, JSON.stringify(enrollment.body));
+        const enrollmentCounter = Math.floor(Date.now() / 30000);
+        const confirmation = await call('/api/identity/mfa/enrollment/confirm', { method: 'POST', cookie: setupCookie,
+          csrf: setupSession.body.csrfToken, body: { code: codeAt(enrollment.body.secret, enrollmentCounter) } });
+        assert.equal(confirmation.status, 200, JSON.stringify(confirmation.body));
+        accounts.push({ label, email, password, userId: accepted.body.userId, enrollmentCounter,
+          secret: enrollment.body.secret });
+      }
+      const targetCounter = Math.max(...accounts.map(account => account.enrollmentCounter)) + 1;
+      while (Math.floor(Date.now() / 30000) < targetCounter) await new Promise(resolve => setTimeout(resolve, 100));
+      const sessions = [];
+      for (const account of accounts) {
+        const login = await call('/api/identity/login', { method: 'POST', body: { email: account.email,
+          password: account.password, companyId, mfaCode: codeAt(account.secret, targetCounter) } });
+        assert.equal(login.status, 200, JSON.stringify(login.body));
+        const cookie = login.headers.get('set-cookie').split(';', 1)[0];
+        const session = await call('/api/identity/session', { cookie });
+        assert.equal(session.status, 200);
+        assert.equal(session.body.mfaVerified, true);
+        try {
+          await runtime.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
+          const rows = await runtime.query('SELECT id::text FROM rotamoto.sessions WHERE user_id=$1', [account.userId]);
+          const memberships = await runtime.query('SELECT id::text FROM rotamoto.memberships WHERE company_id=$1 AND user_id=$2',
+            [companyId, account.userId]);
+          fixtureSessionIds.push(...rows.rows.map(row => row.id));
+          for (const sessionId of rows.rows.map(row => row.id)) fixtureTenantBySession.set(sessionId, companyId);
+          trackFixtureRecord(companyId, 'memberships', memberships.rows.map(row => row.id));
+        } catch (_) { /* session IDs remain optional when runtime ACLs hide the table */ }
+        sessions.push(Object.freeze({ label: account.label, userId: account.userId, companyId, cookie,
+          csrf: session.body.csrfToken }));
+      }
+      await syncFixtureManifest();
+      return Object.freeze(sessions);
+    };
     const enableIndependentRequestTransactions = async () => {
       if (!independentRequestTransactions) throw new Error('Este fixture não habilitou transações independentes.');
       if (independentPool) return;
@@ -561,7 +669,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       const target = resolveE2eTargets(env).runtime;
       independentPool = createPool({ connectionString: target,
         password: storedLoopbackCredential('rotamoto_app', 'rotamoto_e2e'),
-        max: 8, connectionTimeoutMillis: 5000, application_name: 'campaign-0137-browser-independent' });
+        max: independentPoolSize, connectionTimeoutMillis: 5000, application_name: 'campaign-0137-browser-independent' });
       const probe = await independentPool.connect();
       try { await assertConnectedIdentity(probe, { role: 'rotamoto_app', database: 'rotamoto_e2e', env }); }
       finally { probe.release(); }
@@ -598,7 +706,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
       driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, restaurantDevice, email, password, mfaCode: browserMfaCode,
       browserSessionCookie: sessionCookie, apiOrigin: host.base, mediaDirectory, proof: proofFixture,
-      provisionAdditionalTenant, runtime, call, authenticatedCall, driverAvailabilityService,
+      provisionAdditionalTenant, createSyntheticAdminSessions, runtime, call, authenticatedCall, driverAvailabilityService,
       enableIndependentRequestTransactions, registerFixtureTenant,
       fixtureManifest: fixtureManifest ? Object.freeze({ runId: fixtureManifest.runId, file: fixtureManifest.file }) : null,
       acquireIndependentRuntimeClient: async () => {

@@ -1,11 +1,13 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { performance } = require('node:perf_hooks');
 const { createRateLimiter } = require('../identity/http');
 const { QUERY_PERMISSIONS } = require('./query-service');
 
-function createDomainQueryHttpHandler({ identityService, queryService, rateLimiter = createRateLimiter(), logger = () => {} }) {
+function createDomainQueryHttpHandler({ identityService, queryService, rateLimiter = createRateLimiter(), logger = () => {}, onProfile = null }) {
   if (!identityService || !queryService) throw new TypeError('Serviços de identidade e consulta de domínio obrigatórios.');
+  if (onProfile !== null && typeof onProfile !== 'function') throw new TypeError('Observer de perfil da consulta inválido.');
   const route = /^\/api\/domain\/([a-z-]+)(?:\/([^/]+))?$/u;
   return async function domainQueryHttpHandler(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
@@ -15,6 +17,8 @@ function createDomainQueryHttpHandler({ identityService, queryService, rateLimit
     const startedAt = Date.now();
     let status = 500;
     let errorCode;
+    let identityAndDomainMs = 0;
+    let serializationMs = 0;
     try {
       if (!match) throw Object.assign(new Error('Recurso não encontrado.'), { code: 'NOT_FOUND' });
       if (req.method !== 'GET') {
@@ -44,14 +48,19 @@ function createDomainQueryHttpHandler({ identityService, queryService, rateLimit
         .filter(value => value.startsWith('__Host-rotamoto_session='));
       const token = cookieValues.length === 1 ? cookieValues[0].slice('__Host-rotamoto_session='.length) : null;
       if (!token || !/^[A-Za-z0-9_-]{43}$/u.test(token)) throw Object.assign(new Error('Sessão inválida ou expirada.'), { code: 'UNAUTHENTICATED' });
+      const queryStartedAt = onProfile ? performance.now() : 0;
       const result = await identityService.withAuthenticatedTenant(token,
         (client, principal) => recordId ? queryService.get(client, principal, collection, recordId) :
           queryService.list(client, principal, collection, rawValues), permission);
+      if (onProfile) identityAndDomainMs = performance.now() - queryStartedAt;
       status = 200;
+      const serializationStartedAt = onProfile ? performance.now() : 0;
       const body = JSON.stringify({ ...result, requestId });
+      const contentLength = Buffer.byteLength(body);
+      if (onProfile) serializationMs = performance.now() - serializationStartedAt;
       res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
         Pragma: 'no-cache', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-        'X-Request-ID': requestId, 'Content-Length': Buffer.byteLength(body) });
+        'X-Request-ID': requestId, 'Content-Length': contentLength });
       res.end(body);
       return true;
     } catch (error) {
@@ -72,8 +81,10 @@ function createDomainQueryHttpHandler({ identityService, queryService, rateLimit
       res.end(body);
       return true;
     } finally {
-      try { logger({ requestId, method: req.method, path: url.pathname, status, durationMs: Date.now() - startedAt,
-        ...(errorCode ? { errorCode } : {}) }); } catch (_) { /* logging does not affect query outcomes */ }
+      const profile = { requestId, method: req.method, path: url.pathname, status, durationMs: Date.now() - startedAt,
+        ...(onProfile ? { identityAndDomainMs, serializationMs } : {}), ...(errorCode ? { errorCode } : {}) };
+      try { logger(profile); } catch (_) { /* logging does not affect query outcomes */ }
+      try { onProfile?.(profile); } catch (_) { /* profiling does not affect query outcomes */ }
     }
   };
 }
