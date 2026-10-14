@@ -20,6 +20,12 @@ const WEBHOOK_TYPES = new Set(['orderNew','orderCancel','orderFinish','deliveryS
 const CURRENCY_BY_COUNTRY = Object.freeze({ BR:'BRL',MX:'MXN',CO:'COP',CR:'CRC',PE:'PEN' });
 
 function fail(code, status = 400) { return Object.assign(new Error('99Food request rejected.'), { code, status }); }
+function retryAfterSeconds(header, now = Date.now()) {
+  if (typeof header !== 'string' || !header.trim()) return 30;
+  const value = header.trim();
+  const seconds = /^\d{1,6}$/u.test(value) ? Number(value) : Math.ceil((Date.parse(value) - now) / 1000);
+  return Math.min(3600, Math.max(1, Number.isFinite(seconds) ? seconds : 30));
+}
 function isRecord(value) { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function minor(value) { return Number.isSafeInteger(value) && value >= 0 ? value : null; }
 
@@ -168,7 +174,7 @@ function normalizeOrder(response,{expectedAppShopId=null}={}) {
     items: Object.freeze(items) });
 }
 
-function create99FoodAdapter({ fetchImpl = globalThis.fetch, clock = () => Date.now(), baseUrl = API } = {}) {
+function create99FoodAdapter({ fetchImpl = globalThis.fetch, clock = () => Date.now(), baseUrl = API, rateLimit = null } = {}) {
   let endpoint;
   try { endpoint = new URL(baseUrl); } catch (_) { throw new TypeError('Invalid 99Food API URL.'); }
   if (endpoint.protocol !== 'https:' || endpoint.hostname !== 'openapi.99food.com' || endpoint.username || endpoint.password)
@@ -179,6 +185,13 @@ function create99FoodAdapter({ fetchImpl = globalThis.fetch, clock = () => Date.
     if (!credentials || typeof credentials.appId !== 'string' || !/^\d{1,20}$/u.test(credentials.appId) ||
         typeof credentials.appSecret !== 'string' || !credentials.appSecret || typeof credentials.appShopId !== 'string' || !credentials.appShopId)
       throw fail('CREDENTIALS_UNAVAILABLE', 503);
+    if (rateLimit) {
+      const operation = path === '/v1/order/order/detail' ? 'order_detail'
+        : path.startsWith('/v1/auth/authtoken/refresh') ? 'token_refresh'
+          : path.startsWith('/v1/auth/authtoken/get') ? 'token_get' : 'order_command';
+      await rateLimit({ companyId: credentials.companyId, accountId: credentials.accountId || null,
+        appId: credentials.appId, appShopId: credentials.appShopId, operation });
+    }
     const all = { app_id: credentials.appId, app_shop_id: credentials.appShopId,
       timestamp: Math.floor(clock()/1000), ...params };
     all.sign = signParams(all, credentials.appSecret);
@@ -200,7 +213,7 @@ function create99FoodAdapter({ fetchImpl = globalThis.fetch, clock = () => Date.
     finally { clearTimeout(timer); }
     if (response.status === 429 || response.status >= 500) throw Object.assign(new Error('99Food provider temporarily unavailable.'), {
       code: response.status === 429 ? 'PROVIDER_RATE_LIMIT' : 'PROVIDER_UNAVAILABLE', status: response.status,
-      retryAfterSeconds: Math.min(3600, Math.max(1, Number(response.headers?.get?.('retry-after')) || 30)) });
+      retryAfterSeconds: retryAfterSeconds(response.headers?.get?.('retry-after'), clock()) });
     let body;
     try {
       if(typeof response.text==='function')body=parseLosslessJson(Buffer.from(await response.text(),'utf8'));

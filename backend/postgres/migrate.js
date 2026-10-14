@@ -12,6 +12,10 @@ const LOCK_KEY_2 = 2;
 const OFFICIAL_0116_MIGRATION_ID = '0040_restaurant_driver_queue';
 const OFFICIAL_0116_CHECKSUM_0039 = 'e581cecf955381968548d5cb65b6f937d105cf5a1beace779d078a3100047494';
 const OFFICIAL_0116_CHECKSUM_0040 = '58a6e6b0da458b97fdc2553b8dcf066eb14abeb6efeb93ddc6d24713ea951f85';
+const OFFICIAL_0154_MIGRATIONS = Object.freeze([
+  '0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit'
+]);
+const OFFICIAL_0154_CHECKSUM_0041 = 'c75063f833da16a8efdd2e8d448bf1c7c3aee7e360be8d9e1f12397d15251a9c';
 
 function getMigrations() {
   return fs.readdirSync(MIGRATION_DIR)
@@ -171,6 +175,38 @@ function assertQueueRehearsalState(applied, migrations, campaign) {
 function assert0115RehearsalState(applied, migrations) { return assertQueueRehearsalState(applied, migrations, '0115'); }
 function assert0116RehearsalState(applied, migrations) { return assertQueueRehearsalState(applied, migrations, '0116'); }
 
+function official0154MigrationConnectionString(env = process.env) {
+  if (env.NODE_ENV !== 'production' || env.ROTAMOTO_OFFICIAL_MIGRATION_CAMPAIGN !== '0154' ||
+      env.ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE !== 'rotamoto' ||
+      env.ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_MIGRATIONS !== OFFICIAL_0154_MIGRATIONS.join(',')) {
+    throw new Error('Operação oficial exige confirmações explícitas da Campanha 0154, banco e migrations.');
+  }
+  const value = migrationConnectionString(env), parsed = new URL(value);
+  if (parsed.search || parsed.hash) throw new Error('Operação oficial não aceita parâmetros adicionais na URL.');
+  return value;
+}
+
+function assertOfficial0154State(applied, migrations, { allowApplied = false } = {}) {
+  const applied0041 = migrations.find(migration => migration.id === '0041_delivery_custody_return');
+  const pending = migrations.filter(migration => OFFICIAL_0154_MIGRATIONS.includes(migration.id));
+  if (!applied0041 || applied0041.checksum !== OFFICIAL_0154_CHECKSUM_0041 || pending.length !== OFFICIAL_0154_MIGRATIONS.length ||
+      pending.some((migration,index) => migration.id !== OFFICIAL_0154_MIGRATIONS[index]) ||
+      migrations.at(-1)?.id !== OFFICIAL_0154_MIGRATIONS.at(-1)) {
+    throw new Error('Gate oficial 0154 exige histórico imutável 0041 e 0042–0044 como migrations finais conhecidas.');
+  }
+  if (applied.size !== 41 + OFFICIAL_0154_MIGRATIONS.filter(id => applied.has(id)).length ||
+      !migrations.slice(0,41).every(migration => applied.get(migration.id) === migration.checksum) ||
+      [...applied.keys()].some(id => !migrations.slice(0,41).some(migration => migration.id === id) && !OFFICIAL_0154_MIGRATIONS.includes(id)) ||
+      OFFICIAL_0154_MIGRATIONS.some((id,index) => applied.has(id) && !allowApplied)) {
+    throw new Error('Gate oficial 0154 exige ledger íntegro 0001–0041 e somente 0042–0044 pendentes.');
+  }
+  const appliedNew = OFFICIAL_0154_MIGRATIONS.filter(id => applied.has(id));
+  if (appliedNew.some((id,index) => id !== OFFICIAL_0154_MIGRATIONS[index])) {
+    throw new Error('Gate oficial 0154 encontrou migrations aplicadas fora de sequência.');
+  }
+  return Object.freeze({ applied: appliedNew, pending: OFFICIAL_0154_MIGRATIONS.filter(id => !applied.has(id)) });
+}
+
 function assert0110RehearsalState(applied, migrations) {
   const id = '0039_driver_operational_availability';
   const index = migrations.findIndex(migration => migration.id === id);
@@ -194,22 +230,27 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
   const rehearsal0116 = args.length === 2 && args[1] === '--rehearsal-0116';
   const verifyOfficial0116 = args.length === 2 && args[1] === '--verify-0116';
   const applyOfficial0116 = args.length === 2 && args[1] === '--apply-0116';
+  const verifyOfficial0154 = args.length === 2 && args[1] === '--verify-0154';
+  const applyOfficial0154 = args.length === 2 && args[1] === '--apply-0154';
   const throughMatch = args.length === 2 ? /^--through=(\d{4}_[a-z0-9_]+)$/u.exec(args[1]) : null;
   const throughId = throughMatch?.[1] || null;
   if (!['up', 'down', 'status'].includes(command) ||
-      (args.length > 1 && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !throughId) || args.length > 2 ||
+      (args.length > 1 && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !verifyOfficial0154 && !applyOfficial0154 && !throughId) || args.length > 2 ||
       (throughId && (command !== 'up' || !getMigrations().some(migration => migration.id === throughId))) ||
-      (throughId && (e2e || disposableCampaign || rehearsal0110 || rehearsal0115 || rehearsal0116 || verifyOfficial0116 || applyOfficial0116)) ||
+      (throughId && (e2e || disposableCampaign || rehearsal0110 || rehearsal0115 || rehearsal0116 || verifyOfficial0116 || applyOfficial0116 || verifyOfficial0154 || applyOfficial0154)) ||
       ((rehearsal0110 || rehearsal0115 || rehearsal0116) && command === 'down') ||
       (verifyOfficial0116 && command !== 'status') ||
       (applyOfficial0116 && command !== 'up') ||
+      (verifyOfficial0154 && command !== 'status') ||
+      (applyOfficial0154 && command !== 'up') ||
       ((e2e || disposableCampaign) && command === 'down')) {
-    throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e|--campaign-0068-source|--rehearsal-0110|--rehearsal-0115|--rehearsal-0116|--verify-0116|--apply-0116|--through=<migration conhecida>]');
+    throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e|--campaign-0068-source|--rehearsal-0110|--rehearsal-0115|--rehearsal-0116|--verify-0116|--apply-0116|--verify-0154|--apply-0154|--through=<migration conhecida>]');
   }
-  if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && command !== 'status') {
+  if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !verifyOfficial0154 && !applyOfficial0154 && command !== 'status') {
     throw new Error('Migrations mutáveis em NODE_ENV=test exigem --e2e e rotamoto_e2e.');
   }
   return { command, ...(throughId ? { throughId } : {}), connectionString: applyOfficial0116 || verifyOfficial0116 ? official0116MigrationConnectionString(env)
+      : applyOfficial0154 || verifyOfficial0154 ? official0154MigrationConnectionString(env)
     : disposableCampaign ? disposableCampaignMigrationConnectionString(env)
     : rehearsal0110 ? disposable0110MigrationConnectionString(env)
     : rehearsal0115 ? disposable0115MigrationConnectionString(env)
@@ -217,7 +258,8 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
     : e2e ? e2eMigrationConnectionString(env) : migrationConnectionString(env),
     ...(rehearsal0110 ? { rehearsal0110: true } : {}), ...(rehearsal0115 ? { rehearsal0115: true } : {}),
     ...(rehearsal0116 ? { rehearsal0116: true } : {}),
-    ...(verifyOfficial0116 ? { verifyOfficial0116: true } : {}), ...(applyOfficial0116 ? { applyOfficial0116: true } : {}) };
+    ...(verifyOfficial0116 ? { verifyOfficial0116: true } : {}), ...(applyOfficial0116 ? { applyOfficial0116: true } : {}),
+    ...(verifyOfficial0154 ? { verifyOfficial0154: true } : {}), ...(applyOfficial0154 ? { applyOfficial0154: true } : {}) };
 }
 
 async function ensureMetadata(client) {
@@ -314,7 +356,8 @@ async function status(client, migrations) {
 }
 
 async function main() {
-  const { command, connectionString, throughId, rehearsal0110, rehearsal0115, rehearsal0116, verifyOfficial0116, applyOfficial0116 } = resolveMigrationInvocation();
+  const { command, connectionString, throughId, rehearsal0110, rehearsal0115, rehearsal0116, verifyOfficial0116, applyOfficial0116,
+    verifyOfficial0154, applyOfficial0154 } = resolveMigrationInvocation();
   const client = createClient({ connectionString, connectionTimeoutMillis: 5000 });
   let lockHeld = false;
   try {
@@ -327,6 +370,10 @@ async function main() {
     if ((verifyOfficial0116 || applyOfficial0116) && (identity.rows[0].database !== 'rotamoto' ||
         identity.rows[0].server_address !== '127.0.0.1/32' || identity.rows[0].version_num < 180000 || identity.rows[0].version_num >= 190000)) {
       throw new Error('Gate oficial 0116 exige current_database=rotamoto, loopback e PostgreSQL 18.');
+    }
+    if ((verifyOfficial0154 || applyOfficial0154) && (identity.rows[0].database !== 'rotamoto' ||
+        identity.rows[0].server_address !== '127.0.0.1/32' || identity.rows[0].version_num < 180000 || identity.rows[0].version_num >= 190000)) {
+      throw new Error('Gate oficial 0154 exige current_database=rotamoto, loopback e PostgreSQL 18.');
     }
     if (rehearsal0115 || rehearsal0116) {
       const database = decodeURIComponent(new URL(connectionString).pathname.slice(1));
@@ -407,6 +454,59 @@ async function main() {
         databaseOwner: databaseOwner.rows[0].owner, transactional: true }));
       return;
     }
+    if (verifyOfficial0154 || applyOfficial0154) {
+      const applied = await assertChecksums(client, allMigrations);
+      const state = assertOfficial0154State(applied, allMigrations, { allowApplied: verifyOfficial0154 });
+      if (verifyOfficial0154) {
+        await client.query('BEGIN READ ONLY');
+        try {
+          const activity = await client.query(`SELECT count(*)::integer AS sessions,
+            count(*) FILTER(WHERE xact_start IS NOT NULL)::integer AS transactions
+            FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()`);
+          const waiting = await client.query(`SELECT count(*)::integer AS locks FROM pg_locks
+            WHERE database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND NOT granted`);
+          console.log(JSON.stringify({event:'migration.official.0154.verified',database:'rotamoto',state,
+            applied:state.applied,pending:state.pending,checksum0041:OFFICIAL_0154_CHECKSUM_0041,
+            externalSessions:activity.rows[0].sessions,externalTransactions:activity.rows[0].transactions,waitingLocks:waiting.rows[0].locks}));
+        } finally { await client.query('ROLLBACK'); }
+        return;
+      }
+      if (!state.pending.length) {
+        console.log(JSON.stringify({event:'migration.official.0154.already_applied',database:'rotamoto',applied:state.applied}));
+        return;
+      }
+      const schema = await client.query(`SELECT pg_get_userbyid(nspowner) AS owner,
+        has_schema_privilege(current_user,'rotamoto','USAGE') AS schema_usage,
+        has_schema_privilege(current_user,'rotamoto','CREATE') AS schema_create,
+        has_table_privilege(current_user,'rotamoto.schema_migrations','SELECT') AS ledger_select,
+        has_table_privilege(current_user,'rotamoto.schema_migrations','INSERT') AS ledger_insert
+        FROM pg_namespace n WHERE nspname='rotamoto'`);
+      const role = await client.query(`SELECT rolsuper,rolcreatedb,rolcreaterole,rolbypassrls FROM pg_roles WHERE rolname=current_user`);
+      const activity = await client.query(`SELECT count(*)::integer AS sessions,
+        count(*) FILTER(WHERE xact_start IS NOT NULL)::integer AS transactions
+        FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid()`);
+      const waiting = await client.query(`SELECT count(*)::integer AS locks FROM pg_locks
+        WHERE database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND NOT granted`);
+      if (!schema.rowCount || schema.rows[0].owner!=='rotamoto_migrator' || !schema.rows[0].schema_usage || !schema.rows[0].schema_create ||
+          !schema.rows[0].ledger_select || !schema.rows[0].ledger_insert || !role.rowCount || role.rows[0].rolsuper ||
+          role.rows[0].rolcreatedb || role.rows[0].rolcreaterole || role.rows[0].rolbypassrls ||
+          Number(activity.rows[0].sessions)!==0 || Number(activity.rows[0].transactions)!==0 || Number(waiting.rows[0].locks)!==0) {
+        throw new Error('Gate oficial 0154 recusado: role, owner, sessões, transações ou locks não estão no estado esperado.');
+      }
+      await client.query("SET lock_timeout='5s'");
+      await client.query("SET statement_timeout='60s'");
+      for (const migrationId of state.pending) {
+        const migration=allMigrations.find(item=>item.id===migrationId);
+        await applyMigration(client,migration);
+      }
+      const after=await assertChecksums(client,allMigrations);
+      const completed=assertOfficial0154State(after,allMigrations,{allowApplied:true});
+      if(completed.pending.length)throw new Error('Gate oficial 0154 não aplicou todas as migrations autorizadas.');
+      console.log(JSON.stringify({event:'migration.official.0154.applied',database:'rotamoto',migrations:completed.applied,
+        checksums:Object.fromEntries(completed.applied.map(id=>[id,allMigrations.find(item=>item.id===id).checksum])),
+        transactional:true,lockTimeoutMs:5000,statementTimeoutMs:60000}));
+      return;
+    }
     const effectiveThroughId=rehearsal0110?'0039_driver_operational_availability':rehearsal0115||rehearsal0116?'0040_restaurant_driver_queue':throughId;
     const throughIndex = effectiveThroughId ? allMigrations.findIndex(migration => migration.id === effectiveThroughId) : -1;
     if (effectiveThroughId && throughIndex < 0) throw new Error('Migration checkpoint desconhecido.');
@@ -440,4 +540,5 @@ if (require.main === module) main().catch(error => {
 module.exports = { getMigrations, assertChecksums, withTransaction, migrationConnectionString,
   e2eMigrationConnectionString, disposableCampaignMigrationConnectionString, disposable0110MigrationConnectionString,
   disposable0115MigrationConnectionString, disposable0116MigrationConnectionString, official0116MigrationConnectionString, assertOfficial0116State,
+  official0154MigrationConnectionString, assertOfficial0154State,
   assert0110RehearsalState, assert0115RehearsalState, assert0116RehearsalState, resolveMigrationInvocation };

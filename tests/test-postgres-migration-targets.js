@@ -2,7 +2,8 @@
 
 const assert = require('node:assert/strict');
 const { getMigrations, resolveMigrationInvocation, assert0110RehearsalState, assert0115RehearsalState,
-  assert0116RehearsalState, assertOfficial0116State } = require('../backend/postgres/migrate');
+  assert0116RehearsalState, assertOfficial0116State, assertOfficial0154State,
+  official0154MigrationConnectionString } = require('../backend/postgres/migrate');
 
 const database = 'rotamoto_disposable_0110_20261009_004823_6e50bdf3';
 const url = `postgresql://rotamoto_migrator@127.0.0.1:5432/${database}`;
@@ -50,7 +51,7 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.deepEqual(migrations.slice(-2).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands'], '99Food migrations append without rewriting 0040/0041 history');
+assert.deepEqual(migrations.slice(-3).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit'], '99Food migrations append without rewriting 0040/0041 history');
 const migration0042 = migrations.find(migration => migration.id === '0042_marketplace_99food_runtime');
 const migration0043 = migrations.find(migration => migration.id === '0043_99food_application_and_cash_commands');
 assert.match(migration0042.up,/claim_marketplace_99food_token_refresh/u);
@@ -58,6 +59,11 @@ assert.match(migration0042.up,/CHECK \(provider IN \('ifood','keeta','99food'\)\
 assert.match(migration0042.down,/rollback 0042 bloqueado/iu);
 assert.match(migration0043.up,/CONFIRM_CASH_PAYMENT/u);
 assert.match(migration0043.down,/rollback 0043 blocked/iu);
+const migration0044 = migrations.find(migration => migration.id === '0044_99food_distributed_rate_limit');
+assert.match(migration0044.up,/FORCE ROW LEVEL SECURITY/u);
+assert.match(migration0044.up,/consume_99food_rate_limit/u);
+assert.match(migration0044.up,/rotamoto_provider_worker/u);
+assert.match(migration0044.down,/rollback bloqueado/u);
 const ledger0039 = new Map(migrationsThrough0040.slice(0, migration0040Index).map(migration => [migration.id, migration.checksum]));
 const ledger0040 = new Map([...ledger0039, [migrationsThrough0040.at(-1).id, migrationsThrough0040.at(-1).checksum]]);
 assert.equal(assert0115RehearsalState(ledger0039, migrationsThrough0040), '0040_restaurant_driver_queue');
@@ -106,5 +112,16 @@ assert.equal(assertOfficial0116State(ledger0040, migrationsThrough0040, { allowA
 assert.throws(() => assertOfficial0116State(ledger0040, migrationsThrough0040), /ledger íntegro/u);
 assert.throws(() => assertOfficial0116State(new Map([...ledger0039, ['0041_future', '0'.repeat(64)]]), migrationsThrough0040), /ledger íntegro/u);
 assert.throws(() => assertOfficial0116State(ledger0039, [...migrationsThrough0040, { id: '0041_future', checksum: '0'.repeat(64) }]), /0040 como única migration/u);
+
+const official0154Env={NODE_ENV:'production',ROTAMOTO_OFFICIAL_MIGRATION_CAMPAIGN:'0154',
+  ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE:'rotamoto',
+  ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_MIGRATIONS:'0042_marketplace_99food_runtime,0043_99food_application_and_cash_commands,0044_99food_distributed_rate_limit',
+  MIGRATOR_DATABASE_URL:'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto'};
+assert.equal(official0154MigrationConnectionString(official0154Env),official0154Env.MIGRATOR_DATABASE_URL);
+assert.throws(()=>official0154MigrationConnectionString({...official0154Env,ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE:'rotamoto_e2e'}),/confirmações explícitas/u);
+const official0154Prior=new Map(migrations.slice(0,41).map(migration=>[migration.id,migration.checksum]));
+assert.deepEqual(assertOfficial0154State(official0154Prior,migrations),{applied:[],pending:['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit']});
+assert.throws(()=>assertOfficial0154State(new Map([...official0154Prior,['0042_marketplace_99food_runtime','0'.repeat(64)]]),migrations),/ledger íntegro/u);
+assert.throws(()=>assertOfficial0154State(new Map([...official0154Prior,['0043_99food_application_and_cash_commands',migrations.find(item=>item.id==='0043_99food_application_and_cash_commands').checksum]]),migrations,{allowApplied:true}),/fora de sequência/u);
 
 console.log('PostgreSQL migration target guards: OK');

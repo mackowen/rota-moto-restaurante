@@ -10,6 +10,7 @@ const { createMarketplaceAccountResolver } = require('../backend/integrations/ma
 const { createMarketplaceWorker } = require('../backend/integrations/marketplace-worker');
 const { createKeetaAdapter } = require('../backend/integrations/keeta-adapter');
 const { create99FoodAdapter } = require('../backend/integrations/99food-protocol');
+const { create99FoodRateLimiter } = require('../backend/integrations/99food-rate-limiter');
 const { createMarketplaceAccountWriter } = require('../backend/integrations/marketplace-account-writer');
 
 function providerTenantIds(value) {
@@ -61,7 +62,7 @@ async function main(env = process.env) {
   const marketplaceIfood=createIfoodAdapter({credentialResolver:async companyId=>marketplaceAccounts.credentials('ifood',companyId),
     persistToken:record=>marketplaceAccountWriter.persistTokens(record)});
   const keeta=createKeetaAdapter({credentialResolver:async companyId=>marketplaceAccounts.credentials('keeta',companyId)});
-  const food99=create99FoodAdapter();
+  const food99=create99FoodAdapter({rateLimit:create99FoodRateLimiter({pool})});
   const worker = createProviderWorker({ pool, adapterRegistry: createLogisticsProviderAdapterRegistry({ ifoodAdapter: ifood }),
     credentialResolver, tenantResolver: async () => tenants,
     logger: event => process.stdout.write(`${JSON.stringify(event)}\n`) });

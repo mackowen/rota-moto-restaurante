@@ -42,7 +42,7 @@ function createMarketplaceRuntime({ pool, adapters, accountResolver, persist99Fo
       throw Object.assign(new Error('99Food token refresh is leased by another worker.'),{code:'TOKEN_REFRESH_BUSY',status:429,retryAfterSeconds:30});
     }
     try{
-      const token=await adapters['99food'].token({credentials:account.credentials,appShopId:account.merchantId,refresh:true});
+      const token=await adapters['99food'].token({credentials:{...account.credentials,companyId:account.companyId,accountId:account.id},appShopId:account.merchantId,refresh:true});
       if(token.appShopId!==account.merchantId)throw Object.assign(new Error('99Food token belongs to another store.'),{code:'MERCHANT_TOKEN_MISMATCH',status:409});
       await persist99FoodToken({companyId:account.companyId,accountScope:account.id,authToken:token.authToken,
         expiresAt:token.expiresAt,expectedSecretRef:account.secretRef});

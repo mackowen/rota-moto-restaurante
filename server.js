@@ -43,6 +43,7 @@ const {createMarketplaceHttpHandler}=require('./backend/integrations/marketplace
 const {createIfoodAdapter}=require('./backend/logistics/providers/ifood');
 const {createKeetaAdapter}=require('./backend/integrations/keeta-adapter');
 const {create99FoodAdapter}=require('./backend/integrations/99food-protocol');
+const {create99FoodRateLimiter}=require('./backend/integrations/99food-rate-limiter');
 const {createMarketplaceAccountWriter}=require('./backend/integrations/marketplace-account-writer');
 const {createMarketplaceAccountService,validPublicUrl}=require('./backend/integrations/marketplace-account-service');
 const {createMarketplaceAdminHandler}=require('./backend/integrations/marketplace-admin-http');
@@ -95,7 +96,7 @@ async function getMarketplaceHttp(){
     const writer=createMarketplaceAccountWriter({privilegedPool:marketplaceResolverPool,secretProvider:secrets});
     const ifood=createIfoodAdapter({credentialResolver:async companyId=>accounts.credentials('ifood',companyId),persistToken:record=>writer.persistTokens(record)});
     const keeta=createKeetaAdapter({credentialResolver:async companyId=>accounts.credentials('keeta',companyId)});
-    const food99=create99FoodAdapter();
+    const food99=create99FoodAdapter({rateLimit:create99FoodRateLimiter({pool:identityPool})});
     const applicationCredentials=async provider=>{
       if(provider==='99food'){
         const appId=process.env.ROTAMOTO_99FOOD_APP_ID,secretRef=process.env.ROTAMOTO_99FOOD_APP_SECRET_REF;

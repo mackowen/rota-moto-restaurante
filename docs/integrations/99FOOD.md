@@ -25,15 +25,21 @@ The portal is a JavaScript application; exact 99Food pages were fetched from its
 - Lossless parsing preserves unsafe integer IDs as strings as the portal requires for Long identifiers.
 - Order detail maps documented status codes 100, 200, 400, 500, 600 and cancellation codes 901–981. Fulfillment uses `delivery_type` (0 pickup, 1 99Food delivery, 2 store delivery) and `fulfillment_mode` (0 delivery, 1 self pickup). The adapter never creates an operational Delivery.
 - Documented calls include GET `/v1/order/order/detail`, POST `/v1/order/order/confirm`, `/v1/order/order/ready`, `/v1/order/order/delivered` (self-delivery only), and `/v1/order/order/cancel` with the documented reason IDs.
-- Auth token routes are `/v1/auth/authtoken/get` and `/v1/auth/authtoken/refresh`; the published guide says token expiry is random and refresh has a two-minute cooldown. Token storage and refresh scheduling are intentionally not wired into the app yet.
+- Auth token routes are `/v1/auth/authtoken/get` and `/v1/auth/authtoken/refresh`; the published guide says token expiry is random and refresh has a two-minute cooldown. The account resolver stores tokens in the existing protected secret store; the PostgreSQL refresh lease prevents parallel refreshes and holds for 135 seconds.
 - Public rate table: order detail 10 per 10 seconds; confirm, ready, delivered, cancel, and cancellation/refund response 5 per second; get/refresh token 1 per 30 seconds. Provider error envelope contains `errno`, `errmsg`, optional `requestId`, `time`, and `data`; published errors include 10001, 10002, 10100–10102, 14103, 14105, and 14106 for token acquisition.
 - Webhook response must be JSON `{ "errno": 0, "errmsg": "ok" }`; portal callback timeout is 6 seconds and nonzero `errno` causes retries.
 
-The portal's request-signature guidance is MD5 parameter signing, while webhook signing is explicitly raw-body-plus-secret. They are implemented separately. No auth, webhook or order request was sent to 99Food during this campaign.
+The portal's request-signature guidance is MD5 parameter signing, while webhook signing is explicitly raw-body-plus-secret. They are implemented separately. No auth, webhook or order request was sent to 99Food during the 0152 contract research.
 
-## Gate and known blockers
+## Current runtime status — 2026-10-14
 
-The adapter is unit-tested against synthetic contract fixtures; the app does not yet offer a verified connection. In checked-in migrations, `external_accounts` permits `99food`, but all runtime tables in migration 0035 (`marketplace_event_inbox`, `marketplace_command_outbox`, and `marketplace_order_versions`) constrain provider to `ifood`/`keeta`; event-claim SQL and runtime worker loops also enumerate only those providers. Therefore a live webhook cannot be durably ingested, and order projection/outbox/commands cannot be safely wired without an additive schema/runtime change. No migration or DDL was applied here. The 99Food integration action remains disabled and the UI labels this exact cause.
+The 0152 adapter is now connected to the existing account, webhook, inbox, canonical Order, sync outbox, command worker, and unified-order flows. Migrations 0042–0044 support the provider, and official development database `rotamoto` is at schema version 0044. The same migrations are present in `rotamoto_e2e`. Runtime, unit, PostgreSQL worker/rate-limit, and Chromium/CDP desktop/mobile tests use synthetic fixtures; no commercial provider request was sent.
+
+Migration 0044 adds PostgreSQL-coordinated per-application and per-store operation buckets. Detail calls are spaced to enforce the published 10/10-second limit; order commands use 200 ms spacing (at most five per second); token get and refresh each use a 30-second bucket. Hash keys are opaque, table reads are denied to app/worker, RLS and FORCE RLS are enabled, and the `SECURITY DEFINER` claim function has a fixed `search_path`. HTTP `Retry-After` supports both delay-seconds and HTTP-date forms. A provider 429 is returned to the durable worker retry policy; ambiguous 5xx side effects are not blindly retried.
+
+The development runtime is **READY_FOR_EXTERNAL_HOMOLOGATION = YES** for the locally implemented 99Food Protocol (Recommended) surface. This does not state that 99Food accepted or certified the integration. No live connection is enabled without provisioned credentials and external authorization.
+
+## Remaining external dependencies
 
 The public portal also requires partner qualification/NDA, app credentials, merchant authorization/binding, certification, and production whitelisting for some data (including promotions). Those are external blockers. The 99Food Protocol documents order webhooks, not polling; polling in Open Delivery is not attributed to 99Food's separate protocol. Provider logistics quote, dispatch, courier tracking, and delivery cancellation are not documented as integrator APIs in the reviewed order contract. Store delivery is represented only as fulfillment responsibility; it must later use RotaMoto's own existing Delivery flow after runtime wiring.
 

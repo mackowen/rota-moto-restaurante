@@ -43,7 +43,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
         const order=command.provider==='ifood'
           ? await adapters.ifood.order({companyId,orderId:command.external_order_id,credentials:account.credentials})
           : command.provider==='keeta'?await adapters.keeta.order({companyId,id:command.external_order_id,credentials:account.credentials})
-            : await adapters['99food'].order({companyId,id:command.external_order_id,credentials:account.credentials});
+          : await adapters['99food'].order({companyId,id:command.external_order_id,credentials:{...account.credentials,companyId,accountId:account.id}});
         const state=String(order.status||'').toUpperCase();
         const expected={CONFIRM:['CONFIRMED'],START_PREPARATION:['PREPARATION_STARTED'],READY:['READY_TO_PICKUP','READY_FOR_PICKUP'],
           DISPATCH_MERCHANT:['DISPATCHED'],CANCEL_ORDER:['CANCELLED'],DELIVERED:['COMPLETED']}[command.operation]||[];
@@ -68,7 +68,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
   async function execute(command, account) {
     const adapter = adapters[command.provider];
     if(command.provider==='99food')return adapter.command({operation:command.operation,id:command.external_order_id,
-      credentials:{...account.credentials,deliveryType:command.command_data.deliveryType},...command.command_data});
+      credentials:{...account.credentials,companyId:account.companyId,accountId:account.id,deliveryType:command.command_data.deliveryType},...command.command_data});
     const common = command.provider === 'ifood'
       ? { companyId: command.company_id, orderId: command.external_order_id, credentials: account.credentials }
       : { companyId: command.company_id, id: command.external_order_id, credentials: account.credentials };

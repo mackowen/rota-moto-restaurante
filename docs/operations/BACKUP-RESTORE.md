@@ -39,6 +39,10 @@ são parte de uma recuperação válida.
   BYPASSRLS somente para backup; nunca runtime/API. `rotamoto_restore` é isolada,
   owner apenas do database descartável provisionado e sem acesso ao oficial.
   Não se usa `rotamoto_migrator` como contorno.
+- `pg_dump` conectado como `rotamoto_migrator` pode falhar ao ler `audit_log` porque
+  FORCE RLS continua filtrando a visibilidade da sessão. Uma consulta de contagem
+  bem-sucedida com uma role tenant-scoped não comprova dump integral. Use a role
+  `rotamoto_backup` somente de leitura; não remova FORCE RLS, grants ou triggers.
 - `BACKUP_DATABASE_URL` aponta sem senha para `rotamoto_backup`; pgpass autentica.
 - `ROTAMOTO_BACKUP_KEY_FILE` tem 32 bytes, owner do operador e modo 0600, fora
   do PostgreSQL. Preserve cópia offline protegida da chave e teste recuperação.

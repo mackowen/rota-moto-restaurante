@@ -55,7 +55,8 @@ assert.throws(() => normalizeOrder({data:{order_id:'45',order_info:{status:100,d
   {expectedAppShopId:'shop-a'}),error=>error.code==='MERCHANT_ORDER_MISMATCH');
 
 const requests=[];
-const adapter=create99FoodAdapter({clock:()=>1710000000000,fetchImpl:async (url,init)=>{
+const rateCalls=[];
+const adapter=create99FoodAdapter({clock:()=>1710000000000,rateLimit:async input=>rateCalls.push(input),fetchImpl:async (url,init)=>{
   requests.push({url:String(url),init});
   return {status:200,ok:true,headers:{get:()=>null},json:async()=>({errno:0,errmsg:'ok',data:{order_id:'45',order_info:{status:100,delivery_type:1,fulfillment_mode:0,shop:{app_shop_id:'shop-a'}},order_items:[]}})};
 }});
@@ -69,9 +70,11 @@ const creds={appId:'123',appSecret:secret,appShopId:'shop-a',authToken:'token'};
   assert.match(requests[0].url,/https:\/\/openapi\.99food\.com\/v1\/order\/order\/detail/u);
   assert.equal(requests[0].init.method,'GET');
   assert.equal(requests[0].init.headers.Authorization,undefined);
+  assert.equal(rateCalls[0].operation,'order_detail');
   const confirmed=await adapter.command({operation:'CONFIRM',id:'45',credentials:creds});
   assert.equal(confirmed.errno,0);
   assert.match(requests[1].url,/\/v1\/order\/order\/confirm/u);
+  assert.equal(rateCalls[1].operation,'order_command');
   assert.equal(JSON.parse(requests[1].init.body).order_id, '45');
   await adapter.command({operation:'DELIVERED',id:'45',credentials:creds});
   assert.match(requests[2].url,/\/v1\/order\/order\/delivered/u);
@@ -88,5 +91,10 @@ const creds={appId:'123',appSecret:secret,appShopId:'shop-a',authToken:'token'};
   const cooldown=create99FoodAdapter({fetchImpl:async()=>({status:200,ok:true,json:async()=>({errno:10103,errmsg:'Fail to refresh'})})});
   await assert.rejects(cooldown.request('/v1/auth/authtoken/refresh',{credentials:creds,params:{app_secret:secret}}),
     error=>error.code==='PROVIDER_TOKEN_REFRESH_COOLDOWN'&&error.retryAfterSeconds===120);
+  const retryAt=new Date(1710000060000).toUTCString();
+  const retryAdapter=create99FoodAdapter({clock:()=>1710000000000,fetchImpl:async()=>({status:429,ok:false,
+    headers:{get:name=>name.toLowerCase()==='retry-after'?retryAt:null}})});
+  await assert.rejects(retryAdapter.order({id:'45',credentials:creds}),error=>error.status===429&&error.retryAfterSeconds===60,
+    'HTTP-date Retry-After is converted to a bounded retry delay');
   process.stdout.write('99Food protocol contract and adapter tests passed.\n');
 })().catch(error=>{process.stderr.write(`${error.stack}\n`);process.exitCode=1;});

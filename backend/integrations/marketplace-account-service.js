@@ -60,7 +60,7 @@ function createMarketplaceAccountService({pool,accountWriter,secretProvider,adap
       if(!credentials||typeof credentials.appId!=='string'||typeof credentials.appSecret!=='string')throw failure('PROVIDER_CREDENTIALS_NOT_CONFIGURED',503);
       // The official protocol exposes no OAuth consent screen; the store ID and
       // app credentials are provisioned by the operator through the server boundary.
-      const token=await adapters['99food'].token({credentials:{...credentials,appShopId}});
+      const token=await adapters['99food'].token({credentials:{...credentials,appShopId,companyId}});
       if(token.appShopId!==appShopId)throw failure('MERCHANT_TOKEN_MISMATCH',409);
       const stored=await accountWriter.provision({companyId,provider,merchantId:appShopId,displayName,
         credentials:{...credentials,authToken:token.authToken,tokenExpiresAt:token.expiresAt,appShopId},active:true});
