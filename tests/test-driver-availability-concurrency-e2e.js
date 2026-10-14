@@ -25,6 +25,7 @@ const RUNTIME_URL = process.env.E2E_RUNTIME_DATABASE_URL;
 const DATABASE = 'rotamoto_e2e';
 const RUNTIME_ROLE = 'rotamoto_app';
 const MIGRATOR_ROLE = 'rotamoto_migrator';
+const CAMPAIGN = process.env.ROTAMOTO_E2E_CAMPAIGN || '0160';
 const UUID = () => crypto.randomUUID();
 const digest = value => crypto.createHash('sha256').update(value).digest();
 function signedPresenceToken(pair, claims) {
@@ -411,10 +412,11 @@ async function main() {
   const migrations = getMigrations();
   const m0039 = migrations.find(row => row.id === '0039_driver_operational_availability');
   assert(m0039, 'repository includes migration 0039');
-  const schema = `campaign0160_${UUID().replaceAll('-', '')}`;
-  assert.match(schema, /^campaign0160_[a-f0-9]{32}$/u);
+  assert.match(CAMPAIGN, /^\d{4}$/u, 'fixture campaign must be a four-digit campaign ID');
+  const schema = `campaign${CAMPAIGN}_${UUID().replaceAll('-', '')}`;
+  assert.match(schema, new RegExp(`^campaign${CAMPAIGN}_[a-f0-9]{32}$`, 'u'));
   const f = createFixture();
-  const fixture = await createFixtureManifest({ campaign: '0160', evidence: [
+  const fixture = await createFixtureManifest({ campaign: CAMPAIGN, evidence: [
     { kind: 'test', name: 'availability-concurrency-e2e' },
     { kind: 'retention', reason: 'Isolated schema and append-only audit rows are retained; cleanup is prohibited.' }
   ] });
