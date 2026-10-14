@@ -30,7 +30,7 @@ const { COOKIE_NAME } = require('../../backend/identity/http');
 const { createPool } = require('../../backend/postgres/connection');
 const { resolveE2eTargets, storedLoopbackCredential } = require('./guards');
 const { AsyncLocalStorage } = require('node:async_hooks');
-const { createFixtureManifest } = require('./fixture-manifest');
+const { createFixtureManifest, safeMetadata } = require('./fixture-manifest');
 
 function savepointPool(client) {
   let sequence = 0;
@@ -590,6 +590,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       for (const [kind, ids] of Object.entries(records)) {
         if (!/^[a-z][a-zA-Z0-9_]{0,39}$/u.test(kind) || !Array.isArray(ids) ||
             ids.some(value => typeof value !== 'string' || value.length > 200)) throw new Error('Fixture record registration is invalid.');
+        safeMetadata({ [kind]: ids });
         trackFixtureRecord(id, kind, ids);
       }
       await syncFixtureManifest();
@@ -627,7 +628,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       ...(fixturePersisted ? { mediaDirectory } : {}) });
   } catch (error) {
     lifecycleFailed = true;
-    if (fixtureManifest) await syncFixtureManifest({ status: 'FAILED', databaseCommitted: committedForIndependentRequests || fixturePersisted,
+    if (fixtureManifest) await fixtureManifest.update({ status: 'FAILED', databaseCommitted: committedForIndependentRequests || fixturePersisted,
       lastError: { name: error.name, code: error.code || null, message: 'E2E lifecycle failed; inspect restricted runner output.' },
       retentionReason: committedForIndependentRequests || fixturePersisted
         ? 'Falha após commit: fixtures retidas para inspeção; nenhuma limpeza automática foi executada.' : null }).catch(() => {});
