@@ -87,6 +87,19 @@ diagnóstico. Operações concorrentes de backup são serializadas pelo
 advisory lock PostgreSQL. O operador mostra último sucesso/falha e código
 sanitizado; nunca expõe chave, credencial ou path no log de operação.
 
+Para inventário local read-only, `backup:inventory` verifica HMAC, hashes,
+criptografia, manifesto, permissões e componentes de cada `<uuid>.set`. Exibe
+somente ID, instante, tamanho/hash do dump e quantidade/tamanho de mídia. Set
+corrompido, incompleto, staging interrompido ou quarentena pendente aparece como
+`INCOMPLETE`; lock de retenção ativo interrompe o inventário para evitar falso
+estado. O comando não apaga, repara, move, restaura nem conecta ao PostgreSQL.
+
+```sh
+ROTAMOTO_BACKUP_DIRECTORY=/var/backups/rotamoto \
+ROTAMOTO_BACKUP_KEY_FILE=/etc/rotamoto/backup.key \
+  npm run backup:inventory
+```
+
 Instale um cron/timer sob o usuário dedicado do serviço; mantenha environment e
 pgpass privados e envie stdout/stderr ao journal com acesso restrito. Exemplo de
 entrada diária (horário, frequência, retenção e alertas são decisões do operador):
@@ -153,6 +166,38 @@ validação de ledger/RLS/FORCE e mídias, readiness e reconciliação dos clien
 offline. Perda da chave de backup torna os artefatos irrecuperáveis. O rehearsal
 real deve usar database e diretório descartáveis, comprovar contagens e validar
 integridade sem extrair conteúdo de negócio para logs.
+
+## Continuidade no Termux
+
+O estado dos serviços é um diagnóstico instantâneo e não uma política de
+continuidade. Na Campanha 0158, `postgres`, `nginx` e `php-fpm` estavam ativos no
+runit; `sshd` estava parado. Não foi encontrado `crond`, `cronie` ou `crontab`,
+e o diretório runit não continha um serviço de scheduler de backup. Nenhum
+serviço foi parado, reiniciado ou reconfigurado. Não há agendamento de backup
+validado no ambiente observado.
+
+Até que o operador escolha frequência, retenção, alertas, destino independente,
+custódia da chave e RPO/RTO, executar backup e inventário sob demanda com a
+identidade `rotamoto_backup`, pgpass privado e diretório 0700. Não publicar
+variáveis ou valores de credenciais em arquivos versionados. Um cron diário no
+exemplo acima é apenas modelo e não está instalado. Para tolerar perda do
+dispositivo, copiar somente conjuntos autenticados completos para um destino
+externo autorizado e manter chave por canal/cofre separado. Nenhum destino
+externo foi configurado nesta campanha.
+
+O dump do PostgreSQL não provisiona roles globais nem preserva ACL na restauração
+descartável (`--no-owner --no-acl`). Reconstruir roles/grants por procedimento
+DBA aprovado, validar RLS/FORCE, readiness e instalação antes de reabrir o
+serviço. Não copiar atributos `BYPASSRLS` para as roles de aplicação.
+
+Restaurante e Motoboy têm persistência local IndexedDB separada. O backup
+`rotamoto-local-backup` v1 não é cifrado: classifica-se como plaintext sensível,
+remove credenciais e sessões, mas pode conter PII, pedidos, endereços, GPS,
+provas e filas offline. Exportar para arquivo local protegido e manter fora de
+sincronização genérica; ele não substitui o backup PostgreSQL. Restauração é
+merge aditivo e não substitui registros em colisão, inclusive outbox/conflitos.
+Perder o dispositivo antes de sincronizar pode perder operações ainda não
+publicadas; isso não é coberto pelo dump do servidor.
 
 ## Backup Local-First
 
