@@ -38,6 +38,7 @@ const {PROVIDERS}=require('./backend/integrations/registry');
 const {loadRuntimeConfig,hostAllowed,resolveClientAddress}=require('./backend/runtime/config');
 const {loadSecretProvider,loadLocalSecretProvider}=require('./backend/runtime/secret-provider');
 const {gracefulShutdown}=require('./backend/runtime/lifecycle');
+const {createRuntimeMetrics,sanitizeLogPath}=require('./backend/runtime/metrics');
 const {createMarketplaceAccountResolver}=require('./backend/integrations/marketplace-account-resolver');
 const {createMarketplaceHttpHandler}=require('./backend/integrations/marketplace-http');
 const {createIfoodAdapter}=require('./backend/logistics/providers/ifood');
@@ -130,7 +131,20 @@ const emailProvider=CONFIG.smtp?.host?{async send(message){if(!smtpProviderPromi
 let nativeMfaPromise=null;
 const mfaProvider=secretProvider?{async verify(input){if(!nativeMfaPromise)nativeMfaPromise=(async()=>createNativeMfaProvider({secretProvider:await secretProvider}))();return (await nativeMfaPromise).verify(input)}}:null;
 const identityService=createIdentityService({pool:identityPool,emailProvider,mfaProvider,secretProvider});
-const requestLogger=entry=>console.info(JSON.stringify(entry));
+const LOG_FIELDS=new Set(['event','requestId','method','path','status','durationMs','errorCode','code','host','port','environment','signal']);
+const requestLogger=entry=>{
+  const safe={};
+  for(const [key,value] of Object.entries(entry||{})){
+    if(!LOG_FIELDS.has(key))continue;
+    if(key==='path')safe.path=sanitizeLogPath(value);
+    else if(key==='requestId'&&typeof value==='string'&&/^[0-9a-f-]{36}$/iu.test(value))safe.requestId=value;
+    else if(['event','method','errorCode','code','environment','signal'].includes(key)&&typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,80}$/u.test(value))safe[key]=value;
+    else if(['status','durationMs','port'].includes(key)&&Number.isFinite(Number(value)))safe[key]=Number(value);
+    else if(key==='host'&&typeof value==='string'&&/^[a-zA-Z0-9.:[\]-]{1,120}$/u.test(value))safe.host=value;
+  }
+  console.info(JSON.stringify(safe));
+};
+const runtimeMetrics=createRuntimeMetrics();
 const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 let mediaProviderPromise=null;
 async function getMediaStorage(){if(!CONFIG.mediaDirectory)return createMediaStorage();if(!mediaProviderPromise)mediaProviderPromise=createFilesystemObjectStore({directory:CONFIG.mediaDirectory}).then(objectStore=>createMediaStorage({objectStore}));return mediaProviderPromise}
@@ -186,12 +200,14 @@ async function databaseReadiness(pool=identityPool){
   }catch(error){try{await client.query('ROLLBACK')}catch(_){}throw error}
   finally{client.release()}
 }
-async function route(req,res){
+async function route(req,res,dependencies={}){
+  const logger=dependencies.logger||requestLogger;
+  const readiness=dependencies.databaseReadiness||databaseReadiness;
   const startedAt=Date.now();
   req.requestId=crypto.randomUUID();
   res.req=req;
   req.clientIp=resolveClientAddress(req,CONFIG);
-  if(!hostAllowed(req.headers.host,CONFIG.allowedHosts,CONFIG.production)){requestLogger({event:'http.rejected_host',requestId:req.requestId});return json(res,421,{error:{code:'HOST_INVALID',message:'Host não permitido.'},requestId:req.requestId});}
+  if(!hostAllowed(req.headers.host,CONFIG.allowedHosts,CONFIG.production)){logger({event:'http.rejected_host',requestId:req.requestId});return json(res,421,{error:{code:'HOST_INVALID',message:'Host não permitido.'},requestId:req.requestId});}
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('X-Frame-Options','DENY');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
   if(CONFIG.production)res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');
   if(ALLOWED_ORIGINS.includes(req.headers.origin)){res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin')}
@@ -228,21 +244,28 @@ async function route(req,res){
     if(req.headers.origin&&!ALLOWED_ORIGINS.includes(req.headers.origin))return json(res,403,{error:'FORBIDDEN',message:'Origem não permitida.'});
     if(/^\/api\/(?:ifood|99food|keeta)(?:\/|$)/iu.test(u.pathname))return json(res,503,{error:{code:'PROVIDER_BLOCKED_EXTERNAL',message:'A integração externa ainda não foi validada e habilitada.'},requestId:req.requestId});
     if(!['GET','POST'].includes(req.method))return json(res,405,{error:'METHOD_NOT_ALLOWED',message:'Método não permitido.'});
+    if(req.method==='GET'&&u.pathname==='/health/metrics')return json(res,200,{service:'rotamoto-api',...runtimeMetrics.snapshot(),requestId:req.requestId});
     if(req.method==='GET'&&['/health','/health/live'].includes(u.pathname))return json(res,200,{ok:true,status:'live',service:'rotamoto-api',time:new Date().toISOString(),requestId:req.requestId});
     if(req.method==='GET'&&u.pathname==='/health/ready'){
-      try{const ready=await databaseReadiness();return json(res,ready?200:503,{status:ready?'ready':'not_ready',service:'rotamoto-api',dependencies:{postgres:ready?'ready':'unavailable'},time:new Date().toISOString(),requestId:req.requestId})}
+      try{const ready=await readiness(dependencies.pool||identityPool);return json(res,ready?200:503,{status:ready?'ready':'not_ready',service:'rotamoto-api',dependencies:{postgres:ready?'ready':'unavailable'},time:new Date().toISOString(),requestId:req.requestId})}
       catch(_){return json(res,503,{status:'not_ready',service:'rotamoto-api',dependencies:{postgres:'unavailable'},time:new Date().toISOString(),requestId:req.requestId})}
     }
     return json(res,404,{error:'NOT_FOUND',message:'Rota não encontrada.'});
   }catch(err){const status=Number.isInteger(err.status)&&err.status>=400&&err.status<=599?err.status:500;const code=typeof err.code==='string'&&/^[A-Z][A-Z0-9_]{1,63}$/u.test(err.code)?err.code:'INTERNAL_ERROR';req.apiErrorCode=code;return json(res,status,{error:{code:status>=500?'INTERNAL_ERROR':code,message:status>=500?'Falha interna ao processar a solicitação.':'Solicitação inválida.'},requestId:req.requestId})}
-  finally{try{requestLogger({requestId:req.requestId,method:req.method,path:u.pathname,status:res.statusCode||500,durationMs:Date.now()-startedAt,...(req.apiErrorCode?{errorCode:req.apiErrorCode}:{})})}catch(_) {}}
+  finally{
+    const status=res.statusCode||500,durationMs=Date.now()-startedAt;
+    const category=u.pathname==='/health/metrics'||u.pathname==='/health/ready'||u.pathname==='/health/live'||u.pathname==='/health'?'health':
+      u.pathname==='/api/sync'||u.pathname.startsWith('/api/sync/')?'sync':u.pathname.startsWith('/api/')?'api':'other';
+    runtimeMetrics.record({method:req.method,category,status,durationMs});
+    try{logger({requestId:req.requestId,method:req.method,path:sanitizeLogPath(u.pathname),status,durationMs,...(req.apiErrorCode?{errorCode:req.apiErrorCode}:{})})}catch(_) {}
+  }
 }
 
-async function startServer({pool=identityPool,config=CONFIG,logger=entry=>console.info(JSON.stringify(entry))}={}){
+async function startServer({pool=identityPool,config=CONFIG,logger=requestLogger}={}){
   assertLoopbackHost(config.host);
   if(config.mediaDirectory)await getMediaStorage();
   if(!await databaseReadiness(pool))throw new Error('Schema PostgreSQL incompatível com a versão do servidor.');
-  const server=http.createServer({maxHeaderSize:16*1024},route);
+  const server=http.createServer({maxHeaderSize:16*1024},(req,res)=>route(req,res,{pool,logger,databaseReadiness}));
   server.requestTimeout=config.requestTimeoutMs;server.headersTimeout=config.headersTimeoutMs;server.keepAliveTimeout=config.keepAliveTimeoutMs;server.maxHeadersCount=100;
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(config.port,config.host,resolve)});
   logger({event:'http.started',host:config.host,port:config.port,environment:config.nodeEnv});
@@ -261,4 +284,4 @@ async function startServer({pool=identityPool,config=CONFIG,logger=entry=>consol
 }
 
 if(require.main===module){startServer().catch(error=>{console.error(JSON.stringify({event:'http.start_failed',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'STARTUP_CONFIGURATION_OR_DATABASE'}));process.exitCode=1;identityPool.end().catch(()=>{});});}
-module.exports={route,assertLoopbackHost,runtimeDatabaseConnectionString,databaseReadiness,startServer,PROVIDERS,CONFIG};
+module.exports={route,assertLoopbackHost,runtimeDatabaseConnectionString,databaseReadiness,startServer,runtimeMetrics,PROVIDERS,CONFIG};

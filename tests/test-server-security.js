@@ -36,7 +36,7 @@ async function main(){
   assert.notEqual(productionBoot.status,0,'production server refuses to start without explicit configuration');
   assert.match(productionBoot.stderr,/http\.bootstrap_failed/u);
   assert.doesNotMatch(productionBoot.stderr,/server\.js:\d+|Error:/u,'bootstrap logs do not expose paths or stack traces');
-  const server=http.createServer(route);
+  const server=http.createServer((req,res)=>route(req,res,{databaseReadiness:async()=>true,logger:()=>{}}));
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const base=`http://127.0.0.1:${server.address().port}`;
     const request=(path,options={})=>fetch(base+path,options);
@@ -75,7 +75,22 @@ async function main(){
     assert.equal((await request('/health',{method:'DELETE'})).status,405,'unsupported method rejected');
     const internal=await request('/api/ifood/auth/refresh',{method:'POST'});
     assert.equal(internal.status,503);assert.equal((await internal.json()).error.message,'A integração externa ainda não foi validada e habilitada.');
+    const metricsResponse=await request('/health/metrics');
+    assert.equal(metricsResponse.status,200);
+    const metrics=await metricsResponse.json();
+    assert(metrics.series.some(row=>row.category==='api'&&row.statusClass==='5xx'), 'metrics aggregate API failures');
+    assert.equal(JSON.stringify(metrics).includes('/api/ifood/'),false,'metrics do not expose paths or provider account identifiers');
+    assert.equal(JSON.stringify(metrics).includes('companyId'),false,'metrics do not expose tenant labels');
   } finally {await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
+  const injectedPool={},readinessObserved=[];
+  const readinessServer=http.createServer((req,res)=>route(req,res,{pool:injectedPool,
+    databaseReadiness:async pool=>{readinessObserved.push(pool);return false;},logger:()=>{}}));
+  await new Promise(resolve=>readinessServer.listen(0,'127.0.0.1',resolve));
+  try{
+    const response=await fetch(`http://127.0.0.1:${readinessServer.address().port}/health/ready`);
+    assert.equal(response.status,503);
+    assert.deepEqual(readinessObserved,[injectedPool],'readiness probes the pool used by the running server');
+  }finally{await new Promise((resolve,reject)=>readinessServer.close(error=>error?reject(error):resolve()));}
   const fakeSession=http.createServer(createSyncHttpHandler({allowedOrigin:'http://app.example',
     identityService:{async withAuthenticatedTenant(_token,operation){return operation({}, {session_id:'session'});},async verifyCsrf(){return true;}},
     syncService:{async push(){return {accepted:1};}}}));
