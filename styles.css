@@ -92,6 +92,7 @@ html[data-resolved-theme="dark"] .status.cancel,html.system-dark .status.cancel{
 .modal-back{z-index:1600;overscroll-behavior:contain}
 .modal{min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .modal .actions{position:sticky;bottom:-1px;z-index:5;padding-top:12px;padding-bottom:2px;background:linear-gradient(to bottom,transparent 0,var(--surface) 14px,var(--surface) 100%)}
+.delivery-execution-summary{display:grid;gap:5px;line-height:1.45}.delivery-execution-summary>b:not(:first-child){margin-top:6px}.delivery-execution-summary small{line-height:1.45}
 @media(max-width:800px){
   .modal-back{inset:0;padding:calc(var(--mobile-topbar-space) + env(safe-area-inset-top)) 8px calc(var(--mobile-bottom-space) + env(safe-area-inset-bottom));display:grid;place-items:center;align-items:center;overflow:hidden}
   .modal,.modal-large{width:min(100%,760px);max-width:760px;max-height:calc(100dvh - var(--mobile-topbar-space) - var(--mobile-bottom-space) - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:0;padding:14px;border-radius:17px;overflow:auto}

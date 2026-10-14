@@ -36,7 +36,7 @@
     "test:logistics-intelligence": "node tests/test-logistics-intelligence.js && node tests/test-osrm-route-distance.js",
     "test:keeta-protocol": "node tests/test-keeta-protocol.js && node tests/test-keeta-adapter.js",
     "test:99food-protocol": "node tests/test-99food-protocol.js",
-    "test:logistics-postgres": "NODE_ENV=test node tests/test-logistics-e2e-postgres.js",
+    "test:logistics-postgres": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-logistics-e2e-postgres.js",
     "test:marketplace-runtime-postgres": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-marketplace-runtime-postgres.js",
     "test:marketplace-worker-postgres": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e E2E_PROVIDER_WORKER_DATABASE_URL=postgresql://rotamoto_provider_worker@127.0.0.1:5432/rotamoto_e2e E2E_PROVIDER_RESOLVER_DATABASE_URL=postgresql://rotamoto_provider_resolver@127.0.0.1:5432/rotamoto_e2e node tests/test-marketplace-worker-postgres.js",
     "test:99food-runtime-postgres": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e E2E_PROVIDER_WORKER_DATABASE_URL=postgresql://rotamoto_provider_worker@127.0.0.1:5432/rotamoto_e2e node tests/test-99food-runtime-postgres.js",

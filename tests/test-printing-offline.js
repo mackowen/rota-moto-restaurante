@@ -57,7 +57,7 @@ installed.then(async () => {
   let activated;
   handlers.activate({ waitUntil(promise) { activated = promise; } });
   await activated;
-  assert.deepEqual(deleted, ['rotamoto-restaurante-shell-v41', 'rotamoto-restaurante-shell-old']);
+  assert.deepEqual(deleted, ['rotamoto-restaurante-shell-v42', 'rotamoto-restaurante-shell-old']);
 
   let apiResponded = false;
   handlers.fetch({ request: { method: 'GET', url: 'http://localhost:8788/api/identity/session', mode: 'cors' }, respondWith() { apiResponded = true; } });
