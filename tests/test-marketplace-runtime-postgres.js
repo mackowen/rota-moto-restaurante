@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { createPool } = require('../backend/postgres/connection');
 const { createMarketplaceRuntime, canonicalOrder } = require('../backend/integrations/marketplace-runtime');
 const { e2eMigrationConnectionString } = require('../backend/postgres/migrate');
+const { createFixtureManifest } = require('./e2e-support/fixture-manifest');
 
 function id() { return crypto.randomUUID(); }
 
@@ -18,10 +19,16 @@ for (const [providerStatus, localStatus] of [['CANCELLED','CANCELADA'],['CANCELE
 }
 
 async function main() {
-  const migrator = createPool({ connectionString: e2eMigrationConnectionString(process.env), max: 1, application_name: 'marketplace-e2e-seed' });
-  const app = createPool({ connectionString: 'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e', max: 2, application_name: 'marketplace-e2e-runtime' });
   const a = { company: id(), integration: id(), account: id(), merchant: id(), externalAccountId: id(), secret: 'synthetic-marketplace-webhook-secret' };
   const b = { company: id(), integration: id(), account: id(), merchant: id(), externalAccountId: id(), secret: 'synthetic-other-tenant-secret' };
+  const fixture = await createFixtureManifest({ campaign: '0152', evidence: [{ kind: 'test', name: 'marketplace-runtime-postgres' }] });
+  await fixture.update({ status: 'RUNNING', tenants: [{ id: a.company, counts: { companies: 1, integrations: 1, accounts: 1 } },
+    { id: b.company, counts: { companies: 1, integrations: 1, accounts: 1 } }], records: {
+    companies: [a.company,b.company], integrations: [a.integration,b.integration], accounts: [a.account,b.account],
+    externalAccountIds: [a.externalAccountId,b.externalAccountId], merchants: [a.merchant,b.merchant] } });
+  const migrator = createPool({ connectionString: e2eMigrationConnectionString(process.env), max: 1, application_name: 'marketplace-e2e-seed' });
+  const app = createPool({ connectionString: 'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e', max: 2, application_name: 'marketplace-e2e-runtime' });
+  let passed = false;
   try {
     for (const row of [a,b]) {
       await migrator.query('BEGIN');
@@ -261,6 +268,7 @@ async function main() {
     assert.deepEqual(secretAcl.rows[0],{secret_read:false,secret_write:false});
     await migrator.query('COMMIT');
     process.stdout.write('Marketplace runtime PostgreSQL E2E: PASS (tenant routing, raw HMAC, inbox idempotency, out-of-order/equal-timestamp protection, canonical Order projection, PII-free durable event, post-process poll ack, secret ACL)\n');
+    passed = true;
   } finally {
     for (const row of [a,b]) {
       await migrator.query('BEGIN').catch(()=>{});
@@ -277,6 +285,9 @@ async function main() {
       await migrator.query('COMMIT').catch(()=>{});
     }
     await app.end(); await migrator.end();
+    await fixture.update({ status: passed ? 'RETAINED' : 'FAILED', databaseCommitted: true,
+      retentionReason: 'E2E-owned synthetic tenant cleanup was attempted; append-only audit records are never deleted and this run remains inventoried.',
+      counts: { companies: 2, integrations: 2, accounts: 2, audit_log: 'retained-or-not-applicable' } });
   }
 }
 

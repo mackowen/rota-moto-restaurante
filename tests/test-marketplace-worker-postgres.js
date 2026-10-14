@@ -9,6 +9,7 @@ const {e2eMigrationConnectionString}=require('../backend/postgres/migrate');
 const {createMarketplaceRuntime}=require('../backend/integrations/marketplace-runtime');
 const {createMarketplaceWorker}=require('../backend/integrations/marketplace-worker');
 const {createMarketplaceAccountResolver}=require('../backend/integrations/marketplace-account-resolver');
+const {createFixtureManifest}=require('./e2e-support/fixture-manifest');
 
 const id=()=>crypto.randomUUID();
 function roleUrl(name,envName){
@@ -46,6 +47,11 @@ async function main(){
   const resolverPool=createPool({connectionString:resolverUrl,max:2,application_name:'marketplace-worker-e2e-resolver'});
   const row={company:id(),otherCompany:id(),integration:id(),account:id(),merchant:`synthetic-${id()}`,secretRef:`synthetic-${id()}`,
     secret:'synthetic-runtime-secret'},orderId=id();
+  const fixture=await createFixtureManifest({campaign:'0152',evidence:[{kind:'test',name:'marketplace-worker-postgres'}]});
+  await fixture.update({status:'RUNNING',tenants:[{id:row.company,counts:{companies:1,integrations:1,accounts:1}},
+    {id:row.otherCompany,counts:{companies:1}}],records:{companies:[row.company,row.otherCompany],integrations:[row.integration],
+    accounts:[row.account],merchantIds:[row.merchant],domainOrders:[orderId]}});
+  let passed=false;
   let confirms=0,confirmOutcome={accepted:true,confirmation:'pending'},detailStatus='PLACED',seeded=false,confirmGate=null;
   const secretProvider={async get(ref,context){assert.equal(ref,row.secretRef);assert.equal(context.name,`marketplace/ifood/${row.account}`);assert.equal(context.scope,'tenant');assert.equal(context.tenantId,row.company);
     return JSON.stringify({clientId:'synthetic-client',clientSecret:row.secret,accessToken:'synthetic-access',accountScope:row.account,companyId:row.company});}};
@@ -235,6 +241,7 @@ async function main(){
     await migrator.query('COMMIT');
     assert.equal(await resolver.byMerchant('ifood',row.merchant),null,'revoked authorization cannot be resolved');
     process.stdout.write('Marketplace worker PostgreSQL E2E: PASS (real resolver/worker identities, RLS isolation, 401/403/429/503/timeout, UNKNOWN_OUTCOME reconciliation, lease expiry/fencing, secret boundary)\n');
+    passed=true;
   }finally{
     if(seeded){
       await migrator.query('BEGIN').catch(()=>{});await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]).catch(()=>{});
@@ -248,6 +255,9 @@ async function main(){
       await migrator.query('COMMIT').catch(()=>{});
     }
     await Promise.all([app.end(),workerPool.end(),workerPoolB.end(),resolverPool.end(),migrator.end()]);
+    await fixture.update({status:passed?'RETAINED':'FAILED',databaseCommitted:seeded,
+      retentionReason:'E2E-owned synthetic fixture cleanup was attempted; append-only audit records are never deleted and this run remains inventoried.',
+      counts:{companies:2,integrations:1,accounts:1,domainOrders:1,audit_log:'retained-or-not-applicable'}});
   }
 }
 if(require.main===module)(process.argv[2]==='--interrupted-worker'?runInterruptedWorker():main()).catch(error=>{process.stderr.write(`Marketplace worker PostgreSQL E2E: FAIL (${error.code||'ERROR'}: ${error.message||'operation failed'})\n${error.stack||''}\n`);process.exitCode=1;});

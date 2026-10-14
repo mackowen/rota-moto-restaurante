@@ -23,7 +23,7 @@ assert.equal(catalog[1].capabilities.orders.DOCUMENTED,true,'99Food portal docum
 assert.equal(catalog[1].capabilities.webhook.DOCUMENTED,true);
 assert.equal(catalog[1].capabilities.sandbox.DOCUMENTED,true);
 assert.equal(catalog[1].capabilities.orders.IMPLEMENTED,false,'the partner-gated technical contract is not exposed');
-assert.match(catalog[1].capabilityNotes,/certificação.*onboarding/u);
+assert.match(catalog[1].capabilityNotes,/schema atual.*Credenciais.*certificação/u);
 assert.equal(catalog[0].state, 'authorized_unverified', 'an account link does not assert a successful provider health check');
 assert.equal(publicCatalog([{ provider: 'ifood', status: 'disabled' }])[0].state, 'disabled');
 assert.equal(JSON.stringify(catalog).includes('secret_ref'), false);
@@ -75,7 +75,11 @@ assert.deepEqual(sanitizeProviderError({ code: 'PROVIDER_ERROR', message: 'secre
     vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname, '..', file), 'utf8'), context);
     assert.equal(context.window[globalName].available(), false);
     assert.equal(context.window[globalName].diagnostics().connectionVerified, false);
-    await assert.rejects(context.window[globalName][method](), error => error.code === 'PROVIDER_BLOCKED_EXTERNAL');
+    if (globalName === 'RotaMoto99Food') {
+      assert.equal(context.window[globalName].diagnostics().contractAvailable, true);
+      assert.equal(context.window[globalName].diagnostics().runtimeEnabled, false);
+      await assert.rejects(context.window[globalName][method](), error => error.code === 'PROVIDER_RUNTIME_NOT_WIRED');
+    } else await assert.rejects(context.window[globalName][method](), error => error.code === 'PROVIDER_BLOCKED_EXTERNAL');
     if (globalName === 'RotaMotoIFood') {
       const sample = context.window[globalName].simulateOrder();
       assert.equal(sample.order.sync.state, 'local-simulation');

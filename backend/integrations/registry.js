@@ -5,8 +5,8 @@ const PROVIDERS = Object.freeze([
     capabilityMatrix: Object.freeze({ account: 'SUPPORTED', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'SUPPORTED', quote: 'SUPPORTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'SUPPORTED', tracking: 'SUPPORTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
     blockers: Object.freeze(['merchant_credentials', 'merchant_authorization', 'homologation', 'provider_worker_account_routing']) }),
   Object.freeze({ key: '99food', name: '99Food', capability: 'blocked_external',
-    capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'REQUIRES_PARTNERSHIP', orders: 'REQUIRES_PARTNERSHIP', webhook: 'REQUIRES_PARTNERSHIP', polling: 'REQUIRES_PARTNERSHIP', selfDelivery: 'NOT_PUBLICLY_DOCUMENTED', platformDelivery: 'NOT_PUBLICLY_DOCUMENTED', quote: 'NOT_PUBLICLY_DOCUMENTED', dispatch: 'NOT_PUBLICLY_DOCUMENTED', cancelOrder: 'NOT_PUBLICLY_DOCUMENTED', cancelDelivery: 'NOT_PUBLICLY_DOCUMENTED', tracking: 'NOT_PUBLICLY_DOCUMENTED', sandbox: 'REQUIRES_PARTNERSHIP', homologation: 'REQUIRES_PARTNERSHIP' }),
-    blockers: Object.freeze(['certification', 'application_access', 'official_contract_validation', 'merchant_authorization']) }),
+    capabilityMatrix: Object.freeze({ account: 'REQUIRES_PARTNERSHIP', merchant: 'REQUIRES_PARTNERSHIP', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'NOT_APPLICABLE_TO_99FOOD_PROTOCOL', selfDelivery: 'SUPPORTED', platformDelivery: 'SUPPORTED', quote: 'NOT_DOCUMENTED', dispatch: 'NOT_DOCUMENTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'NOT_DOCUMENTED', tracking: 'NOT_DOCUMENTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
+    blockers: Object.freeze(['database_runtime_support', 'application_credentials', 'merchant_binding', 'certification']) }),
   Object.freeze({ key: 'keeta', name: 'Keeta', capability: 'blocked_external',
     capabilityMatrix: Object.freeze({ account: 'SUPPORTED', merchant: 'SUPPORTED', orders: 'SUPPORTED', webhook: 'SUPPORTED', polling: 'SUPPORTED', selfDelivery: 'SUPPORTED', platformDelivery: 'NOT_SUPPORTED', quote: 'NOT_PUBLICLY_DOCUMENTED', dispatch: 'SUPPORTED', cancelOrder: 'SUPPORTED', cancelDelivery: 'NOT_PUBLICLY_DOCUMENTED', tracking: 'SUPPORTED', sandbox: 'SUPPORTED', homologation: 'REQUIRES_PARTNERSHIP' }),
     blockers: Object.freeze(['application_credentials', 'merchant_authorization', 'SIT_certification', 'provider_account_routing']) })
@@ -18,9 +18,10 @@ const MAX_RETRY_ATTEMPTS = 8;
 
 const PUBLICLY_DOCUMENTED = Object.freeze({
   ifood: new Set(['account','merchant','orders','webhook','polling','selfDelivery','platformDelivery','quote','dispatch','cancelOrder','cancelDelivery','tracking','sandbox','homologation']),
-  // Public portal confirms the high-level Orders API, webhooks, sandbox and certification path;
-  // the detailed schema and credentials remain gated behind partner onboarding.
-  '99food': new Set(['orders','webhook','sandbox','homologation']),
+  // The public 99Food Protocol (Recommended) documents orders, webhooks,
+  // self delivery, platform delivery, cancellation and sandbox. The separate
+  // Open Delivery protocol is not mixed into this provider adapter.
+  '99food': new Set(['orders','webhook','selfDelivery','platformDelivery','cancelOrder','sandbox','homologation']),
   keeta: new Set(['account','merchant','orders','webhook','polling','selfDelivery','dispatch','cancelOrder','tracking','sandbox'])
 });
 const LOCAL_ADAPTERS = Object.freeze({
@@ -69,7 +70,7 @@ function publicCatalog(persisted = []) {
       capabilityContract: { ...provider.capabilityMatrix },
       capabilities: auditedCapabilities(provider),
       capabilityNotes: provider.key === 'ifood' ? 'A autorização e o worker estão disponíveis quando o servidor tem credenciais e roles configuradas. Contas listadas ainda precisam sincronizar para confirmar conexão; 202 permanece pendente.' :
-        provider.key === '99food' ? 'O portal oficial anuncia API de pedidos, webhooks e sandbox. O contrato detalhado, credenciais e certificação dependem do onboarding de parceiro; nenhum endpoint ou payload foi presumido.' :
+        provider.key === '99food' ? 'Contrato público 99Food Protocol (Recommended): pedidos, webhooks assinados, consulta de pedidos, confirmação, pronto, cancelamento e entrega própria. O adapter de protocolo foi testado localmente; inbox/outbox e worker ainda não aceitam 99Food no schema atual. Credenciais, vínculo de loja e certificação exigem onboarding. Open Delivery é protocolo distinto.' :
           'OAuth, vínculo da loja, pedidos e worker estão disponíveis quando credenciais e roles estão configuradas. O grant shop-level e a decifragem de PII permanecem fechados sem validação externa. Dispatch e tracking são para entrega própria; não existe contratação avulsa de courier Keeta.' ,
       state: disabled ? 'disabled' : row?.status === 'error' ? 'error' : row?.status === 'active' && accountConfirmed ? 'authorized_unverified' : 'configuration_required',
       connectionVerified,

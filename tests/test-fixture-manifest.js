@@ -45,11 +45,13 @@ const { createFixtureManifest, inventoryFixtureManifests, markFixtureInterrupted
       'interruption recovery is replay-safe');
     assert.equal((await resumeFixtureManifest({ runId: interruptedId, directory })).recoveryStage, 'inventory-only');
     await updateFixtureManifest({ runId: interruptedId, directory, status: 'RETAINED',
-      retentionReason: 'Recovered inventory; original database content remains retained.' });
+      retentionReason: 'Recovered inventory; original database content remains retained.', records: { residualEvents: ['event-a'] } });
     const inventory = await inventoryFixtureManifests({ directory });
     assert.deepEqual(inventory.map(row => row.status).sort(), ['COMPLETED', 'RETAINED']);
     assert.deepEqual(inventory.find(row => row.runId === interruptedId).statusHistory.map(row => row.status),
       ['PREPARING', 'RUNNING', 'INTERRUPTED', 'RUNNING', 'RETAINED']);
+    const recoveredManifest = await require('./e2e-support/fixture-manifest').readFixtureManifest(path.join(directory, `${interruptedId}.json`));
+    assert.deepEqual(recoveredManifest.records.residualEvents, ['event-a']);
 
     const concurrent = await Promise.all(Array.from({ length: 4 }, () => createFixtureManifest({ campaign: '0150', directory })));
     await Promise.all(concurrent.map((item, index) => item.update({ status: 'RUNNING', records: { marker: [`record-${index}`] } })));

@@ -6,5 +6,5 @@ const app=fs.readFileSync('./app.js','utf8');
 for(const x of ['Pedidos e integrações','data-ifood-simulate-event','data-ifood-diagnostics','data-ifood-clear-queue','processedEventIds','queue']) if(!app.includes(x)) throw new Error('missing app '+x);
 const lab=app.match(/async function processIFoodLabPayload\([\s\S]*?\nasync function transitionIFoodLab/);
 if(!lab||!lab[0].includes('labOnly=true')||lab[0].includes("put('orders'")||lab[0].includes('saveSettings(')) throw new Error('iFood laboratory must remain in-memory and isolated from commercial orders');
-if(!app.includes('A 99Food anuncia API de pedidos, webhooks e sandbox')||!app.includes('Os simuladores habilitados não consultam nem alteram plataformas externas.')) throw new Error('external provider capabilities and local simulation boundary must remain explicit');
+if(!app.includes('O contrato público 99Food Protocol (Recommended) documenta pedidos')||!app.includes('O Laboratório continua sintético e não representa homologação.')||!app.includes('Os simuladores habilitados não consultam nem alteram plataformas externas.')) throw new Error('public provider contract, runtime boundary and local simulation must remain explicit');
 console.log('ifood structure tests: OK');

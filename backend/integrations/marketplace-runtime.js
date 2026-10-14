@@ -377,9 +377,12 @@ function canonicalOrder(provider, order, { id, companyId, version = 1, updatedAt
   const items = Array.isArray(order.items) ? order.items.map(item => ({ name: String(item.name).slice(0,240), quantity: item.quantity })) : [];
   const sourceCreatedAt = new Date(order.createdAt || Date.now());
   const createdAt = Number.isFinite(sourceCreatedAt.getTime()) ? sourceCreatedAt.toISOString() : new Date().toISOString();
-  const providerStatus = String(order.status || '').slice(0, 128) || null;
+  const providerStatus = String(provider === '99food' ? order.providerStatus ?? order.status : order.status || '').slice(0, 128) || null;
   const normalized = String(providerStatus || '').toUpperCase();
-  const status = ['CANCELLED','CANCELED'].includes(normalized) ? 'CANCELADA' :
+  const status = provider === '99food' ? ({100:'AGUARDANDO',200:'AGUARDANDO',400:'EM ROTA',500:'CHEGOU',600:'FINALIZADA',
+    901:'CANCELADA',902:'CANCELADA',903:'CANCELADA',921:'CANCELADA',922:'CANCELADA',923:'CANCELADA',941:'CANCELADA',942:'CANCELADA',
+    943:'CANCELADA',944:'CANCELADA',945:'CANCELADA',946:'CANCELADA',961:'CANCELADA',971:'CANCELADA',981:'CANCELADA'}[Number(providerStatus)] || 'AGUARDANDO') :
+    ['CANCELLED','CANCELED'].includes(normalized) ? 'CANCELADA' :
     ['DELIVERED','CONCLUDED','COMPLETED'].includes(normalized) ? 'FINALIZADA' :
       ['DISPATCHED','OUT_FOR_DELIVERY'].includes(normalized) ? 'EM ROTA' :
         normalized === 'ARRIVED' ? 'CHEGOU' : 'AGUARDANDO';
@@ -387,7 +390,8 @@ function canonicalOrder(provider, order, { id, companyId, version = 1, updatedAt
     number: order.externalDisplayId || order.externalId, source: provider, externalId: order.externalId,
     customer: 'Pedido externo', status, items,
     extensions: { x_rotamoto_external_order: { providerStatus, displayId: order.externalDisplayId || null,
-      orderType: order.orderType || null, fulfillment: 'unknown' } } };
+      orderType: order.orderType || null, fulfillment: provider === '99food' && ['platform','merchant','customer_pickup'].includes(order.fulfillment)
+        ? order.fulfillment : 'unknown' } } };
   return result;
 }
 

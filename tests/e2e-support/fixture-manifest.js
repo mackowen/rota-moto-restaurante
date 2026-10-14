@@ -95,7 +95,7 @@ async function readFixtureManifest(file) {
 }
 
 async function updateFixtureManifest({ runId, directory = process.env.ROTAMOTO_E2E_MANIFEST_DIR || DEFAULT_DIRECTORY,
-  tenantDatabaseCounts, evidence, status, retentionReason } = {}) {
+  tenantDatabaseCounts, evidence, records, status, retentionReason } = {}) {
   validateRunId(runId);
   const file = path.join(path.resolve(directory), `${runId}.json`);
   const current = await readFixtureManifest(file);
@@ -110,6 +110,7 @@ async function updateFixtureManifest({ runId, directory = process.env.ROTAMOTO_E
     next.history = [...(current.history || []), { status, at: next.updatedAt }];
   }
   if (retentionReason !== undefined) next.retentionReason = safeMetadata(retentionReason);
+  if (records !== undefined) next.records = safeMetadata(records);
   if (tenantDatabaseCounts !== undefined) next.tenantDatabaseCounts = safeMetadata(tenantDatabaseCounts);
   if (evidence !== undefined) next.evidence = safeMetadata(evidence);
   await atomicWrite(file, next);
