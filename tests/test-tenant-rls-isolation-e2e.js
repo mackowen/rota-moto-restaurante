@@ -12,7 +12,8 @@ if (process.env.NODE_ENV !== 'test') throw new Error('Tenant RLS E2E exige NODE_
 const { runtime, migrator } = createE2eClients();
 const tenantIds = [crypto.randomUUID(), crypto.randomUUID()];
 const roleIds = [crypto.randomUUID(), crypto.randomUUID()];
-const fixtureNames = tenantIds.map(id => `__campaign_0117_security_${id}`);
+const campaign = process.env.ROTAMOTO_E2E_CAMPAIGN || '0160';
+const fixtureNames = tenantIds.map(id => `__campaign_${campaign}_tenant_security_${id}`);
 
 async function transaction(client, operation) {
   await client.query('BEGIN');
@@ -33,7 +34,7 @@ async function setTenant(client, id) {
 async function main() {
   const created = [];
   let completed = false;
-  const manifest = await createFixtureManifest({ campaign: '0160', evidence: [
+  const manifest = await createFixtureManifest({ campaign, evidence: [
     { kind: 'test', name: 'tenant-rls-isolation-e2e' },
     { kind: 'retention', reason: 'Synthetic tenant rows and audit events are retained; destructive cleanup is prohibited.' }
   ] });

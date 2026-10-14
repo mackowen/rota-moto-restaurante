@@ -8,10 +8,11 @@ const {create99FoodRateLimiter}=require('../backend/integrations/99food-rate-lim
 const {createFixtureManifest}=require('./e2e-support/fixture-manifest');
 
 const id=()=>crypto.randomUUID();
+const campaign=process.env.ROTAMOTO_E2E_CAMPAIGN||'0154';
 async function main(){
-  const a={company:id(),integration:id(),account:id(),shop:`0154-shop-${id()}`};
-  const b={company:id(),integration:id(),account:id(),shop:`0154-shop-${id()}`};
-  const manifest=await createFixtureManifest({campaign:'0154',evidence:[{kind:'test',name:'99food-distributed-rate-limit-postgres'}]});
+  const a={company:id(),integration:id(),account:id(),shop:`${campaign}-shop-${id()}`};
+  const b={company:id(),integration:id(),account:id(),shop:`${campaign}-shop-${id()}`};
+  const manifest=await createFixtureManifest({campaign,evidence:[{kind:'test',name:'99food-distributed-rate-limit-postgres'}]});
   await manifest.update({status:'RUNNING',tenants:[{id:a.company,counts:{companies:1,integrations:1,accounts:1}},{id:b.company,counts:{companies:1,integrations:1,accounts:1}}],
     records:{companies:[a.company,b.company],integrations:[a.integration,b.integration],accounts:[a.account,b.account],shops:[a.shop,b.shop]}});
   const migrator=createPool({connectionString:e2eMigrationConnectionString(process.env),max:1,application_name:'99food-rate-limit-seed'});
@@ -27,7 +28,7 @@ async function main(){
       await migrator.query('INSERT INTO rotamoto.companies(id,name,status) VALUES($1,$2,\'active\')',[tenant.company,`Synthetic 0154 ${tenant.company.slice(0,8)}`]);
       await migrator.query("INSERT INTO rotamoto.integrations(id,company_id,provider,status) VALUES($1,$2,'99food','active')",[tenant.integration,tenant.company]);
       await migrator.query(`INSERT INTO rotamoto.external_accounts(id,company_id,integration_id,external_account_id,display_name,link_status,confirmed_at,account_status)
-        VALUES($1,$2,$3,$4,'Synthetic store','confirmed',now(),'active')`,[tenant.account,tenant.company,tenant.integration,tenant.shop]);
+        VALUES($1,$2,$3,$4,$5,'confirmed',now(),'active')`,[tenant.account,tenant.company,tenant.integration,tenant.shop,`Synthetic ${campaign} store`]);
       await migrator.query(`INSERT INTO rotamoto.marketplace_account_bindings(company_id,integration_id,external_account_id,provider,merchant_id,authorized)
         VALUES($1,$2,$3,'99food',$4,true)`,[tenant.company,tenant.integration,tenant.account,tenant.shop]);
       await migrator.query('COMMIT');
@@ -36,7 +37,7 @@ async function main(){
     const appLimiter=create99FoodRateLimiter({pool:app});
     const workerLimiterA=create99FoodRateLimiter({pool:workerA});
     const workerLimiterB=create99FoodRateLimiter({pool:workerB});
-    const common={appId:'0154-synthetic-app',operation:'order_detail'};
+    const common={appId:`${campaign}-synthetic-app`,operation:'order_detail'};
     const attempts=await Promise.allSettled([
       workerLimiterA({...common,companyId:a.company,accountId:a.account,appShopId:a.shop}),
       workerLimiterB({...common,companyId:b.company,accountId:b.account,appShopId:b.shop})
@@ -61,7 +62,7 @@ async function main(){
     const rows=await migrator.query('SELECT count(*)::int AS count FROM rotamoto.marketplace_99food_rate_limits');
     await manifest.update({status:'RETAINED',databaseCommitted:true,counts:{companies:2,integrations:2,accounts:2,rateLimitRows:rows.rows[0].count},
       tenantDatabaseCounts:[{tenantId:a.company,counts:{companies:1,integrations:1,accounts:1}},{tenantId:b.company,counts:{companies:1,integrations:1,accounts:1}}],
-      retentionReason:'0154 rate-limit concurrency evidence is retained; cleanup was not authorized.'});
+      retentionReason:`${campaign} rate-limit concurrency evidence is retained; cleanup was not authorized.`});
     process.stdout.write(`99Food distributed rate limit PostgreSQL E2E: PASS (manifest ${manifest.runId}; ${rows.rows[0].count} shared buckets; two workers; tenant guard; FORCE RLS; least privilege)\n`);
   }catch(error){
     await manifest.update({status:committed?'RETAINED':'FAILED',databaseCommitted:committed,
