@@ -30,6 +30,7 @@ const { COOKIE_NAME } = require('../../backend/identity/http');
 const { createPool } = require('../../backend/postgres/connection');
 const { resolveE2eTargets, storedLoopbackCredential } = require('./guards');
 const { AsyncLocalStorage } = require('node:async_hooks');
+const { createFixtureManifest } = require('./fixture-manifest');
 
 function savepointPool(client) {
   let sequence = 0;
@@ -88,55 +89,6 @@ async function start(handler, requestContext) {
     resumeConcurrent() { serialized = false; paused = false; } };
 }
 
-function quoteIdentifier(value) { return `"${String(value).replaceAll('"', '""')}"`; }
-
-async function cleanupCommittedFixture(migrator, tenantIds, userIds) {
-  if (!tenantIds.length) return;
-  await migrator.query('BEGIN');
-  try {
-    // Remove global child rows tied to the uniquely generated fixture users
-    // before deleting their tenant memberships and accounts.
-    await migrator.query('DELETE FROM rotamoto.sessions WHERE user_id=ANY($1::uuid[])', [userIds]);
-    await migrator.query('DELETE FROM rotamoto.recovery_tokens WHERE user_id=ANY($1::uuid[])', [userIds]);
-    await migrator.query('DELETE FROM rotamoto.credentials WHERE user_id=ANY($1::uuid[])', [userIds]);
-
-    const tenantRelations = await migrator.query(`SELECT c.relname
-      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-      JOIN pg_attribute a ON a.attrelid=c.oid AND a.attname='company_id' AND a.attnum>0 AND NOT a.attisdropped
-      WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p') AND c.relname<>'companies' ORDER BY c.relname`);
-    const names = new Set(tenantRelations.rows.map(row => row.relname));
-    const foreignKeys = await migrator.query(`SELECT child.relname AS child,parent.relname AS parent
-      FROM pg_constraint fk JOIN pg_class child ON child.oid=fk.conrelid
-      JOIN pg_namespace cn ON cn.oid=child.relnamespace JOIN pg_class parent ON parent.oid=fk.confrelid
-      JOIN pg_namespace pn ON pn.oid=parent.relnamespace
-      WHERE fk.contype='f' AND cn.nspname='rotamoto' AND pn.nspname='rotamoto'`);
-    // Child-first order preserves RESTRICT constraints. Any cyclic tables with
-    // no fixture rows are harmless; fixture rows are scoped to these tenants.
-    const edges = foreignKeys.rows.filter(row => row.child !== row.parent && names.has(row.child) && names.has(row.parent));
-    const remaining = new Set(names), ordered = [];
-    while (remaining.size) {
-      const leaf = [...remaining].sort().find(parent => !edges.some(edge => remaining.has(edge.child) && edge.parent === parent));
-      if (!leaf) { ordered.push(...[...remaining].sort()); break; }
-      ordered.push(leaf); remaining.delete(leaf);
-    }
-
-    for (const tenantId of tenantIds) {
-      await migrator.query("SELECT set_config('app.tenant_id',$1,true)", [tenantId]);
-      await migrator.query(`DELETE FROM rotamoto.role_permissions WHERE role_id IN
-        (SELECT id FROM rotamoto.roles WHERE company_id=$1)`, [tenantId]);
-      for (const relation of ordered) {
-        await migrator.query(`DELETE FROM rotamoto.${quoteIdentifier(relation)} WHERE company_id=$1`, [tenantId]);
-      }
-      await migrator.query('DELETE FROM rotamoto.companies WHERE id=$1', [tenantId]);
-    }
-    await migrator.query('DELETE FROM rotamoto.users WHERE id=ANY($1::uuid[])', [userIds]);
-    await migrator.query('COMMIT');
-  } catch (error) {
-    await migrator.query('ROLLBACK').catch(() => {});
-    throw error;
-  }
-}
-
 async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
   persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false,
   businessFixture = true, onTestEmail = null, independentRequestTransactions = false, retainIndependentFixture = false,
@@ -155,10 +107,14 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
   if (independentRequestTransactions && (env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' || persistDisposableFixture)) {
     throw new Error('Transações independentes do fixture aceitas somente em rotamoto_e2e.');
   }
+  if (independentRequestTransactions && !retainIndependentFixture) throw new Error('Transações independentes exigem retenção explícita e manifesto durável.');
   if (retainIndependentFixture && !independentRequestTransactions) throw new Error('Retenção de fixture exige transações independentes.');
   if (onIndependentFixtureRetained !== null && typeof onIndependentFixtureRetained !== 'function') throw new Error('Observador de fixture retida inválido.');
   if (onIndependentConnection !== null && typeof onIndependentConnection !== 'function') throw new Error('Observador de conexão independente inválido.');
   if (onIndependentTransaction !== null && typeof onIndependentTransaction !== 'function') throw new Error('Observador de transação independente inválido.');
+  const fixtureManifest = disposableCampaign ? null : await createFixtureManifest({
+    campaign: env.ROTAMOTO_E2E_CAMPAIGN || 'unassigned' });
+  if (fixtureManifest) await fixtureManifest.update({ status: 'RUNNING' });
   let connectedRuntime = false;
   let transactionOpen = false;
   let committedForIndependentRequests = false;
@@ -168,12 +124,39 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
   const instrumentedIndependentClients = new WeakSet();
   const fixtureTenantIds = [];
   const fixtureUserIds = [];
+  const fixtureSessionIds = [];
+  const fixtureTrackedRecords = { authRecords: [], memberships: [], roles: [], drivers: [], orders: [], deliveries: [], routes: [], proofs: [] };
+  const fixtureTrackedByTenant = new Map();
+  const trackFixtureRecord = (tenantId, kind, ids) => {
+    const values = Array.isArray(ids) ? ids : [ids];
+    fixtureTrackedRecords[kind] ||= [];
+    fixtureTrackedRecords[kind].push(...values.filter(value => !fixtureTrackedRecords[kind].includes(value)));
+    const tenantRecords = fixtureTrackedByTenant.get(tenantId) || {};
+    tenantRecords[kind] ||= [];
+    tenantRecords[kind].push(...values.filter(value => !tenantRecords[kind].includes(value)));
+    fixtureTrackedByTenant.set(tenantId, tenantRecords);
+  };
+  const fixtureTenantByUser = new Map();
+  const fixtureTenantBySession = new Map();
+  const syncFixtureManifest = async extra => {
+    if (!fixtureManifest) return;
+    await fixtureManifest.update({ tenants: fixtureTenantIds.map(id => {
+      const userIds = fixtureUserIds.filter(userId => fixtureTenantByUser.get(userId) === id);
+      const sessionIds = fixtureSessionIds.filter(sessionId => fixtureTenantBySession.get(sessionId) === id);
+      const known = fixtureTrackedByTenant.get(id) || {};
+      return { id, userIds, sessionIds, counts: { companies: 1, users: userIds.length, sessions: sessionIds.length,
+        ...Object.fromEntries(Object.entries(known).map(([kind, ids]) => [kind, ids.length])) } };
+    }),
+      records: { companies: [...fixtureTenantIds], users: [...fixtureUserIds], sessions: [...fixtureSessionIds],
+        ...fixtureTrackedRecords }, ...extra });
+  };
   let host;
   let mediaDirectory;
   let companyId;
   let fixtureUserId;
   let fixtureEmail;
   let fixturePersisted = false;
+  let lifecycleFailed = false;
   try {
     await runtime.connect(); connectedRuntime = true;
     const database = disposableCampaign ? 'rotamoto_disposable_0068_source' : 'rotamoto_e2e';
@@ -262,6 +245,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(provisioned.status, 202, JSON.stringify(provisioned.body));
     companyId = provisioned.body.companyId;
     fixtureTenantIds.push(companyId);
+    await syncFixtureManifest();
     assert.equal(emails.length, 1);
     assert.equal(emails[0].kind, 'owner_invitation');
     assert.equal(JSON.stringify(provisioned.body).includes(emails[0].token), false);
@@ -270,6 +254,9 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
     fixtureUserId = accepted.body.userId;
     fixtureUserIds.push(fixtureUserId);
+    fixtureTenantByUser.set(fixtureUserId, companyId);
+    trackFixtureRecord(companyId, 'authRecords', fixtureUserId);
+    await syncFixtureManifest();
     const enrollmentLogin = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId } });
     assert.equal(enrollmentLogin.status,200,JSON.stringify(enrollmentLogin.body));
     assert.equal(enrollmentLogin.body.mfaEnrollmentRequired,true,'unconfigured required MFA yields a limited enrollment session');
@@ -308,6 +295,12 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const session = await call('/api/identity/session', { cookie: sessionCookie });
     assert.equal(session.status, 200);
     assert.equal(session.body.mfaVerified, true);
+    try {
+      const sessions = await runtime.query('SELECT id::text FROM rotamoto.sessions WHERE user_id=$1', [fixtureUserId]);
+      fixtureSessionIds.push(...sessions.rows.map(row => row.id));
+      for (const sessionId of sessions.rows.map(row => row.id)) fixtureTenantBySession.set(sessionId, companyId);
+      await syncFixtureManifest();
+    } catch (_) { /* session IDs are optional when runtime privileges hide the table */ }
     const recoveryLogin=await call('/api/identity/login',{method:'POST',body:{email,password,companyId,mfaCode:confirmed.body.recoveryCodes[0]}});
     assert.equal(recoveryLogin.status,200,'a one-time recovery code can authenticate once');
     await call('/api/identity/logout',{method:'POST',cookie:recoveryLogin.headers.get('set-cookie').split(';',1)[0],csrf:recoveryLogin.body.csrfToken});
@@ -318,6 +311,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(membershipList.status, 200);
     const membership = membershipList.body.members.find(row => row.userId === accepted.body.userId);
     assert(membership, 'provisioning service created owner membership');
+    trackFixtureRecord(companyId, 'memberships', membership.membershipId);
+    if (membership.roleId) trackFixtureRecord(companyId, 'roles', membership.roleId);
 
     const restaurantDevice = `restaurant-${crypto.randomUUID()}`;
     const noCsrfRegistration = await call('/api/sync/installations/restaurante', { method: 'POST', cookie: sessionCookie,
@@ -336,6 +331,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert.equal(driverPush.status, 200, JSON.stringify(driverPush.body));
     assert.equal(driverPush.body.operationResults[0].status, 'accepted', JSON.stringify(driverPush.body.operationResults));
     const driverId = driverPush.body.aliases.find(row => row.entity === 'Driver').canonicalId;
+    trackFixtureRecord(companyId, 'drivers', driverId);
     const binding = await call(`/api/admin/memberships/${membership.membershipId}/driver`, { method: 'PUT', cookie: sessionCookie,
       csrf, body: { driverId } });
     assert.equal(binding.status, 200, JSON.stringify(binding.body));
@@ -364,6 +360,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     assert(orderDelivery.body.operationResults.every(result => result.status === 'accepted'), JSON.stringify(orderDelivery.body.operationResults));
     orderId = orderDelivery.body.aliases.find(row => row.entity === 'Order').canonicalId;
     deliveryId = orderDelivery.body.aliases.find(row => row.entity === 'Delivery').canonicalId;
+    trackFixtureRecord(companyId, 'orders', orderId);
+    trackFixtureRecord(companyId, 'deliveries', deliveryId);
     if (navigationFixture) {
       const localOrders = Array.from({ length: 5 }, (_, index) => ({ id: crypto.randomUUID(), companyId,
         customer: `QA parada ${index + 2}`, source: index % 2 ? 'whatsapp' : 'manual', number: String(index + 2),
@@ -380,6 +378,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       assert.equal(stopsPush.status, 200, JSON.stringify(stopsPush.body));
       assert(stopsPush.body.operationResults.every(result => result.status === 'accepted'), JSON.stringify(stopsPush.body.operationResults));
       navigationDeliveryIds = [deliveryId, ...stopsPush.body.aliases.filter(row => row.entity === 'Delivery').map(row => row.canonicalId)];
+      trackFixtureRecord(companyId, 'orders', stopsPush.body.aliases.filter(row => row.entity === 'Order').map(row => row.canonicalId));
+      trackFixtureRecord(companyId, 'deliveries', navigationDeliveryIds.slice(1));
       navigationRouteId = crypto.randomUUID();
       const routePush = await call('/api/sync/push', { method: 'POST', cookie: sessionCookie, csrf, body: {
         protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId: `pkt_${crypto.randomUUID()}`,
@@ -389,6 +389,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       assert.equal(routePush.status, 200, JSON.stringify(routePush.body));
       assert(routePush.body.operationResults.every(result => result.status === 'accepted'), JSON.stringify(routePush.body.operationResults));
       navigationRouteId = routePush.body.aliases.find(row => row.entity === 'Route').canonicalId;
+      trackFixtureRecord(companyId, 'routes', navigationRouteId);
     }
     }
     if (businessFixture) {
@@ -447,6 +448,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const canonicalProofId=motoboyProofPush.body.operationResults[0].canonicalId;
     proofFixture = Object.freeze({ proofId, canonicalProofId, storageRef: uploadedBody.storageRef,
       sha256: uploadedBody.sha256, sizeBytes: uploadedBody.sizeBytes, mimeType: uploadedBody.mimeType });
+    trackFixtureRecord(companyId, 'proofs', canonicalProofId);
     await runtime.query("SELECT set_config('app.tenant_id',$1,true)",[companyId]);
     const canonicalProof=await runtime.query("SELECT payload,related_entity_type,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2",[companyId,canonicalProofId]);
     assert.equal(canonicalProof.rowCount,1,'accepted proof has canonical PostgreSQL metadata');
@@ -484,6 +486,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         headers: { 'X-E2E-Operator': operatorMarker } });
       assert.equal(provisionedTenant.status, 202, JSON.stringify(provisionedTenant.body));
       fixtureTenantIds.push(provisionedTenant.body.companyId);
+      await syncFixtureManifest();
       const ownerInvitation = emails.findLast(message => message.kind === 'owner_invitation' && message.to === tenantEmail);
       assert(ownerInvitation?.token, 'E2E email sink captured the second tenant owner invitation');
       const tenantPassword = `E2E-${crypto.randomBytes(30).toString('base64url')}`;
@@ -491,6 +494,9 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         body: { token: ownerInvitation.token, password: tenantPassword } });
       assert.equal(tenantAccepted.status, 200, JSON.stringify(tenantAccepted.body));
       fixtureUserIds.push(tenantAccepted.body.userId);
+      trackFixtureRecord(provisionedTenant.body.companyId, 'authRecords', tenantAccepted.body.userId);
+      fixtureTenantByUser.set(tenantAccepted.body.userId, provisionedTenant.body.companyId);
+      await syncFixtureManifest();
       const enrollmentLogin = await call('/api/identity/login', { method: 'POST',
         body: { email: tenantEmail, password: tenantPassword, companyId: provisionedTenant.body.companyId } });
       assert.equal(enrollmentLogin.status, 200, JSON.stringify(enrollmentLogin.body));
@@ -509,12 +515,20 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         body: { email: tenantEmail, password: tenantPassword, companyId: provisionedTenant.body.companyId,
           mfaCode: codeAt(enrollment.body.secret, counter) } });
       assert.equal(ownerLogin.status, 200, JSON.stringify(ownerLogin.body));
+      try {
+        const sessions = await runtime.query('SELECT id::text FROM rotamoto.sessions WHERE user_id=$1', [tenantAccepted.body.userId]);
+        fixtureSessionIds.push(...sessions.rows.map(row => row.id));
+        for (const sessionId of sessions.rows.map(row => row.id)) fixtureTenantBySession.set(sessionId, provisionedTenant.body.companyId);
+        await syncFixtureManifest();
+      } catch (_) { /* session IDs are optional under restricted runtime grants */ }
       const ownerCookie = ownerLogin.headers.get('set-cookie').split(';', 1)[0];
       const ownerSession = await call('/api/identity/session', { cookie: ownerCookie });
       assert.equal(ownerSession.status, 200, JSON.stringify(ownerSession.body));
       const memberships = await call('/api/admin/memberships?limit=100', { cookie: ownerCookie });
       const ownerMembership = memberships.body.members.find(row => row.userId === tenantAccepted.body.userId);
       assert(ownerMembership?.membershipId, 'second tenant owner membership exists');
+      trackFixtureRecord(provisionedTenant.body.companyId, 'memberships', ownerMembership.membershipId);
+      if (ownerMembership.roleId) trackFixtureRecord(provisionedTenant.body.companyId, 'roles', ownerMembership.roleId);
       const deviceId = `tenant-b-${crypto.randomUUID()}`;
       const registered = await call('/api/sync/installations/restaurante', { method: 'POST', cookie: ownerCookie,
         csrf: ownerSession.body.csrfToken, body: { deviceId } });
@@ -537,10 +551,13 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const enableIndependentRequestTransactions = async () => {
       if (!independentRequestTransactions) throw new Error('Este fixture não habilitou transações independentes.');
       if (independentPool) return;
+      await syncFixtureManifest();
       await host.pauseAndDrain();
       await runtime.query('COMMIT');
       transactionOpen = false;
       committedForIndependentRequests = true;
+      await syncFixtureManifest({ databaseCommitted: true,
+        retentionReason: 'Execução usa sessões PostgreSQL independentes; registros confirmados são preservados até revisão de propriedade e dependências.' });
       const target = resolveE2eTargets(env).runtime;
       independentPool = createPool({ connectionString: target,
         password: storedLoopbackCredential('rotamoto_app', 'rotamoto_e2e'),
@@ -556,11 +573,33 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       transactionOpen = true;
       host.resumeConcurrent();
     };
+    const registerFixtureTenant = async ({ id, userIds = [], sessionIds = [], records = {} } = {}) => {
+      if (!fixtureManifest || !/^[0-9a-f-]{36}$/iu.test(id || '') ||
+          [...userIds, ...sessionIds].some(value => !/^[0-9a-f-]{36}$/iu.test(value))) {
+        throw new Error('Fixture tenant registration requires UUID identifiers in rotamoto_e2e.');
+      }
+      if (!fixtureTenantIds.includes(id)) fixtureTenantIds.push(id);
+      for (const userId of userIds) {
+        if (!fixtureUserIds.includes(userId)) fixtureUserIds.push(userId);
+        fixtureTenantByUser.set(userId, id);
+      }
+      for (const sessionId of sessionIds) {
+        if (!fixtureSessionIds.includes(sessionId)) fixtureSessionIds.push(sessionId);
+        fixtureTenantBySession.set(sessionId, id);
+      }
+      for (const [kind, ids] of Object.entries(records)) {
+        if (!/^[a-z][a-zA-Z0-9_]{0,39}$/u.test(kind) || !Array.isArray(ids) ||
+            ids.some(value => typeof value !== 'string' || value.length > 200)) throw new Error('Fixture record registration is invalid.');
+        trackFixtureRecord(id, kind, ids);
+      }
+      await syncFixtureManifest();
+    };
     await exercise(Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
       driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, restaurantDevice, email, password, mfaCode: browserMfaCode,
       browserSessionCookie: sessionCookie, apiOrigin: host.base, mediaDirectory, proof: proofFixture,
       provisionAdditionalTenant, runtime, call, authenticatedCall, driverAvailabilityService,
-      enableIndependentRequestTransactions,
+      enableIndependentRequestTransactions, registerFixtureTenant,
+      fixtureManifest: fixtureManifest ? Object.freeze({ runId: fixtureManifest.runId, file: fixtureManifest.file }) : null,
       acquireIndependentRuntimeClient: async () => {
         if (!independentPool) throw new Error('Transações independentes ainda não habilitadas.');
         return independentPool.connect();
@@ -578,12 +617,21 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const passwordRecoveryReplay = await call('/api/identity/recovery/consume', { method: 'POST',
       body: { token: recoveryEmail.token, password: recoveredPassword } });
     assert.equal(passwordRecoveryReplay.status, 401, 'password recovery token is one-time');
+    if (fixtureManifest) await syncFixtureManifest({ databaseCommitted: committedForIndependentRequests || fixturePersisted,
+      evidence: [{ kind: 'fixture-manifest', path: fixtureManifest.file }] });
     if (persistDisposableFixture) {
       await runtime.query('COMMIT'); transactionOpen = false; fixturePersisted = true;
     }
     return Object.freeze({ companyId, userId: accepted.body.userId, membershipId: membership.membershipId,
       driverId, orderId, deliveryId, navigationRouteId, navigationDeliveryIds: Object.freeze([...navigationDeliveryIds]), motoboyDevice, authenticated: true, mfaVerified: true,
       ...(fixturePersisted ? { mediaDirectory } : {}) });
+  } catch (error) {
+    lifecycleFailed = true;
+    if (fixtureManifest) await syncFixtureManifest({ status: 'FAILED', databaseCommitted: committedForIndependentRequests || fixturePersisted,
+      lastError: { name: error.name, code: error.code || null, message: 'E2E lifecycle failed; inspect restricted runner output.' },
+      retentionReason: committedForIndependentRequests || fixturePersisted
+        ? 'Falha após commit: fixtures retidas para inspeção; nenhuma limpeza automática foi executada.' : null }).catch(() => {});
+    throw error;
   } finally {
     if (host) {
       // Browser E2E may leave keep-alive requests active while a tab or sync
@@ -600,17 +648,50 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     if (independentPool) await independentPool.end().catch(() => {});
     if (connectedRuntime) await runtime.end();
     if (mediaDirectory && !fixturePersisted) await fs.rm(mediaDirectory, { recursive: true, force: true });
-    if (!fixturePersisted && committedForIndependentRequests && retainIndependentFixture) {
-      onIndependentFixtureRetained?.({ tenantIds: [...new Set(fixtureTenantIds)], userIds: [...new Set(fixtureUserIds)] });
-    }
-    if (!fixturePersisted && committedForIndependentRequests && !retainIndependentFixture) {
+    if (fixtureManifest && fixtureTenantIds.length) {
+      const tenantDatabaseCounts = [];
       await migrator.connect();
       try {
         await assertConnectedIdentity(migrator, { role: 'rotamoto_migrator', database: 'rotamoto_e2e', env });
-        await cleanupCommittedFixture(migrator, [...new Set(fixtureTenantIds)], [...new Set(fixtureUserIds)]);
+        for (const tenantId of fixtureTenantIds) {
+          const userIds = fixtureUserIds.filter(userId => fixtureTenantByUser.get(userId) === tenantId);
+          await migrator.query('BEGIN READ ONLY');
+          try {
+            await migrator.query("SELECT set_config('app.tenant_id',$1,true)", [tenantId]);
+            const result = await migrator.query(`SELECT
+              (SELECT count(*)::int FROM rotamoto.companies WHERE id=$1) AS companies,
+              (SELECT count(*)::int FROM rotamoto.users WHERE id=ANY($2::uuid[])) AS users,
+              (SELECT count(*)::int FROM rotamoto.credentials WHERE user_id=ANY($2::uuid[])) AS auth_records,
+              (SELECT count(*)::int FROM rotamoto.memberships WHERE company_id=$1) AS memberships,
+              (SELECT count(*)::int FROM rotamoto.sessions WHERE user_id=ANY($2::uuid[])) AS sessions,
+              (SELECT count(*)::int FROM rotamoto.domain_records WHERE company_id=$1) AS domain_records,
+              (SELECT count(*)::int FROM rotamoto.sync_inbox WHERE company_id=$1) AS sync_inbox,
+              (SELECT count(*)::int FROM rotamoto.sync_outbox WHERE company_id=$1) AS sync_outbox,
+              (SELECT count(*)::int FROM rotamoto.audit_log WHERE company_id=$1) AS audit_log`, [tenantId, userIds]);
+            if (!committedForIndependentRequests && !fixturePersisted) {
+              assert(Object.values(result.rows[0]).every(value => value === 0),
+                'rolled-back fixture leaves no database rows for its registered tenant');
+            }
+            tenantDatabaseCounts.push({ tenantId, counts: result.rows[0] });
+          } finally { await migrator.query('ROLLBACK'); }
+        }
+        await fixtureManifest.update({ tenantDatabaseCounts });
       } finally { await migrator.end(); }
     }
-    if (!fixturePersisted && !retainIndependentFixture) {
+    if (fixtureManifest && !lifecycleFailed) await fixtureManifest.update({
+      status: committedForIndependentRequests || fixturePersisted ? 'RETAINED' : 'COMPLETED',
+      databaseCommitted: committedForIndependentRequests || fixturePersisted,
+      retentionReason: committedForIndependentRequests || fixturePersisted
+        ? 'Execution completed; committed fixture and append-only audit rows remain retained.' : null });
+    if (!fixturePersisted && committedForIndependentRequests && retainIndependentFixture) {
+      await syncFixtureManifest({ databaseCommitted: true,
+        retentionReason: 'Execução encerrada após commit; registros auditáveis e dependências permanecem retidos.' }).catch(() => {});
+      onIndependentFixtureRetained?.({ runId: fixtureManifest?.runId, manifestPath: fixtureManifest?.file,
+        tenantIds: [...new Set(fixtureTenantIds)], userIds: [...new Set(fixtureUserIds)] });
+    }
+    // Committed fixtures are never deleted by this helper. Eligibility and
+    // dependency analysis belong to a separately authorized dry-run review.
+    if (!fixturePersisted && !retainIndependentFixture && !fixtureManifest) {
     await migrator.connect();
     try {
       await assertConnectedIdentity(migrator, { role: 'rotamoto_migrator',
