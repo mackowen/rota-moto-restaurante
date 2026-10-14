@@ -1,5 +1,14 @@
 # Backup e restore self-hosted coordenado
 
+Recovery sets criados pela versão que inclui inventário de ledger guardam,
+dentro do manifesto cifrado e autenticado, os pares de migration ID e SHA-256
+registrados na captura. `backup:inventory` compara esses pares com as
+migrations versionadas e informa cobertura `CURRENT`, `STALE`, `DIVERGENT`
+ou `UNKNOWN`. Sets legados sem esse campo permanecem verificáveis quanto à
+integridade criptográfica, mas sua cobertura de schema é `UNKNOWN`; integridade
+do arquivo não prova que o schema está atualizado. O inventário não restaura
+nem modifica conjuntos.
+
 `npm run backup:create` produz um conjunto versionado `rotamoto-recovery-set-v1`:
 PostgreSQL custom cifrado, blobs canônicos DeliveryProof cifrados individualmente e
 manifesto autenticado que relaciona os componentes, hashes, tamanhos e referências.

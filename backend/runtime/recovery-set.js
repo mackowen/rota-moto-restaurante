@@ -87,6 +87,13 @@ async function canonicalReferences(client) {
   });
   return refs;
 }
+async function schemaMigrationLedger(client) {
+  const result = await client.query('SELECT migration_id,checksum_sha256 FROM rotamoto.schema_migrations ORDER BY migration_id');
+  const migrations = result.rows.map(row => ({ id: String(row.migration_id || ''), checksum: String(row.checksum_sha256 || '').trim() }));
+  if (migrations.some(row => !/^\d{4}_[a-z0-9_]+$/u.test(row.id) || !/^[a-f0-9]{64}$/u.test(row.checksum)) ||
+      new Set(migrations.map(row => row.id)).size !== migrations.length) throw bad('Recovery migration ledger is invalid.');
+  return migrations;
+}
 async function withSnapshotLock(databaseUrl, action, clientFactory = options => createClient(options)) {
   const client = clientFactory({ connectionString: databaseUrl }); await client.connect();
   try {
@@ -139,14 +146,18 @@ async function createRecoverySet({ databaseUrl, keyFile, backupDirectory, mediaD
   const root = await privateDirectory(backupDirectory, { create: true });
   const mediaRoot = await privateDirectory(mediaDirectory);
   if (root === mediaRoot || root.startsWith(`${mediaRoot}${path.sep}`) || mediaRoot.startsWith(`${root}${path.sep}`)) throw bad('Backup and media roots must be separate.');
-  const key = await readKey(keyFile); let dbManifest, mediaCount = 0;
+  const key = await readKey(keyFile); let dbManifest, mediaCount = 0, migrations = [];
   try {
     await withSnapshotLock(databaseUrl, async client => {
+      migrations = await schemaMigrationLedger(client);
       const refs = await canonicalReferences(client);
       const stage = path.join(root, `.staging-set-${crypto.randomUUID()}`);
       await fs.mkdir(stage, { mode: 0o700 });
       try {
         dbManifest = await createEncryptedBackup({ databaseUrl, keyFile, directory: stage, retentionDays, now, pgDump, pgRestore, prune: false });
+        const confirmedMigrations = await schemaMigrationLedger(client);
+        if (JSON.stringify(confirmedMigrations) !== JSON.stringify(migrations))
+          throw bad('PostgreSQL migration ledger changed during recovery capture.', 'RECOVERY_SCHEMA_CHANGED');
         const mediaRootStage = path.join(stage, 'media');
         await fs.mkdir(mediaRootStage, { mode: 0o700 });
         const entries = []; let total = 0;
@@ -163,7 +174,7 @@ async function createRecoverySet({ databaseUrl, keyFile, backupDirectory, mediaD
         }
         const unsigned = { version: 1, format: 'rotamoto-recovery-set-v1', id: dbManifest.id, createdAt: dbManifest.createdAt,
           database: { name: sourceDatabase, id: dbManifest.id, sizeBytes: dbManifest.sizeBytes, sha256: dbManifest.sha256 },
-          media: { objectCount: entries.length, plaintextBytes: total, entries } };
+          schemaMigrations: migrations, media: { objectCount: entries.length, plaintextBytes: total, entries } };
         const payload = await encryptObject(Buffer.from(JSON.stringify(unsigned)), key, `recovery-set:${dbManifest.id}`);
         const set = { version: 1, format: unsigned.format, id: unsigned.id, createdAt: unsigned.createdAt,
           manifestMac: manifestMac(key, unsigned), payload: payload.toString('base64') };
@@ -180,7 +191,8 @@ async function createRecoverySet({ databaseUrl, keyFile, backupDirectory, mediaD
     throw error;
   } finally { key.fill(0); }
   return Object.freeze({ id: dbManifest.id, format: 'rotamoto-recovery-set-v1', createdAt: dbManifest.createdAt,
-    database: { sizeBytes: dbManifest.sizeBytes, sha256: dbManifest.sha256 }, media: { objectCount: mediaCount } });
+    database: { sizeBytes: dbManifest.sizeBytes, sha256: dbManifest.sha256 },
+    schemaMigrations: migrations, media: { objectCount: mediaCount } });
 }
 async function verifyRecoverySet({ directory, id, keyFile }) {
   id = safeId(id); const root = await privateDirectory(directory);
@@ -193,6 +205,10 @@ async function verifyRecoverySet({ directory, id, keyFile }) {
   try {
     const envelope = JSON.parse(setText), set = openSetManifest(envelope, key, id);
     const sourceDatabase = assertRecoverySource(database.database);
+    const schemaMigrations = set.schemaMigrations;
+    if (schemaMigrations !== undefined && (!Array.isArray(schemaMigrations) ||
+        schemaMigrations.some(row => !row || !/^\d{4}_[a-z0-9_]+$/u.test(row.id || '') || !/^[a-f0-9]{64}$/u.test(row.checksum || '')) ||
+        new Set(schemaMigrations.map(row => row.id)).size !== schemaMigrations.length)) throw bad('Recovery migration ledger metadata is invalid.');
     if (set.createdAt !== database.createdAt ||
         set.database?.name !== sourceDatabase || set.database?.id !== database.id ||
         set.database?.sha256 !== database.sha256 || set.database?.sizeBytes !== database.sizeBytes ||
@@ -221,7 +237,8 @@ async function verifyRecoverySet({ directory, id, keyFile }) {
     if (total !== set.media.plaintextBytes) throw bad('Recovery media manifest size mismatch.');
     const actualFiles = await listFiles(mediaDir), expectedFiles = set.media.entries.map(entry => entry.file);
     if (actualFiles.length !== expectedFiles.length || actualFiles.some(file => !expectedFiles.includes(file))) throw bad('Recovery media contains missing or unexpected files.');
-    return Object.freeze({ id, format: set.format, createdAt: set.createdAt, database: { sizeBytes: database.sizeBytes, sha256: database.sha256 }, media: { objectCount: keys.size, plaintextBytes: total } });
+    return Object.freeze({ id, format: set.format, createdAt: set.createdAt, database: { sizeBytes: database.sizeBytes, sha256: database.sha256 },
+      schemaMigrations: schemaMigrations || null, media: { objectCount: keys.size, plaintextBytes: total } });
   } finally { key.fill(0); }
 }
 async function listFiles(root, base = root, out = []) {
@@ -318,4 +335,4 @@ async function pruneRecoverySets({ directory, retentionDays, now = new Date(), k
 }
 
 module.exports = { createRecoverySet, verifyRecoverySet, restoreRecoverySet, pruneRecoverySets, canonicalReferences, withSnapshotLock,
-  assertRecoverySource, CAMPAIGN_0068_SOURCE };
+  assertRecoverySource, CAMPAIGN_0068_SOURCE, schemaMigrationLedger };

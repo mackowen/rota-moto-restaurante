@@ -11,6 +11,7 @@ const { createFilesystemObjectStore } = require('../backend/domain/filesystem-ob
 const { createRecoverySet, verifyRecoverySet, restoreRecoverySet, withSnapshotLock, pruneRecoverySets } = require('../backend/runtime/recovery-set');
 const { assertRecoverySource } = require('../backend/runtime/recovery-set');
 const { parseSafeUrl } = require('../backend/runtime/backup-runner');
+const { getMigrations } = require('../backend/postgres/migrate');
 
 const uuid = () => crypto.randomUUID();
 async function copyTree(source, target) { await fs.cp(source, target, { recursive: true, preserveTimestamps: true }); }
@@ -52,11 +53,13 @@ async function rejects(fn) { await assert.rejects(fn); }
   const row = { company_id: companyId, delivery_id: deliveryId, related_entity_type: 'Delivery', existing_delivery_id: deliveryId,
     media: { storageRef: stored.reference, mimeType: stored.contentType, sizeBytes: stored.sizeBytes, sha256: stored.sha256, proofId } };
   const dumpExe = path.join(root, 'pg-dump'), restoreExe = path.join(root, 'pg-restore');
+  const schemaMigrations = getMigrations().slice(0, 41).map(({ id, checksum }) => ({ migration_id: id, checksum_sha256: checksum }));
   await makeExecutable(dumpExe, 'process.stdout.write(Buffer.from("fake-custom-dump"));');
   await makeExecutable(restoreExe, 'process.exit(process.argv.includes("--list") ? 0 : 0);');
   const clientFactory = () => ({ async connect() {}, async end() {}, async query(sql) {
     if (sql.includes('pg_advisory_lock')) return { rows: [] };
     if (sql.includes('pg_advisory_unlock')) return { rows: [] };
+    if (sql.includes('SELECT migration_id,checksum_sha256')) return { rows: schemaMigrations };
     if (sql.includes('FROM rotamoto.domain_records')) return { rows: [row] };
     return { rows: [] };
   } });
@@ -65,8 +68,26 @@ async function rejects(fn) { await assert.rejects(fn); }
   assert.equal(set.media.objectCount, 1);
   assert.deepEqual(await verifyRecoverySet({ directory: backups, id: set.id, keyFile }), {
     id: set.id, format: 'rotamoto-recovery-set-v1', createdAt: set.createdAt,
-    database: set.database, media: { objectCount: 1, plaintextBytes: png.length }
+    database: set.database, schemaMigrations: schemaMigrations.map(row => ({ id: row.migration_id, checksum: row.checksum_sha256 })),
+    media: { objectCount: 1, plaintextBytes: png.length }
   });
+  const changedBackupDirectory = path.join(root, 'ledger-changed-backups');
+  await fs.mkdir(changedBackupDirectory, { mode: 0o700 });
+  let ledgerReads = 0;
+  const changingLedgerFactory = () => ({ async connect() {}, async end() {}, async query(sql) {
+    if (sql.includes('pg_advisory_lock') || sql.includes('pg_advisory_unlock')) return { rows: [] };
+    if (sql.includes('SELECT migration_id,checksum_sha256')) {
+      ledgerReads++;
+      return { rows: ledgerReads === 1 ? schemaMigrations :
+        [...schemaMigrations, { migration_id: '0042_marketplace_99food_runtime', checksum_sha256: 'b'.repeat(64) }] };
+    }
+    if (sql.includes('FROM rotamoto.domain_records')) return { rows: [row] };
+    return { rows: [] };
+  } });
+  await assert.rejects(() => createRecoverySet({ databaseUrl: 'postgresql://rotamoto_backup@localhost/rotamoto',
+    keyFile, backupDirectory: changedBackupDirectory, mediaDirectory: media, pgDump: dumpExe, pgRestore: restoreExe,
+    clientFactory: changingLedgerFactory }), /ledger changed during recovery capture/u);
+  assert.deepEqual(await fs.readdir(changedBackupDirectory), [], 'schema drift during capture publishes no partial recovery set');
 
   const badManifest = path.join(root, 'bad-manifest'); await copyTree(backups, badManifest);
   const setFile = path.join(badManifest, `${set.id}.set`, 'set.json'); const setValue = JSON.parse(await fs.readFile(setFile, 'utf8'));
