@@ -733,11 +733,15 @@ async function main() {
       assert.equal(ordinaryCompletion.body.operationResults[0].error.code,'FORBIDDEN_EVENT');
       const receiptKey=`receipt-${crypto.randomUUID()}`;
       const receiptBody={expectedVersion:4,idempotencyKey:receiptKey,reason:'Recebimento físico confirmado no teste E2E.'};
+      const unauthorizedReceipt=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody,cookie:`${COOKIE_NAME}=${readOnlyToken}`,csrf:readOnlyCsrf});
+      assert.equal(unauthorizedReceipt.status,403,'a member without orders.manage cannot close restaurant custody');
       const receipt=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody});
       assert.equal(receipt.status,200,JSON.stringify(receipt.body));
       assert.equal(receipt.body.status,'RETURNED');assert.equal(receipt.body.custodyState,'RECEIVED');
       const receiptReplay=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody});
       assert.equal(receiptReplay.status,200,JSON.stringify(receiptReplay.body));assert.equal(receiptReplay.body.duplicate,true);
+      const terminalRetry=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:{expectedVersion:receipt.body.returnVersion,idempotencyKey:`receipt-terminal-${crypto.randomUUID()}`,reason:'Reenvio após resposta HTTP incerta.'}});
+      assert.equal(terminalRetry.status,200,JSON.stringify(terminalRetry.body));assert.equal(terminalRetry.body.duplicate,true,'a new idempotency key after confirmed receipt acknowledges the terminal state without a second mutation');
       const receiptConflict=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:{...receiptBody,reason:'Payload divergente da chave.'}});
       assert.equal(receiptConflict.status,409);assert.equal(receiptConflict.body.error.code,'IDEMPOTENCY_CONFLICT');
       const finalReturn=await client.query('SELECT payload,version FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2',[companyId,returnDeliveryId]);
@@ -748,6 +752,7 @@ async function main() {
       assert.deepEqual(routeAfterReceipt.rows[0].ids,[peerDeliveryId,peer2DeliveryId],'receipt closes the RETURN route stop without dropping other deliveries');
       const returnFacts=await client.query("SELECT payload->>'type' AS type FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2 ORDER BY created_at,record_id",[companyId,returnDeliveryId]);
       assert.deepEqual(returnFacts.rows.map(row=>row.type).sort(),['DELIVERY_RETURN_STARTED','DELIVERY_RETURN_ARRIVED','DELIVERY_RETURN_HANDED_OVER','DELIVERY_RETURN_RECEIPT_CONFIRMED'].sort());
+      assert.equal(returnFacts.rows.filter(row=>row.type==='DELIVERY_RETURN_RECEIPT_CONFIRMED').length,1,'receipt replay creates one auditable receipt fact');
       console.log('RETURN PostgreSQL sync/HTTP lifecycle: server revisions, handover pending receipt, authorized idempotent receipt and terminal custody PASS');
 
       const autoReturnNow=new Date().toISOString(),preAssignOrderId=crypto.randomUUID(),preAssignDeliveryId=crypto.randomUUID(),

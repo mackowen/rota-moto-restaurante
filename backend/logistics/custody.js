@@ -283,9 +283,13 @@ function createDeliveryCustodyService({clock=()=>new Date(),ensureInternalProvid
     await lockRouteMembership(client,principal.company_id);
     const route=await locateRoute(client,principal.company_id,returnId,null,true);
     const ret=await lockDelivery(client,principal.company_id,returnId),original=await lockDelivery(client,principal.company_id,originalId);
-    if(Number(ret.version)!==input.expectedVersion)fail('REVISION_CONFLICT','A devolução mudou; atualize antes de confirmar.');
     const retExt=ret.payload.extensions||{},originalExt=original.payload.extensions||{};
-    if(ret.payload.status==='RETURNED'&&retExt.x_rotamoto_custody_state===STATES.RECEIVED)return {returnDeliveryId:returnId,duplicate:true,custodyState:STATES.RECEIVED};
+    if(ret.payload.status==='RETURNED'&&retExt.x_rotamoto_custody_state===STATES.RECEIVED){
+      const result={returnDeliveryId:returnId,originalDeliveryId:originalId,status:'RETURNED',duplicate:true,custodyState:STATES.RECEIVED,
+        returnVersion:Number(ret.version),originalVersion:Number(original.version),receivedAt:retExt.x_rotamoto_restaurant_received_at||null};
+      return operationFinish(client,principal,'RECEIPT',returnId,op,result);
+    }
+    if(Number(ret.version)!==input.expectedVersion)fail('REVISION_CONFLICT','A devolução mudou; atualize antes de confirmar.');
     if(retExt.x_rotamoto_custody_state!==STATES.AWAITING_RESTAURANT_RECEIPT||ret.payload.status!=='ARRIVED')
       fail('INVALID_STATE_TRANSITION','O Motoboy precisa registrar chegada e entrega física antes do recebimento.');
     const now=await serverTime(client),installationId=await restaurantInstallation(client,principal.company_id);
