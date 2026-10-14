@@ -73,6 +73,13 @@ async function main() {
     const readOnlySessionId = crypto.randomUUID();
     const readOnlyToken = crypto.randomBytes(32).toString('base64url');
     const readOnlyCsrf = crypto.randomBytes(32).toString('base64url');
+    const tenantBId = crypto.randomUUID();
+    const tenantBUserId = crypto.randomUUID();
+    const tenantBRoleId = crypto.randomUUID();
+    const tenantBMembershipId = crypto.randomUUID();
+    const tenantBSessionId = crypto.randomUUID();
+    const tenantBToken = crypto.randomBytes(32).toString('base64url');
+    const tenantBCsrf = crypto.randomBytes(32).toString('base64url');
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
     await client.query("INSERT INTO rotamoto.companies(id,name,status) VALUES($1,'Synthetic domain sync','active')", [companyId]);
     await client.query('INSERT INTO rotamoto.users(id,email,email_verified_at) VALUES($1,$2,now())', [userId, `domain-sync-${userId}@example.invalid`]);
@@ -92,6 +99,26 @@ async function main() {
     await client.query(`INSERT INTO rotamoto.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at)
       VALUES($1,$2,$3,$4,$5,now(),now(),now()+interval '30 minutes',now()+interval '12 hours')`,
     [readOnlySessionId, readOnlyUserId, companyId, tokenDigest(readOnlyToken), tokenDigest(readOnlyCsrf)]);
+
+    // A second independently authenticated company is used to prove that known
+    // UUIDs from tenant A cannot cross the HTTP boundary. All rows remain in
+    // this test's outer transaction and are rolled back at the end.
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [tenantBId]);
+    await client.query("INSERT INTO rotamoto.companies(id,name,status) VALUES($1,'Synthetic tenant B','active')", [tenantBId]);
+    await client.query('INSERT INTO rotamoto.users(id,email,email_verified_at) VALUES($1,$2,now())',
+      [tenantBUserId, `domain-sync-tenant-b-${tenantBUserId}@example.invalid`]);
+    await client.query('INSERT INTO rotamoto.credentials(user_id,password_phc) VALUES($1,$2)',
+      [tenantBUserId, await hashPassword('synthetic-domain-sync-tenant-b-84')]);
+    await client.query("INSERT INTO rotamoto.roles(id,company_id,role_key,display_name) VALUES($1,$2,'qa-tenant-b','Synthetic tenant B role')",
+      [tenantBRoleId, tenantBId]);
+    await client.query(`INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version)
+      VALUES($1,$2,'orders.read',1),($1,$2,'orders.manage',1)`, [tenantBId, tenantBRoleId]);
+    await client.query("INSERT INTO rotamoto.memberships(id,company_id,user_id,role_id,status,activated_at) VALUES($1,$2,$3,$4,'active',now())",
+      [tenantBMembershipId, tenantBId, tenantBUserId, tenantBRoleId]);
+    await client.query(`INSERT INTO rotamoto.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at,mfa_verified_at)
+      VALUES($1,$2,$3,$4,$5,now(),now(),now()+interval '30 minutes',now()+interval '12 hours',now())`,
+    [tenantBSessionId, tenantBUserId, tenantBId, tokenDigest(tenantBToken), tokenDigest(tenantBCsrf)]);
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
 
     const identityService = createIdentityService({ pool: savepointPool(client) });
     const syncService = createSyncService();
@@ -733,6 +760,40 @@ async function main() {
       assert.equal(ordinaryCompletion.body.operationResults[0].error.code,'FORBIDDEN_EVENT');
       const receiptKey=`receipt-${crypto.randomUUID()}`;
       const receiptBody={expectedVersion:4,idempotencyKey:receiptKey,reason:'Recebimento físico confirmado no teste E2E.'};
+      const tenantBCookie=`${COOKIE_NAME}=${tenantBToken}`;
+      const crossTenantRead=await call(`/api/logistics/deliveries/${originalReturnId}/custody`,{cookie:tenantBCookie});
+      assert.equal(crossTenantRead.status,404,'tenant B cannot read custody for a known tenant A Delivery UUID');
+      assert.equal(crossTenantRead.body.error.code,'NOT_FOUND');
+      assert.doesNotMatch(JSON.stringify(crossTenantRead.body),/Synthetic domain sync|E2E Fixture|RETURN|driverId|orderId/iu,
+        'cross-tenant read response does not disclose tenant A fields');
+      const crossTenantReceipt=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody,
+        cookie:tenantBCookie,csrf:tenantBCsrf,headers:{'X-Company-Id':companyId}});
+      assert.equal(crossTenantReceipt.status,404,'tenant B cannot confirm a known tenant A RETURN even when client-supplied tenant context names A');
+      assert.equal(crossTenantReceipt.body.error.code,'NOT_FOUND');
+      const crossTenantReplay=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody,
+        cookie:tenantBCookie,csrf:tenantBCsrf});
+      assert.equal(crossTenantReplay.status,404,'replay by tenant B remains indistinguishable from an unknown RETURN');
+      const missingCrossTenantCsrf=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody,
+        cookie:tenantBCookie,csrf:null});
+      assert.equal(missingCrossTenantCsrf.status,403,'CSRF guard applies before tenant-scoped RETURN lookup');
+      const invalidSessionReceipt=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody,
+        cookie:`${COOKIE_NAME}=invalid-session-token`,csrf:tenantBCsrf});
+      assert.equal(invalidSessionReceipt.status,401,'invalid sessions cannot reach a known RETURN');
+      const beforeCrossTenantMutation=await client.query(`SELECT
+        (SELECT payload::text||':'||version::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2) AS returned,
+        (SELECT payload::text||':'||version::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$3) AS original,
+        (SELECT payload::text||':'||version::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$4) AS route,
+        (SELECT count(*)::int FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2) AS events`,
+      [companyId,returnDeliveryId,originalReturnId,routeId]);
+      const afterCrossTenantMutation=await client.query(`SELECT
+        (SELECT payload::text||':'||version::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2) AS returned,
+        (SELECT payload::text||':'||version::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$3) AS original,
+        (SELECT payload::text||':'||version::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$4) AS route,
+        (SELECT count(*)::int FROM rotamoto.domain_records WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2) AS events`,
+      [companyId,returnDeliveryId,originalReturnId,routeId]);
+      assert.deepEqual(afterCrossTenantMutation.rows[0],beforeCrossTenantMutation.rows[0],
+        'cross-tenant attempts do not mutate RETURN/original/route or add domain events');
+      console.log('RETURN tenant isolation: cross-tenant known-ID read/confirm/replay, client tenant tampering, missing CSRF and invalid session denied without mutation');
       const unauthorizedReceipt=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody,cookie:`${COOKIE_NAME}=${readOnlyToken}`,csrf:readOnlyCsrf});
       assert.equal(unauthorizedReceipt.status,403,'a member without orders.manage cannot close restaurant custody');
       const receipt=await call(`/api/logistics/returns/${returnDeliveryId}/receipt`,{method:'POST',body:receiptBody});
