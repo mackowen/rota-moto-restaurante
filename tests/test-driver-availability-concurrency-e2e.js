@@ -319,6 +319,35 @@ async function seedEligibilityPair(client,schema,f,kind){
   return {firstId,secondId};
 }
 
+async function seedIndependentRiders(client, schema, f, drivers) {
+  const riders = drivers.map(driverId => ({ userId: UUID(), membershipId: UUID(), session: {
+    id: UUID(), token: crypto.randomBytes(32).toString('base64url'), csrf: crypto.randomBytes(32).toString('base64url') },
+    installationId: UUID(), driverId }));
+  await client.query('BEGIN');
+  try {
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [f.companyId]);
+    for (const [index, rider] of riders.entries()) {
+      await client.query(`INSERT INTO ${schema}.users(id,email,email_verified_at) VALUES($1,$2,now())`,
+        [rider.userId, `campaign-0191-rider-${index}-${rider.userId}@example.invalid`]);
+      await client.query(`INSERT INTO ${schema}.credentials(user_id,password_phc,mfa_required)
+        VALUES($1,'$argon2id$e2e-fixture-placeholder',false)`, [rider.userId]);
+      await client.query(`INSERT INTO ${schema}.memberships(id,company_id,user_id,role_id,status,activated_at,driver_id)
+        VALUES($1,$2,$3,$4,'active',now(),$5)`, [rider.membershipId, f.companyId, rider.userId, f.roleId, rider.driverId]);
+      await client.query(`INSERT INTO ${schema}.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,
+        idle_expires_at,absolute_expires_at,mfa_verified_at)
+        VALUES($1,$2,$3,$4,$5,now(),now(),now()+interval '30 minutes',now()+interval '12 hours',now())`,
+      [rider.session.id, rider.userId, f.companyId, digest(rider.session.token), digest(rider.session.csrf)]);
+      await client.query(`INSERT INTO ${schema}.sync_installations(id,company_id,app_key,local_device_id,registered_by_user_id)
+        VALUES($1,$2,'motoboy',$3,$4)`, [rider.installationId, f.companyId, `campaign-0191-${rider.installationId}`, rider.userId]);
+      await client.query(`UPDATE ${schema}.driver_availability SET lease_session_id=$3,updated_by_user_id=$4,
+        lease_expires_at=now()+interval '120 seconds' WHERE company_id=$1 AND driver_id=$2`,
+      [f.companyId, rider.driverId, rider.session.id, rider.userId]);
+    }
+    await client.query('COMMIT');
+    return riders;
+  } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+}
+
 async function seedForeignEligibleDriver(client,schema,f){
   await client.query('BEGIN');
   try{
@@ -1332,6 +1361,151 @@ async function main() {
       WHERE application_name LIKE 'campaign-011%' AND wait_event_type='Lock'`);
     assert.equal(lockCheck.rows[0].n, 0, 'no campaign transaction remains waiting on a lock');
     markLocal('all API/PG operations settled; no lingering lock waits');
+
+    // 0191: the domain makes the Restaurant authoritative for assignment; a
+    // Motoboy cannot freely accept an unassigned Delivery. Exercise the
+    // equivalent legitimate race: two independently authenticated Restaurant
+    // sessions assign the same UI/sync-created opportunity to different
+    // eligible Drivers while an explicit PostgreSQL row-lock barrier holds
+    // both requests. Then two distinct Driver-linked sessions race acceptance;
+    // only the assigned identity may append the execution event.
+    const assignmentPair = await seedEligibilityPair(migrator, schema, f, 'eligible');
+    const riders = await seedIndependentRiders(migrator, schema, f, [assignmentPair.firstId, assignmentPair.secondId]);
+    const currentSettings = await fetchJson(origin, '/api/restaurant-driver-queue', sessions[0]);
+    assert.equal(currentSettings.status, 200, JSON.stringify(currentSettings.body));
+    const manualMode0191 = await fetchJson(origin, '/api/restaurant-driver-queue/settings', sessions[0], { method: 'POST', body: {
+      mode: 'manual', expectedRevision: currentSettings.body.settings.revision } });
+    assert.equal(manualMode0191.status, 200, JSON.stringify(manualMode0191.body));
+    const raceFixture = readyDeliveryPacket(f);
+    const raceCreate = await fetchJson(origin, '/api/sync/push', sessions[0], { method: 'POST', body: raceFixture.packet });
+    assert.equal(raceCreate.status, 200, JSON.stringify(raceCreate.body));
+    const createdDeliveryResult = raceCreate.body.operationResults.find(row => row.entity === 'Delivery');
+    assert.equal(createdDeliveryResult.status, 'accepted', JSON.stringify(raceCreate.body));
+    const localDelivery = raceFixture.packet.data.deliveries[0];
+    const assignmentAttempt = (driverId, packetId) => {
+      const now = new Date().toISOString();
+      const delivery = { ...localDelivery, driverId, status: 'ASSIGNED', assignedAt: now,
+        updatedAt: now, version: 2, baseVersion: 1 };
+      return { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId,
+        deviceId: raceFixture.packet.deviceId, source: raceFixture.packet.source, createdAt: now,
+        data: { orders: [], drivers: [], deliveries: [delivery], routes: [], deliveryEvents: [],
+          locationUpdates: [], proofs: [], earnings: [], tombstones: [] } };
+    };
+    const assignmentPackets = [
+      assignmentAttempt(assignmentPair.firstId, `pkt_${UUID()}`),
+      assignmentAttempt(assignmentPair.secondId, `pkt_${UUID()}`)
+    ];
+    const raceBarrier = await connectOperation('campaign-0191-assignment-race-barrier');
+    try {
+      await raceBarrier.client.query('BEGIN');
+      await raceBarrier.client.query("SELECT set_config('app.tenant_id',$1,true)", [f.companyId]);
+      const lockedDelivery = await raceBarrier.client.query(`SELECT record_id FROM ${schema}.domain_records
+        WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' FOR UPDATE`,
+      [f.companyId, createdDeliveryResult.canonicalId]);
+      assert.equal(lockedDelivery.rowCount, 1, 'the legitimate created Delivery is locked before the race');
+      const barrierPid = Number((await raceBarrier.client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
+      const raceRequests = assignmentPackets.map((packet, index) => fetchJson(origin, '/api/sync/push',
+        sessions[index], { method: 'POST', body: packet }));
+      const blockedRacePids = await waitForBlockedRequest(observer, 'campaign-0112-api', barrierPid, 2);
+      assert.equal(blockedRacePids.length, 2, 'two independent authenticated requests contend on the same canonical Delivery lock');
+      await raceBarrier.client.query('COMMIT');
+      const raceResponses = await Promise.all(raceRequests);
+      assert(raceResponses.every(response => response.status === 200), JSON.stringify(raceResponses));
+      const raceOutcomes = raceResponses.map(response => response.body.operationResults?.[0]);
+      const acceptedAssignments = raceOutcomes.filter(result => result?.status === 'accepted');
+      const losingAssignments = raceOutcomes.filter(result => result?.status === 'conflict');
+      assert.equal(acceptedAssignments.length, 1, `exactly one candidate assignment wins: ${JSON.stringify(raceOutcomes)}`);
+      assert.equal(losingAssignments.length, 1, `the losing request receives a domain conflict: ${JSON.stringify(raceOutcomes)}`);
+      assert.equal(losingAssignments[0].error?.code, 'REVISION_CONFLICT');
+      const assignmentRead = await openRuntimeClient({ schema, tenantId: f.companyId,
+        applicationName: 'campaign-0191-assignment-race-readback' });
+      const canonicalAssignment = await assignmentRead.client.query(`SELECT payload,version FROM ${schema}.domain_records
+        WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`, [f.companyId, createdDeliveryResult.canonicalId]);
+      assert.equal(canonicalAssignment.rowCount, 1);
+      assert.equal(canonicalAssignment.rows[0].payload.status, 'ASSIGNED');
+      assert([assignmentPair.firstId, assignmentPair.secondId].includes(canonicalAssignment.rows[0].payload.driverId));
+      assert.equal(Number(canonicalAssignment.rows[0].version), 2);
+      const assignmentOutbox = await assignmentRead.client.query(`SELECT count(*)::int AS n,
+        count(*) FILTER(WHERE payload->'payload'->>'version'='2')::int AS assignment_events
+        FROM ${schema}.sync_outbox WHERE company_id=$1 AND payload->>'entityId'=$2`,
+      [f.companyId, createdDeliveryResult.canonicalId]);
+      assert.deepEqual(assignmentOutbox.rows[0], { n: 2, assignment_events: 1 },
+        'one create event and exactly one canonical assignment update are published');
+      await endRuntimeClient(assignmentRead.raw);
+      for (const [index, packet] of assignmentPackets.entries()) {
+        const replay = await fetchJson(origin, '/api/sync/push', sessions[index], { method: 'POST', body: packet });
+        assert.equal(replay.status, 200, JSON.stringify(replay.body));
+        assert.equal(replay.body.duplicate, true, 'both winner and loser packet replays are idempotent');
+      }
+      const acceptPackets = riders.map(rider => {
+        const now = new Date().toISOString(), eventId = UUID();
+        const event = { id: eventId, eventId, entity: 'Delivery', entityId: createdDeliveryResult.canonicalId,
+          type: 'DELIVERY_ACCEPTED', occurredAt: now, actor: { type: 'driver', id: rider.driverId },
+          payload: {}, protocolVersion: 1 };
+        return { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1, packetId: `pkt_${UUID()}`,
+          deviceId: `campaign-0191-${rider.installationId}`, source: { deviceId: `campaign-0191-${rider.installationId}` },
+          createdAt: now, data: { orders: [], drivers: [], deliveries: [], routes: [], deliveryEvents: [event],
+            locationUpdates: [], proofs: [], earnings: [], tombstones: [] } };
+      });
+      const acceptBarrier = await connectOperation('campaign-0191-accept-race-barrier');
+      let acceptResponses;
+      try {
+        await acceptBarrier.client.query('BEGIN');
+        await acceptBarrier.client.query("SELECT set_config('app.tenant_id',$1,true)", [f.companyId]);
+        await acceptBarrier.client.query(`SELECT record_id FROM ${schema}.domain_records
+          WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery' FOR UPDATE`,
+        [f.companyId, createdDeliveryResult.canonicalId]);
+        const acceptBarrierPid = Number((await acceptBarrier.client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);
+        const acceptRequests = acceptPackets.map((packet, index) => fetchJson(origin, '/api/sync/push',
+          riders[index].session, { method: 'POST', body: packet }));
+        const blockedAcceptPids = await waitForBlockedRequest(observer, 'campaign-0112-api', acceptBarrierPid, 2);
+        assert.equal(blockedAcceptPids.length, 2, 'two distinct Driver-linked sessions contend on the same Delivery row');
+        await acceptBarrier.client.query('COMMIT');
+        acceptResponses = await Promise.all(acceptRequests);
+      } finally {
+        await acceptBarrier.client.query('ROLLBACK').catch(() => {});
+        await endRuntimeClient(acceptBarrier.raw);
+      }
+      assert(acceptResponses.every(response => response.status === 200), JSON.stringify(acceptResponses));
+      const acceptOutcomes = acceptResponses.map(response => response.body.operationResults?.[0]);
+      const acceptedByWinner = acceptOutcomes.filter(result => result?.status === 'accepted');
+      const rejectedByAssignment = acceptOutcomes.filter(result => result?.error?.code === 'DRIVER_NOT_ASSIGNED');
+      assert.equal(acceptedByWinner.length, 1, `only the assigned Driver may accept: ${JSON.stringify(acceptOutcomes)}`);
+      assert.equal(rejectedByAssignment.length, 1, `the other Driver receives a coherent ownership rejection: ${JSON.stringify(acceptOutcomes)}`);
+      const acceptanceRead = await openRuntimeClient({ schema, tenantId: f.companyId,
+        applicationName: 'campaign-0191-accept-race-readback' });
+      const acceptedProjection = await acceptanceRead.client.query(`SELECT payload,version FROM ${schema}.domain_records
+        WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`, [f.companyId, createdDeliveryResult.canonicalId]);
+      assert.equal(acceptedProjection.rows[0]?.payload.status, 'ACCEPTED');
+      const executionEventCount = await acceptanceRead.client.query(`SELECT count(*)::int AS n FROM ${schema}.domain_records
+        WHERE company_id=$1 AND entity_type='DeliveryEvent' AND related_record_id=$2`,
+      [f.companyId, createdDeliveryResult.canonicalId]);
+      assert.equal(executionEventCount.rows[0].n, 1, 'one canonical acceptance fact was appended');
+      await endRuntimeClient(acceptanceRead.raw);
+      const acceptedIndex = acceptOutcomes.findIndex(result => result?.status === 'accepted');
+      for (const index of [0, 1]) {
+        const replay = await fetchJson(origin, '/api/sync/push', riders[index].session,
+          { method: 'POST', body: acceptPackets[index] });
+        assert.equal(replay.status, 200, JSON.stringify(replay.body));
+        assert.equal(replay.body.duplicate, true, 'driver acceptance replay does not append another fact');
+      }
+      await fixture.update({ tenants: [
+        { id: f.companyId, counts: { companies: 1, users: 3, sessions: 4, memberships: 3, roles: 1, drivers: 3 } },
+        { id: f.otherCompanyId, counts: { companies: 1, drivers: 1 } }
+      ], records: { schemas: [schema], companies: [f.companyId, f.otherCompanyId], users: [f.userId, ...riders.map(row => row.userId)],
+        roles: [f.roleId], memberships: [f.membershipId, ...riders.map(row => row.membershipId)],
+        sessions: [...f.sessions.map(row => row.id), ...riders.map(row => row.session.id)],
+        drivers: [f.driverId, f.otherDriverId, assignmentPair.firstId, assignmentPair.secondId],
+        orders: [...f.deliveries.map(row => row.orderId), raceFixture.packet.data.orders[0].id],
+        deliveries: [...f.deliveries.map(row => row.id), createdDeliveryResult.canonicalId], routes: [],
+        evidence: ['two-session PostgreSQL concurrency trace', '0191 same-Delivery assignment race', '0191 two distinct Driver-linked session acceptance race']
+      } });
+      markLocal(`0191 assignment race: one of two eligible Drivers assigned; loser REVISION_CONFLICT; one version-2 outbox event; retries idempotent`);
+      markLocal(`0191 acceptance race: Driver ${riders[acceptedIndex].driverId} accepted; other session rejected DRIVER_NOT_ASSIGNED; one DeliveryEvent; retries idempotent`);
+    } finally {
+      await raceBarrier.client.query('ROLLBACK').catch(() => {});
+      await endRuntimeClient(raceBarrier.raw);
+    }
 
     console.log(JSON.stringify({ result: 'PASS_E2E_SCENARIOS_0160_FIFO_ELIGIBILITY', database: DATABASE, schemaSandbox: 'isolated migration-derived schema retained; manifest records ownership',
       fixtureRunId: fixture.runId, fixtureManifest: fixture.file,
