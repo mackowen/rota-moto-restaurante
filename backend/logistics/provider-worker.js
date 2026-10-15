@@ -189,7 +189,7 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
           [command.company_id, command.payload.quoteId, command.provider_id]);
         return result.rows[0]?.external_quote_id || null;
       }) : null;
-      const result = await adapter[operationMethod]({ ...context, payload: { ...command.payload,
+      const result = await adapter[operationMethod]({ ...context, commandId: command.command_id, payload: { ...command.payload,
         ...(orderContext?.order_source === 'ifood' && orderContext?.external_order_id ? { externalOrderId: orderContext.external_order_id } : {}),
         ...(quoteContext ? { externalQuoteId: quoteContext } : {}) }, credentials });
       await withTenant(command.company_id, async client => {
