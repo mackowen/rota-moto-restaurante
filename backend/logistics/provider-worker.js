@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { retryDelayMs, resolveTestProviderConfiguration } = require('./provider-integration');
 const { createProviderIntegrationService } = require('./provider-integration');
 const { createWorkerMetrics } = require('../runtime/worker-metrics');
+const { createQueueMetrics } = require('../runtime/queue-metrics');
 
 function createProviderCredentialResolver({ privilegedPool, secretProvider }) {
   if (!privilegedPool || !secretProvider) throw new TypeError('Keystore e conexão privilegiada são obrigatórios.');
@@ -32,6 +33,7 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
   if (!pool || !adapterRegistry || typeof credentialResolver !== 'function' || typeof tenantResolver !== 'function') throw new TypeError('Worker provider requer pool, adapters, tenant resolver e credential resolver.');
   if (testProvider && (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function')) throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
   let stopping = false;
+  const queueMetrics=createQueueMetrics({pool,tenantResolver});
   async function withTenant(companyId, operation) {
     const client = await pool.connect();
     try {
@@ -242,7 +244,7 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
       if (!hadWork) await new Promise(resolve => { const timer = setTimeout(resolve, pollIntervalMs); timer.unref?.(); });
     }
   }
-  return Object.freeze({ runOnce, run, processEventOnce, metrics: metrics.snapshot, stop() { stopping = true; } });
+  return Object.freeze({ runOnce, run, processEventOnce, metrics: metrics.snapshot, queueMetrics:queueMetrics.snapshot, stop() { stopping = true; } });
 }
 
 module.exports = { createProviderCredentialResolver, createProviderWorker };

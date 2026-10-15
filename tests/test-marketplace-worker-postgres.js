@@ -8,6 +8,7 @@ const {createPool}=require('../backend/postgres/connection');
 const {e2eMigrationConnectionString}=require('../backend/postgres/migrate');
 const {createMarketplaceRuntime}=require('../backend/integrations/marketplace-runtime');
 const {createMarketplaceWorker}=require('../backend/integrations/marketplace-worker');
+const {createProviderWorker}=require('../backend/logistics/provider-worker');
 const {createMarketplaceAccountResolver}=require('../backend/integrations/marketplace-account-resolver');
 const {createFixtureManifest}=require('./e2e-support/fixture-manifest');
 
@@ -112,6 +113,16 @@ async function main(){
     await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);
     const pending=await migrator.query('SELECT status,attempts FROM rotamoto.marketplace_command_outbox WHERE company_id=$1 AND command_id=$2',[row.company,command.command_id]);
     assert.deepEqual(pending.rows[0],{status:'pending',attempts:1},'adapter 202 is persisted as pending, never final success');await migrator.query('COMMIT');
+    const queueSnapshot=await worker.queueMetrics();
+    const marketplaceQueue=queueSnapshot.queues.find(queue=>queue.queue==='marketplace_commands');
+    assert.equal(marketplaceQueue.pending,1,'worker queue metrics read the durable pending command through its tenant-scoped role');
+    assert.equal(JSON.stringify(queueSnapshot).includes(row.company),false,'queue metrics omit tenant identifiers');
+    const providerWorker=createProviderWorker({pool:workerPool,adapterRegistry:{get:()=>({})},credentialResolver:async()=>({}),
+      tenantResolver:async()=>[row.company]});
+    const providerQueueSnapshot=await providerWorker.queueMetrics();
+    assert.equal(providerQueueSnapshot.queues.find(queue=>queue.queue==='provider_commands').pending,0,
+      'provider worker reads aggregate queue state using the dedicated role and tenant context');
+    assert.equal(JSON.stringify(providerQueueSnapshot).includes(row.company),false,'provider queue metrics omit tenant identifiers');
     detailStatus='CONFIRMED';const confirmed=event('CONFIRMED',`worker-${id()}`);
     await runtime.ingest({provider:'ifood',accountId:row.account,rawBody:confirmed,signature:signature(confirmed)});
     await migrator.query('BEGIN');await migrator.query("SELECT set_config('app.tenant_id',$1,true)",[row.company]);

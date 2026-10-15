@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { retryDelayMs, sanitizeProviderError } = require('./registry');
 const { createMarketplaceRuntime } = require('./marketplace-runtime');
 const { createWorkerMetrics } = require('../runtime/worker-metrics');
+const { createQueueMetrics } = require('../runtime/queue-metrics');
 
 const SIDE_EFFECTS = new Set(['CONFIRM','START_PREPARATION','READY','DISPATCH_MERCHANT','CANCEL_ORDER','CANCEL_REQUEST','REFUND_REQUEST','DELIVERED','CONFIRM_CASH_PAYMENT','SHIPPING_REQUEST','SHIPPING_CANCEL']);
 function sanitizedError(error) { return sanitizeProviderError(error); }
@@ -17,6 +18,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
     byId:(provider,accountId,companyId)=>accountResolver(provider,accountId,companyId),
     byMerchant:(provider,merchantId)=>accountResolver.byMerchant(provider,merchantId)
   },logger});
+  const queueMetrics=createQueueMetrics({pool,tenantResolver:async()=>companyIds});
 
   async function claim(companyId) {
     const lease = crypto.randomUUID();
@@ -220,7 +222,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
       });
     }
   }
-  return Object.freeze({ runOnce, reconcileUnknown, start, metrics: metrics.snapshot, stop(){stopped=true;} });
+  return Object.freeze({ runOnce, reconcileUnknown, start, metrics: metrics.snapshot, queueMetrics:queueMetrics.snapshot, stop(){stopped=true;} });
 }
 
 module.exports = { createMarketplaceWorker, SIDE_EFFECTS, sanitizedError };
