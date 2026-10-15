@@ -587,9 +587,10 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         membershipId: ownerMembership.membershipId, driverId: tenantDriverId, cookie: ownerCookie,
         csrf: ownerSession.body.csrfToken, email: tenantEmail });
     };
-    const createSyntheticAdminSessions = async ({ ownerCookie, ownerCsrf, labels }) => {
+    const createSyntheticAdminSessions = async ({ ownerCookie, ownerCsrf, labels, permissions = ['company.manage', 'orders.read'] }) => {
       if (typeof ownerCookie !== 'string' || typeof ownerCsrf !== 'string' || !Array.isArray(labels) || labels.length < 1 ||
-          labels.length > 10 || labels.some(label => !/^[a-z0-9_-]{1,24}$/iu.test(label))) {
+          labels.length > 10 || labels.some(label => !/^[a-z0-9_-]{1,24}$/iu.test(label)) || !Array.isArray(permissions) ||
+          permissions.length < 1 || permissions.length > 20 || permissions.some(permission => !/^[a-z][a-z0-9._-]{1,80}$/iu.test(permission))) {
         throw new Error('Sessões sintéticas de benchmark inválidas.');
       }
       const activeOwnerSession = await call('/api/identity/session', { cookie: ownerCookie });
@@ -597,7 +598,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       const companyId = activeOwnerSession.body.activeCompanyId;
       const role = await call('/api/admin/roles', { method: 'POST', cookie: ownerCookie, csrf: ownerCsrf,
         body: { key: `perf_0156_${crypto.randomBytes(5).toString('hex')}`, name: 'Administradores sintéticos de benchmark',
-          permissions: ['company.manage', 'orders.read'] } });
+          permissions } });
       assert.equal(role.status, 201, JSON.stringify(role.body));
       trackFixtureRecord(companyId, 'roles', role.body.id);
       const accounts = [];
@@ -650,8 +651,12 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
           for (const sessionId of rows.rows.map(row => row.id)) fixtureTenantBySession.set(sessionId, companyId);
           trackFixtureRecord(companyId, 'memberships', memberships.rows.map(row => row.id));
         } catch (_) { /* session IDs remain optional when runtime ACLs hide the table */ }
-        sessions.push(Object.freeze({ label: account.label, userId: account.userId, companyId, cookie,
-          csrf: session.body.csrfToken }));
+        await runtime.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
+        const membership = await runtime.query("SELECT id::text FROM rotamoto.memberships WHERE company_id=$1 AND user_id=$2 AND status='active' ORDER BY id LIMIT 1",
+          [companyId, account.userId]);
+        assert.equal(membership.rowCount, 1, 'each synthetic account has one active tenant membership');
+        sessions.push(Object.freeze({ label: account.label, userId: account.userId, membershipId: membership.rows[0].id, companyId, cookie,
+          csrf: session.body.csrfToken, permissions: Object.freeze([...(session.body.permissions || [])]) }));
       }
       await syncFixtureManifest();
       return Object.freeze(sessions);
