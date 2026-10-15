@@ -1,0 +1,12 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { backupWebProcessAllowed, backupExecutorProcessAllowed, parseGid } = require('../backend/runtime/backup-process-guard');
+const uid = process.getuid(), gid = process.getgid();
+assert.equal(backupWebProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }), true);
+assert.equal(backupWebProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }), false);
+assert.equal(backupWebProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1) }), false);
+assert.equal(backupExecutorProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }, uid, [gid]), true);
+assert.equal(backupExecutorProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }, uid, [gid]), false);
+assert.equal(parseGid('0'), null); assert.equal(parseGid('abc'), null);
+assert.equal(backupWebProcessAllowed({ NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0228' }, uid, []), true);
+process.stdout.write('Backup process guard: separated web/worker identities, group access and synthetic test scope PASS\n');

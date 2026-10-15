@@ -34,6 +34,10 @@ const {createTerritorialAnalyticsHttpHandler}=require('./backend/analytics/terri
 const {createAdminRepository}=require('./backend/admin/repository');
 const {createAdminService}=require('./backend/admin/service');
 const {createAdminHttpHandler}=require('./backend/admin/http');
+const {createBackupAdminHttpHandler}=require('./backend/admin/backup-http');
+const {createBackupAdminAuditLogger}=require('./backend/runtime/backup-admin-audit');
+const {createBackupControlStore}=require('./backend/runtime/backup-control');
+const {backupWebProcessAllowed,parseGid}=require('./backend/runtime/backup-process-guard');
 const {PROVIDERS}=require('./backend/integrations/registry');
 const {loadRuntimeConfig,hostAllowed,resolveClientAddress}=require('./backend/runtime/config');
 const {loadSecretProvider,loadLocalSecretProvider}=require('./backend/runtime/secret-provider');
@@ -178,6 +182,14 @@ const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService
 const territorialAnalyticsHttp=createTerritorialAnalyticsHttpHandler({identityService,service:createTerritorialAnalyticsService(),logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const adminService=createAdminService({repository:createAdminRepository()});
 const adminHttp=createAdminHttpHandler({identityService,adminService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
+const backupControlGid=parseGid(process.env.ROTAMOTO_BACKUP_CONTROL_GROUP_GID);
+const backupAdminAudit=process.env.ROTAMOTO_BACKUP_ADMIN_AUDIT_LOG
+  ? createBackupAdminAuditLogger(process.env.ROTAMOTO_BACKUP_ADMIN_AUDIT_LOG) : null;
+const backupControlStore=process.env.ROTAMOTO_BACKUP_CONTROL_DIRECTORY&&backupAdminAudit&&backupWebProcessAllowed()
+  ? createBackupControlStore({directory:process.env.ROTAMOTO_BACKUP_CONTROL_DIRECTORY,sharedGroupGid:backupControlGid}) : null;
+const backupAdminHttp=backupControlStore?createBackupAdminHttpHandler({identityService,store:backupControlStore,
+  adminUserIds:(process.env.ROTAMOTO_BACKUP_ADMIN_USER_IDS||'').split(',').map(value=>value.trim()).filter(Boolean),
+  logger:requestLogger,audit:backupAdminAudit,allowedOrigin:ALLOWED_ORIGINS}):null;
 
 
 function json(res,status,payload){const body=JSON.stringify(payload),origin=res.req?.headers.origin;const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'; base-uri 'none'",'Vary':'Origin',...(CONFIG.production?{'Strict-Transport-Security':'max-age=31536000; includeSubDomains'}:{}),...(res.req?.requestId?{'X-Request-ID':res.req.requestId}:{})};if(ALLOWED_ORIGINS.includes(origin)){headers['Access-Control-Allow-Origin']=origin;headers['Access-Control-Allow-Credentials']='true'}res.writeHead(status,headers);res.end(body)}
@@ -230,6 +242,10 @@ async function route(req,res,dependencies={}){
       const handlers=await getMarketplaceHttp();
       if(handlers?.admin&&await handlers.admin(req,res))return;
       if(/\/(?:authorize|complete|accounts\/[^/]+\/disable)$/u.test(u.pathname))return json(res,503,{error:{code:'MARKETPLACE_ACCOUNT_LIFECYCLE_UNAVAILABLE',message:'Configure HTTPS público, credenciais do aplicativo e o resolver privilegiado para conectar contas.'},requestId:req.requestId});
+    }
+    if(u.pathname.startsWith('/api/admin/backup')){
+      if(!backupAdminHttp)return json(res,503,{error:{code:'BACKUP_ADMIN_NOT_CONFIGURED',message:'Central de backup indisponível neste servidor.'},requestId:req.requestId});
+      if(await backupAdminHttp(req,res))return;
     }
     if(await adminHttp(req,res))return;
     if(u.pathname.startsWith('/api/marketplace/')){
