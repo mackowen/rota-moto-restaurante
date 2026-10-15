@@ -396,8 +396,6 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       deliveryIds.some(id=>typeof id!=='string'||!D.UUID.test(id))||new Set(deliveryIds).size!==deliveryIds.length)
       return {status:'unavailable',reason:'ROUTE_PLAN_INVALID',geometry:null,deliveryIds:[]};
     const routeSettings=await getRouteSettings(client,principal.company_id);
-    if(!routeSettings.origin||!Number.isFinite(routeSettings.origin.latitude)||!Number.isFinite(routeSettings.origin.longitude))
-      return {status:'unavailable',reason:'ROUTE_ORIGIN_UNKNOWN',geometry:null,deliveryIds};
     const stops=await client.query(`SELECT stop.record_id::text AS delivery_id,stop.payload->>'driverId' AS driver_id,
       geo.provenance,geo.accuracy_m,geo.latitude,geo.longitude
       FROM unnest($2::uuid[]) WITH ORDINALITY planned(delivery_id,position)
@@ -410,18 +408,27 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
       return {status:'unavailable',reason:'ROUTE_DRIVER_OR_DELIVERY_INCOMPLETE',geometry:null,deliveryIds};
     if(principal.driver_id&&!drivers.has(String(principal.driver_id)))throw Object.assign(new Error('Planejamento de rota não encontrado.'),{code:'NOT_FOUND'});
     const coordinatesByDeliveryId=Object.create(null),sequence=['__route_origin__',...deliveryIds];
-    coordinatesByDeliveryId.__route_origin__=routeSettings.origin;
-    for(const row of stops.rows){
+    const orderedStops=[];
+    for(const [position,row] of stops.rows.entries()){
       if(!['manual','customer_destination'].includes(row.provenance)||!Number.isFinite(Number(row.accuracy_m))||Number(row.accuracy_m)<0||Number(row.accuracy_m)>100||
         !Number.isFinite(Number(row.latitude))||!Number.isFinite(Number(row.longitude)))
         return {status:'unavailable',reason:'ROUTE_STOP_COORDINATES_INCOMPLETE',geometry:null,deliveryIds};
-      coordinatesByDeliveryId[row.delivery_id]={latitude:Number(row.latitude),longitude:Number(row.longitude)};
+      const point={latitude:Number(row.latitude),longitude:Number(row.longitude)};
+      coordinatesByDeliveryId[row.delivery_id]=point;
+      orderedStops.push({deliveryId:row.delivery_id,position:position+1,...point});
     }
+    const context={deliveryIds,routeId,routeVersion:Number(routeResult.rows[0].version),routeStatus:status,
+      stops:orderedStops,origin:routeSettings.origin?{latitude:routeSettings.origin.latitude,longitude:routeSettings.origin.longitude,
+        provenance:routeSettings.originProvenance,mode:routeSettings.originMode}:null,
+      returnToOrigin:routeSettings.returnToOrigin};
+    if(!routeSettings.origin||!Number.isFinite(routeSettings.origin.latitude)||!Number.isFinite(routeSettings.origin.longitude))
+      return {status:'unavailable',reason:'ROUTE_ORIGIN_UNKNOWN',geometry:null,...context};
+    coordinatesByDeliveryId.__route_origin__=routeSettings.origin;
     if(routeSettings.returnToOrigin)sequence.push('__route_origin__');
     if(!routeDistanceProvider||typeof routeDistanceProvider.calculateGeometry!=='function')
-      return {status:'unavailable',reason:'ROUTE_GEOMETRY_PROVIDER_NOT_CONFIGURED',geometry:null,deliveryIds};
+      return {status:'unavailable',reason:'ROUTE_GEOMETRY_PROVIDER_NOT_CONFIGURED',geometry:null,...context};
     const result=await routeDistanceProvider.calculateGeometry({companyId:principal.company_id,deliveryIds:sequence,coordinatesByDeliveryId});
-    return {...result,deliveryIds,routeId,routeVersion:Number(routeResult.rows[0].version),routeStatus:status,returnToOrigin:routeSettings.returnToOrigin,
+    return {...result,...context,
       startSource:routeSettings.originMode==='custom'?'origem operacional configurada':'endereço do estabelecimento'};
   }
   async function updateRouteSettings(client,principal,input){
