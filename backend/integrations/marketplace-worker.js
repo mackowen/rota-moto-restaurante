@@ -3,12 +3,13 @@
 const crypto = require('node:crypto');
 const { retryDelayMs, sanitizeProviderError } = require('./registry');
 const { createMarketplaceRuntime } = require('./marketplace-runtime');
+const { createWorkerMetrics } = require('../runtime/worker-metrics');
 
 const SIDE_EFFECTS = new Set(['CONFIRM','START_PREPARATION','READY','DISPATCH_MERCHANT','CANCEL_ORDER','CANCEL_REQUEST','REFUND_REQUEST','DELIVERED','CONFIRM_CASH_PAYMENT','SHIPPING_REQUEST','SHIPPING_CANCEL']);
 function sanitizedError(error) { return sanitizeProviderError(error); }
 
 function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, persist99FoodToken = null, logger = () => {}, clock = () => Date.now(), random = Math.random,
-  leaseSeconds = 45, pollIntervalMs = 1000 } = {}) {
+  leaseSeconds = 45, pollIntervalMs = 1000, metrics = createWorkerMetrics({ now: clock }) } = {}) {
   if (!pool || !Array.isArray(companyIds) || !companyIds.length || !adapters || typeof accountResolver !== 'function')
     throw new TypeError('Marketplace worker configuration is incomplete.');
   let stopped = false;
@@ -123,7 +124,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
     finally { client.release(); }
   }
 
-  async function runOnce() {
+  async function runOnceInternal() {
     for (const companyId of companyIds) {
       const eventLease=crypto.randomUUID();
       const claimedEvent=await pool.query('SELECT * FROM rotamoto.claim_marketplace_event($1,$2,$3)',[companyId,eventLease,90]);
@@ -194,6 +195,18 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
     return false;
   }
 
+  async function runOnce() {
+    const startedAt = clock();
+    try {
+      const worked = await runOnceInternal();
+      metrics.record({ worker: 'marketplace', outcome: worked ? 'processed' : 'idle', durationMs: Math.max(0, clock() - startedAt) });
+      return worked;
+    } catch (error) {
+      metrics.record({ worker: 'marketplace', outcome: 'error', durationMs: Math.max(0, clock() - startedAt) });
+      throw error;
+    }
+  }
+
   async function start({ signal } = {}) {
     while (!stopped && !signal?.aborted) {
       let worked = false;
@@ -207,7 +220,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
       });
     }
   }
-  return Object.freeze({ runOnce, reconcileUnknown, start, stop(){stopped=true;} });
+  return Object.freeze({ runOnce, reconcileUnknown, start, metrics: metrics.snapshot, stop(){stopped=true;} });
 }
 
 module.exports = { createMarketplaceWorker, SIDE_EFFECTS, sanitizedError };

@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { retryDelayMs, resolveTestProviderConfiguration } = require('./provider-integration');
 const { createProviderIntegrationService } = require('./provider-integration');
+const { createWorkerMetrics } = require('../runtime/worker-metrics');
 
 function createProviderCredentialResolver({ privilegedPool, secretProvider }) {
   if (!privilegedPool || !secretProvider) throw new TypeError('Keystore e conexão privilegiada são obrigatórios.');
@@ -27,7 +28,7 @@ function createProviderCredentialResolver({ privilegedPool, secretProvider }) {
   };
 }
 
-function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenantResolver, testProvider = null, providerIntegration = createProviderIntegrationService({ testProvider }), logger = () => {}, clock = () => Date.now(), randomUUID = crypto.randomUUID, leaseSeconds = 45 } = {}) {
+function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenantResolver, testProvider = null, providerIntegration = createProviderIntegrationService({ testProvider }), logger = () => {}, clock = () => Date.now(), randomUUID = crypto.randomUUID, leaseSeconds = 45, metrics = createWorkerMetrics({ now: clock }) } = {}) {
   if (!pool || !adapterRegistry || typeof credentialResolver !== 'function' || typeof tenantResolver !== 'function') throw new TypeError('Worker provider requer pool, adapters, tenant resolver e credential resolver.');
   if (testProvider && (process.env.NODE_ENV !== 'test' || typeof testProvider !== 'function')) throw new Error('Test provider configuration is restricted to NODE_ENV=test.');
   let stopping = false;
@@ -146,7 +147,7 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
       }
     });
   }
-  async function runOnce() {
+  async function runOnceInternal() {
     if (await processEventOnce()) return true;
     const leaseToken = randomUUID();
     const command = await claim(leaseToken);
@@ -224,13 +225,24 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
     }
     return true;
   }
+  async function runOnce() {
+    const startedAt = clock();
+    try {
+      const worked = await runOnceInternal();
+      metrics.record({ worker: 'logistics', outcome: worked ? 'processed' : 'idle', durationMs: Math.max(0, clock() - startedAt) });
+      return worked;
+    } catch (error) {
+      metrics.record({ worker: 'logistics', outcome: 'error', durationMs: Math.max(0, clock() - startedAt) });
+      throw error;
+    }
+  }
   async function run({ pollIntervalMs = 1000 } = {}) {
     while (!stopping) {
       const hadWork = await runOnce();
       if (!hadWork) await new Promise(resolve => { const timer = setTimeout(resolve, pollIntervalMs); timer.unref?.(); });
     }
   }
-  return Object.freeze({ runOnce, run, processEventOnce, stop() { stopping = true; } });
+  return Object.freeze({ runOnce, run, processEventOnce, metrics: metrics.snapshot, stop() { stopping = true; } });
 }
 
 module.exports = { createProviderCredentialResolver, createProviderWorker };

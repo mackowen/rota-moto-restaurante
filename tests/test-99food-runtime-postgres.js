@@ -88,6 +88,7 @@ async function main(){
     const worker=createMarketplaceWorker({pool:workerA,companyIds:[a.company],adapters:{'99food':adapter},accountResolver:workerAccount,
       clock:()=>Date.now(),random:()=>0});
     assert.equal(await worker.runOnce(),true,'the dedicated 99Food worker claims and executes a documented payment command');
+    assert.deepEqual(worker.metrics().series.map(row=>[row.worker,row.outcome,row.runs]),[['marketplace','processed',1]],'real dedicated PostgreSQL worker exposes only bounded aggregate metrics');
     assert.equal(commandCalls,1);
     const cashState=await readTenant(a.company,'SELECT status FROM rotamoto.marketplace_command_outbox WHERE company_id=$1 AND command_id=$2',[a.company,cashCommand.command_id]);
     assert.equal(cashState.rows[0]?.status,'succeeded','provider success settles the cash confirmation command');

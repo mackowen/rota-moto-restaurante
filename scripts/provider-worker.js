@@ -71,8 +71,12 @@ async function main(env = process.env) {
   const marketplaceWorker=createMarketplaceWorker({pool,companyIds:tenants,adapters:{ifood:marketplaceIfood,keeta,'99food':food99},accountResolver:marketAccountResolver,
     persist99FoodToken:record=>marketplaceAccountWriter.persist99FoodToken(record),
     logger:event=>process.stdout.write(`${JSON.stringify(event)}\n`)});
+  const metricsTimer=setInterval(()=>{
+    process.stdout.write(`${JSON.stringify({event:'worker.metrics',logistics:worker.metrics(),marketplace:marketplaceWorker.metrics()})}\n`);
+  },60_000);
+  metricsTimer.unref?.();
   let stopping = false;
-  const shutdown = () => { if (stopping) return; stopping = true; worker.stop(); marketplaceWorker.stop(); };
+  const shutdown = () => { if (stopping) return; stopping = true; clearInterval(metricsTimer); worker.stop(); marketplaceWorker.stop(); };
   process.once('SIGTERM', shutdown); process.once('SIGINT', shutdown);
   try { await Promise.all([worker.run({ pollIntervalMs: 1000 }),marketplaceWorker.start()]); }
   finally { process.removeListener('SIGTERM', shutdown); process.removeListener('SIGINT', shutdown); await Promise.all([pool.end(), resolverPool.end()]); }

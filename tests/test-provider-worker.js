@@ -34,6 +34,7 @@ async function exercise(classification, operation = 'DISPATCH_REQUEST') {
   const worker=createProviderWorker({pool,adapterRegistry:{get:()=>adapter},credentialResolver:async()=>({clientId:'x',clientSecret:'y'}),
     tenantResolver:async()=>[command.company_id],logger:event=>state.logs.push(event),clock:()=>10000,randomUUID:()=>`lease-${state.calls}`});
   await worker.runOnce();
+  assert.deepEqual(worker.metrics().series.map(row=>[row.worker,row.outcome,row.runs]),[['logistics','processed',1]]);
   assert.equal(state.committed,true);
   const serialized=JSON.stringify(state.logs);
   for(const sensitiveId of [command.company_id,command.provider_id,command.delivery_id,command.fulfillment_id,command.command_id,command.idempotency_key])assert.equal(serialized.includes(sensitiveId),false,'worker logs do not expose tenant, provider, delivery, fulfillment, command or idempotency identifiers');
