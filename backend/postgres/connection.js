@@ -42,6 +42,16 @@ function withExplicitPassword(options = {}) {
 }
 
 function createClient(options) { return new Client(withExplicitPassword(options)); }
-function createPool(options) { return new Pool(withExplicitPassword(options)); }
+function createPool(options) {
+  const pool=new Pool(withExplicitPassword(options));
+  // pg-pool removes its idle-client error listener while a client is checked
+  // out. A socket loss in that window can otherwise emit an unhandled Client
+  // error and terminate the API process before the active query can recover.
+  // Query/transaction callers still receive the rejected operation; this
+  // listener only contains the EventEmitter error path for the checked-out
+  // client. Idle client failures continue through pg-pool's own listener.
+  pool.on('connect',client=>client.on('error',()=>{}));
+  return pool;
+}
 
 module.exports = { connectionTarget, resolvePgpassPassword, withExplicitPassword, createClient, createPool };

@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { withExplicitPassword, createClient } = require('../backend/postgres/connection');
+const { withExplicitPassword, createClient, createPool } = require('../backend/postgres/connection');
 
 const target = process.env.PG_CONNECTION_TEST_URL || 'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e';
 const options = withExplicitPassword({ connectionString: target });
@@ -12,7 +12,7 @@ if (process.env.PG_CONNECTION_TEST !== '1') {
   process.stdout.write('PostgreSQL connection password callback regression guard: PASS (unit)\n');
 } else {
   (async () => {
-    const client = createClient({ connectionString: target, connectionTimeoutMillis: 5000 });
+    const pool = createPool({ connectionString: target, connectionTimeoutMillis: 5000, max: 1 });
     const warning = warningValue => {
       if (warningValue.name === 'DeprecationWarning' && /pgpass support is deprecated/u.test(warningValue.message)) {
         throw new Error('pgpass deprecation warning returned; pg@9 callback compatibility regressed.');
@@ -20,11 +20,16 @@ if (process.env.PG_CONNECTION_TEST !== '1') {
     };
     process.on('warning', warning);
     try {
-      await client.connect();
-      await client.query('SELECT 1');
+      const client=await pool.connect();
+      try {
+        await client.query('SELECT 1');
+        let observed=0;client.once('error',()=>observed++);
+        client.emit('error',Object.assign(new Error('controlled checked-out connection fault'),{code:'ECONNRESET'}));
+        assert.equal(observed,1,'checked-out PostgreSQL client error is contained and observable');
+      } finally { client.release(new Error('controlled E2E connection fault')); }
     } finally {
       process.removeListener('warning', warning);
-      await client.end();
+      await pool.end();
     }
     process.stdout.write('PostgreSQL connection password callback regression guard: PASS (live E2E)\n');
   })().catch(error => { process.stderr.write(`${error.message}\n`); process.exitCode = 1; });
