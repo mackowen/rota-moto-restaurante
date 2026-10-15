@@ -44,6 +44,16 @@ function withExplicitPassword(options = {}) {
 function createClient(options) { return new Client(withExplicitPassword(options)); }
 function createPool(options) {
   const pool=new Pool(withExplicitPassword(options));
+  // pg-pool emits `error` when an idle client loses its socket. Without a pool
+  // listener EventEmitter treats that expected outage as an uncaught exception
+  // and terminates long-running API/worker processes. Keep the diagnostic
+  // useful while excluding server messages, connection strings and credentials.
+  pool.on('error',error=>{
+    try {
+      const code=typeof error?.code==='string'&&/^[A-Z0-9_]{2,10}$/u.test(error.code)?error.code:'DATABASE_ERROR';
+      process.stderr.write(`${JSON.stringify({event:'postgres.pool.error',code})}\n`);
+    } catch(_) {}
+  });
   // pg-pool removes its idle-client error listener while a client is checked
   // out. A socket loss in that window can otherwise emit an unhandled Client
   // error and terminate the API process before the active query can recover.

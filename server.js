@@ -75,7 +75,6 @@ function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
   return value;
 }
 const identityPool=createPool({connectionString:runtimeDatabaseConnectionString(),...(secretProvider?{password:async()=>{const provider=await secretProvider;return provider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
-identityPool.on('error',error=>console.error(JSON.stringify({event:'postgres.pool.error',code:/^[A-Z0-9_]{2,10}$/u.test(error?.code||'')?error.code:'DATABASE_ERROR'})));
 let marketplaceResolverPool=null;
 const marketplaceResolverUrl=process.env.ROTAMOTO_PROVIDER_RESOLVER_DATABASE_URL;
 const marketplaceResolverPasswordRef=process.env.ROTAMOTO_PROVIDER_RESOLVER_PASSWORD_REF;

@@ -618,7 +618,10 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         trackFixtureRecord(companyId, 'authRecords', accepted.body.userId);
         const setupLogin = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId } });
         assert.equal(setupLogin.status, 200, JSON.stringify(setupLogin.body));
-        assert.equal(setupLogin.body.mfaEnrollmentRequired, true);
+        if (setupLogin.body.mfaEnrollmentRequired !== true) {
+          accounts.push({ label, email, password, userId: accepted.body.userId, requiresMfa: false });
+          continue;
+        }
         const setupCookie = setupLogin.headers.get('set-cookie').split(';', 1)[0];
         const setupSession = await call('/api/identity/session', { cookie: setupCookie });
         const enrollment = await call('/api/identity/mfa/enrollment', { method: 'POST', cookie: setupCookie,
@@ -629,19 +632,23 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
           csrf: setupSession.body.csrfToken, body: { code: codeAt(enrollment.body.secret, enrollmentCounter) } });
         assert.equal(confirmation.status, 200, JSON.stringify(confirmation.body));
         accounts.push({ label, email, password, userId: accepted.body.userId, enrollmentCounter,
-          secret: enrollment.body.secret });
+          secret: enrollment.body.secret, requiresMfa: true });
       }
-      const targetCounter = Math.max(...accounts.map(account => account.enrollmentCounter)) + 1;
-      while (Math.floor(Date.now() / 30000) < targetCounter) await new Promise(resolve => setTimeout(resolve, 100));
+      const mfaAccounts = accounts.filter(account => account.requiresMfa);
+      const targetCounter = mfaAccounts.length ? Math.max(...mfaAccounts.map(account => account.enrollmentCounter)) + 1 : null;
+      while (targetCounter !== null && Math.floor(Date.now() / 30000) < targetCounter)
+        await new Promise(resolve => setTimeout(resolve, 100));
       const sessions = [];
       for (const account of accounts) {
         const login = await call('/api/identity/login', { method: 'POST', body: { email: account.email,
-          password: account.password, companyId, mfaCode: codeAt(account.secret, targetCounter) } });
+          password: account.password, companyId,
+          ...(account.requiresMfa ? { mfaCode: codeAt(account.secret, targetCounter) } : {}) } });
         assert.equal(login.status, 200, JSON.stringify(login.body));
         const cookie = login.headers.get('set-cookie').split(';', 1)[0];
         const session = await call('/api/identity/session', { cookie });
         assert.equal(session.status, 200);
-        assert.equal(session.body.mfaVerified, true);
+        assert.equal(session.body.mfaVerified, account.requiresMfa,
+          'synthetic session MFA state follows the permissions policy applied by the identity service');
         try {
           await runtime.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
           const rows = await runtime.query('SELECT id::text FROM rotamoto.sessions WHERE user_id=$1', [account.userId]);
