@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { createProviderWorker } = require('../backend/logistics/provider-worker');
 
 async function exercise(classification, operation = 'DISPATCH_REQUEST') {
-  const state = { finalStatus: null, errorClass: null, delay: null, committed: false, calls: 0, token: null, decisionProjectionUpdates:0 };
+  const state = { finalStatus: null, errorClass: null, delay: null, committed: false, calls: 0, token: null, decisionProjectionUpdates:0, logs:[] };
   const command = { company_id:'00000000-0000-4000-8000-000000000001',command_id:'00000000-0000-4000-8000-000000000002',
     provider_id:'00000000-0000-4000-8000-000000000003',delivery_id:'00000000-0000-4000-8000-000000000004',
     fulfillment_id:'00000000-0000-4000-8000-000000000005',operation,idempotency_key:'stable-key',payload:{deliveryId:'00000000-0000-4000-8000-000000000004'},attempts:1,
@@ -32,9 +32,12 @@ async function exercise(classification, operation = 'DISPATCH_REQUEST') {
   const method = { QUOTE_REQUEST:'quote', DISPATCH_REQUEST:'dispatch', CANCEL_REQUEST:'cancel', TRACKING_REFRESH:'tracking', RECONCILE:'reconcile' }[operation];
   const adapter = { async [method]() { throw Object.assign(new Error('sanitized test failure'),{classification,retryAfterSeconds:3}); } };
   const worker=createProviderWorker({pool,adapterRegistry:{get:()=>adapter},credentialResolver:async()=>({clientId:'x',clientSecret:'y'}),
-    tenantResolver:async()=>[command.company_id],logger:()=>{},clock:()=>10000,randomUUID:()=>`lease-${state.calls}`});
+    tenantResolver:async()=>[command.company_id],logger:event=>state.logs.push(event),clock:()=>10000,randomUUID:()=>`lease-${state.calls}`});
   await worker.runOnce();
   assert.equal(state.committed,true);
+  const serialized=JSON.stringify(state.logs);
+  for(const sensitiveId of [command.company_id,command.provider_id,command.delivery_id,command.fulfillment_id,command.command_id,command.idempotency_key])assert.equal(serialized.includes(sensitiveId),false,'worker logs do not expose tenant, provider, delivery, fulfillment, command or idempotency identifiers');
+  assert(state.logs.every(event=>event.correlationId===command.correlation_id),'worker logs retain a non-business correlation ID');
   return state;
 }
 

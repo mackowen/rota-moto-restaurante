@@ -56,6 +56,26 @@
     return validateMoney(money).valid ? money : null;
   }
 
+  function completeManualOrder({ itemsSubtotal, deliveryFee, discount = 0, serviceFee = 0, otherFee = 0 }, currency = 'BRL') {
+    const scale = currencyScale(currency);
+    if (scale === null) return null;
+    const minor = value => {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_MINOR / (10 ** scale)) return null;
+      const amount = Math.round((value + Number.EPSILON) * (10 ** scale));
+      return Number.isSafeInteger(amount) && amount <= MAX_MINOR ? amount : null;
+    };
+    const components = {
+      itemsSubtotalMinor: minor(itemsSubtotal), discountMinor: minor(discount), deliveryFeeMinor: minor(deliveryFee),
+      serviceFeeMinor: minor(serviceFee), otherFeeMinor: minor(otherFee)
+    };
+    if (Object.values(components).some(value => value === null)) return null;
+    components.totalMinor = components.itemsSubtotalMinor - components.discountMinor + components.deliveryFeeMinor +
+      components.serviceFeeMinor + components.otherFeeMinor;
+    if (!Number.isSafeInteger(components.totalMinor) || components.totalMinor < 0 || components.totalMinor > MAX_MINOR) return null;
+    const money = { currency, completeness: 'complete', provenance: { kind: 'manual' }, components };
+    return validateMoney(money).valid ? money : null;
+  }
+
   function withManualDeliveryFee(existing, value, currency = 'BRL') {
     const fee = fromDecimal(value, currency, 'deliveryFeeMinor');
     if (!fee) return null;
@@ -90,5 +110,5 @@
     return { kind: 'unknown', currency: null, scale: null };
   }
 
-  return Object.freeze({ MAX_MINOR, COMPONENTS, currencyScale, validateMoney, fromDecimal, withManualDeliveryFee, canonicalComponents });
+  return Object.freeze({ MAX_MINOR, COMPONENTS, currencyScale, validateMoney, fromDecimal, completeManualOrder, withManualDeliveryFee, canonicalComponents });
 });

@@ -117,7 +117,7 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
     if (!Array.isArray(tenants)) throw new TypeError('Tenant resolver deve retornar uma lista bounded de IDs.');
     for (const companyId of tenants) {
       const consumed = await withTenant(companyId, client => processOneEvent(companyId,client));
-      if (consumed) { logger({event:'provider.event.processed',companyId}); return true; }
+      if (consumed) { logger({event:'provider.event.processed',outcome:'processed'}); return true; }
     }
     return false;
   }
@@ -151,9 +151,7 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
     const leaseToken = randomUUID();
     const command = await claim(leaseToken);
     if (!command) return false;
-    const context = { companyId: command.company_id, providerId: command.provider_id, deliveryId: command.delivery_id,
-      fulfillmentId: command.fulfillment_id, commandId: command.command_id, correlationId: command.correlation_id,
-      idempotencyKey: command.idempotency_key };
+    const context = { correlationId: command.correlation_id };
     try {
       const resolved = await withTenant(command.company_id, async client => {
         const result = await client.query(`SELECT code,capabilities,enabled,api_enabled FROM rotamoto.logistics_providers WHERE company_id=$1 AND provider_id=$2`, [command.company_id,command.provider_id]);

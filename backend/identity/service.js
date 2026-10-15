@@ -744,9 +744,14 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
     } finally { client.release(); }
   }
 
-  async function revokeSession(sessionToken) {
+  async function revokeSession(sessionToken, transactionClient = null) {
     let digest;
     try { digest = tokenDigest(sessionToken); } catch (_) { return false; }
+    if (transactionClient) {
+      const result = await transactionClient.query(`UPDATE rotamoto.sessions SET revoked_at=now()
+        WHERE token_digest=$1 AND revoked_at IS NULL RETURNING id`, [digest]);
+      return result.rowCount === 1;
+    }
     const client = await pool.connect();
     try {
       const result = await client.query(`UPDATE rotamoto.sessions SET revoked_at=now()

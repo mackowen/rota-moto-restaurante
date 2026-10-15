@@ -82,14 +82,21 @@ async function main(){
     assert.equal(JSON.stringify(metrics).includes('/api/ifood/'),false,'metrics do not expose paths or provider account identifiers');
     assert.equal(JSON.stringify(metrics).includes('companyId'),false,'metrics do not expose tenant labels');
   } finally {await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
-  const injectedPool={},readinessObserved=[];
+  const injectedPool={},readinessObserved=[];let postgresAvailable=false;
   const readinessServer=http.createServer((req,res)=>route(req,res,{pool:injectedPool,
-    databaseReadiness:async pool=>{readinessObserved.push(pool);return false;},logger:()=>{}}));
+    databaseReadiness:async pool=>{readinessObserved.push(pool);return postgresAvailable;},logger:()=>{}}));
   await new Promise(resolve=>readinessServer.listen(0,'127.0.0.1',resolve));
   try{
-    const response=await fetch(`http://127.0.0.1:${readinessServer.address().port}/health/ready`);
-    assert.equal(response.status,503);
-    assert.deepEqual(readinessObserved,[injectedPool],'readiness probes the pool used by the running server');
+    const base=`http://127.0.0.1:${readinessServer.address().port}`;
+    assert.equal((await fetch(`${base}/health/live`)).status,200,'liveness stays available while PostgreSQL is unavailable');
+    const unavailable=await fetch(`${base}/health/ready`);
+    assert.equal(unavailable.status,503);
+    assert.equal((await unavailable.json()).dependencies.postgres,'unavailable');
+    postgresAvailable=true;
+    const recovered=await fetch(`${base}/health/ready`);
+    assert.equal(recovered.status,200,'readiness recovers after the dependency becomes available');
+    assert.equal((await recovered.json()).dependencies.postgres,'ready');
+    assert.deepEqual(readinessObserved,[injectedPool,injectedPool],'readiness probes the pool used by the running server on both transitions');
   }finally{await new Promise((resolve,reject)=>readinessServer.close(error=>error?reject(error):resolve()));}
   const fakeSession=http.createServer(createSyncHttpHandler({allowedOrigin:'http://app.example',
     identityService:{async withAuthenticatedTenant(_token,operation){return operation({}, {session_id:'session'});},async verifyCsrf(){return true;}},

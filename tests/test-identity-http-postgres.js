@@ -11,6 +11,7 @@ const { createIdentityHttpHandler, createRateLimiter, COOKIE_NAME } = require('.
 const { createAdminHttpHandler } = require('../backend/admin/http');
 const { createAdminRepository } = require('../backend/admin/repository');
 const { createAdminService } = require('../backend/admin/service');
+const { createE2eClients, assertConnectedIdentity } = require('./e2e-support/guards');
 
 function savepointPool(client) {
   let counter = 0;
@@ -45,11 +46,11 @@ async function listen(handler) {
 }
 
 async function main() {
-  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL oficial via pgpass é obrigatório.');
-  const client = createClient({ connectionString: process.env.DATABASE_URL });
+  assert.equal(process.env.NODE_ENV,'test','HTTP PostgreSQL integration fixtures require NODE_ENV=test');
+  const clients=createE2eClients(process.env);
+  const client=clients.runtime;
   await client.connect();
-  assert.equal((await client.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_app',
-    'HTTP integration fixtures must use the restricted runtime role');
+  await assertConnectedIdentity(client,{database:'rotamoto_e2e',role:'rotamoto_app'});
   await client.query('BEGIN');
   const pool = savepointPool(client);
   const delivered = [];

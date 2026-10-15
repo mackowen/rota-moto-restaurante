@@ -287,7 +287,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
       if (path === '/api/identity/logout' && req.method === 'POST') {
         const sessionToken = parseCookie(req);
-        await requireSessionMutation(req, undefined, async () => identityService.revokeSession(sessionToken));
+        await requireSessionMutation(req, undefined, async client => identityService.revokeSession(sessionToken, client));
         status = 204;
         send(res, status, undefined, { 'Set-Cookie': `${COOKIE_NAME}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax` });
         return true;

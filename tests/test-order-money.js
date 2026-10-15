@@ -15,6 +15,12 @@ assert.equal(Money.currencyScale('BRL'), 2);
 assert.equal(Money.currencyScale('KWD'), 3);
 assert.equal(Money.fromDecimal(Number.MAX_SAFE_INTEGER, 'BRL', 'deliveryFeeMinor'), null, 'amount bound prevents unsafe conversion');
 
+const manualOrder = Money.completeManualOrder({ itemsSubtotal: 123.45, deliveryFee: 7.25 }, 'BRL');
+assert.equal(Money.validateMoney(manualOrder).valid, true);
+assert.deepEqual(manualOrder.components, { itemsSubtotalMinor: 12345, discountMinor: 0, deliveryFeeMinor: 725, serviceFeeMinor: 0, otherFeeMinor: 0, totalMinor: 13070 });
+assert.equal(Money.completeManualOrder({ itemsSubtotal: -0.01, deliveryFee: 7.25 }, 'BRL'), null, 'negative subtotal rejected');
+assert.equal(Money.completeManualOrder({ itemsSubtotal: 1, deliveryFee: Number.MAX_SAFE_INTEGER }, 'BRL'), null, 'unsafe amount rejected');
+
 const complete = { currency: 'BRL', completeness: 'complete', provenance: { kind: 'external', sourceId: 'market_x' }, components: {
   itemsSubtotalMinor: 10000, discountMinor: 1000, deliveryFeeMinor: 1200, serviceFeeMinor: 300, otherFeeMinor: 0, totalMinor: 10500
 } };
