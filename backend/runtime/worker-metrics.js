@@ -2,7 +2,7 @@
 
 const BUCKETS_MS = Object.freeze([10, 50, 100, 250, 500, 1000]);
 const WORKERS = new Set(['marketplace', 'logistics']);
-const OUTCOMES = new Set(['processed', 'idle', 'error']);
+const OUTCOMES = new Set(['work', 'idle', 'error']);
 
 function createWorkerMetrics({ now = () => Date.now() } = {}) {
   const startedAt = now();

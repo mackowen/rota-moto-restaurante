@@ -199,7 +199,7 @@ function createMarketplaceWorker({ pool, companyIds, adapters, accountResolver, 
     const startedAt = clock();
     try {
       const worked = await runOnceInternal();
-      metrics.record({ worker: 'marketplace', outcome: worked ? 'processed' : 'idle', durationMs: Math.max(0, clock() - startedAt) });
+      metrics.record({ worker: 'marketplace', outcome: worked ? 'work' : 'idle', durationMs: Math.max(0, clock() - startedAt) });
       return worked;
     } catch (error) {
       metrics.record({ worker: 'marketplace', outcome: 'error', durationMs: Math.max(0, clock() - startedAt) });

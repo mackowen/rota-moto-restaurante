@@ -27,7 +27,7 @@ async function scenario(outcome){
   const worker=createMarketplaceWorker({pool,companyIds:[company],accountResolver:async()=>({id:accountId,companyId:company,provider:'ifood',status:'active',credentials:{accessToken:'synthetic'}}),
     adapters:{ifood:{async confirmOrder(){adapterCalls++;if(outcome instanceof Error)throw outcome;return outcome;}}},random:()=>0});
   assert.equal(await worker.runOnce(),true);
-  assert.deepEqual(worker.metrics().series.map(row=>[row.worker,row.outcome,row.runs]),[['marketplace','processed',1]]);
+  assert.deepEqual(worker.metrics().series.map(row=>[row.worker,row.outcome,row.runs]),[['marketplace','work',1]]);
   assert.equal(adapterCalls,1);
   return settlement;
 }

@@ -229,7 +229,7 @@ function createProviderWorker({ pool, adapterRegistry, credentialResolver, tenan
     const startedAt = clock();
     try {
       const worked = await runOnceInternal();
-      metrics.record({ worker: 'logistics', outcome: worked ? 'processed' : 'idle', durationMs: Math.max(0, clock() - startedAt) });
+      metrics.record({ worker: 'logistics', outcome: worked ? 'work' : 'idle', durationMs: Math.max(0, clock() - startedAt) });
       return worked;
     } catch (error) {
       metrics.record({ worker: 'logistics', outcome: 'error', durationMs: Math.max(0, clock() - startedAt) });
