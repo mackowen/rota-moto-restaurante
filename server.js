@@ -39,6 +39,8 @@ const {loadRuntimeConfig,hostAllowed,resolveClientAddress}=require('./backend/ru
 const {loadSecretProvider,loadLocalSecretProvider}=require('./backend/runtime/secret-provider');
 const {gracefulShutdown}=require('./backend/runtime/lifecycle');
 const {createRuntimeMetrics,sanitizeLogPath}=require('./backend/runtime/metrics');
+const {createQueueMetrics}=require('./backend/runtime/queue-metrics');
+const {createQueueMetricsHttpHandler}=require('./backend/runtime/queue-metrics-http');
 const {createMarketplaceAccountResolver}=require('./backend/integrations/marketplace-account-resolver');
 const {createMarketplaceHttpHandler}=require('./backend/integrations/marketplace-http');
 const {createIfoodAdapter}=require('./backend/logistics/providers/ifood');
@@ -145,6 +147,8 @@ const requestLogger=entry=>{
   console.info(JSON.stringify(safe));
 };
 const runtimeMetrics=createRuntimeMetrics();
+const queueMetrics=createQueueMetrics({pool:identityPool,tenantResolver:async()=>[]});
+const queueMetricsHttp=createQueueMetricsHttpHandler({identityService,metrics:queueMetrics,logger:requestLogger});
 const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 let mediaProviderPromise=null;
 async function getMediaStorage(){if(!CONFIG.mediaDirectory)return createMediaStorage();if(!mediaProviderPromise)mediaProviderPromise=createFilesystemObjectStore({directory:CONFIG.mediaDirectory}).then(objectStore=>createMediaStorage({objectStore}));return mediaProviderPromise}
@@ -222,6 +226,7 @@ async function route(req,res,dependencies={}){
     }
     if(shuttingDown&&u.pathname!=='/health/live')return json(res,503,{status:'shutting_down',requestId:req.requestId});
     if(await identityHttp(req,res))return;
+    if(await queueMetricsHttp(req,res))return;
     if(u.pathname.startsWith('/api/admin/integrations/')){
       const handlers=await getMarketplaceHttp();
       if(handlers?.admin&&await handlers.admin(req,res))return;

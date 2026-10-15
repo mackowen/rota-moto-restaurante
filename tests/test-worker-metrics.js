@@ -32,9 +32,15 @@ const fakePool={async connect(){return {async query(text,values){sql.push({text,
   ]);
   assert.equal(JSON.stringify(queues).includes(companyA),false);
   assert.equal(JSON.stringify(queues).includes(companyB),false);
+  assert.equal(queues.queues[0].workerAvailability,'unknown','queue leases do not falsely imply a worker process is healthy');
+  assert.equal(queues.queues[0].retries,0);
   assert.equal(sql.filter(row=>row.text==='BEGIN READ ONLY').length,2);
   assert.equal(sql.filter(row=>row.text.includes('set_config')).length,2);
   await assert.rejects(createQueueMetrics({pool:fakePool,tenantResolver:async()=>['tenant-raw']}).snapshot(),/tenant scope/);
+  const scoped=await createQueueMetrics({pool:fakePool,tenantResolver:async()=>[],clock:()=>1700000000000}).snapshotForTenant({query:async(text,values)=>{
+    assert.equal(values[0],companyA);return text.includes('GROUP BY status')?{rows:[{status:'queued',item_count:'1',oldest_pending_age_ms:'700'}]}:{rows:[{retries:'2',expired_leases:'1',processing_ms_p95:'35'}]};
+  }},companyA);
+  assert.deepEqual([scoped.queues[0].pending,scoped.queues[0].retries,scoped.queues[0].expiredLeases,scoped.queues[0].processingMsP95],[1,2,1,35]);
   console.log('tenant-scoped queue metrics, fixed labels, read-only transactions and privacy: PASS');
 })().catch(error=>{console.error(error);process.exitCode=1});
 console.log('bounded worker metrics and cardinality privacy: PASS');
