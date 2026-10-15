@@ -90,12 +90,13 @@ function rasterTileState(map, layer) {
 }
 
 function scheduleActiveRasterStatus(map, entry, layer, attempt, loadingTimedOut = false) {
+  if (entry.disposed) return;
   if (entry.activeStatusTimer) clearTimeout(entry.activeStatusTimer);
   entry.activeStatusTimer = null;
   if (entry.layer !== layer || entry.activeAttempt !== attempt) return;
   entry.activeStatusTimer = setTimeout(() => {
     entry.activeStatusTimer = null;
-    if (entry.layer !== layer || entry.activeAttempt !== attempt) return;
+    if (entry.disposed || entry.layer !== layer || entry.activeAttempt !== attempt) return;
     const tiles = rasterTileState(map, layer);
     entry.cartographyVisible = tiles.hasCartography;
     entry.ready = tiles.hasCartography;
@@ -122,7 +123,20 @@ function removeLayerAfterTileCycle(map, layer) {
 }
 
 function isPending(entry, attempt, layer) {
-  return entry.pending?.attempt === attempt && entry.pending.layer === layer && entry.generation === attempt;
+  return !entry.disposed && entry.pending?.attempt === attempt && entry.pending.layer === layer && entry.generation === attempt;
+}
+
+function disposeMap(map, entry) {
+  if (entry.disposed) return;
+  entry.disposed = true;
+  entry.generation += 1;
+  clearTimer(entry.pending);
+  entry.pending = null;
+  if (entry.activeStatusTimer) clearTimeout(entry.activeStatusTimer);
+  entry.activeStatusTimer = null;
+  const status = statusFor(map);
+  if (status?.isConnected) status.remove();
+  layers.delete(map);
 }
 
 function beginAttempt(map, entry, mode, reason) {
@@ -335,10 +349,13 @@ function addVector(map, entry) {
 }
 
 function addBaseLayer(map) {
+  const existing = layers.get(map);
+  if (existing && !existing.disposed) return existing.layer || existing.pending?.layer || null;
   const entry = { layer: null, mode: null, theme: activeTheme, errors: 0, loadedTiles: 0, ready: false, cartographyVisible: false, recovered: false, generation: 0, activeAttempt: 0, pending: null, activeContextLost: false, activeStatusTimer: null, mapEventsBound: false };
   layers.set(map, entry);
   if (!entry.mapEventsBound && typeof map.on === 'function') {
     entry.mapEventsBound = true;
+    map.once?.('unload', () => disposeMap(map, entry));
     map.on('moveend zoomend resize', () => {
       if (entry.layer && entry.mode === 'raster') scheduleActiveRasterStatus(map, entry, entry.layer, entry.activeAttempt);
     });
@@ -352,7 +369,7 @@ function addBaseLayer(map) {
 
 function retryMap(map) {
   const entry = layers.get(map);
-  if (!entry) return;
+  if (!entry || entry.disposed) return;
   if (supportsVectorStyle) addVector(map, entry);
   else addRaster(map, entry, 'user-retry');
 }
@@ -360,6 +377,7 @@ function retryMap(map) {
 function setTheme(theme) {
   activeTheme = theme === 'dark' ? 'dark' : 'light';
   for (const [map, entry] of layers) {
+    if (entry.disposed) { layers.delete(map); continue; }
     if (entry.mode === 'raster' || entry.pending?.mode === 'raster') {
       addRaster(map, entry, 'theme-change');
       continue;

@@ -15,7 +15,8 @@ function runtime({ webgl = false } = {}) {
     replaceChildren() { this.children = []; }
     append(child) { this.children.push(child); }
     addEventListener(type, handler) { this.handlers[type] = handler; }
-    insertAdjacentElement(_where, node) { this.nextElementSibling = node; }
+    insertAdjacentElement(_where, node) { this.nextElementSibling = node; node.isConnected = true; }
+    remove() { this.isConnected = false; }
   }
   class Layer {
     constructor(mode, url = '') { this.mode = mode; this.url = url; this.handlers = new Map(); this.removed = false; this.loading = false; this.opacity = 1; this.errors = 0; this.loadedTiles = 0; this._tiles = {}; this.renderer = mode === 'vector' ? new Renderer() : null; allLayers.push(this); }
@@ -46,7 +47,8 @@ function runtime({ webgl = false } = {}) {
     attributionControl: { values: new Set(), addAttribution(value) { this.values.add(value); }, removeAttribution(value) { this.values.delete(value); } },
     handlers: new Map(),
     on(types, handler) { for (const type of types.split(/\s+/u)) { const list = this.handlers.get(type) || []; list.push(handler); this.handlers.set(type, list); } return this; },
-    fire(type) { for (const handler of this.handlers.get(type) || []) handler(); },
+    once(type, handler) { const wrapped = (...args) => { this.handlers.set(type, (this.handlers.get(type) || []).filter(candidate => candidate !== wrapped)); handler(...args); }; return this.on(type, wrapped); },
+    fire(type) { for (const handler of [...(this.handlers.get(type) || [])]) handler(); },
     getContainer: () => mapContainer,
     hasLayer(layer) { return this.layers.has(layer); },
     removeLayer(layer) { layer.removed = true; this.layers.delete(layer); this.removed.push(layer); },
@@ -99,6 +101,23 @@ function runtime({ webgl = false } = {}) {
   test.runTimersWithDelay(0);
   assert.equal(test.map.layers.has(darkCandidate), false, 'failed layer is removed after its tile event finishes');
   assert.deepEqual(test.map.view, { center: [1, 2], zoom: 9 });
+}
+
+{
+  const test = runtime();
+  const first = test.window.RotaMotoMapTheme.addBaseLayer(test.map);
+  const firstTimer = [...test.timers.entries()].find(([, timer]) => timer.delay === 15000)?.[0];
+  assert.equal(test.window.RotaMotoMapTheme.addBaseLayer(test.map), first, 'a map receives one base layer lifecycle');
+  test.map.fire('unload');
+  test.map.layers.clear();
+  const created = test.allLayers.length;
+  test.window.RotaMotoMapTheme.setTheme('dark');
+  test.window.RotaMotoMapTheme.retry(test.map);
+  test.runTimer(firstTimer, true);
+  first.fire('load');
+  assert.equal(test.allLayers.length, created, 'late renderer events cannot append another layer after map teardown');
+  assert.equal(test.window.RotaMotoMapTheme.inspectAll().length, 0, 'unloaded maps are released from the runtime registry');
+  assert.equal(test.getStatus()?.isConnected, false, 'map status node is removed with its map');
 }
 
 {
