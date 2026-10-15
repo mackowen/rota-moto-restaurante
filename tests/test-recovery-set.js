@@ -36,6 +36,13 @@ async function rejects(fn) { await assert.rejects(fn); }
     'rotamoto_disposable_0138_20261011_41770017');
   assert.throws(() => parseSafeUrl('postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto'), /Backup exige/u);
   assert.throws(() => parseSafeUrl('postgresql://rotamoto_restore@db.example:5432/rotamoto_disposable_0138_20261011_41770017'), /Backup exige/u);
+  process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0184';
+  assert.equal(assertRecoverySource('rotamoto_disposable_0184_source', process.env), 'rotamoto_disposable_0184_source');
+  assert.equal(parseSafeUrl('postgresql://rotamoto_backup@127.0.0.1:5440/rotamoto_disposable_0184_source').database,
+    'rotamoto_disposable_0184_source', '0184 allows only its loopback disposable source and dedicated backup role');
+  assert.throws(() => parseSafeUrl('postgresql://rotamoto_app@127.0.0.1:5440/rotamoto_disposable_0184_source'), /Backup exige/u);
+  assert.throws(() => assertRecoverySource('rotamoto_disposable_0183_source', process.env), /not authorized/u);
+  process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0138';
   if (priorCampaign === undefined) delete process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN; else process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = priorCampaign;
   if (priorNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = priorNodeEnv;
   assert.throws(() => assertRecoverySource('rotamoto_disposable_arbitrary', { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068' }),

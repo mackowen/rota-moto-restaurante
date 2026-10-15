@@ -16,8 +16,11 @@ function parseSafeUrl(value, { restore = false } = {}) {
   const campaignDisposableBackup = !restore && process.env.NODE_ENV === 'test' &&
     process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0138' && loopback &&
     /^rotamoto_disposable_0138_[a-z0-9_]{1,40}$/u.test(database) && username === 'rotamoto_restore';
+  const campaign0184Backup = !restore && process.env.NODE_ENV === 'test' &&
+    process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0184' && loopback &&
+    /^rotamoto_disposable_0184_[a-z0-9_]{1,40}$/u.test(database) && username === 'rotamoto_backup';
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.password || url.search || url.hash ||
-      username !== (restore ? 'rotamoto_restore' : 'rotamoto_backup') && !campaignDisposableBackup ||
+      username !== (restore ? 'rotamoto_restore' : 'rotamoto_backup') && !campaignDisposableBackup && !campaign0184Backup ||
       restore && !/^rotamoto_disposable_[a-z0-9_]{1,40}$/u.test(database)) {
     throw new Error(restore ? 'Restore exige alvo descartável explícito fora de rotamoto.' : 'Backup exige URL sem senha e role administrativa separada.');
   }

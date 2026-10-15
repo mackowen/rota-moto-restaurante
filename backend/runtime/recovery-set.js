@@ -139,6 +139,8 @@ function assertRecoverySource(database, env = process.env) {
   if (database === CAMPAIGN_0068_SOURCE && env.NODE_ENV === 'test' && env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068') return database;
   if (/^rotamoto_disposable_0138_[a-z0-9_]{1,40}$/u.test(database) && env.NODE_ENV === 'test' &&
       env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0138') return database;
+  if (/^rotamoto_disposable_0184_[a-z0-9_]{1,40}$/u.test(database) && env.NODE_ENV === 'test' &&
+      env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0184') return database;
   throw bad('Recovery backup source is not authorized.');
 }
 async function createRecoverySet({ databaseUrl, keyFile, backupDirectory, mediaDirectory, retentionDays = 30, now = new Date(), pgDump, pgRestore, clientFactory }) {
