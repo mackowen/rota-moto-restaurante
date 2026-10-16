@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const { getMigrations, resolveMigrationInvocation, assert0110RehearsalState, assert0115RehearsalState,
   assert0116RehearsalState, assertOfficial0116State, assertOfficial0154State,
-  official0154MigrationConnectionString } = require('../backend/postgres/migrate');
+  official0154MigrationConnectionString, official0234MigrationConnectionString, assertOfficial0234State } = require('../backend/postgres/migrate');
 
 const database = 'rotamoto_disposable_0110_20261009_004823_6e50bdf3';
 const url = `postgresql://rotamoto_migrator@127.0.0.1:5432/${database}`;
@@ -144,5 +144,33 @@ const migrationsThrough0044=migrations.slice(0,migrations.findIndex(migration=>m
 assert.deepEqual(assertOfficial0154State(official0154Prior,migrationsThrough0044),{applied:[],pending:['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit']});
 assert.throws(()=>assertOfficial0154State(new Map([...official0154Prior,['0042_marketplace_99food_runtime','0'.repeat(64)]]),migrationsThrough0044),/ledger íntegro/u);
 assert.throws(()=>assertOfficial0154State(new Map([...official0154Prior,['0043_99food_application_and_cash_commands',migrations.find(item=>item.id==='0043_99food_application_and_cash_commands').checksum]]),migrationsThrough0044,{allowApplied:true}),/fora de sequência/u);
+
+const official0234Env={NODE_ENV:'production',ROTAMOTO_OFFICIAL_MIGRATION_CAMPAIGN:'0234',
+  ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE:'rotamoto',
+  ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_MIGRATIONS:'0045_installation_bootstrap,0046_bootstrap_legacy_installation_latch,0047_administrative_mfa_recovery',
+  MIGRATOR_DATABASE_URL:'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto'};
+assert.equal(official0234MigrationConnectionString(official0234Env),official0234Env.MIGRATOR_DATABASE_URL);
+assert.equal(resolveMigrationInvocation(['status','--verify-0234'],official0234Env).verifyOfficial0234,true);
+assert.equal(resolveMigrationInvocation(['up','--apply-0234'],official0234Env).applyOfficial0234,true);
+assert.throws(()=>resolveMigrationInvocation(['down','--apply-0234'],official0234Env),/Uso:/u);
+for(const patch of [
+  {NODE_ENV:'test'}, {ROTAMOTO_OFFICIAL_MIGRATION_CAMPAIGN:'0233'},
+  {ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE:'rotamoto_e2e'},
+  {ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_MIGRATIONS:'0045_installation_bootstrap'},
+  {MIGRATOR_DATABASE_URL:'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e'},
+  {MIGRATOR_DATABASE_URL:'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto?sslmode=disable'}
+]) assert.throws(()=>official0234MigrationConnectionString({...official0234Env,...patch}));
+const officialPrefix=migrations.slice(0,44);
+const official0234Prior=new Map(officialPrefix.map(migration=>[migration.id,migration.checksum]));
+assert.deepEqual(assertOfficial0234State(official0234Prior,migrations),{
+  applied:[],pending:['0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery']});
+const with0045=new Map([...official0234Prior,[migrations[44].id,migrations[44].checksum]]);
+assert.deepEqual(assertOfficial0234State(with0045,migrations,{allowApplied:true}),{
+  applied:['0045_installation_bootstrap'],pending:['0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery']});
+assert.throws(()=>assertOfficial0234State(with0045,migrations),/migrations 0045–0047 pendentes/u);
+assert.throws(()=>assertOfficial0234State(new Map([...official0234Prior,[migrations[45].id,migrations[45].checksum]]),migrations,{allowApplied:true}),/sequencialmente aplicadas/u);
+assert.throws(()=>assertOfficial0234State(new Map([...official0234Prior,[migrations[43].id,'0'.repeat(64)]]),migrations),/ledger íntegro/u);
+assert.throws(()=>assertOfficial0234State(new Map([...official0234Prior,['0048_future','0'.repeat(64)]]),migrations),/ledger íntegro/u);
+assert.throws(()=>assertOfficial0234State(official0234Prior,[...migrations,{id:'0048_future',checksum:'0'.repeat(64)}]),/somente 0045–0047/u);
 
 console.log('PostgreSQL migration target guards: OK');
