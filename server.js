@@ -75,7 +75,7 @@ try{
     if(Boolean(testSecretDirectory)!==Boolean(testSecretMasterKeyFile))throw new Error('E2E secret-store paths must be configured together.');
     if(testSecretDirectory){
       const parsed=new URL(CONFIG.databaseUrl);
-      if(CONFIG.nodeEnv!=='test'||process.env.ROTAMOTO_E2E_CAMPAIGN!=='0229'||parsed.protocol!=='postgresql:'||
+      if(CONFIG.nodeEnv!=='test'||!['0229','0230'].includes(process.env.ROTAMOTO_E2E_CAMPAIGN)||parsed.protocol!=='postgresql:'||
         decodeURIComponent(parsed.username)!=='rotamoto_app'||parsed.password||parsed.pathname!=='/rotamoto_e2e'||
         !['127.0.0.1','localhost','::1','[::1]'].includes(parsed.hostname)||!require('node:path').isAbsolute(testSecretDirectory)||
         !require('node:path').isAbsolute(testSecretMasterKeyFile))throw new Error('E2E secret store is restricted to the isolated 0229 rotamoto_e2e runtime.');

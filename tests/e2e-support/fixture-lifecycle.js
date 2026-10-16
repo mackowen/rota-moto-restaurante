@@ -238,7 +238,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     if(Boolean(sharedSecretDirectory)!==Boolean(sharedSecretMasterKeyFile))throw new Error('E2E secret-store paths must be configured together.');
     if(sharedSecretDirectory){
       const runDirectory=path.resolve(env.ROTAMOTO_E2E_RUN_DIRECTORY||'');
-      if(env.ROTAMOTO_E2E_CAMPAIGN!=='0229'||!path.isAbsolute(env.ROTAMOTO_E2E_RUN_DIRECTORY||'')||
+      if(!['0229','0230'].includes(env.ROTAMOTO_E2E_CAMPAIGN)||!path.isAbsolute(env.ROTAMOTO_E2E_RUN_DIRECTORY||'')||
         path.resolve(sharedSecretDirectory)!==path.join(runDirectory,'mfa-secret-store')||
         path.resolve(sharedSecretMasterKeyFile)!==path.join(runDirectory,'mfa-master.key'))
         throw new Error('Shared MFA keystore is restricted to the private 0229 run directory.');

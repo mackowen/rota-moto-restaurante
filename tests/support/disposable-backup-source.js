@@ -24,11 +24,14 @@ async function freeLoopbackPort() {
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
 }
 async function createDisposableBackupSource({ outputDirectory } = {}) {
-  if (process.env.NODE_ENV !== 'test' || process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0229' ||
+  const campaign = process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
+  if (process.env.NODE_ENV !== 'test' || !['0229', '0230'].includes(campaign) ||
       typeof outputDirectory !== 'string' || !path.isAbsolute(outputDirectory)) throw new Error('DISPOSABLE_BACKUP_SOURCE_GUARD');
-  const id = crypto.randomUUID(), suffix = id.replace(/-/gu, '').slice(0, 20), database = `rotamoto_disposable_0229_${suffix}_source`;
-  const targetDatabase = `rotamoto_disposable_0229_${suffix}_restore`;
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rotamoto-0229-backup-pg-'));
+  const probeTable = `campaign_${campaign}_backup_probe`;
+  const probePolicy = `campaign_${campaign}_probe_read`;
+  const id = crypto.randomUUID(), suffix = id.replace(/-/gu, '').slice(0, 20), database = `rotamoto_disposable_${campaign}_${suffix}_source`;
+  const targetDatabase = `rotamoto_disposable_${campaign}_${suffix}_restore`;
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), `rotamoto-${campaign}-backup-pg-`));
   const data = path.join(root, 'data'), port = await freeLoopbackPort(); let started = false;
   const adminUrl = `postgresql://backup_test_admin@127.0.0.1:${port}/postgres`;
   try {
@@ -56,11 +59,11 @@ async function createDisposableBackupSource({ outputDirectory } = {}) {
         try { await source.query(migration.up); await source.query('INSERT INTO rotamoto.schema_migrations(migration_id,checksum_sha256) VALUES($1,$2)', [migration.id, migration.checksum]); await source.query('COMMIT'); }
         catch (error) { await source.query('ROLLBACK'); throw new Error(`SYNTHETIC_MIGRATION_FAILED_${migration.id}`); }
       }
-      await source.query('CREATE TABLE rotamoto.campaign_0229_backup_probe(id integer PRIMARY KEY,value text NOT NULL CHECK(value <> \'\'))');
-      await source.query('ALTER TABLE rotamoto.campaign_0229_backup_probe ENABLE ROW LEVEL SECURITY');
-      await source.query('ALTER TABLE rotamoto.campaign_0229_backup_probe FORCE ROW LEVEL SECURITY');
-      await source.query('CREATE POLICY campaign_0229_probe_read ON rotamoto.campaign_0229_backup_probe USING(true)');
-      await source.query("INSERT INTO rotamoto.campaign_0229_backup_probe VALUES(1,'synthetic-0229')");
+      await source.query(`CREATE TABLE rotamoto.${probeTable}(id integer PRIMARY KEY,value text NOT NULL CHECK(value <> ''))`);
+      await source.query(`ALTER TABLE rotamoto.${probeTable} ENABLE ROW LEVEL SECURITY`);
+      await source.query(`ALTER TABLE rotamoto.${probeTable} FORCE ROW LEVEL SECURITY`);
+      await source.query(`CREATE POLICY ${probePolicy} ON rotamoto.${probeTable} USING(true)`);
+      await source.query(`INSERT INTO rotamoto.${probeTable} VALUES(1,$1)`, [`synthetic-${campaign}`]);
       await source.query(`GRANT CONNECT ON DATABASE ${database} TO rotamoto_backup`);
       await source.query('GRANT USAGE ON SCHEMA rotamoto TO rotamoto_backup');
       await source.query('GRANT SELECT ON ALL TABLES IN SCHEMA rotamoto TO rotamoto_backup');
@@ -83,7 +86,7 @@ async function createDisposableBackupSource({ outputDirectory } = {}) {
       keyFile, disposableMediaDirectory, root, async verifyRestoredProbe() {
         const target = new Client({ connectionString: `postgresql://backup_test_admin@127.0.0.1:${port}/${targetDatabase}` }); await target.connect();
         try {
-          const probe = await target.query('SELECT id,value FROM rotamoto.campaign_0229_backup_probe ORDER BY id');
+          const probe = await target.query(`SELECT id,value FROM rotamoto.${probeTable} ORDER BY id`);
           const ledger = await target.query('SELECT count(*)::int AS count FROM rotamoto.schema_migrations');
           return { probeRows: probe.rowCount, probeValue: probe.rows[0]?.value || null, migrationCount: ledger.rows[0]?.count || 0 };
         } finally { await target.end(); }

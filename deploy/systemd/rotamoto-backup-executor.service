@@ -1,0 +1,34 @@
+[Unit]
+Description=RotaMoto encrypted backup executor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rota-backup
+Group=rota-backup-control
+SupplementaryGroups=rota-backup-control
+EnvironmentFile=/etc/rotamoto/backup-executor.env
+WorkingDirectory=/opt/rotamoto/rota-moto-restaurante
+ExecStart=/usr/bin/node /opt/rotamoto/rota-moto-restaurante/scripts/backup-executor.js
+ExecStartPost=/usr/bin/env -i PATH=/usr/bin:/bin ROTAMOTO_BACKUP_CONTROL_DIRECTORY=/var/lib/rotamoto/backup-control ROTAMOTO_BACKUP_CONTROL_GROUP_GID=10002 /usr/bin/node /opt/rotamoto/rota-moto-restaurante/scripts/backup-executor-health.js --wait-ms=20000
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0007
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/rotamoto/backup-control /var/lib/rotamoto/recovery-sets /var/lib/rotamoto/media /var/log/rotamoto
+
+[Install]
+WantedBy=multi-user.target

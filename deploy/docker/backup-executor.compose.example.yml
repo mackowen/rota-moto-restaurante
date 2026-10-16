@@ -1,0 +1,36 @@
+services:
+  backup-executor:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/backup-executor.Dockerfile
+      args:
+        BACKUP_UID: ${BACKUP_UID:-10001}
+        BACKUP_GID: ${BACKUP_GID:-10002}
+    image: rotamoto-backup-executor:local
+    user: "${BACKUP_UID:-10001}:${BACKUP_GID:-10002}"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 512m
+    env_file:
+      - ${BACKUP_EXECUTOR_ENV_FILE:?Set the protected executor-only env file}
+    volumes:
+      - backup-control:/var/lib/rotamoto/backup-control
+      - recovery-sets:/var/lib/rotamoto/recovery-sets
+      - media:/var/lib/rotamoto/media
+      - ${BACKUP_KEY_FILE:?Mount the executor key as a read-only secret}:/run/secrets/backup.key:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    healthcheck:
+      test: ["CMD", "node", "scripts/backup-executor-health.js"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  backup-control:
+  recovery-sets:
+  media:

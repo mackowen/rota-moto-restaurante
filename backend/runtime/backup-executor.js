@@ -13,7 +13,7 @@ const { backupRuntimePolicy } = require('./backup-platform');
 
 function safeSyntheticSource(value, env = process.env) {
   const campaign = env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
-  if (!['0228', '0229'].includes(campaign) || typeof value !== 'string') return false;
+  if (!['0228', '0229', '0230'].includes(campaign) || typeof value !== 'string') return false;
   try {
     const url = new URL(value), database = decodeURIComponent(url.pathname.slice(1));
     return ['postgres:', 'postgresql:'].includes(url.protocol) && !url.password && !url.search && !url.hash &&
@@ -24,7 +24,7 @@ function safeSyntheticSource(value, env = process.env) {
 
 function safeDisposableTarget(value, env = process.env) {
   const campaign = env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
-  if (!['0228', '0229'].includes(campaign) || typeof value !== 'string') return false;
+  if (!['0228', '0229', '0230'].includes(campaign) || typeof value !== 'string') return false;
   try {
     const url = new URL(value), database = decodeURIComponent(url.pathname.slice(1));
     const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname.toLowerCase());

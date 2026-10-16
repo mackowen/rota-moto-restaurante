@@ -1,0 +1,16 @@
+#!/data/data/com.termux/files/usr/bin/sh
+set -eu
+umask 077
+: "${ROTAMOTO_BACKUP_EXECUTOR_ENV_FILE:?Set the private executor environment-file path}"
+[ -f "$ROTAMOTO_BACKUP_EXECUTOR_ENV_FILE" ] && [ ! -L "$ROTAMOTO_BACKUP_EXECUTOR_ENV_FILE" ] || exit 111
+ENV_OWNER=$(stat -c '%u' "$ROTAMOTO_BACKUP_EXECUTOR_ENV_FILE")
+ENV_MODE=$(stat -c '%a' "$ROTAMOTO_BACKUP_EXECUTOR_ENV_FILE")
+[ "$ENV_OWNER" = "$(id -u)" ] || exit 111
+case "$ENV_MODE" in 400|600) ;; *) exit 111 ;; esac
+set -a
+. "$ROTAMOTO_BACKUP_EXECUTOR_ENV_FILE"
+set +a
+: "${ROTAMOTO_APP_ROOT:?Set the application root}"
+NODE_BINARY=${ROTAMOTO_NODE_BINARY:-/data/data/com.termux/files/usr/bin/node}
+cd "$ROTAMOTO_APP_ROOT"
+exec "$NODE_BINARY" scripts/backup-executor.js
