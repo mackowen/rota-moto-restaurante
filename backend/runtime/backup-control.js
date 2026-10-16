@@ -117,8 +117,8 @@ function publicState(state, now = new Date()) {
     rto: { lastRestoreDurationMs: lastRun?.status === 'restore_verified' ? lastRun.durationMs : null, targetMinutes: state.config?.rtoMinutes ?? null },
     executor, alerts, inventory: state.inventory, jobs: state.jobs.slice(-50).reverse().map(({ id, kind, status, createdAt, startedAt, finishedAt, progress, errorCode, actorRef }) =>
       ({ id, kind, status, createdAt, startedAt, finishedAt, progress, errorCode, actorRef })),
-    restoreRequests: state.restoreRequests.slice(-20).reverse().map(({ id, recoverySetId, status, requestedAt, requestedBy, approvedAt, approvedBy, errorCode, jobId }) =>
-      ({ id, recoverySetId, status, requestedAt, requestedBy, approvedAt, approvedBy, errorCode, jobId: jobId || null })) };
+    restoreRequests: state.restoreRequests.slice(-20).reverse().map(({ id, recoverySetId, destinationId, status, requestedAt, requestedBy, approvedAt, approvedBy, errorCode, jobId }) =>
+      ({ id, recoverySetId, destinationId: destinationId || null, status, requestedAt, requestedBy, approvedAt, approvedBy, errorCode, jobId: jobId || null })) };
 }
 function createBackupControlStore({ directory, clock = () => new Date(), sharedGroupGid = null }) {
   const root = validateStoreDirectory(directory), stateFile = path.join(root, 'control.json'), lockPath = path.join(root, '.control.lock'),
@@ -194,10 +194,10 @@ function createBackupControlStore({ directory, clock = () => new Date(), sharedG
         progress: { phase: 'queued', percent: 0 }, idempotencyKey: details.idempotencyKey || crypto.randomUUID(), errorCode: null };
       state.jobs.push(job); if (state.jobs.length > 200) state.jobs = state.jobs.slice(-200); return { ...job };
     }); },
-    async requestRestore(recoverySetId, actorRef) { if (!UUID.test(recoverySetId || '')) throw controlError('RECOVERY_SET_ID_INVALID'); return locked(state => {
-      const prior = state.restoreRequests.find(item => item.recoverySetId === recoverySetId.toLowerCase() && ['PENDING_APPROVAL', 'APPROVED'].includes(item.status));
+    async requestRestore(recoverySetId, actorRef, destinationId = null) { if (!UUID.test(recoverySetId || '') || destinationId !== null && !UUID.test(destinationId || '')) throw controlError('RECOVERY_SET_ID_INVALID'); return locked(state => {
+      const prior = state.restoreRequests.find(item => item.recoverySetId === recoverySetId.toLowerCase() && (item.destinationId || null) === (destinationId || null) && ['PENDING_APPROVAL', 'APPROVED'].includes(item.status));
       if (prior) return { ...prior, duplicate: true };
-      const request = { id: crypto.randomUUID(), recoverySetId: recoverySetId.toLowerCase(), requestedAt: clock().toISOString(), requestedBy: actorRef,
+      const request = { id: crypto.randomUUID(), recoverySetId: recoverySetId.toLowerCase(), ...(destinationId ? { destinationId: destinationId.toLowerCase() } : {}), requestedAt: clock().toISOString(), requestedBy: actorRef,
         status: 'PENDING_APPROVAL', approvedAt: null, approvedBy: null, errorCode: null };
       state.restoreRequests.push(request); return { ...request };
     }); },
@@ -207,7 +207,7 @@ function createBackupControlStore({ directory, clock = () => new Date(), sharedG
       if (request.status !== 'PENDING_APPROVAL') throw controlError('BACKUP_RESTORE_REQUEST_NOT_PENDING');
       if (request.requestedBy === actorRef) throw controlError('BACKUP_DUAL_APPROVAL_REQUIRED');
       request.approvedBy = actorRef; request.approvedAt = clock().toISOString(); request.status = 'APPROVED';
-      const job = { id: crypto.randomUUID(), kind: 'restore_test', recoverySetId: request.recoverySetId, restoreRequestId: request.id,
+      const job = { id: crypto.randomUUID(), kind: 'restore_test', recoverySetId: request.recoverySetId, ...(request.destinationId ? { destinationId: request.destinationId } : {}), restoreRequestId: request.id,
         status: 'QUEUED', createdAt: clock().toISOString(), actorRef, progress: { phase: 'queued', percent: 0 }, errorCode: null };
       state.jobs.push(job); request.jobId = job.id; return { request: { ...request }, job: { ...job } };
     }); },

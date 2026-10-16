@@ -21,6 +21,7 @@ services:
       - recovery-sets:/var/lib/rotamoto/recovery-sets
       - media:/var/lib/rotamoto/media
       - ${BACKUP_KEY_FILE:?Mount the executor key as a read-only secret}:/run/secrets/backup.key:ro
+      - ${BACKUP_DESTINATION_KEY_FILE:?Mount the destination-vault key as a read-only secret}:/run/secrets/backup-destinations.key:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
     healthcheck:

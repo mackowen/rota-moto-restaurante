@@ -53,6 +53,7 @@ são parte de uma recuperação válida.
   bem-sucedida com uma role tenant-scoped não comprova dump integral. Use a role
   `rotamoto_backup` somente de leitura; não remova FORCE RLS, grants ou triggers.
 - `BACKUP_DATABASE_URL` aponta sem senha para `rotamoto_backup`; pgpass autentica.
+- O executor de produção mantém a fonte operacional desabilitada por padrão. Para habilitá-la numa instalação autorizada, configure `ROTAMOTO_BACKUP_OPERATIONAL_SOURCE_ENABLED=true`; o URL deve apontar exatamente ao database `rotamoto`, sem senha embutida, usando `rotamoto_backup` e pgpass privado. `NODE_ENV=test` sempre recusa essa fonte, mesmo com o opt-in. Esta opção não autoriza restore no database oficial.
 - `ROTAMOTO_BACKUP_KEY_FILE` tem 32 bytes, owner do operador e modo 0600, fora
   do PostgreSQL. Preserve cópia offline protegida da chave e teste recuperação.
 - `ROTAMOTO_BACKUP_DIRECTORY` e `ROTAMOTO_MEDIA_DIRECTORY` são absolutos,

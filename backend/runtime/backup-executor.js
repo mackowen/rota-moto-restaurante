@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
 const { createBackupControlStore } = require('./backup-control');
 const { createRecoverySet, verifyRecoverySet, restoreRecoverySet, pruneRecoverySets } = require('./recovery-set');
@@ -11,15 +13,57 @@ const { appendOperatorAudit } = require('./operator-audit');
 const { createClient } = require('../postgres/connection');
 const { getMigrations } = require('../postgres/migrate');
 const { backupRuntimePolicy } = require('./backup-platform');
+const { compareMigrationCoverage } = require('./backup-inventory');
+
+function createDestinationProvider(destination, env, operations = {}) {
+  return destination.provider === 's3' ? (operations.s3Factory || createS3BackupProvider)({ ...destination, ...destination.credentials, test: env.NODE_ENV === 'test' }) :
+    (operations.sftpFactory || createSftpBackupProvider)({ ...destination, ...destination.credentials });
+}
+async function inspectRemoteSets({ destination, provider, keyFile, operations = {} }) {
+  const sets = await provider.listRecoverySets(destination.provider === 's3' ? destination.prefix : undefined), result = [];
+  for (const remoteSet of sets) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rotamoto-remote-inventory-'));
+    try {
+      await provider.downloadSet({ directory: root, id: remoteSet.id, ...(destination.provider === 's3' ? { prefix: destination.prefix } : {}) });
+      const verified = await (operations.verify || verifyRecoverySet)({ directory: root, id: remoteSet.id, keyFile });
+      result.push({ id: remoteSet.id, state: 'VERIFIED', createdAt: verified.createdAt, sizeBytes: verified.database.sizeBytes,
+        schemaState: compareMigrationCoverage(verified.schemaMigrations).state, migrationCount: verified.schemaMigrations?.length ?? null,
+        mediaCount: verified.media.objectCount, destinationId: destination.id, destinationName: destination.name,
+        provider: destination.provider, remote: true });
+    } catch (_) {
+      result.push({ id: remoteSet.id, state: 'INCOMPLETE', schemaState: 'UNKNOWN', migrationCount: null,
+        destinationId: destination.id, destinationName: destination.name, provider: destination.provider, remote: true,
+        reason: 'RECOVERY_SET_VERIFICATION_FAILED' });
+    } finally { await fs.rm(root, { recursive: true, force: true }).catch(() => {}); }
+  }
+  return result;
+}
+async function pruneRemoteSets({ destination, provider, keyFile, retentionDays, operations = {}, now = new Date() }) {
+  const items = await inspectRemoteSets({ destination, provider, keyFile, operations });
+  const verified = items.filter(item => item.state === 'VERIFIED').sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const minimumCopies = Math.max(1, Math.min(10, Number(destination.minimumCopies) || 1)), keep = new Set(verified.slice(0, minimumCopies).map(item => item.id));
+  const cutoff = now.getTime() - retentionDays * 86_400_000, deleted = [], failures = [];
+  for (const item of verified) {
+    if (Date.parse(item.createdAt) >= cutoff || keep.has(item.id) || verified.length - deleted.length <= minimumCopies) continue;
+    try { const outcome = await provider.deleteSet({ id: item.id, retainIds: [...keep] }); if (outcome.deleted) deleted.push(item.id); }
+    catch (_) { failures.push(item.id); }
+  }
+  return { deleted, failures, protectedSetIds: [...keep] };
+}
 
 function safeSyntheticSource(value, env = process.env) {
   const campaign = env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
-  if (!['0228', '0229', '0230', '0231'].includes(campaign) || typeof value !== 'string') return false;
+  if (typeof value !== 'string') return false;
   try {
     const url = new URL(value), database = decodeURIComponent(url.pathname.slice(1));
-    return ['postgres:', 'postgresql:'].includes(url.protocol) && !url.password && !url.search && !url.hash &&
-      ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname.toLowerCase()) &&
-      decodeURIComponent(url.username) === 'rotamoto_backup' && new RegExp(`^rotamoto_disposable_${campaign}_[a-z0-9_]{1,40}$`, 'u').test(database);
+    const safeUrl = ['postgres:', 'postgresql:'].includes(url.protocol) && !url.password && !url.search && !url.hash &&
+      decodeURIComponent(url.username) === 'rotamoto_backup';
+    if (!safeUrl) return false;
+    if (env.NODE_ENV !== 'test' && env.ROTAMOTO_BACKUP_OPERATIONAL_SOURCE_ENABLED === 'true')
+      return database === 'rotamoto';
+    if (env.NODE_ENV !== 'test' || !['0228', '0229', '0230', '0231'].includes(campaign)) return false;
+    return ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname.toLowerCase()) &&
+      new RegExp(`^rotamoto_disposable_${campaign}_[a-z0-9_]{1,40}$`, 'u').test(database);
   } catch (_) { return false; }
 }
 
@@ -98,26 +142,38 @@ function createBackupExecutor({ store, destinationStore = null, env = process.en
         const configured = await destinationStore.getActive(), byId = new Map(configured.map(item => [item.id, item]));
         const selected = state.config.destinationPolicies;
         if (!selected.some(policy => policy.role === 'primary')) throw Object.assign(new Error('BACKUP_PRIMARY_DESTINATION_REQUIRED'), { code: 'BACKUP_PRIMARY_DESTINATION_REQUIRED' });
-        for (const policy of selected) {
+        for (const [index, policy] of selected.entries()) {
+          await store.updateJob(job.id, { type: 'progress', phase: 'uploading_external', percent: 75 + Math.floor(index / selected.length * 12) });
           const destination = byId.get(policy.destinationId);
           if (!destination) throw Object.assign(new Error('BACKUP_DESTINATION_NOT_AVAILABLE'), { code: 'BACKUP_DESTINATION_NOT_AVAILABLE' });
-          const provider = destination.provider === 's3' ? (operations.s3Factory || createS3BackupProvider)({ ...destination, ...destination.credentials, test: env.NODE_ENV === 'test' }) :
-            (operations.sftpFactory || createSftpBackupProvider)({ ...destination, ...destination.credentials });
-          const published = await provider.publishSet({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, id: created.id });
+          const provider = createDestinationProvider(destination, env, operations);
+          const published = await provider.publishSet({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, id: created.id,
+            ...(destination.provider === 's3' ? { prefix: destination.prefix } : {}) });
           external.destinations.push({ destinationId: destination.id, role: policy.role, published: published.published === true });
         }
         external.published = external.destinations.some(item => item.role === 'primary' && item.published) && external.destinations.every(item => item.published);
+        if (external.published) {
+          external.retention = [];
+          await store.updateJob(job.id, { type: 'progress', phase: 'remote_retention', percent: 92 });
+          for (const policy of selected) {
+            const destination = byId.get(policy.destinationId), provider = createDestinationProvider(destination, env, operations);
+            const retained = await pruneRemoteSets({ destination, provider, keyFile: env.ROTAMOTO_BACKUP_KEY_FILE,
+              retentionDays: policy.retentionDays, operations });
+            external.retention.push({ destinationId: destination.id, ...retained });
+          }
+        }
       } else if (state.config.destination === 'external') {
         if (!env.ROTAMOTO_BACKUP_REMOTE_URL || !env.ROTAMOTO_BACKUP_REMOTE_TOKEN) throw Object.assign(new Error('BACKUP_REMOTE_NOT_CONFIGURED'), { code: 'BACKUP_REMOTE_NOT_CONFIGURED' });
         const remote = (operations.remoteFactory || createHttpBackupRemote)({ baseUrl: env.ROTAMOTO_BACKUP_REMOTE_URL,
           token: env.ROTAMOTO_BACKUP_REMOTE_TOKEN, test: env.NODE_ENV === 'test' });
         external = await remote.publishSet({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, id: created.id });
       }
+      await store.updateJob(job.id, { type: 'progress', phase: 'local_retention', percent: 97 });
       await (operations.prune || pruneRecoverySets)({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, retentionDays,
         keyFile: env.ROTAMOTO_BACKUP_KEY_FILE });
       const lastRun = { status: 'success', completedAt: new Date().toISOString(), backupId: created.id,
         sizeBytes: created.database.sizeBytes, schemaState: 'CURRENT', externalPublished: external.published,
-        externalDestinations: external.destinations || [] };
+        externalDestinations: external.destinations || [], externalRetention: external.retention || [] };
       await store.updateJob(job.id, { type: 'result', lastRun });
       await audit('backup.create.completed', { jobId: job.id, backupId: created.id, sizeBytes: created.database.sizeBytes, externalPublished: external.published });
       return lastRun;
@@ -131,12 +187,24 @@ function createBackupExecutor({ store, destinationStore = null, env = process.en
     }
     if (job.kind === 'inventory') {
       const result = await (operations.inventory || inventoryRecoverySets)({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, keyFile: env.ROTAMOTO_BACKUP_KEY_FILE });
+      const remoteSets = [];
+      if (destinationStore) {
+        const configured = await destinationStore.getActive();
+        for (const destination of configured) {
+          try { remoteSets.push(...await inspectRemoteSets({ destination, provider: createDestinationProvider(destination, env, operations),
+            keyFile: env.ROTAMOTO_BACKUP_KEY_FILE, operations })); }
+          catch (_) { remoteSets.push({ id: null, state: 'UNAVAILABLE', schemaState: 'UNKNOWN', destinationId: destination.id,
+            destinationName: destination.name, provider: destination.provider, remote: true, reason: 'BACKUP_DESTINATION_UNAVAILABLE' }); }
+        }
+      }
       const inventory = { checkedAt: new Date().toISOString(), verified: result.counts?.verified || 0,
-        incomplete: result.counts?.incomplete || 0, schemaState: result.items?.some(item => item.coverage?.state === 'DIVERGENT') ? 'DIVERGENT' :
+        remoteVerified: remoteSets.filter(item => item.state === 'VERIFIED').length,
+        remoteIncomplete: remoteSets.filter(item => item.state !== 'VERIFIED').length,
+        incomplete: (result.counts?.incomplete || 0) + remoteSets.filter(item => item.state !== 'VERIFIED').length, schemaState: result.items?.some(item => item.coverage?.state === 'DIVERGENT') ? 'DIVERGENT' :
           result.items?.some(item => item.coverage?.state === 'STALE') ? 'STALE' : result.items?.length ? 'CURRENT' : 'UNKNOWN',
-        sets: (result.items || []).filter(item => item.id).map(item => ({ id: item.id, state: item.state,
-          createdAt: item.createdAt || null, sizeBytes: item.sizeBytes || null, schemaState: item.coverage?.state || 'UNKNOWN',
-          migrationCount: item.coverage?.appliedCount ?? null, mediaCount: item.mediaCount ?? null })) };
+        sets: [...(result.items || []).filter(item => item.id).map(item => ({ id: item.id, state: item.state,
+          createdAt: item.createdAt || null, sizeBytes: item.sizeBytes || null, schemaState: item.schemaCoverage?.state || 'UNKNOWN',
+          migrationCount: item.schemaCoverage?.appliedCount ?? null, mediaCount: item.mediaCount ?? null, remote: false })), ...remoteSets] };
       await store.updateJob(job.id, { type: 'result', inventory }); return inventory;
     }
     if (job.kind === 'restore_test') {
@@ -145,9 +213,25 @@ function createBackupExecutor({ store, destinationStore = null, env = process.en
       await (operations.preflightRestore || assertEmptyDisposableTarget)(target, operations.restoreClientFactory);
       await audit('backup.restore.started', { jobId: job.id, recoveryId: job.recoverySetId });
       const restoreStartedAt = Date.now();
-      const result = await (operations.restore || restoreRecoverySet)({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, id: job.recoverySetId,
+      let sourceDirectory = env.ROTAMOTO_BACKUP_DIRECTORY, downloadedRoot = null;
+      if (job.destinationId) {
+        if (!destinationStore) throw Object.assign(new Error('BACKUP_DESTINATION_STORE_UNAVAILABLE'), { code: 'BACKUP_DESTINATION_STORE_UNAVAILABLE' });
+        const destination = await destinationStore.credentials(job.destinationId), provider = createDestinationProvider(destination, env, operations);
+        downloadedRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'rotamoto-remote-restore-'));
+        try {
+          await store.updateJob(job.id, { type: 'progress', phase: 'downloading_remote_set', percent: 20 });
+          await provider.downloadSet({ directory: downloadedRoot, id: job.recoverySetId, ...(destination.provider === 's3' ? { prefix: destination.prefix } : {}) });
+          await store.updateJob(job.id, { type: 'progress', phase: 'verifying_remote_set', percent: 45 });
+          await (operations.verify || verifyRecoverySet)({ directory: downloadedRoot, id: job.recoverySetId, keyFile: env.ROTAMOTO_BACKUP_KEY_FILE });
+          sourceDirectory = downloadedRoot;
+        } catch (error) { await fs.rm(downloadedRoot, { recursive: true, force: true }).catch(() => {}); throw error; }
+      }
+      let result;
+      try { await store.updateJob(job.id, { type: 'progress', phase: 'restoring_disposable_database', percent: 65 }); result = await (operations.restore || restoreRecoverySet)({ directory: sourceDirectory, id: job.recoverySetId,
         targetUrl: target, keyFile: env.ROTAMOTO_BACKUP_KEY_FILE,
-        disposableMediaDirectory: env.ROTAMOTO_DISPOSABLE_MEDIA_DIRECTORY, productionMediaDirectory: env.ROTAMOTO_MEDIA_DIRECTORY });
+        disposableMediaDirectory: env.ROTAMOTO_DISPOSABLE_MEDIA_DIRECTORY, productionMediaDirectory: env.ROTAMOTO_MEDIA_DIRECTORY }); }
+      finally { if (downloadedRoot) await fs.rm(downloadedRoot, { recursive: true, force: true }).catch(() => {}); }
+      await store.updateJob(job.id, { type: 'progress', phase: 'verifying_restored_database', percent: 90 });
       const integrity = await (operations.verifyRestored || verifyRestoredDatabase)(target, operations.restoreClientFactory);
       const lastRun = { status: 'restore_verified', completedAt: new Date().toISOString(), backupId: result.id,
         durationMs: Date.now() - restoreStartedAt, database: integrity.database, integrity };

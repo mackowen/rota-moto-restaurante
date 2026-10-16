@@ -48,11 +48,12 @@ const { safeDisposableTarget, safeSyntheticSource } = require('../backend/runtim
   await fs.writeFile(staleLock, JSON.stringify({ pid: 2_147_483_647, at: new Date().toISOString() }), { mode: 0o600 });
   assert.equal((await store.read()).jobs.find(job => job.id === queued.id).status, 'UNKNOWN_OUTCOME');
   assert.equal(await fs.stat(staleLock).then(() => true, () => false), false, 'dead executor lock is recovered safely');
-  const request = await store.requestRestore('09a9b439-7047-4b58-9682-8753da4a809f', 'admin-a');
+  const request = await store.requestRestore('09a9b439-7047-4b58-9682-8753da4a809f', 'admin-a', '19a9b439-7047-4b58-9682-8753da4a809f');
   await assert.rejects(store.approveRestore(request.id, 'admin-a', true), /BACKUP_DUAL_APPROVAL_REQUIRED/u);
   await assert.rejects(store.approveRestore(request.id, 'admin-b', false), /BACKUP_REAUTH_REQUIRED/u);
   const approved = await store.approveRestore(request.id, 'admin-b', true);
   assert.equal(approved.request.status, 'APPROVED'); assert.equal(approved.job.kind, 'restore_test');
+  assert.equal(approved.job.destinationId, request.destinationId, 'remote restore approval retains the selected destination');
   assert.equal(publicState(await store.read()).restoreRequests[0].jobId, approved.job.id,
     'administrative status responses link approved restore requests to their executor job');
   const due = await store.dueSchedule(new Date('2026-10-15T02:01:00Z'));

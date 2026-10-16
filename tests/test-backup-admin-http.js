@@ -54,14 +54,15 @@ async function call(_unused, { method = 'GET', url = '/api/admin/backup', body =
     assert.equal(queued.status, 202); assert.equal(queued.body.status, 'QUEUED');
     const duplicate = await call(null, { method: 'POST', url: '/api/admin/backup/jobs', body: { kind: 'backup', idempotencyKey: 'browser-req-key-000001' } });
     assert.equal(duplicate.body.id, queued.body.id); assert.equal(duplicate.body.duplicate, true);
-    const request = await call(null, { method: 'POST', url: '/api/admin/backup/restore-requests', body: { recoverySetId: '09a9b439-7047-4b58-9682-8753da4a809f' } });
+    const request = await call(null, { method: 'POST', url: '/api/admin/backup/restore-requests', body: { recoverySetId: '09a9b439-7047-4b58-9682-8753da4a809f', destinationId: '19a9b439-7047-4b58-9682-8753da4a809f' } });
     assert.equal(request.body.status, 'PENDING_APPROVAL');
-    const duplicateRequest = await call(null, { method: 'POST', url: '/api/admin/backup/restore-requests', body: { recoverySetId: '09a9b439-7047-4b58-9682-8753da4a809f' } });
+    assert.equal(request.body.destinationId, '19a9b439-7047-4b58-9682-8753da4a809f');
+    const duplicateRequest = await call(null, { method: 'POST', url: '/api/admin/backup/restore-requests', body: { recoverySetId: '09a9b439-7047-4b58-9682-8753da4a809f', destinationId: '19a9b439-7047-4b58-9682-8753da4a809f' } });
     assert.equal(duplicateRequest.body.id, request.body.id); assert.equal(duplicateRequest.body.duplicate, true);
     const selfApproval = await call(null, { method: 'POST', url: `/api/admin/backup/restore-requests/${request.body.id}/approve`, body: {}, actor: ADMIN_A });
     assert.equal(selfApproval.body.error.code, 'BACKUP_DUAL_APPROVAL_REQUIRED');
     const approved = await call(null, { method: 'POST', url: `/api/admin/backup/restore-requests/${request.body.id}/approve`, body: {}, actor: ADMIN_B });
-    assert.equal(approved.body.job.kind, 'restore_test');
+    assert.equal(approved.body.job.kind, 'restore_test'); assert.equal(approved.body.job.destinationId, request.body.destinationId);
     const status = await call(null); assert.equal(status.status, 200); assert.equal(status.body.jobs.length, 2);
     assert.equal(JSON.stringify(status.body).includes(SESSION), false);
     assert.equal(JSON.stringify(status.body).includes('synthetic-secret-123456789'), false);

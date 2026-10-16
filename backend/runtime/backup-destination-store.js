@@ -20,7 +20,7 @@ async function verifyPinnedHostKey({ host, port, knownHostsFile, expectedFingerp
   if (!found) bad('BACKUP_SFTP_HOST_KEY_MISMATCH');
 }
 function validateDestination(input, previous = null) {
-  if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(k => !['id','name','provider','endpoint','bucket','region','username','host','port','remoteDirectory','identityFile','knownHostsFile','hostKey','accessKeyId','secretAccessKey','sessionToken','active','retentionDays','minimumCopies','priority'].includes(k))) bad('BACKUP_DESTINATION_INVALID');
+  if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(k => !['id','name','provider','endpoint','bucket','region','prefix','username','host','port','remoteDirectory','identityFile','knownHostsFile','hostKey','hostKeyConfirmed','accessKeyId','secretAccessKey','sessionToken','active','retentionDays','minimumCopies','priority'].includes(k))) bad('BACKUP_DESTINATION_INVALID');
   const provider = input.provider, name = String(input.name || '').trim();
   if (!['s3','sftp'].includes(provider) || !name || name.length > 80 || /[\x00-\x1f]/u.test(name)) bad('BACKUP_DESTINATION_INVALID');
   const id = input.id || previous?.id || crypto.randomUUID(); if (!ID.test(id)) bad('BACKUP_DESTINATION_INVALID');
@@ -38,11 +38,13 @@ function validateDestination(input, previous = null) {
   }
   const safe = { id, name, provider, active: input.active !== false, retentionDays: input.retentionDays, minimumCopies: input.minimumCopies ?? 1, priority: input.priority ?? 100 };
   const credentials = provider === 's3' ? { accessKeyId: input.accessKeyId || previous?.credentials?.accessKeyId, secretAccessKey: input.secretAccessKey || previous?.credentials?.secretAccessKey, sessionToken: input.sessionToken || previous?.credentials?.sessionToken || '' } : null;
-  const connection = provider === 's3' ? { endpoint: input.endpoint, bucket: input.bucket, region: input.region } : {
+  const prefix = input.prefix || previous?.prefix || 'rotamoto-backups';
+  if (provider === 's3' && (typeof prefix !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$/u.test(prefix) || prefix.includes('//') || prefix.split('/').some(part => !part || part === '.' || part === '..'))) bad('BACKUP_DESTINATION_INVALID');
+  const connection = provider === 's3' ? { endpoint: input.endpoint, bucket: input.bucket, region: input.region, prefix } : {
     host: input.host || previous?.host, port: Number(input.port || previous?.port || 22), username: input.username || previous?.username,
     identityFile: input.identityFile || previous?.identityFile, knownHostsFile: input.knownHostsFile || previous?.knownHostsFile,
     hostKey: input.hostKey || previous?.hostKey, remoteDirectory: input.remoteDirectory || previous?.remoteDirectory };
-  return { ...safe, ...connection, credentials: provider === 's3' ? credentials : { identityFile: connection.identityFile, knownHostsFile: connection.knownHostsFile } };
+  return { ...safe, ...connection, ...(previous?.lastTest ? { lastTest: previous.lastTest } : {}), credentials: provider === 's3' ? credentials : { identityFile: connection.identityFile, knownHostsFile: connection.knownHostsFile } };
 }
 function createBackupDestinationStore({ directory, keyFile, test = false, sharedGroupGid = null }) {
   if (!path.isAbsolute(directory || '') || !path.isAbsolute(keyFile || '')) bad('BACKUP_DESTINATION_STORE_CONFIGURATION_INVALID');
@@ -67,6 +69,10 @@ function createBackupDestinationStore({ directory, keyFile, test = false, shared
       else { validateRemoteDirectory(dest.remoteDirectory); await verifyPinnedHostKey({ host: dest.host, port: dest.port, knownHostsFile: dest.knownHostsFile, expectedFingerprint: dest.hostKey }); }
       const index = state.destinations.findIndex(d => d.id === dest.id); index < 0 ? state.destinations.push(dest) : state.destinations.splice(index,1,dest); await encode(state); return publicDestination(dest); },
     async disable(id) { const state = await decode(), dest = state.destinations.find(d => d.id === id); if (!dest) bad('BACKUP_DESTINATION_NOT_FOUND'); dest.active = false; await encode(state); return publicDestination(dest); },
+    async recordTest(id, outcome) { const state = await decode(), dest = state.destinations.find(d => d.id === id); if (!dest) bad('BACKUP_DESTINATION_NOT_FOUND');
+      const errorCode = typeof outcome?.errorCode === 'string' && /^[A-Z0-9_]{2,64}$/u.test(outcome.errorCode) ? outcome.errorCode : null;
+      dest.lastTest = { status: outcome?.ok === true ? 'TESTED' : 'FAILED', testedAt: new Date().toISOString(), ...(errorCode ? { errorCode } : {}), ...(outcome?.ok === true ? { transportVerified: true } : {}) };
+      await encode(state); return publicDestination(dest); },
     async credentials(id) { const state = await decode(), dest = state.destinations.find(d => d.id === id); if (!dest) bad('BACKUP_DESTINATION_NOT_FOUND'); return { ...dest }; }
   });
 }

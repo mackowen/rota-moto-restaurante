@@ -6,11 +6,13 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
+const http = require('node:http');
 const { spawn } = require('node:child_process');
 const { Client } = require('pg');
 const { getMigrations } = require('../backend/postgres/migrate');
 const { createRecoverySet, verifyRecoverySet, restoreRecoverySet } = require('../backend/runtime/recovery-set');
 const { assertEmptyDisposableTarget, verifyRestoredDatabase } = require('../backend/runtime/backup-executor');
+const { createS3BackupProvider } = require('../backend/runtime/backup-storage-providers');
 
 const CAMPAIGN = '0228';
 const NAME_PREFIX = 'rotamoto_disposable_0228_';
@@ -62,6 +64,30 @@ async function migrateDisposableDatabase(adminUrl, database) {
       } catch (error) { await client.query('ROLLBACK'); throw new Error(`Disposable migration ${migration.id} failed: ${error.message}`); }
     }
   } finally { await client.end(); }
+}
+
+async function startLocalS3Fixture() {
+  const objects = new Map(), requests = [];
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1'), key = url.pathname;
+    requests.push({ method: req.method, path: url.pathname, signed: /^AWS4-HMAC-SHA256 Credential=SYNTHETIC1\//u.test(req.headers.authorization || '') });
+    const chunks = []; req.on('data', chunk => chunks.push(chunk)); req.on('end', () => {
+      if (!/^AWS4-HMAC-SHA256 Credential=SYNTHETIC1\//u.test(req.headers.authorization || '')) { res.writeHead(403).end(); return; }
+      const bytes = Buffer.concat(chunks);
+      if (req.method === 'PUT') { objects.set(key, { bytes, hash: req.headers['x-amz-meta-sha256'] }); res.writeHead(200).end(); return; }
+      if (req.method === 'HEAD') { const item = objects.get(key); if (!item) { res.writeHead(404).end(); return; } res.writeHead(200, { 'content-length': String(item.bytes.length), 'x-amz-meta-sha256': item.hash }).end(); return; }
+      if (req.method === 'GET' && url.searchParams.has('list-type')) {
+        const prefix = url.searchParams.get('prefix') || '', contents = [...objects.entries()].filter(([objectKey]) => objectKey.startsWith(`/rotamoto-e2e-backups/${prefix}`)).sort(([a],[b]) => a.localeCompare(b));
+        const escape = value => value.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;');
+        res.writeHead(200, { 'content-type': 'application/xml' }).end(`<ListBucketResult><IsTruncated>false</IsTruncated>${contents.map(([objectKey, item]) => `<Contents><Key>${escape(objectKey.slice('/rotamoto-e2e-backups/'.length))}</Key><Size>${item.bytes.length}</Size></Contents>`).join('')}</ListBucketResult>`); return;
+      }
+      if (req.method === 'GET') { const item = objects.get(key); if (!item) { res.writeHead(404).end(); return; } res.writeHead(200, { 'content-length': String(item.bytes.length) }).end(item.bytes); return; }
+      if (req.method === 'DELETE') { objects.delete(key); res.writeHead(204).end(); return; }
+      res.writeHead(405).end();
+    });
+  });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  return { server, objects, requests, endpoint: `http://127.0.0.1:${server.address().port}/` };
 }
 
 async function main() {
@@ -121,18 +147,36 @@ async function main() {
     phase = 'synthetic-backup';
     const set = await createRecoverySet({ databaseUrl: sourceUrl, keyFile, backupDirectory, mediaDirectory, prune: false });
     const verified = await verifyRecoverySet({ directory: backupDirectory, id: set.id, keyFile });
-    report.recoverySet = { id: set.id, encryptedArtifactVerified: true, ledgerEntries: verified.schemaMigrations.length,
-      mediaObjectCount: verified.media.objectCount };
-    await assertEmptyDisposableTarget(targetUrl);
-    const mediaParentName = `rotamoto-disposable-media-parent-${runId}`;
-    mediaParent = path.join(os.tmpdir(), mediaParentName);
-    await fs.mkdir(mediaParent, { mode: 0o700 });
-    const mediaTarget = path.join(mediaParent, `rotamoto-disposable-media-${runId}`);
-    const productionMedia = path.join(root, 'not-production-media'); await fs.mkdir(productionMedia, { mode: 0o700 });
-    phase = 'synthetic-restore';
-    const restored = await restoreRecoverySet({ directory: backupDirectory, id: set.id, targetUrl, keyFile,
-      disposableMediaDirectory: mediaTarget, productionMediaDirectory: productionMedia });
-    report.restore = { completed: true, database: restored.database, mediaObjects: restored.objectCount };
+    phase = 's3-protocol-publish-download';
+    const s3Fixture = await startLocalS3Fixture();
+    let s3Provider, restored;
+    try {
+      s3Provider = createS3BackupProvider({ endpoint: s3Fixture.endpoint, bucket: 'rotamoto-e2e-backups', region: 'us-east-1',
+        accessKeyId: 'SYNTHETIC1', secretAccessKey: 'synthetic-e2e-s3-key-material', test: true });
+      await s3Provider.publishSet({ directory: backupDirectory, id: set.id, prefix: 'campaign-0233-a' });
+      assert((await s3Provider.listRecoverySets('campaign-0233-a')).some(item => item.id === set.id));
+      const remoteDownloadRoot = path.join(root, 'remote-download'); await fs.mkdir(remoteDownloadRoot, { mode: 0o700 });
+      const remoteDownload = await s3Provider.downloadSet({ directory: remoteDownloadRoot, id: set.id, prefix: 'campaign-0233-a' });
+      const remoteVerified = await verifyRecoverySet({ directory: remoteDownloadRoot, id: set.id, keyFile });
+      assert.equal(remoteVerified.id, set.id, 'remote manifest and encrypted artifacts authenticate after HTTP transfer');
+      report.remoteTransfer = { provider: 'S3-compatible HTTP loopback fixture', requests: s3Fixture.requests.length,
+        allRequestsSigned: s3Fixture.requests.every(item => item.signed), uploadedObjects: s3Fixture.objects.size,
+        downloadFileCount: remoteDownload.fileCount, authenticatedRecoverySet: true };
+      await s3Provider.deleteSet({ id: set.id, prefix: 'campaign-0233-a', retainIds: [set.id] }).then(() => { throw new Error('minimum retained set was deleted'); }, error => assert.equal(error.code, 'BACKUP_REMOTE_RETENTION_BLOCKED'));
+      const restoredDirectory = remoteDownloadRoot;
+      report.recoverySet = { id: set.id, encryptedArtifactVerified: true, ledgerEntries: remoteVerified.schemaMigrations.length,
+        mediaObjectCount: remoteVerified.media.objectCount };
+      await assertEmptyDisposableTarget(targetUrl);
+      const mediaParentName = `rotamoto-disposable-media-parent-${runId}`;
+      mediaParent = path.join(os.tmpdir(), mediaParentName);
+      await fs.mkdir(mediaParent, { mode: 0o700 });
+      const mediaTarget = path.join(mediaParent, `rotamoto-disposable-media-${runId}`);
+      const productionMedia = path.join(root, 'not-production-media'); await fs.mkdir(productionMedia, { mode: 0o700 });
+      phase = 'synthetic-restore-from-s3';
+      restored = await restoreRecoverySet({ directory: restoredDirectory, id: set.id, targetUrl, keyFile,
+        disposableMediaDirectory: mediaTarget, productionMediaDirectory: productionMedia });
+      report.restore = { completed: true, database: restored.database, mediaObjects: restored.objectCount, source: 'verified remote download' };
+    } finally { await new Promise(resolve => s3Fixture.server.close(resolve)); }
     const integrity = await verifyRestoredDatabase(targetUrl);
     const probe = await query(targetUrl, 'SELECT id,value FROM rotamoto.campaign_0228_restore_probe ORDER BY id');
     assert.deepEqual(probe.rows, [{ id: 1, value: 'synthetic-0228' }]);
