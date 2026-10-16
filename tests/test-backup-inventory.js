@@ -32,7 +32,7 @@ async function run() {
   assert.equal(coverage.state, 'STALE');
   assert.equal(coverage.latestApplied, '0041_delivery_custody_return');
   assert.deepEqual(coverage.missing, ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands',
-    '0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch']);
+    '0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery']);
   assert.equal(compareMigrationCoverage(null).state, 'UNKNOWN', 'legacy recovery sets without ledger metadata remain explicitly unknown');
   assert.equal(compareMigrationCoverage([{ id: getMigrations()[0].id, checksum: '0'.repeat(64) }]).state, 'DIVERGENT',
     'a recovery set with a mismatched migration checksum is visibly divergent');

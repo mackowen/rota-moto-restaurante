@@ -336,6 +336,38 @@ async function main() {
     const invalidNewPassword = await call('/api/identity/recovery/consume', { method: 'POST', body: { token: recoveryToken, password: 'short' } });
     assert.equal(invalidNewPassword.status, 400, 'weak password is reported as input error, not internal failure');
 
+    const recoveredPassword='synthetic-recovered-password-43';
+    const mfaRequest=await call('/api/identity/mfa/recovery/request',{method:'POST',body:{email,password:recoveredPassword,companyId}});
+    assert.equal(mfaRequest.status,202);assert.deepEqual(mfaRequest.body,{accepted:true},'MFA recovery request has a generic response');
+    const mfaChallenge=delivered.at(-1);assert.equal(mfaChallenge.kind,'mfa_recovery');
+    assert.equal(JSON.stringify(mfaRequest.body).includes(mfaChallenge.token),false,'email challenge token is never returned');
+    const mfaConfirmation=await call('/api/identity/mfa/recovery/confirm',{method:'POST',body:{token:mfaChallenge.token}});
+    assert.equal(mfaConfirmation.status,202);assert.equal(mfaConfirmation.body.accepted,true);
+    assert.equal((await call('/api/identity/mfa/recovery/confirm',{method:'POST',body:{token:mfaChallenge.token}})).status,401,
+      'email proof is single-use');
+    const reauthenticated=await call('/api/identity/login',{method:'POST',body:{email,password:recoveredPassword,companyId,mfaCode:'654321'}});
+    assert.equal(reauthenticated.status,200);
+    const recoveryCookie=reauthenticated.headers.get('set-cookie').split(';',1)[0];
+    const recoverySession=await call('/api/identity/session',{cookie:recoveryCookie});
+    const pendingMfa=await call('/api/admin/mfa-recovery',{cookie:adminCookie});
+    assert.equal(pendingMfa.status,200);assert.equal(pendingMfa.body.requests.length,1);
+    const selfApproval=await call(`/api/admin/mfa-recovery/${pendingMfa.body.requests[0].id}/approve`,
+      {method:'POST',body:{},cookie:recoveryCookie,csrf:recoverySession.body.csrfToken});
+    assert.equal(selfApproval.status,403,'the requester cannot approve their own MFA recovery');
+    const localOperatorService=createIdentityService({pool,secretProvider:{async remove(){},async get(){throw new Error('unused')}},
+      authorizeMfaRecoveryOperator:async()=>({actorRef:'test:synthetic-local-operator'})});
+    await assert.rejects(localOperatorService.approveSoleOwnerMfaRecoveryLocally(pendingMfa.body.requests[0].id),
+      error=>error.code==='CONFLICT','local sole-owner recovery is denied when a second administrator is active');
+    const independentApproval=await call(`/api/admin/mfa-recovery/${pendingMfa.body.requests[0].id}/approve`,
+      {method:'POST',body:{},cookie:adminCookie,csrf:adminSession.body.csrfToken});
+    assert.equal(independentApproval.status,200,'a different MFA-verified administrator can approve the request');
+    assert.deepEqual(independentApproval.body,{completed:true,reenrollmentRequired:true});
+    assert.equal((await call('/api/identity/session',{cookie:recoveryCookie})).status,401,'MFA recovery revokes every existing session');
+    await client.query("SELECT set_config('app.tenant_id',$1,true)",[companyId]);
+    const recoveredFactor=await client.query('SELECT mfa_required,mfa_secret_ref,mfa_totp_last_counter FROM rotamoto.credentials WHERE user_id=$1',[accepted.body.userId]);
+    assert.equal(recoveredFactor.rows[0].mfa_required,true);assert.equal(recoveredFactor.rows[0].mfa_secret_ref,null);
+    assert.equal(recoveredFactor.rows[0].mfa_totp_last_counter,null,'the next login is limited to mandatory MFA re-enrollment');
+
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
     await client.query(`UPDATE rotamoto.credentials SET failed_attempts=9,locked_until=NULL WHERE user_id=$1`, [accepted.body.userId]);
     const lockAttempt = await call('/api/identity/login', { method: 'POST', body: { email, password: 'synthetic-invalid-password-99', companyId } });
@@ -407,7 +439,7 @@ async function main() {
       assert.equal(secondBootstrap.status, 403, 'installation latch prevents a second initial owner');
     } finally { await bootstrapHost.close(); bootstrapDigest.fill(0); }
 
-    console.log('identity HTTP API, session, CSRF, tenant/RLS, permission, recovery, invite, rate and error tests: OK');
+    console.log('identity HTTP API, session, CSRF, tenant/RLS, MFA recovery, permission, invite, rate and error tests: OK');
   } finally {
     await host.close();
     await client.query('ROLLBACK').catch(() => {});

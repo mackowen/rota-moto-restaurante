@@ -3,6 +3,7 @@
   const API = String(window.ROTA_MOTO_API_BASE || '/api').replace(/\/$/u, '');
   let csrf = null;
   let current = null;
+  let companySnapshot = null;
   const LOCAL_MODE_KEY = 'rotamoto.restaurante.local-mode.v1';
   function readLocalMode() { try { return localStorage.getItem(LOCAL_MODE_KEY) === '1'; } catch (_) { return false; } }
   function writeLocalMode(enabled) { try { enabled ? localStorage.setItem(LOCAL_MODE_KEY, '1') : localStorage.removeItem(LOCAL_MODE_KEY); } catch (_) { /* O modo local continua disponível nesta página. */ } }
@@ -25,7 +26,7 @@
     }
   } catch (_) {}
   const codeMessages = {
-    INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta precisa de um código de verificação. Configure o aplicativo autenticador para entrar.', MFA_PROVIDER_UNAVAILABLE: 'A verificação em duas etapas está temporariamente indisponível. Tente novamente mais tarde.',
+    INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta precisa de um código de verificação. Configure o aplicativo autenticador para entrar.', MFA_PROVIDER_UNAVAILABLE: 'A verificação em duas etapas está temporariamente indisponível. Tente novamente mais tarde.', RECOVERY_LOCAL_OPERATOR_REQUIRED: 'Esta solicitação exige o procedimento local auditado do operador.',
     UNAUTHENTICATED: 'Sua sessão expirou. Entre novamente.', EMAIL_PROVIDER_NOT_CONFIGURED: 'Convites e recuperação ainda dependem da configuração segura de entrega de email.',
     FORBIDDEN: 'Seu perfil não permite esta ação.', LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um responsável principal ativo.',
     DRIVER_MEMBERSHIP_INELIGIBLE: 'A conta precisa estar ativa, confirmada e autorizada para usar o app Motoboy.',
@@ -63,9 +64,10 @@
           <button type="button" data-sync>Atualizar dados agora</button><button type="button" data-logout class="rm-secondary">Sair</button><p data-account-error role="alert" aria-live="polite"></p>
         </div>
         <details data-recovery><summary>Recuperar acesso</summary><form data-recovery-request><label>Email<input name="email" type="email" autocomplete="email" required maxlength="320"></label><button type="submit">Solicitar recuperação</button><p role="status" data-recovery-status></p></form>
-          <form data-recovery-consume><label>Código recebido<input name="token" autocomplete="one-time-code" required maxlength="43"></label><label>Nova senha<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button type="submit">Alterar senha</button><p role="status" data-recovery-result></p></form></details>
+          <form data-recovery-consume><label>Código recebido<input name="token" autocomplete="one-time-code" required maxlength="43"></label><label>Nova senha<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button type="submit">Alterar senha</button><p role="status" data-recovery-result></p></form>
+          <details><summary>Perdi o autenticador</summary><form data-mfa-recovery-request><p>A solicitação exige senha atual e confirmação pelo email verificado. Outro administrador deverá aprovar; para proprietário único, somente o operador local pode concluir.</p><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label><label>Senha atual<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código da empresa<input name="companyId" required maxlength="36" autocomplete="off"></label><button type="submit">Solicitar recuperação de MFA</button><p role="status" data-mfa-recovery-status></p></form><form data-mfa-recovery-confirm><label>Código recebido por email<input name="token" autocomplete="one-time-code" required maxlength="43"></label><button type="submit">Confirmar solicitação</button><p role="status" data-mfa-recovery-confirm-status></p></form></details></details>
         <details data-invitation><summary>Aceitar convite</summary><form data-accept-invitation><label>Código do convite<input name="token" required maxlength="43" autocomplete="off"></label><label>Crie sua senha<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><button type="submit">Aceitar convite</button><p role="status" data-invitation-result></p></form></details>
-        <section data-admin hidden><h2>Administração da empresa</h2><p data-admin-error role="alert" aria-live="polite"></p><button type="button" data-refresh-admin>Atualizar usuários e perfis</button>
+        <section data-admin hidden><h2>Administração da empresa</h2><p data-admin-error role="alert" aria-live="polite"></p><button type="button" data-refresh-admin>Atualizar usuários e perfis</button><form data-company-setup><h3>Configuração da empresa</h3><p>Informe os dados básicos. Contato e endereço são opcionais; o fuso horário é obrigatório para a operação.</p><label>Nome da empresa<input name="name" required maxlength="160" autocomplete="organization"></label><label>Telefone de contato (opcional)<input name="supportPhone" maxlength="40" autocomplete="tel"></label><label>Fuso horário<select name="timeZone" required><option value="America/Sao_Paulo">Brasília · America/Sao_Paulo</option><option value="America/Fortaleza">Fortaleza · America/Fortaleza</option><option value="America/Manaus">Manaus · America/Manaus</option><option value="America/Rio_Branco">Rio Branco · America/Rio_Branco</option><option value="UTC">UTC</option></select></label><label>Endereço operacional (opcional)<input name="address" maxlength="500" autocomplete="street-address"></label><button type="submit">Salvar configuração</button><p role="status" data-company-setup-status aria-live="polite"></p></form><section data-mfa-recovery-admin hidden><h3>Solicitações de recuperação MFA</h3><button type="button" data-refresh-mfa-recovery>Atualizar solicitações</button><div data-mfa-recovery-requests aria-live="polite"></div></section>
           <form data-invite><h3>Convidar usuário</h3><label>Email<input name="email" type="email" required maxlength="320"></label><label>Perfil<select name="roleId" required></select></label><button type="submit">Enviar convite</button><p role="status" data-invite-result></p></form>
           <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><div data-members aria-live="polite"></div><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><p data-driver-access-note role="status" hidden>Para listar motoristas, sua sessão precisa da permissão de leitura de sync. A desassociação continua disponível para vínculos existentes.</p><section data-roles-list><h3>Perfis existentes</h3></section><form data-create-role><h3>Novo perfil</h3><label>Identificador<input name="key" required pattern="[a-z][a-z0-9_-]{1,63}" maxlength="64"></label><label>Nome<input name="name" required maxlength="100"></label><fieldset><legend>Permissões</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form>
         </section>
@@ -222,7 +224,7 @@
     }
   }
   function hintedCompany() { try { return localStorage.getItem('rotaMoto.activeCompanyHint') || ''; } catch (_) { return ''; } }
-  function applyMailAction(){let params;try{params=new URLSearchParams(location.hash.slice(1))}catch(_){return}const action=params.get('action'),token=params.get('token');if(!token||token.length>43)return;if(action==='password_recovery'){$('[data-recovery-consume] [name=token]').value=token;$('[data-recovery]').open=true;setOpen(true)}else if(['owner_invitation','membership_invitation'].includes(action)){invitationKind=action;$('[data-accept-invitation] [name=token]').value=token;$('[data-invitation]').open=true;setOpen(true)}if(action==='password_recovery'||['owner_invitation','membership_invitation'].includes(action))history.replaceState(null,'',location.pathname+location.search)}
+  function applyMailAction(){let params;try{params=new URLSearchParams(location.hash.slice(1))}catch(_){return}const action=params.get('action'),token=params.get('token');if(!token||token.length>43)return;if(action==='password_recovery'){$('[data-recovery-consume] [name=token]').value=token;$('[data-recovery]').open=true;setOpen(true)}else if(action==='mfa_recovery'){$('[data-mfa-recovery-confirm] [name=token]').value=token;$('[data-recovery]').open=true;$('[data-recovery] details').open=true;setOpen(true)}else if(['owner_invitation','membership_invitation'].includes(action)){invitationKind=action;$('[data-accept-invitation] [name=token]').value=token;$('[data-invitation]').open=true;setOpen(true)}if(action==='password_recovery'||action==='mfa_recovery'||['owner_invitation','membership_invitation'].includes(action))history.replaceState(null,'',location.pathname+location.search)}
   applyMailAction();
   $('[data-login] [name=companyId]').value = hintedCompany();
   function clearMfaEnrollment(){const canvas=$('[data-mfa-qr]');canvas?.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);$('[data-mfa-secret]').value=''}
@@ -277,6 +279,16 @@
     catch (error) { $('[data-recovery-status]').textContent = message(error); }
     finally { setBusy(form, false); }
   });
+  $('[data-mfa-recovery-request]').addEventListener('submit',async event=>{
+    event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;setBusy(form,true);
+    try{await request('/identity/mfa/recovery/request',{method:'POST',body:JSON.stringify({email:form.elements.email.value.trim(),password:form.elements.password.value,companyId:form.elements.companyId.value.trim()})});form.elements.password.value='';$('[data-mfa-recovery-status]').textContent='Se a conta estiver elegível, as instruções serão enviadas ao email verificado.'}
+    catch(error){$('[data-mfa-recovery-status]').textContent=message(error)}finally{setBusy(form,false)}
+  });
+  $('[data-mfa-recovery-confirm]').addEventListener('submit',async event=>{
+    event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;setBusy(form,true);
+    try{const result=await request('/identity/mfa/recovery/confirm',{method:'POST',body:JSON.stringify({token:form.elements.token.value.trim()})});form.reset();$('[data-mfa-recovery-confirm-status]').textContent=`Identidade confirmada. Solicitação ${result.requestId} aguarda outro administrador com MFA; proprietário único depende do operador local.`}
+    catch(error){$('[data-mfa-recovery-confirm-status]').textContent=message(error)}finally{setBusy(form,false)}
+  });
   $('[data-recovery-consume]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return;
     setBusy(form, true); const password = form.elements.password.value;
@@ -307,11 +319,15 @@
       current.permissions.includes('orders.read') ? request('/admin/marketplace/orders?limit=50').catch(() => ({orders:[]})) : Promise.resolve({orders:[]})
     ]);
     const driverPage = canReadDrivers ? await request(`/domain/drivers?limit=100${appendDrivers && driverCursor ? `&cursor=${encodeURIComponent(driverCursor)}` : ''}`) : { records: [], nextCursor: null };
+    $('[data-admin-error]').textContent='';
     if (!appendDrivers) driverRows = [];
     driverRows.push(...driverPage.records);
     driverCursor = driverPage.nextCursor;
+    companySnapshot = company;
     $('[data-driver-access-note]').hidden = canReadDrivers;
     $('[data-company-name]').textContent = company.name;
+    const companyForm=$('[data-company-setup]');
+    if(companyForm&&!companyForm.dataset.loaded){companyForm.elements.name.value=company.name||'';companyForm.elements.supportPhone.value=company.supportPhone||'';companyForm.elements.timeZone.value=company.timeZone||'America/Sao_Paulo';companyForm.elements.address.value=company.operationalLocation?.address||'';companyForm.dataset.loaded='true'}
     const integrationBox = $('[data-integrations]'); integrationBox.hidden = !integrations;
     if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); integrations.integrations.forEach(item => {
       const row = document.createElement('section'); row.className = 'rm-integration-status';
@@ -549,8 +565,28 @@
       more.addEventListener('click', async () => { more.disabled = true; try { await loadAdmin({ appendDrivers: true }); } catch (error) { $('[data-admin-error]').textContent = message(error); more.disabled = false; } });
       list.append(more);
     }
+    await loadMfaRecoveryRequests();
   }
   $('[data-refresh-admin]')?.addEventListener('click', () => loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); }));
+  async function loadMfaRecoveryRequests(){
+    const section=$('[data-mfa-recovery-admin]'),list=$('[data-mfa-recovery-requests]');
+    if(!current?.permissions?.includes('company.manage')||!current.mfaVerified){section.hidden=true;return}
+    section.hidden=false;list.replaceChildren();
+    const result=await request('/admin/mfa-recovery');
+    if(!result.requests.length){const empty=document.createElement('p');empty.textContent='Nenhuma solicitação pendente.';list.append(empty);return}
+    for(const item of result.requests){const row=document.createElement('article'),label=document.createElement('p'),feedback=document.createElement('p');
+      label.textContent=`Solicitação de recuperação recebida em ${new Date(item.requestedAt).toLocaleString()}; expira em ${new Date(item.expiresAt).toLocaleString()}.`;
+      if(item.requestedByCurrentUser)feedback.textContent='Solicitação própria: outro administrador com MFA deve aprovar. Se você for o único administrador, use o procedimento local auditado.';
+      else{const approve=document.createElement('button');approve.type='button';approve.textContent='Aprovar e exigir novo MFA';approve.addEventListener('click',async()=>{approve.disabled=true;try{await request(`/admin/mfa-recovery/${encodeURIComponent(item.id)}/approve`,{method:'POST',body:'{}'});feedback.textContent='Fator revogado, sessões invalidadas. O usuário deverá configurar MFA novamente.';await loadMfaRecoveryRequests()}catch(error){feedback.textContent=message(error);approve.disabled=false}});row.append(approve)}
+      row.prepend(label);row.append(feedback);list.append(row)
+    }
+  }
+  $('[data-refresh-mfa-recovery]')?.addEventListener('click',()=>loadMfaRecoveryRequests().catch(error=>{$('[data-admin-error]').textContent=message(error)}));
+  $('[data-company-setup]')?.addEventListener('submit',async event=>{
+    event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||!companySnapshot)return;setBusy(form,true);const status=$('[data-company-setup-status]');status.textContent='Salvando…';
+    try{const address=form.elements.address.value.trim()||null;await request('/admin/company/profile',{method:'PUT',body:JSON.stringify({expectedVersion:companySnapshot.settingsVersion,name:form.elements.name.value.trim(),supportPhone:form.elements.supportPhone.value.trim()||null})});await request('/admin/company',{method:'PUT',body:JSON.stringify({timeZone:form.elements.timeZone.value})});if(address!==(companySnapshot.operationalLocation?.address||null)){await request('/admin/company/location',{method:'PUT',body:JSON.stringify({expectedVersion:companySnapshot.operationalLocationVersion,address,latitude:null,longitude:null})})}form.dataset.loaded='';status.textContent='Configuração da empresa salva.';await loadAdmin()}
+    catch(error){form.dataset.loaded='';const text=message(error);await loadAdmin().catch(()=>{});status.textContent=text}finally{setBusy(form,false)}
+  });
   $('[data-invite]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true);
     try { await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: form.elements.email.value.trim(), roleId: form.elements.roleId.value }) }); form.reset(); $('[data-invite-result]').textContent = 'Convite enviado.'; await loadAdmin(); }
     catch (error) { $('[data-invite-result]').textContent = message(error); } finally { setBusy(form, false); }

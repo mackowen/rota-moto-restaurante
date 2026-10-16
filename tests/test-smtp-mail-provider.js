@@ -16,11 +16,13 @@ async function main(){
   assert.equal(await provider.verify(),true);
   assert.equal(await provider.send({kind:'password_recovery',to:'recipient@example.test',token:'opaque-token-only-in-mail',expiresAt:new Date()}),true);
   assert.equal(await provider.send({kind:'owner_invitation',to:'owner@example.test',token:'invite-token-only-in-mail',expiresAt:new Date()}),true);
+  assert.equal(await provider.send({kind:'mfa_recovery',to:'owner@example.test',token:'mfa-recovery-token-only-in-mail',expiresAt:new Date()}),true);
   assert.match(captured[0],/To: recipient@example\.test/iu);
   assert.match(captured[0],/^Subject: =\?UTF-8\?Q\?/imu);
   assert.match(captured[0].replace(/=\r\n/gu,''),/https:\/\/app\.example\.test\/#action=3Dpassword_recovery&token=3Dopaque-token-only-in-mail/iu);
   assert.match(captured[1],/To: owner@example\.test/iu);
   assert.match(captured[1].replace(/=\r\n/gu,''),/action=3Downer_invitation&token=3Dinvite-token-only-in-mail/iu);
+  assert.match(captured[2].replace(/=\r\n/gu,''),/action=3Dmfa_recovery&token=3Dmfa-recovery-token-only-in-mail/iu);
  }finally{provider.close();await new Promise(resolve=>server.close(resolve))}
  console.log('SMTP local test-only transport: verify and password recovery delivery OK');
 }

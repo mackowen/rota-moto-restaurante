@@ -2,8 +2,9 @@
 
 const { createClient, resolvePgpassPassword } = require('../../backend/postgres/connection');
 
-function storedLoopbackCredential(role, database) {
-  const lookup = targetDatabase => resolvePgpassPassword({ host: '127.0.0.1', port: 5432,
+function storedLoopbackCredential(role, database, port = 5432, allowOperationalFallback = true) {
+  if(!allowOperationalFallback)return async()=>undefined;
+  const lookup = targetDatabase => resolvePgpassPassword({ host: '127.0.0.1', port,
     database: targetDatabase, user: role }, { required: false });
   return async () => {
     const exact = await lookup(database);
@@ -11,18 +12,18 @@ function storedLoopbackCredential(role, database) {
     // pgpass entries for the same role can authenticate that role to the
     // isolated database; never copy or print the secret.
     if (exact) return exact;
-    if (role === 'rotamoto_app' && (database === 'rotamoto_e2e' || database === 'rotamoto_disposable_0068_source')) return lookup('rotamoto');
+    if (allowOperationalFallback && port===5432 && role === 'rotamoto_app' && (database === 'rotamoto_e2e' || database === 'rotamoto_disposable_0068_source')) return lookup('rotamoto');
     return undefined;
   };
 }
 
-function validateConnectionUrl(value, { database, role, nodeEnv }) {
+function validateConnectionUrl(value, { database, role, nodeEnv, port = 5432 }) {
   if (nodeEnv !== 'test') throw new Error('O lifecycle de fixtures exige NODE_ENV=test.');
   if (typeof value !== 'string' || !value) throw new Error('URL de conexão E2E ausente.');
   let parsed;
   try { parsed = new URL(value); } catch (_) { throw new Error('URL de conexão E2E inválida.'); }
   if (!['postgres:', 'postgresql:'].includes(parsed.protocol) || parsed.username !== role || parsed.password ||
-      parsed.hostname !== '127.0.0.1' || parsed.port !== '5432' || parsed.pathname !== `/${database}` ||
+      parsed.hostname !== '127.0.0.1' || parsed.port !== String(port) || parsed.pathname !== `/${database}` ||
       parsed.search || parsed.hash) {
     throw new Error(`O lifecycle E2E aceita somente ${role}@127.0.0.1:5432/${database}, sem senha/argumentos na URL.`);
   }
@@ -31,6 +32,15 @@ function validateConnectionUrl(value, { database, role, nodeEnv }) {
 
 function resolveE2eTargets(env = process.env) {
   if (env.NODE_ENV !== 'test') throw new Error('O lifecycle de fixtures exige NODE_ENV=test.');
+  if(env.ROTAMOTO_BOOTSTRAP_DISPOSABLE==='0234'){
+    const port=Number(env.ROTAMOTO_BOOTSTRAP_PGPORT);
+    if(!Number.isInteger(port)||port<1024||port>65535||port===5432)throw new Error('Cluster descartável 0234 exige porta loopback exclusiva explicitamente configurada.');
+    return Object.freeze({
+      runtime:validateConnectionUrl(env.E2E_RUNTIME_DATABASE_URL,{database:'rotamoto_e2e',role:'rotamoto_app',nodeEnv:env.NODE_ENV,port}),
+      migrator:validateConnectionUrl(env.E2E_MIGRATOR_DATABASE_URL,{database:'rotamoto_e2e',role:'rotamoto_migrator',nodeEnv:env.NODE_ENV,port}),
+      database:'rotamoto_e2e',port,disposable0234:true
+    });
+  }
   if (env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068') {
     const database = 'rotamoto_disposable_0068_source';
     return Object.freeze({
@@ -51,8 +61,9 @@ function resolveE2eTargets(env = process.env) {
 function createE2eClients(env = process.env, ClientType = createClient) {
   const targets = resolveE2eTargets(env); // Both targets fail closed before either client is constructed.
   const database = targets.database || 'rotamoto_e2e';
+  const port=targets.port||5432;
   const clientConfig = (value, role) => {
-    return { connectionString: value, password: storedLoopbackCredential(role, database), connectionTimeoutMillis: 5000 };
+    return { connectionString: value, password: storedLoopbackCredential(role, database,port,!targets.disposable0234), connectionTimeoutMillis: 5000 };
   };
   return Object.freeze({
     runtime: new ClientType({ ...clientConfig(targets.runtime, 'rotamoto_app'),

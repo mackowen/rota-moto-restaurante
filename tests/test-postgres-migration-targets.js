@@ -9,6 +9,14 @@ const database = 'rotamoto_disposable_0110_20261009_004823_6e50bdf3';
 const url = `postgresql://rotamoto_migrator@127.0.0.1:5432/${database}`;
 const env = { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0110', ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL: url };
 
+const e2eThroughEnv = { NODE_ENV: 'test', ROTAMOTO_BOOTSTRAP_DISPOSABLE: '0234', ROTAMOTO_BOOTSTRAP_PGPORT: '55491',
+  E2E_MIGRATOR_DATABASE_URL: 'postgresql://rotamoto_migrator@127.0.0.1:55491/rotamoto_e2e' };
+const e2eThrough = resolveMigrationInvocation(['up', '--e2e-through=0044_99food_distributed_rate_limit'], e2eThroughEnv);
+assert.equal(e2eThrough.connectionString, e2eThroughEnv.E2E_MIGRATOR_DATABASE_URL);
+assert.equal(e2eThrough.throughId, '0044_99food_distributed_rate_limit');
+assert.throws(() => resolveMigrationInvocation(['up', '--e2e-through=0044_99food_distributed_rate_limit'], { ...e2eThroughEnv, ROTAMOTO_BOOTSTRAP_PGPORT: '5432' }), /porta descartável/u);
+assert.throws(() => resolveMigrationInvocation(['down', '--e2e-through=0044_99food_distributed_rate_limit'], e2eThroughEnv), /Uso:/u);
+
 assert.equal(resolveMigrationInvocation(['up', '--rehearsal-0110'], env).connectionString, url);
 assert.equal(resolveMigrationInvocation(['status', '--rehearsal-0110'], env).rehearsal0110, true);
 assert.throws(() => resolveMigrationInvocation(['down', '--rehearsal-0110'], env), /Uso:/u);
@@ -51,7 +59,7 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.deepEqual(migrations.slice(-5).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch'], 'new bootstrap changes append after immutable marketplace migrations');
+assert.deepEqual(migrations.slice(-6).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery'], 'identity recovery appends after immutable bootstrap migrations');
 const migration0042 = migrations.find(migration => migration.id === '0042_marketplace_99food_runtime');
 const migration0043 = migrations.find(migration => migration.id === '0043_99food_application_and_cash_commands');
 assert.match(migration0042.up,/claim_marketplace_99food_token_refresh/u);
@@ -71,6 +79,11 @@ assert.match(migration0045.down,/rollback blocked: bootstrap history exists/u);
 const migration0046 = migrations.find(migration => migration.id === '0046_bootstrap_legacy_installation_latch');
 assert.match(migration0046.up,/EXISTS \(SELECT 1 FROM rotamoto\.companies\)/u);
 assert.match(migration0046.down,/rollback blocked/u);
+const migration0047=migrations.find(migration=>migration.id==='0047_administrative_mfa_recovery');
+assert.match(migration0047.up,/FORCE ROW LEVEL SECURITY/u);
+assert.match(migration0047.up,/token_digest bytea NOT NULL UNIQUE/u);
+assert.match(migration0047.up,/request_id uuid REFERENCES rotamoto\.mfa_recovery_requests/u);
+assert.match(migration0047.down,/rollback blocked/u);
 const ledger0039 = new Map(migrationsThrough0040.slice(0, migration0040Index).map(migration => [migration.id, migration.checksum]));
 const ledger0040 = new Map([...ledger0039, [migrationsThrough0040.at(-1).id, migrationsThrough0040.at(-1).checksum]]);
 assert.equal(assert0115RehearsalState(ledger0039, migrationsThrough0040), '0040_restaurant_driver_queue');

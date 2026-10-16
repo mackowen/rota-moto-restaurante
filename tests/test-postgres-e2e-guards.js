@@ -15,6 +15,13 @@ const env = { NODE_ENV: 'test', MIGRATOR_DATABASE_URL: official,
 
 assert.deepEqual(resolveMigrationInvocation(['up', '--e2e'], env),
   { command: 'up', connectionString: qa });
+const disposablePort='55473';
+const disposableEnv={...env,ROTAMOTO_BOOTSTRAP_DISPOSABLE:'0234',ROTAMOTO_BOOTSTRAP_PGPORT:disposablePort,
+  E2E_RUNTIME_DATABASE_URL:`postgresql://rotamoto_app@127.0.0.1:${disposablePort}/rotamoto_e2e`,
+  E2E_MIGRATOR_DATABASE_URL:`postgresql://rotamoto_migrator@127.0.0.1:${disposablePort}/rotamoto_e2e`};
+assert.deepEqual(resolveMigrationInvocation(['up','--e2e'],disposableEnv),{command:'up',connectionString:disposableEnv.E2E_MIGRATOR_DATABASE_URL},
+  '0234 install-empty rehearsal requires an explicit private PostgreSQL port and exact disposable database');
+assert.throws(()=>resolveMigrationInvocation(['up','--e2e'],{...disposableEnv,ROTAMOTO_BOOTSTRAP_PGPORT:'5432'}),/porta descartável/u);
 assert.deepEqual(resolveMigrationInvocation(['status'], env),
   { command: 'status', connectionString: official }, 'normal mode keeps the official target');
 assert.throws(() => resolveMigrationInvocation(['up'], env),

@@ -7,6 +7,11 @@ const valid = Object.freeze({ NODE_ENV: 'test',
   E2E_RUNTIME_DATABASE_URL: 'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e',
   E2E_MIGRATOR_DATABASE_URL: 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e' });
 assert.doesNotThrow(() => resolveE2eTargets(valid));
+const disposable0234={...valid,ROTAMOTO_BOOTSTRAP_DISPOSABLE:'0234',ROTAMOTO_BOOTSTRAP_PGPORT:'55473',
+  E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:55473/rotamoto_e2e',
+  E2E_MIGRATOR_DATABASE_URL:'postgresql://rotamoto_migrator@127.0.0.1:55473/rotamoto_e2e'};
+assert.equal(resolveE2eTargets(disposable0234).disposable0234,true,'campaign 0234 accepts only the explicitly guarded isolated test port');
+assert.throws(()=>resolveE2eTargets({...disposable0234,ROTAMOTO_BOOTSTRAP_PGPORT:'5432'}),/porta loopback exclusiva/u);
 
 const rejected = [
   { ...valid, NODE_ENV: 'development' },

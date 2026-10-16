@@ -14,7 +14,8 @@ function createSmtpMailProvider({ host, port, secure = false, requireTLS = true,
     const link = new URL(baseUrl);
     link.hash = new URLSearchParams({ action: message.kind, token: message.token }).toString();
     const subjects = { owner_invitation: 'Convite para o RotaMoto', membership_invitation: 'Convite para o RotaMoto',
-      email_verification: 'Confirme seu email no RotaMoto', password_recovery: 'Recuperação de acesso ao RotaMoto' };
+      email_verification: 'Confirme seu email no RotaMoto', password_recovery: 'Recuperação de acesso ao RotaMoto',
+      mfa_recovery: 'Confirme a solicitação de recuperação de MFA do RotaMoto' };
     const result = await transport.sendMail({ from, to: message.to, subject: subjects[message.kind],
       text: `Use este link para concluir a solicitação: ${link.href}\n\nO link é de uso único e expira conforme a política da instalação.` });
     return result.accepted?.some(address => address.toLowerCase() === message.to.toLowerCase()) === true;

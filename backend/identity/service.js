@@ -119,7 +119,7 @@ function validateProvisioningInput(input) {
   return { companyName, email, idempotencyKey };
 }
 
-function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaProvider, secretProvider,
+function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecoveryOperator, emailProvider, mfaProvider, secretProvider,
   requireBootstrapAuthorization = false, clock = () => new Date() }) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('Pool PostgreSQL obrigatório.');
   let dummyPasswordHash;
@@ -500,6 +500,187 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
     return { accepted: true };
   }
 
+  async function requestMfaRecovery({ email: emailValue, password, companyId: companyValue }) {
+    const email = normalizeEmail(emailValue);
+    const companyId = validateUuid(companyValue);
+    if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > 1024)
+      throw new IdentityError('INVALID_INPUT', 'Credenciais inválidas.');
+    const provider = requireEmailProvider(emailProvider);
+    const client = await pool.connect();
+    let pending = null;
+    try {
+      pending = await transaction(client, async () => {
+        const found = await client.query(`SELECT u.id::text AS user_id,u.email,u.email_verified_at,c.password_phc,
+          c.failed_attempts,c.locked_until,c.mfa_required,c.mfa_secret_ref
+          FROM rotamoto.users u JOIN rotamoto.credentials c ON c.user_id=u.id
+          WHERE lower(u.email)=$1 AND u.disabled_at IS NULL FOR UPDATE OF c`, [email]);
+        if (!found.rowCount) { await dummyVerify(password); return null; }
+        const account = found.rows[0];
+        if (account.locked_until && new Date(account.locked_until) > clock() ||
+            !await verifyPassword(account.password_phc, password)) {
+          await client.query(`UPDATE rotamoto.credentials SET failed_attempts=least(failed_attempts+1,$2),
+            locked_until=CASE WHEN failed_attempts+1 >= $2 THEN now()+interval '15 minutes' ELSE locked_until END,updated_at=now()
+            WHERE user_id=$1`, [account.user_id, MAX_FAILED_ATTEMPTS]);
+          return null;
+        }
+        if (!account.email_verified_at || !account.mfa_required || !account.mfa_secret_ref) return null;
+        await setTenant(client, companyId);
+        const eligible = await client.query(`SELECT 1 FROM rotamoto.memberships m JOIN rotamoto.companies c ON c.id=m.company_id
+          JOIN rotamoto.role_permissions rp ON rp.company_id=m.company_id AND rp.role_id=m.role_id
+          WHERE m.user_id=$1 AND m.company_id=$2 AND m.status='active' AND c.status='active'
+            AND rp.catalog_version=1 AND rp.permission_key='company.manage' LIMIT 1`, [account.user_id, companyId]);
+        if (!eligible.rowCount) return null;
+        const issued = newToken(), now = clock();
+        await client.query(`UPDATE rotamoto.mfa_recovery_challenges SET consumed_at=coalesce(consumed_at,$3)
+          WHERE user_id=$1 AND company_id=$2 AND consumed_at IS NULL`, [account.user_id, companyId, now]);
+        await client.query(`INSERT INTO rotamoto.mfa_recovery_challenges(id,user_id,company_id,token_digest,expires_at)
+          VALUES($1,$2,$3,$4,$5)`, [id(), account.user_id, companyId, issued.digest, new Date(now.getTime()+10*60*1000)]);
+        await audit(client, { companyId, actorKind:'system', action:'identity.mfa.recovery_challenge_requested',
+          resourceType:'user', resourceId:account.user_id });
+        return { userId:account.user_id, to:account.email, token:issued.token,
+          expiresAt:new Date(now.getTime()+10*60*1000) };
+      });
+    } finally { client.release(); }
+    if (pending) {
+      try { await provider.send({ to:pending.to, kind:'mfa_recovery', token:pending.token, expiresAt:pending.expiresAt }); }
+      catch (_) {
+        const cleanup = await pool.connect();
+        try { await cleanup.query(`UPDATE rotamoto.mfa_recovery_challenges SET consumed_at=now()
+          WHERE token_digest=$1 AND consumed_at IS NULL`, [tokenDigest(pending.token)]); }
+        finally { cleanup.release(); }
+      }
+    }
+    return { accepted:true };
+  }
+
+  async function confirmMfaRecoveryChallenge({ token }) {
+    const digest = tokenDigest(token), client = await pool.connect();
+    try {
+      return await transaction(client, async () => {
+        const challenge = await client.query(`SELECT ch.id::text,ch.user_id::text,ch.company_id::text,u.email_verified_at
+          FROM rotamoto.mfa_recovery_challenges ch JOIN rotamoto.users u ON u.id=ch.user_id
+          WHERE ch.token_digest=$1 AND ch.consumed_at IS NULL AND ch.expires_at>now() AND u.disabled_at IS NULL
+          FOR UPDATE OF ch,u`, [digest]);
+        if (!challenge.rowCount || !challenge.rows[0].email_verified_at)
+          throw new IdentityError('INVALID_TOKEN','Token inválido ou expirado.');
+        const row = challenge.rows[0];
+        await setTenant(client,row.company_id);
+        const expired=await client.query(`UPDATE rotamoto.mfa_recovery_requests SET status='rejected',decided_at=now(),decision_actor_ref='system:expired'
+          WHERE company_id=$1 AND user_id=$2 AND status='pending' AND expires_at<=now() RETURNING id::text`,[row.company_id,row.user_id]);
+        for(const expiredRequest of expired.rows)await audit(client,{companyId:row.company_id,actorKind:'system',
+          action:'identity.mfa.recovery.expired',resourceType:'mfa_recovery_request',resourceId:expiredRequest.id});
+        const factor = await client.query(`SELECT mfa_secret_ref,mfa_required FROM rotamoto.credentials
+          WHERE user_id=$1 FOR UPDATE`,[row.user_id]);
+        if (!factor.rowCount || !factor.rows[0].mfa_required || !factor.rows[0].mfa_secret_ref)
+          throw new IdentityError('CONFLICT','A conta não está elegível para recuperação de MFA.');
+        let request = await client.query(`SELECT id::text,expires_at FROM rotamoto.mfa_recovery_requests
+          WHERE company_id=$1 AND user_id=$2 AND status='pending' AND expires_at>now() FOR UPDATE`,[row.company_id,row.user_id]);
+        if (!request.rowCount) request = await client.query(`INSERT INTO rotamoto.mfa_recovery_requests
+          (id,company_id,user_id,expires_at,email_verified_at)
+          VALUES($1,$2,$3,now()+interval '30 minutes',now()) RETURNING id::text,expires_at`,
+        [id(),row.company_id,row.user_id]);
+        await client.query('UPDATE rotamoto.mfa_recovery_challenges SET consumed_at=now(),request_id=$2 WHERE id=$1',
+          [row.id,request.rows[0].id]);
+        await audit(client,{companyId:row.company_id,actorKind:'system',action:'identity.mfa.recovery_requested',
+          resourceType:'mfa_recovery_request',resourceId:request.rows[0].id});
+        return { accepted:true, requestId:request.rows[0].id, expiresAt:request.rows[0].expires_at };
+      });
+    } finally { client.release(); }
+  }
+
+  async function listMfaRecoveryRequestsForPrincipal(client, principal) {
+    const result = await client.query(`SELECT id::text,user_id::text,requested_at,expires_at FROM rotamoto.mfa_recovery_requests
+      WHERE company_id=$1 AND status='pending' AND expires_at>now() ORDER BY requested_at`,[principal.company_id]);
+    return result.rows.map(row=>({id:row.id,requestedByCurrentUser:row.user_id===principal.user_id,
+      requestedAt:row.requested_at,expiresAt:row.expires_at}));
+  }
+
+  async function approveMfaRecoveryForPrincipal(client, principal, requestId) {
+    const validId = validateUuid(requestId,'INVALID_INPUT');
+    const request = await client.query(`SELECT id::text,user_id::text,company_id::text FROM rotamoto.mfa_recovery_requests
+      WHERE id=$1 AND company_id=$2 AND status='pending' AND expires_at>now() FOR UPDATE`,[validId,principal.company_id]);
+    if (!request.rowCount) throw new IdentityError('NOT_FOUND','Solicitação indisponível ou expirada.');
+    const target = request.rows[0];
+    if (target.user_id===principal.user_id) throw new IdentityError('FORBIDDEN','Aprovação independente obrigatória.');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended('mfa-recovery:' || $1::text, 2323))`,[principal.company_id]);
+    const admins = await client.query(`SELECT count(DISTINCT m.user_id)::int AS count FROM rotamoto.memberships m
+      JOIN rotamoto.role_permissions rp ON rp.company_id=m.company_id AND rp.role_id=m.role_id
+      JOIN rotamoto.users u ON u.id=m.user_id JOIN rotamoto.credentials c ON c.user_id=m.user_id
+      WHERE m.company_id=$1 AND m.status='active' AND u.disabled_at IS NULL AND u.email_verified_at IS NOT NULL
+        AND c.mfa_required AND c.mfa_secret_ref IS NOT NULL AND rp.catalog_version=1 AND rp.permission_key='company.manage'`,[principal.company_id]);
+    if (admins.rows[0].count<2) throw new IdentityError('RECOVERY_LOCAL_OPERATOR_REQUIRED','Recuperação do proprietário único exige procedimento local auditado.');
+    const targetAdmin=await client.query(`SELECT 1 FROM rotamoto.memberships m JOIN rotamoto.role_permissions rp
+      ON rp.company_id=m.company_id AND rp.role_id=m.role_id WHERE m.user_id=$1 AND m.company_id=$2
+        AND m.status='active' AND rp.catalog_version=1 AND rp.permission_key='company.manage' LIMIT 1`,[target.user_id,principal.company_id]);
+    if(!targetAdmin.rowCount)throw new IdentityError('CONFLICT','A conta solicitada não é mais administradora ativa.');
+    const credential = await client.query(`SELECT mfa_secret_ref FROM rotamoto.credentials WHERE user_id=$1 FOR UPDATE`,[target.user_id]);
+    if (!credential.rowCount || !credential.rows[0].mfa_secret_ref) throw new IdentityError('CONFLICT','Fator MFA indisponível.');
+    const secretRef=credential.rows[0].mfa_secret_ref,now=clock();
+    await client.query(`UPDATE rotamoto.credentials SET mfa_secret_ref=NULL,mfa_required=true,mfa_totp_last_counter=NULL,
+      mfa_enrollment_secret_ref=NULL,mfa_enrollment_expires_at=NULL,mfa_failed_attempts=0,mfa_locked_until=NULL,updated_at=$2
+      WHERE user_id=$1`,[target.user_id,now]);
+    await client.query(`UPDATE rotamoto.recovery_tokens SET consumed_at=$2
+      WHERE user_id=$1 AND purpose='mfa_recovery' AND consumed_at IS NULL`,[target.user_id,now]);
+    await client.query(`UPDATE rotamoto.sessions SET revoked_at=$2 WHERE user_id=$1 AND revoked_at IS NULL`,[target.user_id,now]);
+    await client.query(`UPDATE rotamoto.mfa_recovery_requests SET status='approved',decided_at=$2,decided_by_user_id=$3,completed_at=$2
+      WHERE id=$1`,[validId,now,principal.user_id]);
+    await audit(client,{companyId:principal.company_id,actorUserId:principal.user_id,actorKind:'user',
+      action:'identity.mfa.recovery_approved',resourceType:'user',resourceId:target.user_id,
+      details:{approval:'independent_mfa_verified_admin'}});
+    return {userId:target.user_id,secretRef};
+  }
+
+  async function approveSoleOwnerMfaRecoveryLocally(requestId) {
+    if (typeof authorizeMfaRecoveryOperator!=='function')
+      throw new IdentityError('PROVISIONER_NOT_CONFIGURED','Autorização local de recuperação indisponível.');
+    let actorRef;
+    try { actorRef=requiredText((await authorizeMfaRecoveryOperator({action:'identity.mfa.recovery.approve',requestId}))?.actorRef,'Operador local',160); }
+    catch (_) { throw new IdentityError('PROVISIONER_UNAUTHORIZED','Recuperação local não autorizada.'); }
+    const validId=validateUuid(requestId,'INVALID_INPUT'),client=await pool.connect();
+    let outcome;
+    try {
+      outcome=await transaction(client,async()=>{
+        await client.query("SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s'");
+        const hint=await client.query(`SELECT company_id::text,user_id::text FROM rotamoto.mfa_recovery_challenges
+          WHERE request_id=$1 AND consumed_at IS NOT NULL ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,[validId]);
+        if(!hint.rowCount)throw new IdentityError('NOT_FOUND','Solicitação indisponível ou expirada.');
+        const {company_id:companyId,user_id:userId}=hint.rows[0];
+        await setTenant(client,companyId);
+        const candidate=await client.query(`SELECT 1 FROM rotamoto.mfa_recovery_requests
+          WHERE id=$1 AND company_id=$2 AND user_id=$3 AND status='pending' AND expires_at>now() FOR UPDATE`,[validId,companyId,userId]);
+        if(!candidate.rowCount)throw new IdentityError('NOT_FOUND','Solicitação indisponível ou expirada.');
+        await client.query(`SELECT pg_advisory_xact_lock(hashtextextended('mfa-recovery:' || $1::text, 2323))`,[companyId]);
+        const admins=await client.query(`SELECT count(DISTINCT m.user_id)::int AS count,
+          (array_agg(DISTINCT m.user_id))[1]::text AS sole_admin_user_id FROM rotamoto.memberships m
+          JOIN rotamoto.role_permissions rp ON rp.company_id=m.company_id AND rp.role_id=m.role_id
+          JOIN rotamoto.users u ON u.id=m.user_id JOIN rotamoto.credentials c ON c.user_id=m.user_id
+          WHERE m.company_id=$1 AND m.status='active' AND u.disabled_at IS NULL AND u.email_verified_at IS NOT NULL
+            AND c.mfa_required AND c.mfa_secret_ref IS NOT NULL AND rp.catalog_version=1 AND rp.permission_key='company.manage'`,[companyId]);
+        if(admins.rows[0].count!==1||admins.rows[0].sole_admin_user_id!==userId)
+          throw new IdentityError('CONFLICT','Recuperação local só é permitida ao único administrador ativo após verificação de email.');
+        const factor=await client.query('SELECT mfa_secret_ref FROM rotamoto.credentials WHERE user_id=$1 FOR UPDATE',[userId]);
+        if(!factor.rowCount||!factor.rows[0].mfa_secret_ref)throw new IdentityError('CONFLICT','Fator MFA indisponível.');
+        const secretRef=factor.rows[0].mfa_secret_ref,now=clock();
+        await client.query(`UPDATE rotamoto.credentials SET mfa_secret_ref=NULL,mfa_required=true,mfa_totp_last_counter=NULL,
+          mfa_enrollment_secret_ref=NULL,mfa_enrollment_expires_at=NULL,mfa_failed_attempts=0,mfa_locked_until=NULL,updated_at=$2 WHERE user_id=$1`,[userId,now]);
+        await client.query(`UPDATE rotamoto.recovery_tokens SET consumed_at=$2 WHERE user_id=$1 AND purpose='mfa_recovery' AND consumed_at IS NULL`,[userId,now]);
+        await client.query(`UPDATE rotamoto.sessions SET revoked_at=$2 WHERE user_id=$1 AND revoked_at IS NULL`,[userId,now]);
+        await client.query(`UPDATE rotamoto.mfa_recovery_requests SET status='approved',decided_at=$2,decision_actor_ref=$3,completed_at=$2 WHERE id=$1`,[validId,now,actorRef]);
+        await audit(client,{companyId,actorKind:'admin_provisioner',action:'identity.mfa.recovery_approved',resourceType:'user',resourceId:userId,
+          details:{approval:'local_operator_after_email_and_password_proof'}});
+        return {userId,secretRef};
+      });
+    } finally { client.release(); }
+    await finishMfaRecovery(outcome);
+    return {completed:true,reenrollmentRequired:true};
+  }
+
+  async function finishMfaRecovery(outcome) {
+    if (outcome?.secretRef && secretProvider && typeof secretProvider.remove==='function')
+      await secretProvider.remove(outcome.secretRef).catch(()=>{});
+    return { completed:true,reenrollmentRequired:true };
+  }
+
   async function consumePasswordRecovery({ token, password }) {
     const digest = tokenDigest(token);
     const passwordHash = await hashPassword(password);
@@ -828,7 +1009,8 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
   }
 
   return Object.freeze({ provisionInitialOwner, consumeOwnerInvitation, inviteMembershipWithSession, consumeMembershipInvitation,
-    acceptExistingMembershipInvitation, requestPasswordRecovery,
+    acceptExistingMembershipInvitation, requestPasswordRecovery, requestMfaRecovery, confirmMfaRecoveryChallenge,
+    listMfaRecoveryRequestsForPrincipal, approveMfaRecoveryForPrincipal, approveSoleOwnerMfaRecoveryLocally, finishMfaRecovery,
     consumePasswordRecovery, authenticate, startMfaEnrollment, startMfaEnrollmentForPrincipal,
     confirmMfaEnrollment, confirmMfaEnrollmentForPrincipal, finishMfaEnrollment,
     regenerateMfaRecoveryCodes, regenerateMfaRecoveryCodesForPrincipal,

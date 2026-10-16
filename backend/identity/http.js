@@ -23,6 +23,8 @@ const ROUTE_METHODS = Object.freeze({
   '/api/identity/tenant': 'POST',
   '/api/identity/recovery': 'POST',
   '/api/identity/recovery/consume': 'POST',
+  '/api/identity/mfa/recovery/request': 'POST',
+  '/api/identity/mfa/recovery/confirm': 'POST',
   '/api/identity/invitations/accept': 'POST',
   '/api/identity/membership-invitations/accept': 'POST',
   '/api/identity/membership-invitations/accept-authenticated': 'POST',
@@ -37,7 +39,7 @@ function problemStatus(code) {
   if (['PROVISIONER_NOT_CONFIGURED', 'BOOTSTRAP_NOT_READY', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE'].includes(code)) return 503;
   if (code === 'AUTHENTICATION_REQUIRED') return 401;
   if (code === 'IDEMPOTENCY_CONFLICT') return 409;
-  if (['CONFLICT', 'REVISION_CONFLICT'].includes(code)) return 409;
+  if (['CONFLICT', 'REVISION_CONFLICT', 'RECOVERY_LOCAL_OPERATOR_REQUIRED'].includes(code)) return 409;
   if (code === 'MFA_ENROLLMENT_EXPIRED') return 409;
   if (['INVALID_STATE_TRANSITION', 'LAST_OWNER_REQUIRED'].includes(code)) return 409;
   if (['NOT_FOUND', 'TENANT_NOT_FOUND'].includes(code)) return 404;
@@ -143,7 +145,7 @@ function rateCategory(path) {
   if (path.startsWith('/api/identity/invitations') || path.startsWith('/api/identity/membership-invitations')) return 'invitation';
   if (path === '/api/admin/invitations') return 'invitation';
   if (path === '/api/admin/tenants/provision') return 'provision';
-  if (path.startsWith('/api/identity/mfa/')) return 'mfa';
+  if (path.startsWith('/api/identity/mfa/') || path.startsWith('/api/admin/mfa-recovery')) return 'mfa';
   return 'default';
 }
 
@@ -177,6 +179,7 @@ function publicError(error) {
     AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar o convite.',
     MFA_REQUIRED: 'A autenticação multifator é obrigatória ou inválida.',
     MFA_PROVIDER_UNAVAILABLE: 'Verificação multifator indisponível.',
+    RECOVERY_LOCAL_OPERATOR_REQUIRED: 'A recuperação deste proprietário exige confirmação local auditada.',
     MFA_ENROLLMENT_EXPIRED: 'O enrollment MFA expirou; inicie novamente.',
     IDEMPOTENCY_CONFLICT: 'Chave idempotente já utilizada para outra solicitação.',
     CONFLICT: 'Conflito com o estado atual do recurso.',
@@ -212,7 +215,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
   return async function identityHttpHandler(req, res) {
     const path = new URL(req.url, 'http://127.0.0.1').pathname;
-    if (!path.startsWith('/api/identity/') && !['/api/admin/tenants/provision', '/api/admin/invitations'].includes(path)) return false;
+    if (!path.startsWith('/api/identity/') && !['/api/admin/tenants/provision', '/api/admin/invitations', '/api/admin/mfa-recovery'].includes(path) && !/^\/api\/admin\/mfa-recovery\/[0-9a-f-]{36}\/approve$/iu.test(path)) return false;
     const id = requestId(req);
     const startedAt = Date.now();
     let status = 500;
@@ -289,6 +292,37 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           identityService.regenerateMfaRecoveryCodesForPrincipal(client, principal));
         const result = { recoveryCodes };
         status = 200; send(res, status, result); return true;
+      }
+
+      if (path === '/api/identity/mfa/recovery/request' && req.method === 'POST') {
+        const body=await readJson(req); exactKeys(body,['email','password','companyId']);
+        if(typeof body.email!=='string'||typeof body.password!=='string'||typeof body.companyId!=='string')throw fail('INVALID_INPUT','Credenciais inválidas.');
+        await identityService.requestMfaRecovery(body);
+        status=202;send(res,status,{accepted:true});return true;
+      }
+
+      if (path === '/api/identity/mfa/recovery/confirm' && req.method === 'POST') {
+        const body=await readJson(req); exactKeys(body,['token']);
+        if(typeof body.token!=='string')throw fail('INVALID_INPUT','Token inválido.');
+        const result=await identityService.confirmMfaRecoveryChallenge(body);
+        status=202;send(res,status,result);return true;
+      }
+
+      if (path === '/api/admin/mfa-recovery' && req.method === 'GET') {
+        const sessionToken=parseCookie(req);
+        if(!sessionToken)throw fail('UNAUTHENTICATED','Sessão inválida ou expirada.');
+        const requests=await identityService.withAuthenticatedTenant(sessionToken,
+          (client,principal)=>identityService.listMfaRecoveryRequestsForPrincipal(client,principal),'company.manage');
+        status=200;send(res,status,{requests});return true;
+      }
+
+      const approvalMatch=path.match(/^\/api\/admin\/mfa-recovery\/([0-9a-f-]{36})\/approve$/iu);
+      if(approvalMatch&&req.method==='POST'){
+        exactKeys(await readJson(req),[]);
+        const outcome=await requireSessionMutation(req,'company.manage',(client,principal)=>
+          identityService.approveMfaRecoveryForPrincipal(client,principal,approvalMatch[1]));
+        const result=await identityService.finishMfaRecovery(outcome);
+        status=200;send(res,status,result);return true;
       }
 
       if (path === '/api/identity/logout' && req.method === 'POST') {

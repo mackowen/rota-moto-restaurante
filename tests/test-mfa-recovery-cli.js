@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const source=fs.readFileSync(require.resolve('../scripts/recover-owner-mfa'),'utf8');
+assert.match(source,/stdin\.isTTY!==true\|\|stdout\.isTTY!==true/u,'sole-owner recovery is interactive and cannot run as a public service action');
+assert.match(source,/--confirm-database=rotamoto/u,'operator must confirm the exact target database');
+assert.match(source,/RECUPERAR MFA DO PROPRIETARIO/u,'operator must explicitly approve the factor reset');
+assert.match(source,/current_database\(\).*current_user/u,'CLI verifies the database and runtime role');
+assert.match(source,/approveSoleOwnerMfaRecoveryLocally/u,'CLI delegates eligibility and the one-admin check to the identity service');
+assert.match(source,/appendOperatorAudit/u,'local recovery is recorded in the protected operator audit log');
+assert.match(source,/reenrollmentRequired:true/u,'successful recovery requires MFA reenrollment');
+assert.doesNotMatch(source,/console\.(?:log|info)\([^\n]*(?:password|token|email|secret)/iu,'CLI never logs identity secrets');
+console.log('sole-owner MFA recovery CLI guards: PASS');
