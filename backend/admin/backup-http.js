@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { createRateLimiter } = require('../identity/http');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const RECENT_MFA_MS = 5 * 60 * 1000;
-function createBackupAdminHttpHandler({ identityService, store, adminUserIds = [], rateLimiter = createRateLimiter(), allowedOrigin, logger = () => {}, audit = async () => {}, clock = () => new Date() }) {
+function createBackupAdminHttpHandler({ identityService, store, destinationStore = null, adminUserIds = [], rateLimiter = createRateLimiter(), allowedOrigin, logger = () => {}, audit = async () => {}, clock = () => new Date() }) {
   const admins = new Set(adminUserIds.map(value => String(value).toLowerCase()).filter(value => UUID.test(value)));
   const allowList = Array.isArray(allowedOrigin) ? allowedOrigin.filter(value => typeof value === 'string') : [allowedOrigin].filter(Boolean);
   if (!identityService || !store) throw new TypeError('Identity e backup control obrigatórios.');
@@ -25,9 +25,12 @@ function createBackupAdminHttpHandler({ identityService, store, adminUserIds = [
       const expected = url.pathname === '/api/admin/backup' ? (req.method === 'GET' ? 'status' : null) :
         url.pathname === '/api/admin/backup/config' ? 'config' :
         url.pathname === '/api/admin/backup/jobs' ? 'jobs' :
+        url.pathname === '/api/admin/backup/destinations' ? (req.method === 'GET' ? 'destinations' : req.method === 'PUT' ? 'destination-save' : null) :
+        /^\/api\/admin\/backup\/destinations\/[0-9a-f-]{36}\/test$/iu.test(url.pathname) ? 'destination-test' :
+        /^\/api\/admin\/backup\/destinations\/[0-9a-f-]{36}\/disable$/iu.test(url.pathname) ? 'destination-disable' :
         url.pathname === '/api/admin/backup/restore-requests' ? 'restore-request' :
         /^\/api\/admin\/backup\/restore-requests\/[0-9a-f-]{36}\/approve$/iu.test(url.pathname) ? 'restore-approve' : null;
-      const methods = { status: 'GET', config: 'PUT', jobs: 'POST', 'restore-request': 'POST', 'restore-approve': 'POST' };
+      const methods = { status: 'GET', config: 'PUT', jobs: 'POST', destinations: 'GET', 'destination-save': 'PUT', 'destination-test': 'POST', 'destination-disable': 'POST', 'restore-request': 'POST', 'restore-approve': 'POST' };
       if (!expected) throw Object.assign(new Error(), { code: 'NOT_FOUND' });
       if (req.method !== methods[expected]) throw Object.assign(new Error(), { code: 'METHOD_NOT_ALLOWED' });
       if (url.search || url.hash) throw Object.assign(new Error(), { code: 'INVALID_INPUT' });
@@ -44,7 +47,34 @@ function createBackupAdminHttpHandler({ identityService, store, adminUserIds = [
         if (!admins.has(String(principal.user_id).toLowerCase())) throw Object.assign(new Error(), { code: 'FORBIDDEN' });
         if (req.method !== 'GET' && (!await identityService.verifyCsrf(client, principal.session_id, req.headers['x-csrf-token'])))
           throw Object.assign(new Error(), { code: 'CSRF_INVALID' });
-        if (expected === 'status') return { result: await store.read(), actorRef: principal.user_id, action: null };
+        if (expected === 'status') {
+          const result = await store.read();
+          if (destinationStore) result.destinations = await destinationStore.list();
+          return { result, actorRef: principal.user_id, action: null };
+        }
+        if (expected === 'destinations') {
+          if (!destinationStore) throw Object.assign(new Error(), { code: 'BACKUP_DESTINATION_STORE_UNAVAILABLE' });
+          return { result: { destinations: await destinationStore.list() }, actorRef: principal.user_id, action: null };
+        }
+        if (expected === 'destination-save') {
+          requireRecentMfa(principal);
+          if (!destinationStore) throw Object.assign(new Error(), { code: 'BACKUP_DESTINATION_STORE_UNAVAILABLE' });
+          return { result: await destinationStore.save(body), actorRef: principal.user_id, action: 'backup.destination.saved' };
+        }
+        if (expected === 'destination-disable') {
+          requireRecentMfa(principal); exact(body, []);
+          if (!destinationStore) throw Object.assign(new Error(), { code: 'BACKUP_DESTINATION_STORE_UNAVAILABLE' });
+          return { result: await destinationStore.disable(url.pathname.split('/')[4]), actorRef: principal.user_id, action: 'backup.destination.disabled' };
+        }
+        if (expected === 'destination-test') {
+          requireRecentMfa(principal); exact(body, []);
+          if (!destinationStore) throw Object.assign(new Error(), { code: 'BACKUP_DESTINATION_STORE_UNAVAILABLE' });
+          const destination = await destinationStore.credentials(url.pathname.split('/')[4]);
+          const storageProviders = require('../runtime/backup-storage-providers');
+          const result = destination.provider === 'sftp' ? await storageProviders.createSftpBackupProvider({ ...destination, ...destination.credentials }).test() :
+            await storageProviders.createS3BackupProvider({ ...destination, ...destination.credentials, test: process.env.NODE_ENV === 'test' }).test();
+          return { result, actorRef: principal.user_id, action: 'backup.destination.tested' };
+        }
         if (expected === 'config') {
           requireRecentMfa(principal);
           return { result: await store.configure(body, principal.user_id), actorRef: principal.user_id, action: 'backup.config.updated' };
@@ -74,6 +104,12 @@ function createBackupAdminHttpHandler({ identityService, store, adminUserIds = [
         FORBIDDEN: 403, MFA_REQUIRED: 403, BACKUP_REAUTH_REQUIRED: 403, CSRF_INVALID: 403, ORIGIN_INVALID: 403,
         RATE_LIMITED: 429, BACKUP_CONFIG_INVALID: 400, BACKUP_JOB_KIND_INVALID: 400, RECOVERY_SET_ID_INVALID: 400,
         INVALID_INPUT: 400, UNSUPPORTED_MEDIA_TYPE: 415, PAYLOAD_TOO_LARGE: 413,
+        BACKUP_JOB_ALREADY_ACTIVE: 409, BACKUP_CONTROL_BUSY: 503, BACKUP_DESTINATION_STORE_UNAVAILABLE: 503, BACKUP_DESTINATION_NOT_FOUND: 404,
+        BACKUP_DESTINATION_INVALID: 400, BACKUP_DESTINATION_CREDENTIAL_REQUIRED: 400, BACKUP_DESTINATION_NAME_CONFLICT: 409,
+        BACKUP_DESTINATION_STORE_UNSAFE: 503, BACKUP_DESTINATION_STORE_INVALID: 503, BACKUP_SFTP_HOST_KEY_REQUIRED: 400,
+        BACKUP_SFTP_HOST_KEY_CONFIRMATION_REQUIRED: 400, BACKUP_SFTP_HOST_KEY_MISMATCH: 400, BACKUP_SFTP_CONFIGURATION_INVALID: 400,
+        BACKUP_S3_CONFIGURATION_INVALID: 400, BACKUP_REMOTE_ENDPOINT_INVALID: 400, BACKUP_REMOTE_PATH_INVALID: 400,
+        BACKUP_PRIMARY_DESTINATION_REQUIRED: 400, BACKUP_DESTINATION_NOT_AVAILABLE: 409,
         BACKUP_JOB_ALREADY_ACTIVE: 409, BACKUP_CONTROL_BUSY: 503, BACKUP_RESTORE_REQUEST_NOT_FOUND: 404,
         BACKUP_RESTORE_REQUEST_NOT_PENDING: 409, BACKUP_DUAL_APPROVAL_REQUIRED: 403 })[errorCode] || 500;
       send(code, { error: { code: code === 500 ? 'INTERNAL_ERROR' : errorCode,

@@ -26,6 +26,8 @@ async function rejects(fn) { await assert.rejects(fn); }
     'rotamoto_disposable_0068_source');
   assert.equal(assertRecoverySource('rotamoto_disposable_0138_20261011_41770017',
     { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0138' }), 'rotamoto_disposable_0138_20261011_41770017');
+  assert.equal(assertRecoverySource('rotamoto_disposable_0231_synthetic_source',
+    { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0231' }), 'rotamoto_disposable_0231_synthetic_source');
   assert.throws(() => assertRecoverySource('rotamoto_disposable_0138_20261011_41770017',
     { NODE_ENV: 'production', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0138' }), /not authorized/u);
   assert.throws(() => assertRecoverySource('rotamoto_e2e',

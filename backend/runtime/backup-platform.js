@@ -23,7 +23,7 @@ function backupRuntimePolicy({ env = process.env, uid = process.getuid?.(), grou
       groupGid === null && executorUid !== null && executorUid === uid && Number.isSafeInteger(uid)) {
     return { enabled: true, platform, isolation: 'termux-shared-uid', reason: null };
   }
-  if (env.NODE_ENV === 'test' && ['0228', '0229', '0230'].includes(env.ROTAMOTO_DISPOSABLE_CAMPAIGN))
+  if (env.NODE_ENV === 'test' && ['0228', '0229', '0230', '0231'].includes(env.ROTAMOTO_DISPOSABLE_CAMPAIGN))
     return { enabled: true, platform, isolation: 'synthetic-test', reason: null };
   return { enabled: false, platform, isolation: 'disabled', reason: 'BACKUP_PROCESS_ISOLATION_NOT_CONFIGURED' };
 }

@@ -16,7 +16,9 @@ const { safeDisposableTarget, safeSyntheticSource } = require('../backend/runtim
   await releaseExecutor();
   assert.throws(() => validateConfig({ frequency: 'hourly', timeUtc: '02:00', retentionDays: 5, destination: 'local' }), /BACKUP_CONFIG_INVALID/u);
   assert.deepEqual(validateConfig({ frequency: 'daily', timeUtc: '02:30', retentionDays: 7, destination: 'external' }),
-    { frequency: 'daily', timeUtc: '02:30', retentionDays: 7, destination: 'external', rpoHours: null, rtoMinutes: null });
+    { frequency: 'daily', timeUtc: '02:30', retentionDays: 7, destination: 'external', destinationPolicies: [], rpoHours: null, rtoMinutes: null });
+  assert.throws(() => validateConfig({ frequency: 'daily', timeUtc: '02:30', retentionDays: 7, destination: 'external',
+    destinationPolicies: [{ destinationId: '09a9b439-7047-4b58-9682-8753da4a809f', role: 'secondary', retentionDays: 10 }] }), /BACKUP_CONFIG_INVALID/u);
   assert.equal(nextSchedule({ frequency: 'daily', timeUtc: '02:00' }, now), '2026-10-15T02:00:00.000Z');
   await store.configure({ frequency: 'daily', timeUtc: '02:00', retentionDays: 7, destination: 'local' }, 'admin-a');
   assert.equal((await store.read()).executor.state, 'UNKNOWN');
@@ -59,6 +61,10 @@ const { safeDisposableTarget, safeSyntheticSource } = require('../backend/runtim
     { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0228' }), true);
   assert.equal(safeSyntheticSource('postgresql://rotamoto_backup@127.0.0.1:55440/rotamoto_disposable_0228_test',
     { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0228' }), true);
+  assert.equal(safeDisposableTarget('postgresql://rotamoto_restore@127.0.0.1:55440/rotamoto_disposable_0231_synthetic_restore',
+    { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0231' }), true);
+  assert.equal(safeSyntheticSource('postgresql://rotamoto_backup@127.0.0.1:55440/rotamoto_disposable_0231_synthetic_source',
+    { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0231' }), true);
   assert.equal(safeSyntheticSource('postgresql://rotamoto_backup@127.0.0.1:5432/rotamoto',
     { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0228' }), false);
   for (const target of ['postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto',

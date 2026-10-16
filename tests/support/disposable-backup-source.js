@@ -25,7 +25,7 @@ async function freeLoopbackPort() {
 }
 async function createDisposableBackupSource({ outputDirectory } = {}) {
   const campaign = process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
-  if (process.env.NODE_ENV !== 'test' || !['0229', '0230'].includes(campaign) ||
+  if (process.env.NODE_ENV !== 'test' || !['0229', '0230', '0231'].includes(campaign) ||
       typeof outputDirectory !== 'string' || !path.isAbsolute(outputDirectory)) throw new Error('DISPOSABLE_BACKUP_SOURCE_GUARD');
   const probeTable = `campaign_${campaign}_backup_probe`;
   const probePolicy = `campaign_${campaign}_probe_read`;

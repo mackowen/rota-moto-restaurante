@@ -35,6 +35,7 @@ const {createAdminRepository}=require('./backend/admin/repository');
 const {createAdminService}=require('./backend/admin/service');
 const {createAdminHttpHandler}=require('./backend/admin/http');
 const {createBackupAdminHttpHandler}=require('./backend/admin/backup-http');
+const {createBackupDestinationStore}=require('./backend/runtime/backup-destination-store');
 const {createBackupAdminAuditLogger}=require('./backend/runtime/backup-admin-audit');
 const {createBackupControlStore}=require('./backend/runtime/backup-control');
 const {backupWebProcessAllowed,parseGid}=require('./backend/runtime/backup-process-guard');
@@ -202,7 +203,10 @@ const backupAdminAudit=process.env.ROTAMOTO_BACKUP_ADMIN_AUDIT_LOG
   ? createBackupAdminAuditLogger(process.env.ROTAMOTO_BACKUP_ADMIN_AUDIT_LOG) : null;
 const backupControlStore=process.env.ROTAMOTO_BACKUP_CONTROL_DIRECTORY&&backupAdminAudit&&backupWebProcessAllowed()
   ? createBackupControlStore({directory:process.env.ROTAMOTO_BACKUP_CONTROL_DIRECTORY,sharedGroupGid:backupControlGid}) : null;
-const backupAdminHttp=backupControlStore?createBackupAdminHttpHandler({identityService,store:backupControlStore,
+const backupDestinationStore=backupControlStore&&process.env.ROTAMOTO_BACKUP_DESTINATION_KEY_FILE
+  ? createBackupDestinationStore({directory:process.env.ROTAMOTO_BACKUP_CONTROL_DIRECTORY,keyFile:process.env.ROTAMOTO_BACKUP_DESTINATION_KEY_FILE,
+    test:process.env.NODE_ENV==='test',sharedGroupGid:backupControlGid}) : null;
+const backupAdminHttp=backupControlStore?createBackupAdminHttpHandler({identityService,store:backupControlStore,destinationStore:backupDestinationStore,
   adminUserIds:(process.env.ROTAMOTO_BACKUP_ADMIN_USER_IDS||'').split(',').map(value=>value.trim()).filter(Boolean),
   logger:requestLogger,audit:backupAdminAudit,allowedOrigin:ALLOWED_ORIGINS}):null;
 

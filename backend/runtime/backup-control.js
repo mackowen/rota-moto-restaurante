@@ -10,14 +10,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 function controlError(code) { return Object.assign(new Error(code), { code }); }
 function validateConfig(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).some(key => !['frequency', 'timeUtc', 'retentionDays', 'destination', 'rpoHours', 'rtoMinutes'].includes(key)) ||
+      Object.keys(input).some(key => !['frequency', 'timeUtc', 'retentionDays', 'destination', 'destinationPolicies', 'rpoHours', 'rtoMinutes'].includes(key)) ||
       !FREQUENCIES.has(input.frequency) || !/^([01]\d|2[0-3]):[0-5]\d$/u.test(input.timeUtc || '') ||
       !Number.isInteger(input.retentionDays) || input.retentionDays < 1 || input.retentionDays > 3650 ||
       !['local', 'external'].includes(input.destination) ||
       input.rpoHours !== undefined && input.rpoHours !== null && (!Number.isInteger(input.rpoHours) || input.rpoHours < 1 || input.rpoHours > 8760) ||
       input.rtoMinutes !== undefined && input.rtoMinutes !== null && (!Number.isInteger(input.rtoMinutes) || input.rtoMinutes < 1 || input.rtoMinutes > 10080))
     throw controlError('BACKUP_CONFIG_INVALID');
+  const destinationPolicies = input.destinationPolicies === undefined ? [] : input.destinationPolicies;
+  if (!Array.isArray(destinationPolicies) || destinationPolicies.length > 10 || destinationPolicies.length > 0 && !destinationPolicies.some(policy => policy?.role === 'primary') || destinationPolicies.some((policy, index) => !policy || !/^[0-9a-f-]{36}$/iu.test(policy.destinationId || '') ||
+      !['primary', 'secondary'].includes(policy.role) || !Number.isInteger(policy.retentionDays) || policy.retentionDays < 1 || policy.retentionDays > 3650 ||
+      destinationPolicies.findIndex(other => other.destinationId === policy.destinationId) !== index || destinationPolicies.filter(other => other.role === 'primary').length > 1)) throw controlError('BACKUP_CONFIG_INVALID');
   return { frequency: input.frequency, timeUtc: input.timeUtc, retentionDays: input.retentionDays, destination: input.destination,
+    destinationPolicies: destinationPolicies.map(policy => ({ destinationId: policy.destinationId.toLowerCase(), role: policy.role, retentionDays: policy.retentionDays })),
     rpoHours: input.rpoHours ?? null, rtoMinutes: input.rtoMinutes ?? null };
 }
 function validateStoreDirectory(directory) {

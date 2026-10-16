@@ -6,6 +6,7 @@ const { createBackupControlStore } = require('./backup-control');
 const { createRecoverySet, verifyRecoverySet, restoreRecoverySet, pruneRecoverySets } = require('./recovery-set');
 const { inventoryRecoverySets } = require('./backup-inventory');
 const { createHttpBackupRemote } = require('./backup-remote-provider');
+const { createS3BackupProvider, createSftpBackupProvider } = require('./backup-storage-providers');
 const { appendOperatorAudit } = require('./operator-audit');
 const { createClient } = require('../postgres/connection');
 const { getMigrations } = require('../postgres/migrate');
@@ -13,7 +14,7 @@ const { backupRuntimePolicy } = require('./backup-platform');
 
 function safeSyntheticSource(value, env = process.env) {
   const campaign = env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
-  if (!['0228', '0229', '0230'].includes(campaign) || typeof value !== 'string') return false;
+  if (!['0228', '0229', '0230', '0231'].includes(campaign) || typeof value !== 'string') return false;
   try {
     const url = new URL(value), database = decodeURIComponent(url.pathname.slice(1));
     return ['postgres:', 'postgresql:'].includes(url.protocol) && !url.password && !url.search && !url.hash &&
@@ -24,7 +25,7 @@ function safeSyntheticSource(value, env = process.env) {
 
 function safeDisposableTarget(value, env = process.env) {
   const campaign = env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
-  if (!['0228', '0229', '0230'].includes(campaign) || typeof value !== 'string') return false;
+  if (!['0228', '0229', '0230', '0231'].includes(campaign) || typeof value !== 'string') return false;
   try {
     const url = new URL(value), database = decodeURIComponent(url.pathname.slice(1));
     const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname.toLowerCase());
@@ -75,7 +76,7 @@ async function assertEmptyDisposableTarget(targetUrl, clientFactory = options =>
     return row.database;
   } finally { await client.end(); }
 }
-function createBackupExecutor({ store, env = process.env, operations = {} }) {
+function createBackupExecutor({ store, destinationStore = null, env = process.env, operations = {} }) {
   const required = ['ROTAMOTO_BACKUP_CONTROL_DIRECTORY', 'ROTAMOTO_BACKUP_KEY_FILE', 'ROTAMOTO_BACKUP_DIRECTORY',
     'ROTAMOTO_MEDIA_DIRECTORY', 'BACKUP_DATABASE_URL'];
   const workerId = `backup-executor:${crypto.randomUUID()}`;
@@ -92,8 +93,21 @@ function createBackupExecutor({ store, env = process.env, operations = {} }) {
         backupDirectory: env.ROTAMOTO_BACKUP_DIRECTORY, mediaDirectory: env.ROTAMOTO_MEDIA_DIRECTORY, retentionDays, prune: false });
       await store.updateJob(job.id, { type: 'progress', phase: 'verifying', percent: 70 });
       await (operations.verify || verifyRecoverySet)({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, id: created.id, keyFile: env.ROTAMOTO_BACKUP_KEY_FILE });
-      let external = { published: false };
-      if (state.config.destination === 'external') {
+      let external = { published: false, destinations: [] };
+      if (destinationStore && state.config.destinationPolicies?.length) {
+        const configured = await destinationStore.getActive(), byId = new Map(configured.map(item => [item.id, item]));
+        const selected = state.config.destinationPolicies;
+        if (!selected.some(policy => policy.role === 'primary')) throw Object.assign(new Error('BACKUP_PRIMARY_DESTINATION_REQUIRED'), { code: 'BACKUP_PRIMARY_DESTINATION_REQUIRED' });
+        for (const policy of selected) {
+          const destination = byId.get(policy.destinationId);
+          if (!destination) throw Object.assign(new Error('BACKUP_DESTINATION_NOT_AVAILABLE'), { code: 'BACKUP_DESTINATION_NOT_AVAILABLE' });
+          const provider = destination.provider === 's3' ? (operations.s3Factory || createS3BackupProvider)({ ...destination, ...destination.credentials, test: env.NODE_ENV === 'test' }) :
+            (operations.sftpFactory || createSftpBackupProvider)({ ...destination, ...destination.credentials });
+          const published = await provider.publishSet({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, id: created.id });
+          external.destinations.push({ destinationId: destination.id, role: policy.role, published: published.published === true });
+        }
+        external.published = external.destinations.some(item => item.role === 'primary' && item.published) && external.destinations.every(item => item.published);
+      } else if (state.config.destination === 'external') {
         if (!env.ROTAMOTO_BACKUP_REMOTE_URL || !env.ROTAMOTO_BACKUP_REMOTE_TOKEN) throw Object.assign(new Error('BACKUP_REMOTE_NOT_CONFIGURED'), { code: 'BACKUP_REMOTE_NOT_CONFIGURED' });
         const remote = (operations.remoteFactory || createHttpBackupRemote)({ baseUrl: env.ROTAMOTO_BACKUP_REMOTE_URL,
           token: env.ROTAMOTO_BACKUP_REMOTE_TOKEN, test: env.NODE_ENV === 'test' });
@@ -102,7 +116,8 @@ function createBackupExecutor({ store, env = process.env, operations = {} }) {
       await (operations.prune || pruneRecoverySets)({ directory: env.ROTAMOTO_BACKUP_DIRECTORY, retentionDays,
         keyFile: env.ROTAMOTO_BACKUP_KEY_FILE });
       const lastRun = { status: 'success', completedAt: new Date().toISOString(), backupId: created.id,
-        sizeBytes: created.database.sizeBytes, schemaState: 'CURRENT', externalPublished: external.published };
+        sizeBytes: created.database.sizeBytes, schemaState: 'CURRENT', externalPublished: external.published,
+        externalDestinations: external.destinations || [] };
       await store.updateJob(job.id, { type: 'result', lastRun });
       await audit('backup.create.completed', { jobId: job.id, backupId: created.id, sizeBytes: created.database.sizeBytes, externalPublished: external.published });
       return lastRun;

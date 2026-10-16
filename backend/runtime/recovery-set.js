@@ -20,6 +20,7 @@ const CAMPAIGN_0068_SOURCE = 'rotamoto_disposable_0068_source';
 const CAMPAIGN_0228_SOURCE = /^rotamoto_disposable_0228_[a-z0-9_]{1,40}$/u;
 const CAMPAIGN_0229_SOURCE = /^rotamoto_disposable_0229_[a-z0-9_]{1,40}$/u;
 const CAMPAIGN_0230_SOURCE = /^rotamoto_disposable_0230_[a-z0-9_]{1,40}$/u;
+const CAMPAIGN_0231_SOURCE = /^rotamoto_disposable_0231_[a-z0-9_]{1,40}$/u;
 function bad(message, code = 'RECOVERY_SET_INVALID') { return Object.assign(new Error(message), { code }); }
 function digest(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 async function privateDirectory(directory, { create = false } = {}) {
@@ -150,6 +151,8 @@ function assertRecoverySource(database, env = process.env) {
       env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0229') return database;
   if (CAMPAIGN_0230_SOURCE.test(database) && env.NODE_ENV === 'test' &&
       env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0230') return database;
+  if (CAMPAIGN_0231_SOURCE.test(database) && env.NODE_ENV === 'test' &&
+      env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0231') return database;
   throw bad('Recovery backup source is not authorized.');
 }
 async function createRecoverySet({ databaseUrl, keyFile, backupDirectory, mediaDirectory, retentionDays = 30, now = new Date(), pgDump, pgRestore, clientFactory, prune = true }) {
@@ -346,4 +349,4 @@ async function pruneRecoverySets({ directory, retentionDays, now = new Date(), k
 }
 
 module.exports = { createRecoverySet, verifyRecoverySet, restoreRecoverySet, pruneRecoverySets, canonicalReferences, withSnapshotLock,
-  assertRecoverySource, CAMPAIGN_0068_SOURCE, CAMPAIGN_0228_SOURCE, CAMPAIGN_0229_SOURCE, CAMPAIGN_0230_SOURCE, schemaMigrationLedger };
+  assertRecoverySource, CAMPAIGN_0068_SOURCE, CAMPAIGN_0228_SOURCE, CAMPAIGN_0229_SOURCE, CAMPAIGN_0230_SOURCE, CAMPAIGN_0231_SOURCE, schemaMigrationLedger };

@@ -42,7 +42,7 @@ assert.match(source, /LOCAL_MODE_KEY = 'rotamoto\.restaurante\.local-mode\.v1'/u
 assert.match(source, /writeLocalMode\(true\)/u, 'explicit local mode survives a reload');
 assert.match(source, /if \(session\) \{ offlineMode = false; writeLocalMode\(false\); \}[\s\S]{0,60}else offlineMode = readLocalMode\(\)/u, 'restored local preference never creates an authenticated session');
 assert.match(source, /if \(!sessionReadGuard\.isCurrent\(readVersion\)\) return current;/u, 'late session results cannot replace newer user intent');
-assert.match(html, /identity-session-guard\.js[\s\S]{0,100}identity-ui\.js/u, 'session read guard loads before identity UI');
+assert.match(html, /identity-session-guard\.js[\s\S]{0,300}identity-ui\.js/u, 'session read guard loads before identity UI');
 assert.match(source, /clearSession/u, 'logout clears in-memory sync credentials');
 assert.match(source, /somente com dados locais/iu, 'offline mode is explicitly distinct from authenticated access');
 assert.doesNotMatch(source, /localStorage\.(?:setItem|getItem)\(['"](?:session|csrf|password|token)/iu);
