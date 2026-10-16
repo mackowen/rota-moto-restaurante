@@ -149,6 +149,9 @@ async function localSftpTransfer({ root, recoveryId }) {
   const knownHostsFile = path.join(root, 'known_hosts'); await fs.writeFile(knownHostsFile, `backup.example.net ssh-ed25519 ${keyMaterial.toString('base64')}\n`, { mode: 0o600 });
   await verifyPinnedHostKey({ host: 'backup.example.net', port: 22, knownHostsFile, expectedFingerprint: syntheticFingerprint });
   await assert.rejects(verifyPinnedHostKey({ host: 'unknown.example.net', port: 22, knownHostsFile, expectedFingerprint: syntheticFingerprint }), { code: 'BACKUP_SFTP_HOST_KEY_MISMATCH' });
+  const publicSftp = await destinations.save({ name: 'Synthetic SFTP', provider: 'sftp', host: 'backup.example.net', username: 'backup', identityFile: path.join(root, 'synthetic-id'), knownHostsFile, hostKey: syntheticFingerprint, remoteDirectory: path.join(root, 'remote-sftp'), hostKeyConfirmed: true, active: true, retentionDays: 30 });
+  assert.equal(JSON.stringify(publicSftp).includes('remote-sftp'), false, 'remote server paths are not returned to the admin API');
+  assert.equal(JSON.stringify(publicSftp).includes(knownHostsFile), false);
   const sftp = createSftpBackupProvider({ host: 'backup.example.net', username: 'backup', identityFile: '/synthetic/key', knownHostsFile, hostKey: syntheticFingerprint, remoteDirectory: '/srv/backups' });
   assert.equal(typeof sftp.publishSet, 'function');
   assert.throws(() => createSftpBackupProvider({ host: 'backup.example.net;touch /tmp/pwned', username: 'backup', identityFile: '/synthetic/key', knownHostsFile: '/synthetic/known_hosts', hostKey: syntheticFingerprint, remoteDirectory: '/srv/backups' }), { code: 'BACKUP_SFTP_CONFIGURATION_INVALID' });

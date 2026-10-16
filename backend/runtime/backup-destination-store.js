@@ -6,7 +6,7 @@ const { validatePublicEndpoint, validateRemoteDirectory } = require('./backup-st
 
 function bad(code) { throw Object.assign(new Error(code), { code }); }
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-function publicDestination(item) { const { credentials, identityFile, knownHostsFile, ...safe } = item; return { ...safe, credentialConfigured: Boolean(credentials || identityFile), credentials: undefined, identityFile: undefined, knownHostsFile: undefined }; }
+function publicDestination(item) { const { credentials, identityFile, knownHostsFile, remoteDirectory, ...safe } = item; return { ...safe, credentialConfigured: Boolean(credentials || identityFile), credentials: undefined, identityFile: undefined, knownHostsFile: undefined, remoteDirectory: undefined }; }
 async function verifyPinnedHostKey({ host, port, knownHostsFile, expectedFingerprint }) {
   let stat, text;
   try { stat = await fs.lstat(knownHostsFile); text = await fs.readFile(knownHostsFile, 'utf8'); } catch (_) { bad('BACKUP_SFTP_HOST_KEY_REQUIRED'); }
