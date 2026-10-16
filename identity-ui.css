@@ -62,6 +62,8 @@
 .rm-account-trigger-label { display: inline; }
 .rm-account-trigger-icon { display: none; width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
+.rm-identity-panel [data-mfa-qr] { display: block; width: min(208px, 72vw); height: auto; aspect-ratio: 1; margin: 12px auto; border: 1px solid var(--rm-id-border); image-rendering: pixelated; }
+
 .rm-identity-panel {
   position: fixed;
   inset-block: 0;

@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const vm = require('node:vm');
 const path = require('node:path');
 const uiPath = path.join(__dirname, '..', 'identity-ui.js');
 const htmlPath = path.join(__dirname, '..', 'index.html');
@@ -13,6 +14,19 @@ assert.match(html, /identity-session-guard\.js[\s\S]*?app\.js/u, 'shared session
 
 assert.match(source, /autocomplete="current-password"/u);
 assert.match(source, /autocomplete="one-time-code"/u);
+assert.match(source, /data-mfa-qr width="208" height="208"/u, 'TOTP enrollment includes an accessible local QR target');
+assert.match(source, /renderMfaQr\(result\.otpauthUri\)/u, 'the enrollment URI is rendered by the bundled offline QR encoder');
+assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
+assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
+  'offline QR encoder loads before identity UI');
+const qrWindow = {};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'qr-local.js'), 'utf8'), { window: qrWindow });
+const qr = new qrWindow.RotaMotoQRCode(0, qrWindow.RotaMotoQRErrorCorrectLevel.M);
+qr.addData('otpauth://totp/RotaMoto:qa%40example.invalid?secret=synthetic'); qr.make();
+const qrModules = qr.getModuleCount(); let qrDarkModules = 0;
+for (let row = 0; row < qrModules; row += 1) for (let column = 0; column < qrModules; column += 1)
+  if (qr.isDark(row, column)) qrDarkModules += 1;
+assert(qrModules >= 21 && qrDarkModules > 0 && qrDarkModules < qrModules ** 2, 'offline TOTP QR encoder creates a nonempty matrix');
 assert.match(source, /credentials: 'include'/u, 'identity uses the protected cookie session');
 assert.match(source, /X-CSRF-Token/u);
 assert.match(source, /\/identity\/session/u);
