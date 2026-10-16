@@ -501,85 +501,96 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
     } finally { client.release(); }
   }
 
-  async function startMfaEnrollment(sessionToken) {
+  async function startMfaEnrollmentForPrincipal(client, principal) {
     if (!secretProvider || typeof secretProvider.put !== 'function') throw new IdentityError('MFA_PROVIDER_UNAVAILABLE', 'Keystore MFA indisponível.');
-    return withAuthenticatedTenant(sessionToken, async (client, principal) => {
-      const current = await client.query(`SELECT mfa_secret_ref,mfa_enrollment_secret_ref FROM rotamoto.credentials
-        WHERE user_id=$1 FOR UPDATE`, [principal.user_id]);
-      if (!current.rowCount) throw new IdentityError('UNAUTHENTICATED', 'Credencial indisponível.');
-      if (current.rows[0].mfa_secret_ref && !principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Verifique MFA antes de substituir o fator.');
-      const secret = generateSecret();
-      const ref = (await secretProvider.put({ name: `identity/mfa/${principal.user_id}`, scope: 'installation', value: secret })).secretRef;
-      const oldPending = current.rows[0].mfa_enrollment_secret_ref;
-      try {
-        await client.query(`UPDATE rotamoto.credentials SET mfa_enrollment_secret_ref=$2,mfa_enrollment_expires_at=now()+interval '10 minutes',
-          mfa_failed_attempts=0,mfa_locked_until=NULL,updated_at=now() WHERE user_id=$1`, [principal.user_id, ref]);
-      } catch (error) { await secretProvider.remove(ref).catch(() => {}); throw error; }
-      await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
-        action: 'identity.mfa.enrollment_started', resourceType: 'user', resourceId: principal.user_id });
-      if (oldPending && oldPending !== ref) await secretProvider.remove(oldPending).catch(() => {});
-      const user = await client.query('SELECT email FROM rotamoto.users WHERE id=$1', [principal.user_id]);
-      return { secret, otpauthUri: otpauthUri(secret, { account: user.rows[0].email }) };
-    }, 'identity.mfa.enroll');
+    const current = await client.query(`SELECT mfa_secret_ref,mfa_enrollment_secret_ref FROM rotamoto.credentials
+      WHERE user_id=$1 FOR UPDATE`, [principal.user_id]);
+    if (!current.rowCount) throw new IdentityError('UNAUTHENTICATED', 'Credencial indisponível.');
+    if (current.rows[0].mfa_secret_ref && !principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Verifique MFA antes de substituir o fator.');
+    const secret = generateSecret();
+    const ref = (await secretProvider.put({ name: `identity/mfa/${principal.user_id}`, scope: 'installation', value: secret })).secretRef;
+    const oldPending = current.rows[0].mfa_enrollment_secret_ref;
+    try {
+      await client.query(`UPDATE rotamoto.credentials SET mfa_enrollment_secret_ref=$2,mfa_enrollment_expires_at=now()+interval '10 minutes',
+        mfa_failed_attempts=0,mfa_locked_until=NULL,updated_at=now() WHERE user_id=$1`, [principal.user_id, ref]);
+    } catch (error) { await secretProvider.remove(ref).catch(() => {}); throw error; }
+    await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
+      action: 'identity.mfa.enrollment_started', resourceType: 'user', resourceId: principal.user_id });
+    if (oldPending && oldPending !== ref) await secretProvider.remove(oldPending).catch(() => {});
+    const user = await client.query('SELECT email FROM rotamoto.users WHERE id=$1', [principal.user_id]);
+    return { secret, otpauthUri: otpauthUri(secret, { account: user.rows[0].email }) };
   }
 
-  async function confirmMfaEnrollment(sessionToken, code) {
+  async function startMfaEnrollment(sessionToken) {
+    return withAuthenticatedTenant(sessionToken, startMfaEnrollmentForPrincipal, 'identity.mfa.enroll');
+  }
+
+  async function confirmMfaEnrollmentForPrincipal(client, principal, code) {
     if (!secretProvider || typeof secretProvider.get !== 'function') throw new IdentityError('MFA_PROVIDER_UNAVAILABLE', 'Keystore MFA indisponível.');
-    const outcome = await withAuthenticatedTenant(sessionToken, async (client, principal) => {
-      const current = await client.query(`SELECT c.mfa_secret_ref,c.mfa_enrollment_secret_ref,c.mfa_enrollment_expires_at,
-        c.mfa_totp_last_counter,c.mfa_failed_attempts,c.mfa_locked_until,u.email FROM rotamoto.credentials c
-        JOIN rotamoto.users u ON u.id=c.user_id WHERE c.user_id=$1 FOR UPDATE OF c`, [principal.user_id]);
-      if (!current.rowCount || !current.rows[0].mfa_enrollment_secret_ref || new Date(current.rows[0].mfa_enrollment_expires_at) <= clock())
-        throw new IdentityError('MFA_ENROLLMENT_EXPIRED', 'Enrollment expirado; inicie novamente.');
-      if (current.rows[0].mfa_secret_ref && !principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Verifique MFA antes de substituir o fator.');
-      if (current.rows[0].mfa_locked_until && new Date(current.rows[0].mfa_locked_until) > clock()) throw new IdentityError('RATE_LIMITED', 'Muitas tentativas MFA; aguarde antes de tentar novamente.');
-      const secret = await secretProvider.get(current.rows[0].mfa_enrollment_secret_ref,
-        { name: `identity/mfa/${principal.user_id}`, scope: 'installation' });
-      const counter = verifyCode(secret, code, { now: clock().getTime(), lastCounter: -1 });
-      if (counter === null) {
-        await client.query(`UPDATE rotamoto.credentials SET mfa_failed_attempts=least(mfa_failed_attempts+1,10),
-          mfa_locked_until=CASE WHEN mfa_failed_attempts+1>=10 THEN now()+interval '15 minutes' ELSE mfa_locked_until END,updated_at=now()
-          WHERE user_id=$1`, [principal.user_id]);
-        await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
-          action: 'identity.mfa.enrollment_failed', resourceType: 'user', resourceId: principal.user_id });
-        return { invalidCode: true };
-      }
-      const oldRef = current.rows[0].mfa_secret_ref;
-      const recoveryCodes = generateRecoveryCodes();
-      const now = clock();
-      await client.query(`UPDATE rotamoto.credentials SET mfa_secret_ref=mfa_enrollment_secret_ref,mfa_required=true,
-        mfa_enrollment_secret_ref=NULL,mfa_enrollment_expires_at=NULL,mfa_totp_last_counter=$2,
-        mfa_failed_attempts=0,mfa_locked_until=NULL,updated_at=$3 WHERE user_id=$1`, [principal.user_id, counter, now]);
-      await client.query(`UPDATE rotamoto.recovery_tokens SET consumed_at=$2 WHERE user_id=$1 AND purpose='mfa_recovery' AND consumed_at IS NULL`, [principal.user_id, now]);
-      for (const recoveryCode of recoveryCodes) await client.query(`INSERT INTO rotamoto.recovery_tokens
-        (id,user_id,token_digest,expires_at,purpose) VALUES ($1,$2,$3,$4,'mfa_recovery')`,
-      [id(), principal.user_id, recoveryDigest(recoveryCode), new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)]);
-      await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=$2 WHERE id=$1', [principal.session_id, now]);
+    const current = await client.query(`SELECT c.mfa_secret_ref,c.mfa_enrollment_secret_ref,c.mfa_enrollment_expires_at,
+      c.mfa_totp_last_counter,c.mfa_failed_attempts,c.mfa_locked_until,u.email FROM rotamoto.credentials c
+      JOIN rotamoto.users u ON u.id=c.user_id WHERE c.user_id=$1 FOR UPDATE OF c`, [principal.user_id]);
+    if (!current.rowCount || !current.rows[0].mfa_enrollment_secret_ref || new Date(current.rows[0].mfa_enrollment_expires_at) <= clock())
+      throw new IdentityError('MFA_ENROLLMENT_EXPIRED', 'Enrollment expirado; inicie novamente.');
+    if (current.rows[0].mfa_secret_ref && !principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Verifique MFA antes de substituir o fator.');
+    if (current.rows[0].mfa_locked_until && new Date(current.rows[0].mfa_locked_until) > clock()) throw new IdentityError('RATE_LIMITED', 'Muitas tentativas MFA; aguarde antes de tentar novamente.');
+    const secret = await secretProvider.get(current.rows[0].mfa_enrollment_secret_ref,
+      { name: `identity/mfa/${principal.user_id}`, scope: 'installation' });
+    const counter = verifyCode(secret, code, { now: clock().getTime(), lastCounter: -1 });
+    if (counter === null) {
+      await client.query(`UPDATE rotamoto.credentials SET mfa_failed_attempts=least(mfa_failed_attempts+1,10),
+        mfa_locked_until=CASE WHEN mfa_failed_attempts+1>=10 THEN now()+interval '15 minutes' ELSE mfa_locked_until END,updated_at=now()
+        WHERE user_id=$1`, [principal.user_id]);
       await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
-        action: 'identity.mfa.enabled', resourceType: 'user', resourceId: principal.user_id,
-        details: { recovery_codes_issued: recoveryCodes.length } });
-      return { recoveryCodes, oldRef, newRef: current.rows[0].mfa_enrollment_secret_ref };
-    }, 'identity.mfa.enroll');
+        action: 'identity.mfa.enrollment_failed', resourceType: 'user', resourceId: principal.user_id });
+      return { invalidCode: true };
+    }
+    const oldRef = current.rows[0].mfa_secret_ref;
+    const recoveryCodes = generateRecoveryCodes();
+    const now = clock();
+    await client.query(`UPDATE rotamoto.credentials SET mfa_secret_ref=mfa_enrollment_secret_ref,mfa_required=true,
+      mfa_enrollment_secret_ref=NULL,mfa_enrollment_expires_at=NULL,mfa_totp_last_counter=$2,
+      mfa_failed_attempts=0,mfa_locked_until=NULL,updated_at=$3 WHERE user_id=$1`, [principal.user_id, counter, now]);
+    await client.query(`UPDATE rotamoto.recovery_tokens SET consumed_at=$2 WHERE user_id=$1 AND purpose='mfa_recovery' AND consumed_at IS NULL`, [principal.user_id, now]);
+    for (const recoveryCode of recoveryCodes) await client.query(`INSERT INTO rotamoto.recovery_tokens
+      (id,user_id,token_digest,expires_at,purpose) VALUES ($1,$2,$3,$4,'mfa_recovery')`,
+    [id(), principal.user_id, recoveryDigest(recoveryCode), new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)]);
+    await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=$2 WHERE id=$1', [principal.session_id, now]);
+    await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
+      action: 'identity.mfa.enabled', resourceType: 'user', resourceId: principal.user_id,
+      details: { recovery_codes_issued: recoveryCodes.length } });
+    return { recoveryCodes, oldRef, newRef: current.rows[0].mfa_enrollment_secret_ref };
+  }
+
+  async function finishMfaEnrollment(outcome) {
     if (outcome.invalidCode) throw new IdentityError('MFA_REQUIRED', 'Código MFA inválido.');
     if (outcome.oldRef && outcome.oldRef !== outcome.newRef) await secretProvider.remove(outcome.oldRef).catch(() => {});
     return { recoveryCodes: outcome.recoveryCodes };
   }
 
+  async function confirmMfaEnrollment(sessionToken, code) {
+    const outcome = await withAuthenticatedTenant(sessionToken,
+      (client, principal) => confirmMfaEnrollmentForPrincipal(client, principal, code), 'identity.mfa.enroll');
+    return finishMfaEnrollment(outcome);
+  }
+
+  async function regenerateMfaRecoveryCodesForPrincipal(client, principal) {
+    const credential = await client.query('SELECT mfa_secret_ref FROM rotamoto.credentials WHERE user_id=$1 FOR UPDATE', [principal.user_id]);
+    if (!credential.rowCount || !credential.rows[0].mfa_secret_ref) throw new IdentityError('MFA_REQUIRED', 'MFA não está habilitado.');
+    const codes = generateRecoveryCodes(), now = clock();
+    await client.query(`UPDATE rotamoto.recovery_tokens SET consumed_at=$2
+      WHERE user_id=$1 AND purpose='mfa_recovery' AND consumed_at IS NULL`, [principal.user_id, now]);
+    for (const recoveryCode of codes) await client.query(`INSERT INTO rotamoto.recovery_tokens
+      (id,user_id,token_digest,expires_at,purpose) VALUES ($1,$2,$3,$4,'mfa_recovery')`,
+    [id(), principal.user_id, recoveryDigest(recoveryCode), new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)]);
+    await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
+      action: 'identity.mfa.recovery_codes_regenerated', resourceType: 'user', resourceId: principal.user_id,
+      details: { recovery_codes_issued: codes.length } });
+    return codes;
+  }
+
   async function regenerateMfaRecoveryCodes(sessionToken) {
-    const outcome = await withAuthenticatedTenant(sessionToken, async (client, principal) => {
-      const credential = await client.query('SELECT mfa_secret_ref FROM rotamoto.credentials WHERE user_id=$1 FOR UPDATE', [principal.user_id]);
-      if (!credential.rowCount || !credential.rows[0].mfa_secret_ref) throw new IdentityError('MFA_REQUIRED', 'MFA não está habilitado.');
-      const codes = generateRecoveryCodes(), now = clock();
-      await client.query(`UPDATE rotamoto.recovery_tokens SET consumed_at=$2
-        WHERE user_id=$1 AND purpose='mfa_recovery' AND consumed_at IS NULL`, [principal.user_id, now]);
-      for (const recoveryCode of codes) await client.query(`INSERT INTO rotamoto.recovery_tokens
-        (id,user_id,token_digest,expires_at,purpose) VALUES ($1,$2,$3,$4,'mfa_recovery')`,
-      [id(), principal.user_id, recoveryDigest(recoveryCode), new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)]);
-      await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
-        action: 'identity.mfa.recovery_codes_regenerated', resourceType: 'user', resourceId: principal.user_id,
-        details: { recovery_codes_issued: codes.length } });
-      return codes;
-    }, 'company.manage');
+    const outcome = await withAuthenticatedTenant(sessionToken, regenerateMfaRecoveryCodesForPrincipal, 'company.manage');
     return { recoveryCodes: outcome };
   }
 
@@ -791,7 +802,9 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
 
   return Object.freeze({ provisionInitialOwner, consumeOwnerInvitation, inviteMembershipWithSession, consumeMembershipInvitation,
     acceptExistingMembershipInvitation, requestPasswordRecovery,
-    consumePasswordRecovery, authenticate, startMfaEnrollment, confirmMfaEnrollment, regenerateMfaRecoveryCodes,
+    consumePasswordRecovery, authenticate, startMfaEnrollment, startMfaEnrollmentForPrincipal,
+    confirmMfaEnrollment, confirmMfaEnrollmentForPrincipal, finishMfaEnrollment,
+    regenerateMfaRecoveryCodes, regenerateMfaRecoveryCodesForPrincipal,
     resolveSession, verifyCsrf, renewCsrfToken, switchActiveCompany, revokeSession, withAuthenticatedTenant });
 }
 

@@ -67,7 +67,22 @@ const HOST=CONFIG.host;
 const ALLOWED_ORIGINS=CONFIG.allowedOrigins;
 const databaseUrl=new URL(CONFIG.databaseUrl);
 let secretProvider=null,databaseTlsCa=null;
-try{if(CONFIG.production){secretProvider=CONFIG.secretProviderModule?loadSecretProvider(CONFIG.secretProviderModule):loadLocalSecretProvider({directory:CONFIG.secretStoreDirectory,masterKeyFile:CONFIG.secretMasterKeyFile});databaseTlsCa=fs.readFileSync(CONFIG.databaseTlsCaFile,'utf8')}}catch(error){bootstrapFailure(error)}
+try{
+  if(CONFIG.production){secretProvider=CONFIG.secretProviderModule?loadSecretProvider(CONFIG.secretProviderModule):loadLocalSecretProvider({directory:CONFIG.secretStoreDirectory,masterKeyFile:CONFIG.secretMasterKeyFile});databaseTlsCa=fs.readFileSync(CONFIG.databaseTlsCaFile,'utf8')}
+  else {
+    const testSecretDirectory=process.env.ROTAMOTO_E2E_SECRET_STORE_DIRECTORY||null;
+    const testSecretMasterKeyFile=process.env.ROTAMOTO_E2E_SECRET_MASTER_KEY_FILE||null;
+    if(Boolean(testSecretDirectory)!==Boolean(testSecretMasterKeyFile))throw new Error('E2E secret-store paths must be configured together.');
+    if(testSecretDirectory){
+      const parsed=new URL(CONFIG.databaseUrl);
+      if(CONFIG.nodeEnv!=='test'||process.env.ROTAMOTO_E2E_CAMPAIGN!=='0229'||parsed.protocol!=='postgresql:'||
+        decodeURIComponent(parsed.username)!=='rotamoto_app'||parsed.password||parsed.pathname!=='/rotamoto_e2e'||
+        !['127.0.0.1','localhost','::1','[::1]'].includes(parsed.hostname)||!require('node:path').isAbsolute(testSecretDirectory)||
+        !require('node:path').isAbsolute(testSecretMasterKeyFile))throw new Error('E2E secret store is restricted to the isolated 0229 rotamoto_e2e runtime.');
+      secretProvider=loadLocalSecretProvider({directory:testSecretDirectory,masterKeyFile:testSecretMasterKeyFile});
+    }
+  }
+}catch(error){bootstrapFailure(error)}
 function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
   const parsed=new URL(value);
   const databasePath=CONFIG.nodeEnv==='test'?'/rotamoto_e2e':'/rotamoto';
@@ -78,7 +93,7 @@ function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
       :'DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
   return value;
 }
-const identityPool=createPool({connectionString:runtimeDatabaseConnectionString(),...(secretProvider?{password:async()=>{const provider=await secretProvider;return provider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
+const identityPool=createPool({connectionString:runtimeDatabaseConnectionString(),...(CONFIG.production&&secretProvider?{password:async()=>{const provider=await secretProvider;return provider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
 let marketplaceResolverPool=null;
 const marketplaceResolverUrl=process.env.ROTAMOTO_PROVIDER_RESOLVER_DATABASE_URL;
 const marketplaceResolverPasswordRef=process.env.ROTAMOTO_PROVIDER_RESOLVER_PASSWORD_REF;

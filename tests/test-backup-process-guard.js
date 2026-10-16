@@ -1,12 +1,23 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { backupWebProcessAllowed, backupExecutorProcessAllowed, parseGid } = require('../backend/runtime/backup-process-guard');
+const { backupRuntimePolicy, detectBackupPlatform } = require('../backend/runtime/backup-platform');
 const uid = process.getuid(), gid = process.getgid();
-assert.equal(backupWebProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }), true);
-assert.equal(backupWebProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }), false);
-assert.equal(backupWebProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1) }), false);
-assert.equal(backupExecutorProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }, uid, [gid]), true);
-assert.equal(backupExecutorProcessAllowed({ NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }, uid, [gid]), false);
+assert.equal(backupRuntimePolicy({ env: { NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }, uid, groups: [gid], role: 'web', platform: 'linux' }).enabled, true);
+assert.equal(backupRuntimePolicy({ env: { NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }, uid, groups: [gid], role: 'web', platform: 'linux' }).enabled, false);
+assert.equal(backupRuntimePolicy({ env: { NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1) }, uid, groups: [gid], role: 'web', platform: 'linux' }).enabled, false);
+assert.equal(backupRuntimePolicy({ env: { NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }, uid, groups: [gid], role: 'executor', platform: 'linux' }).enabled, true);
+assert.equal(backupRuntimePolicy({ env: { NODE_ENV: 'development', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid + 1), ROTAMOTO_BACKUP_CONTROL_GROUP_GID: String(gid) }, uid, groups: [gid], role: 'executor', platform: 'linux' }).enabled, false);
 assert.equal(parseGid('0'), null); assert.equal(parseGid('abc'), null);
 assert.equal(backupWebProcessAllowed({ NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0228' }, uid, []), true);
+const termux = { PREFIX: '/data/data/com.termux/files/usr', TERMUX_VERSION: '0.118', ROTAMOTO_BACKUP_TERMUX_SHARED_UID: 'enabled',
+  ROTAMOTO_BACKUP_TERMUX_SHARED_UID_RISK_ACK: 'HTTP_AND_EXECUTOR_SHARE_APP_UID', ROTAMOTO_BACKUP_EXECUTOR_UID: String(uid) };
+assert.equal(detectBackupPlatform(termux), 'termux');
+assert.equal(backupRuntimePolicy({ env: termux, uid, groups: [], role: 'web' }).isolation, 'termux-shared-uid');
+assert.equal(backupWebProcessAllowed(termux, uid, []), true);
+assert.equal(backupExecutorProcessAllowed(termux, uid, []), true);
+assert.equal(backupWebProcessAllowed({ ...termux, ROTAMOTO_BACKUP_TERMUX_SHARED_UID_RISK_ACK: undefined }, uid, []), false);
+assert.equal(backupWebProcessAllowed({ ...termux, ROTAMOTO_BACKUP_CONTROL_GROUP_GID: '123' }, uid, []), false);
+assert.equal(backupRuntimePolicy({ env: { ROTAMOTO_BACKUP_EXECUTOR_UID: '2001', ROTAMOTO_BACKUP_CONTROL_GROUP_GID: '3001' }, uid: 2000, groups: [3001], role: 'web', platform: 'linux' }).isolation, 'dedicated-uid-and-group');
+assert.equal(backupRuntimePolicy({ env: {}, uid, groups: [], role: 'web', platform: 'unsupported' }).enabled, false);
 process.stdout.write('Backup process guard: separated web/worker identities, group access and synthetic test scope PASS\n');

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createBackupControlStore, validateConfig, nextSchedule } = require('../backend/runtime/backup-control');
+const { createBackupControlStore, validateConfig, nextSchedule, publicState } = require('../backend/runtime/backup-control');
 const { safeDisposableTarget, safeSyntheticSource } = require('../backend/runtime/backup-executor');
 
 (async () => {
@@ -19,10 +19,24 @@ const { safeDisposableTarget, safeSyntheticSource } = require('../backend/runtim
     { frequency: 'daily', timeUtc: '02:30', retentionDays: 7, destination: 'external', rpoHours: null, rtoMinutes: null });
   assert.equal(nextSchedule({ frequency: 'daily', timeUtc: '02:00' }, now), '2026-10-15T02:00:00.000Z');
   await store.configure({ frequency: 'daily', timeUtc: '02:00', retentionDays: 7, destination: 'local' }, 'admin-a');
+  assert.equal((await store.read()).executor.state, 'UNKNOWN');
+  const heartbeatWorker = `backup-executor:${'e'.repeat(8)}-${'f'.repeat(4)}-${'4abc'}-${'8abc'}-${'e'.repeat(12)}`;
+  await store.updateExecutorHeartbeat(heartbeatWorker, 'ONLINE', 'termux-shared-uid');
+  assert.equal((await store.read()).executor.state, 'ONLINE');
+  await store.updateExecutorHeartbeat(heartbeatWorker, 'STOPPED', 'termux-shared-uid');
+  assert.equal((await store.read()).executor.state, 'OFFLINE');
+  await assert.rejects(store.updateExecutorHeartbeat('invalid', 'ONLINE', 'termux-shared-uid'), /BACKUP_EXECUTOR_HEARTBEAT_INVALID/u);
   const key = 'request-key-0228-000001';
   const queued = await store.enqueue('backup', 'admin-a', { idempotencyKey: key });
   const duplicate = await store.enqueue('backup', 'admin-a', { idempotencyKey: key });
   assert.equal(duplicate.id, queued.id); assert.equal(duplicate.duplicate, true);
+  const concurrentStore = createBackupControlStore({ directory: root, clock: () => new Date(now) });
+  const concurrentJobs = await Promise.all(Array.from({ length: 32 }, (_, index) =>
+    (index % 2 ? store : concurrentStore).enqueue('inventory', 'admin-concurrent',
+      { idempotencyKey: `backup-concurrent-${String(index).padStart(4, '0')}` })));
+  assert.equal(new Set(concurrentJobs.map(job => job.id)).size, 32,
+    'independent store instances serialize concurrent IPC writes without losing or duplicating jobs');
+  assert.equal((await store.read()).jobs.filter(job => job.actorRef === 'admin-concurrent').length, 32);
   assert.equal((await store.claimNext('worker-a')).id, queued.id);
   await store.enqueue('inventory', 'admin-a');
   assert.equal(await store.claimNext('worker-b'), null, 'only one persistent job may run at a time');
@@ -37,6 +51,8 @@ const { safeDisposableTarget, safeSyntheticSource } = require('../backend/runtim
   await assert.rejects(store.approveRestore(request.id, 'admin-b', false), /BACKUP_REAUTH_REQUIRED/u);
   const approved = await store.approveRestore(request.id, 'admin-b', true);
   assert.equal(approved.request.status, 'APPROVED'); assert.equal(approved.job.kind, 'restore_test');
+  assert.equal(publicState(await store.read()).restoreRequests[0].jobId, approved.job.id,
+    'administrative status responses link approved restore requests to their executor job');
   const due = await store.dueSchedule(new Date('2026-10-15T02:01:00Z'));
   assert.equal(due.kind, 'backup'); assert.equal((await store.dueSchedule(new Date('2026-10-15T02:02:00Z'))), null);
   assert.equal(safeDisposableTarget('postgresql://rotamoto_restore@127.0.0.1:55440/rotamoto_disposable_0228_test',

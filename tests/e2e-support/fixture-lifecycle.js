@@ -31,6 +31,7 @@ const { createPool } = require('../../backend/postgres/connection');
 const { resolveE2eTargets, storedLoopbackCredential } = require('./guards');
 const { AsyncLocalStorage } = require('node:async_hooks');
 const { createFixtureManifest, safeMetadata } = require('./fixture-manifest');
+const { loadLocalSecretProvider } = require('../../backend/runtime/secret-provider');
 const { performance } = require('node:perf_hooks');
 
 function savepointPool(client) {
@@ -56,7 +57,7 @@ function rateLimiter() {
     invitation: { limit: 50, windowMs: 60000 }, provision: { limit: 50, windowMs: 60000 }, mfa: { limit: 50, windowMs: 60000 }, default: { limit: 1000, windowMs: 60000 } } });
 }
 
-async function start(handler, requestContext, onRequestProfile = null) {
+async function start(handler, requestContext, onRequestProfile = null, onRequestStart = null) {
   // The rollback fixture uses one PostgreSQL client and savepoints, so keep its
   // legacy serialized mode until it explicitly switches to independent pool
   // transactions. Concurrent mode is used only by the opt-in E2E scenario.
@@ -72,6 +73,8 @@ async function start(handler, requestContext, onRequestProfile = null) {
       ? req.headers['x-campaign-0156-client'] : 'unlabelled';
     const profile = onRequestProfile ? { requestId: req.requestId, path: new URL(req.url, 'http://127.0.0.1').pathname,
       clientLabel, poolWaitMs: 0, queryMs: 0, queryCount: 0, queryClasses: Object.create(null) } : null;
+    if (onRequestStart) onRequestStart(Object.freeze({ requestId: req.requestId, method: req.method,
+      path: new URL(req.url, 'http://127.0.0.1').pathname }));
     const requestStarted = performance.now();
     const execute = async () => requestContext.run({ requestId: req.requestId, path: req.url, profile }, async () => {
       try {
@@ -104,7 +107,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
   persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false,
   businessFixture = true, onTestEmail = null, independentRequestTransactions = false, retainIndependentFixture = false,
   onIndependentFixtureRetained = null, onIndependentConnection = null, onIndependentTransaction = null,
-  onRequestProfile = null, independentPoolSize = 8 } = {}) {
+  onRequestProfile = null, onRequestStart = null, independentPoolSize = 8 } = {}) {
   if (env.NODE_ENV !== 'test' || typeof extraHttpHandlers !== 'function') throw new Error('Handlers extras do fixture só são aceitos no modo test.');
   if (onTestEmail !== null && typeof onTestEmail !== 'function') throw new Error('Observador de email E2E inválido.');
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
@@ -125,6 +128,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
   if (onIndependentConnection !== null && typeof onIndependentConnection !== 'function') throw new Error('Observador de conexão independente inválido.');
   if (onIndependentTransaction !== null && typeof onIndependentTransaction !== 'function') throw new Error('Observador de transação independente inválido.');
   if (onRequestProfile !== null && typeof onRequestProfile !== 'function') throw new Error('Observador de perfil E2E inválido.');
+  if (onRequestStart !== null && typeof onRequestStart !== 'function') throw new Error('Observador de início de requisição E2E inválido.');
   if (!Number.isSafeInteger(independentPoolSize) || independentPoolSize < 1 || independentPoolSize > 20)
     throw new Error('Tamanho de pool independente E2E inválido.');
   const fixtureManifest = disposableCampaign ? null : await createFixtureManifest({
@@ -228,7 +232,18 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const emails = [];
     const operatorMarker = crypto.randomBytes(32).toString('base64url');
     const mfaSecrets = new Map();
-    const secretProvider = Object.freeze({ async put({ value }) { const secretRef=`local-v1:${crypto.randomUUID()}`;mfaSecrets.set(secretRef,value);return {secretRef}; },
+    let secretProvider;
+    const sharedSecretDirectory=env.ROTAMOTO_E2E_SECRET_STORE_DIRECTORY||null;
+    const sharedSecretMasterKeyFile=env.ROTAMOTO_E2E_SECRET_MASTER_KEY_FILE||null;
+    if(Boolean(sharedSecretDirectory)!==Boolean(sharedSecretMasterKeyFile))throw new Error('E2E secret-store paths must be configured together.');
+    if(sharedSecretDirectory){
+      const runDirectory=path.resolve(env.ROTAMOTO_E2E_RUN_DIRECTORY||'');
+      if(env.ROTAMOTO_E2E_CAMPAIGN!=='0229'||!path.isAbsolute(env.ROTAMOTO_E2E_RUN_DIRECTORY||'')||
+        path.resolve(sharedSecretDirectory)!==path.join(runDirectory,'mfa-secret-store')||
+        path.resolve(sharedSecretMasterKeyFile)!==path.join(runDirectory,'mfa-master.key'))
+        throw new Error('Shared MFA keystore is restricted to the private 0229 run directory.');
+      secretProvider=await loadLocalSecretProvider({directory:sharedSecretDirectory,masterKeyFile:sharedSecretMasterKeyFile});
+    }else secretProvider=Object.freeze({ async put({ value }) { const secretRef=`local-v1:${crypto.randomUUID()}`;mfaSecrets.set(secretRef,value);return {secretRef}; },
       async get(secretRef) { if(!mfaSecrets.has(secretRef))throw new Error('missing test secret');return mfaSecrets.get(secretRef); },
       async remove(secretRef) { mfaSecrets.delete(secretRef); } });
     const password = `E2E-${crypto.randomBytes(30).toString('base64url')}`;
@@ -265,13 +280,23 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     if (!Array.isArray(testHandlers) || testHandlers.some(handler => typeof handler !== 'function')) throw new Error('Handlers E2E inválidos.');
     // Test-only domain adapters must run before the broad /api/admin handler so
     // mounted marketplace/admin subdomains can use their canonical routes.
-    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext, onRequestProfile);
+    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext,
+      onRequestProfile, onRequestStart);
 
-    const call = async (path, { method = 'GET', body, cookie, csrf, headers = {} } = {}) => {
-      const response = await fetch(`${host.base}${path}`, { method, headers: { Origin: allowedOrigins[0] || host.base,
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(cookie ? { Cookie: cookie } : {}),
-        ...(csrf ? { 'X-CSRF-Token': csrf } : {}), ...headers },
-      body: body === undefined ? undefined : JSON.stringify(body) });
+    const call = async (path, { method = 'GET', body, cookie, csrf, headers = {}, timeoutMs = 30_000 } = {}) => {
+      if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120_000) throw new Error('E2E HTTP timeout is invalid.');
+      let response;
+      try {
+        response = await fetch(`${host.base}${path}`, { method, headers: { Origin: allowedOrigins[0] || host.base,
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(cookie ? { Cookie: cookie } : {}),
+          ...(csrf ? { 'X-CSRF-Token': csrf } : {}), ...headers },
+        body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
+      } catch (error) {
+        if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+          throw Object.assign(new Error(`E2E_HTTP_TIMEOUT ${method} ${String(path).split('?')[0].slice(0, 100)}`), { code: 'E2E_HTTP_TIMEOUT' });
+        }
+        throw error;
+      }
       const text = await response.text();
       return { status: response.status, body: text ? JSON.parse(text) : null, headers: response.headers };
     };
@@ -663,7 +688,10 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
           [companyId, account.userId]);
         assert.equal(membership.rowCount, 1, 'each synthetic account has one active tenant membership');
         sessions.push(Object.freeze({ label: account.label, userId: account.userId, membershipId: membership.rows[0].id, companyId, cookie,
-          csrf: session.body.csrfToken, permissions: Object.freeze([...(session.body.permissions || [])]) }));
+          csrf: session.body.csrfToken, permissions: Object.freeze([...(session.body.permissions || [])]),
+          // Synthetic credentials stay in memory for Browser login tests; never include them in manifests or logs.
+          browserCredentials: Object.freeze({ email: account.email, password: account.password,
+            ...(account.requiresMfa ? { mfaSecret: account.secret } : {}) }) }));
       }
       await syncFixtureManifest();
       return Object.freeze(sessions);
@@ -759,8 +787,8 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       // retry is closing. The fixture is transaction-scoped; terminate those
       // test-only sockets so cleanup always reaches rollback and emits a final
       // result instead of hanging in server.close().
-      await host.pauseAndDrain();
       host.server.closeAllConnections?.();
+      await Promise.race([host.pauseAndDrain(), new Promise(resolve => setTimeout(resolve, 5000))]);
       await new Promise(resolve => host.server.close(resolve));
     }
     if (transactionOpen) {

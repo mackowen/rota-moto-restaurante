@@ -9,26 +9,29 @@ const { createHttpBackupRemote } = require('./backup-remote-provider');
 const { appendOperatorAudit } = require('./operator-audit');
 const { createClient } = require('../postgres/connection');
 const { getMigrations } = require('../postgres/migrate');
+const { backupRuntimePolicy } = require('./backup-platform');
 
 function safeSyntheticSource(value, env = process.env) {
-  if (env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0228' || typeof value !== 'string') return false;
+  const campaign = env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
+  if (!['0228', '0229'].includes(campaign) || typeof value !== 'string') return false;
   try {
     const url = new URL(value), database = decodeURIComponent(url.pathname.slice(1));
     return ['postgres:', 'postgresql:'].includes(url.protocol) && !url.password && !url.search && !url.hash &&
       ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname.toLowerCase()) &&
-      decodeURIComponent(url.username) === 'rotamoto_backup' && /^rotamoto_disposable_0228_[a-z0-9_]{1,40}$/u.test(database);
+      decodeURIComponent(url.username) === 'rotamoto_backup' && new RegExp(`^rotamoto_disposable_${campaign}_[a-z0-9_]{1,40}$`, 'u').test(database);
   } catch (_) { return false; }
 }
 
 function safeDisposableTarget(value, env = process.env) {
-  if (env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0228' || typeof value !== 'string') return false;
+  const campaign = env.ROTAMOTO_DISPOSABLE_CAMPAIGN;
+  if (!['0228', '0229'].includes(campaign) || typeof value !== 'string') return false;
   try {
     const url = new URL(value), database = decodeURIComponent(url.pathname.slice(1));
     const loopback = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(url.hostname.toLowerCase());
     const allowedHosts = String(env.ROTAMOTO_DISPOSABLE_RESTORE_HOSTS || '').split(',').map(host => host.trim().toLowerCase()).filter(Boolean);
     const hostAllowed = env.NODE_ENV === 'test' ? loopback : env.ROTAMOTO_DISPOSABLE_RESTORE_ENABLED === 'true' && allowedHosts.includes(url.hostname.toLowerCase());
     return ['postgres:', 'postgresql:'].includes(url.protocol) && !url.password && !url.search && !url.hash && hostAllowed &&
-      decodeURIComponent(url.username) === 'rotamoto_restore' && /^rotamoto_disposable_0228_[a-z0-9_]{1,40}$/u.test(database) &&
+      decodeURIComponent(url.username) === 'rotamoto_restore' && new RegExp(`^rotamoto_disposable_${campaign}_[a-z0-9_]{1,40}$`, 'u').test(database) &&
       !['rotamoto', 'rotamoto_e2e'].includes(database);
   } catch (_) { return false; }
 }
@@ -140,7 +143,7 @@ function createBackupExecutor({ store, env = process.env, operations = {} }) {
   }
   async function runOne() {
     const job = await store.claimNext(workerId); if (!job) return false;
-    try { await runJob(job); await store.updateJob(job.id, { type: 'terminal', status: 'COMPLETED' }); }
+    try { await runJob(job); await store.updateJob(job.id, { type: 'terminal', status: 'SUCCEEDED' }); }
     catch (error) {
       const code = /^[A-Z0-9_]{2,64}$/u.test(error.code || '') ? error.code : 'BACKUP_OPERATION_FAILED';
       await store.updateJob(job.id, { type: 'result', lastRun: { status: 'failed', completedAt: new Date().toISOString(),
@@ -156,10 +159,19 @@ function createBackupExecutor({ store, env = process.env, operations = {} }) {
     if (!Number.isInteger(intervalMs) || intervalMs < 250 || intervalMs > 60_000) throw new Error('BACKUP_EXECUTOR_INTERVAL_INVALID');
     if (typeof store.acquireExecutorLease !== 'function') throw Object.assign(new Error('BACKUP_EXECUTOR_LEASE_UNAVAILABLE'), { code: 'BACKUP_EXECUTOR_LEASE_UNAVAILABLE' });
     const release = await store.acquireExecutorLease(workerId);
+    const policy = backupRuntimePolicy({ env, uid: process.getuid?.(), groups: process.getgroups?.() || [], role: 'executor' });
     try {
       await store.recoverInterrupted();
-      while (!signal?.aborted) { await tick(); await new Promise(resolve => setTimeout(resolve, intervalMs)); }
-    } finally { await release(); }
+      await store.updateExecutorHeartbeat(workerId, 'ONLINE', policy.isolation);
+      while (!signal?.aborted) {
+        await tick();
+        await store.updateExecutorHeartbeat(workerId, 'ONLINE', policy.isolation);
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    } finally {
+      await store.updateExecutorHeartbeat(workerId, 'STOPPED', policy.isolation).catch(() => {});
+      await release();
+    }
   }, runOne, tick });
 }
 module.exports = { createBackupExecutor, safeDisposableTarget, safeSyntheticSource, assertEmptyDisposableTarget, verifyRestoredDatabase };

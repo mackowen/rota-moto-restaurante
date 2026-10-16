@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 
 const FREQUENCIES = new Set(['disabled', 'daily', 'weekly']);
-const TERMINAL = new Set(['COMPLETED', 'FAILED', 'RETAINED', 'UNKNOWN_OUTCOME']);
+const TERMINAL = new Set(['SUCCEEDED', 'COMPLETED', 'FAILED', 'RETAINED', 'UNKNOWN_OUTCOME']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 function controlError(code) { return Object.assign(new Error(code), { code }); }
 function validateConfig(input) {
@@ -85,7 +85,7 @@ async function clearDeadLock(lockPath, sharedGroupGid = null) {
 function initialState() {
   return { version: 1, config: { frequency: 'disabled', timeUtc: '02:00', retentionDays: 30, destination: 'local', rpoHours: null, rtoMinutes: null },
     nextRunAt: null, lastRun: null, inventory: { checkedAt: null, verified: 0, incomplete: 0, schemaState: 'UNKNOWN' },
-    jobs: [], restoreRequests: [], lastScheduleSlot: null };
+    jobs: [], restoreRequests: [], lastScheduleSlot: null, executor: null };
 }
 function nextSchedule(config, now = new Date()) {
   if (config.frequency === 'disabled') return null;
@@ -94,21 +94,26 @@ function nextSchedule(config, now = new Date()) {
   if (date <= now) date.setUTCDate(date.getUTCDate() + (config.frequency === 'weekly' ? 7 : 1));
   return date.toISOString();
 }
-function publicState(state) {
+function publicState(state, now = new Date()) {
   const lastRun = state.lastRun || null;
-  const rpoAgeHours = lastRun?.completedAt ? Math.max(0, (Date.now() - Date.parse(lastRun.completedAt)) / 3_600_000) : null;
+  const rpoAgeHours = lastRun?.completedAt ? Math.max(0, (now.getTime() - Date.parse(lastRun.completedAt)) / 3_600_000) : null;
   const alerts = [];
   if (lastRun?.status === 'failed') alerts.push({ code: 'BACKUP_LAST_RUN_FAILED', severity: 'critical' });
-  if (state.nextRunAt && Date.parse(state.nextRunAt) < Date.now()) alerts.push({ code: 'BACKUP_SCHEDULE_OVERDUE', severity: 'high' });
+  if (state.nextRunAt && Date.parse(state.nextRunAt) < now.getTime()) alerts.push({ code: 'BACKUP_SCHEDULE_OVERDUE', severity: 'high' });
   if (state.config?.destination === 'external' && lastRun?.externalPublished !== true) alerts.push({ code: 'BACKUP_EXTERNAL_MISSING', severity: 'high' });
+  const heartbeat = state.executor?.lastHeartbeatAt ? Date.parse(state.executor.lastHeartbeatAt) : NaN;
+  const executor = { state: state.executor?.status === 'STOPPED' ? 'OFFLINE' :
+    Number.isFinite(heartbeat) && now.getTime() - heartbeat <= 10_000 ? 'ONLINE' : Number.isFinite(heartbeat) ? 'STALE' : 'UNKNOWN',
+    lastHeartbeatAt: Number.isFinite(heartbeat) ? state.executor.lastHeartbeatAt : null,
+    isolation: state.executor?.isolation || 'not-reported' };
   return { config: state.config, nextRunAt: state.nextRunAt, lastRun,
     rpo: { ageHours: Number.isFinite(rpoAgeHours) ? Math.round(rpoAgeHours * 100) / 100 : null,
       targetHours: state.config?.rpoHours ?? null, withinTarget: state.config?.rpoHours && rpoAgeHours !== null ? rpoAgeHours <= state.config.rpoHours : null },
     rto: { lastRestoreDurationMs: lastRun?.status === 'restore_verified' ? lastRun.durationMs : null, targetMinutes: state.config?.rtoMinutes ?? null },
-    alerts, inventory: state.inventory, jobs: state.jobs.slice(-50).reverse().map(({ id, kind, status, createdAt, startedAt, finishedAt, progress, errorCode, actorRef }) =>
+    executor, alerts, inventory: state.inventory, jobs: state.jobs.slice(-50).reverse().map(({ id, kind, status, createdAt, startedAt, finishedAt, progress, errorCode, actorRef }) =>
       ({ id, kind, status, createdAt, startedAt, finishedAt, progress, errorCode, actorRef })),
-    restoreRequests: state.restoreRequests.slice(-20).reverse().map(({ id, recoverySetId, status, requestedAt, requestedBy, approvedAt, approvedBy, errorCode }) =>
-      ({ id, recoverySetId, status, requestedAt, requestedBy, approvedAt, approvedBy, errorCode })) };
+    restoreRequests: state.restoreRequests.slice(-20).reverse().map(({ id, recoverySetId, status, requestedAt, requestedBy, approvedAt, approvedBy, errorCode, jobId }) =>
+      ({ id, recoverySetId, status, requestedAt, requestedBy, approvedAt, approvedBy, errorCode, jobId: jobId || null })) };
 }
 function createBackupControlStore({ directory, clock = () => new Date(), sharedGroupGid = null }) {
   const root = validateStoreDirectory(directory), stateFile = path.join(root, 'control.json'), lockPath = path.join(root, '.control.lock'),
@@ -135,14 +140,18 @@ function createBackupControlStore({ directory, clock = () => new Date(), sharedG
   }
   async function locked(operation) {
     await ensurePrivateDirectory(root, sharedGroupGid);
-    let lock;
-    try { lock = await fs.open(lockPath, 'wx', sharedGroupGid === null ? 0o600 : 0o660); }
-    catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      if (await clearDeadLock(lockPath, sharedGroupGid)) {
-        try { lock = await fs.open(lockPath, 'wx', sharedGroupGid === null ? 0o600 : 0o660); }
-        catch (retryError) { if (retryError.code === 'EEXIST') throw controlError('BACKUP_CONTROL_BUSY'); throw retryError; }
-      } else throw controlError('BACKUP_CONTROL_BUSY');
+    let lock, attempt = 0;
+    const deadline = Date.now() + 10_000;
+    while (!lock) {
+      try { lock = await fs.open(lockPath, 'wx', sharedGroupGid === null ? 0o600 : 0o660); }
+      catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        try { if (await clearDeadLock(lockPath, sharedGroupGid)) continue; }
+        catch (lockError) { if (lockError.code !== 'BACKUP_CONTROL_BUSY') throw lockError; }
+        if (Date.now() >= deadline) throw controlError('BACKUP_CONTROL_BUSY');
+        attempt++;
+        await new Promise(resolve => setTimeout(resolve, Math.min(75, 5 + attempt * 4)));
+      }
     }
     try {
       if (sharedGroupGid !== null) await lock.chmod(0o660);
@@ -161,10 +170,10 @@ function createBackupControlStore({ directory, clock = () => new Date(), sharedG
       if (typeof workerId !== 'string' || !/^backup-executor:[0-9a-f-]{36}$/u.test(workerId)) throw controlError('BACKUP_EXECUTOR_ID_INVALID');
       return openExclusiveLock(executorLockPath, { pid: process.pid, at: clock().toISOString(), workerId });
     },
-    async read() { return locked(state => publicState(state)); },
+    async read() { return locked(state => publicState(state, clock())); },
     async configure(input, actorRef) { const config = validateConfig(input); return locked(state => {
       state.config = config; state.nextRunAt = nextSchedule(config, clock()); state.updatedAt = clock().toISOString(); state.updatedBy = actorRef;
-      return publicState(state);
+      return publicState(state, clock());
     }); },
     async enqueue(kind, actorRef, details = {}) { if (!['backup', 'verify', 'inventory'].includes(kind) ||
       kind === 'verify' && !UUID.test(details.recoverySetId || '') ||
@@ -203,6 +212,12 @@ function createBackupControlStore({ directory, clock = () => new Date(), sharedG
       job.status = 'RUNNING'; job.startedAt = clock().toISOString(); job.workerId = workerId;
       job.progress = { phase: 'starting', percent: 1 }; return { ...job };
     }); },
+    async updateExecutorHeartbeat(workerId, status = 'ONLINE', isolation = 'not-reported') {
+      if (typeof workerId !== 'string' || !/^backup-executor:[0-9a-f-]{36}$/u.test(workerId) || !['ONLINE', 'STOPPED'].includes(status) ||
+          !['dedicated-uid-and-group', 'termux-shared-uid', 'synthetic-test', 'not-reported'].includes(isolation))
+        throw controlError('BACKUP_EXECUTOR_HEARTBEAT_INVALID');
+      return locked(state => { state.executor = { lastHeartbeatAt: clock().toISOString(), status, isolation }; return { ...state.executor }; });
+    },
     async updateJob(id, update) { return locked(state => {
       const job = state.jobs.find(item => item.id === id); if (!job) throw controlError('BACKUP_JOB_NOT_FOUND');
       if (!['progress', 'result', 'errorCode', 'terminal'].includes(update.type)) throw controlError('BACKUP_JOB_UPDATE_INVALID');
@@ -210,9 +225,10 @@ function createBackupControlStore({ directory, clock = () => new Date(), sharedG
       if (update.type === 'result') { state.lastRun = update.lastRun; if (update.inventory) state.inventory = update.inventory; }
       if (update.type === 'errorCode') job.errorCode = /^[A-Z0-9_]{2,64}$/u.test(update.code || '') ? update.code : 'BACKUP_OPERATION_FAILED';
       if (update.type === 'terminal') {
-        job.status = update.status; job.finishedAt = clock().toISOString(); job.progress = { phase: update.status.toLowerCase(), percent: update.status === 'COMPLETED' ? 100 : job.progress.percent };
+        if (!['SUCCEEDED', 'COMPLETED', 'FAILED', 'UNKNOWN_OUTCOME'].includes(update.status)) throw controlError('BACKUP_JOB_STATUS_INVALID');
+        job.status = update.status; job.finishedAt = clock().toISOString(); job.progress = { phase: update.status.toLowerCase(), percent: ['SUCCEEDED', 'COMPLETED'].includes(update.status) ? 100 : job.progress.percent };
         if (job.restoreRequestId) { const request = state.restoreRequests.find(item => item.id === job.restoreRequestId);
-          if (request) { request.status = update.status === 'COMPLETED' ? 'COMPLETED' : 'FAILED'; request.finishedAt = job.finishedAt; request.errorCode = job.errorCode || null; } }
+          if (request) { request.status = ['SUCCEEDED', 'COMPLETED'].includes(update.status) ? 'SUCCEEDED' : update.status; request.finishedAt = job.finishedAt; request.errorCode = job.errorCode || null; } }
       }
       return { ...job };
     }); },

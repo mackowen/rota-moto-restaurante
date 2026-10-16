@@ -268,20 +268,25 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
       if (path === '/api/identity/mfa/enrollment' && req.method === 'POST') {
         exactKeys(await readJson(req), []);
-        const result = await requireSessionMutation(req, 'identity.mfa.enroll', (_client, _principal, token) => identityService.startMfaEnrollment(token));
+        const result = await requireSessionMutation(req, 'identity.mfa.enroll', (client, principal) =>
+          identityService.startMfaEnrollmentForPrincipal(client, principal));
         status = 200; send(res, status, result); return true;
       }
 
       if (path === '/api/identity/mfa/enrollment/confirm' && req.method === 'POST') {
         const body = await readJson(req); exactKeys(body, ['code']);
         if (typeof body.code !== 'string' || !/^\d{6}$/u.test(body.code)) throw fail('INVALID_INPUT', 'Código MFA inválido.');
-        const result = await requireSessionMutation(req, 'identity.mfa.enroll', (_client, _principal, token) => identityService.confirmMfaEnrollment(token, body.code));
+        const outcome = await requireSessionMutation(req, 'identity.mfa.enroll', (client, principal) =>
+          identityService.confirmMfaEnrollmentForPrincipal(client, principal, body.code));
+        const result = await identityService.finishMfaEnrollment(outcome);
         status = 200; send(res, status, result); return true;
       }
 
       if (path === '/api/identity/mfa/recovery-codes' && req.method === 'POST') {
         exactKeys(await readJson(req), []);
-        const result = await requireSessionMutation(req, 'company.manage', (_client, _principal, token) => identityService.regenerateMfaRecoveryCodes(token));
+        const recoveryCodes = await requireSessionMutation(req, 'company.manage', (client, principal) =>
+          identityService.regenerateMfaRecoveryCodesForPrincipal(client, principal));
+        const result = { recoveryCodes };
         status = 200; send(res, status, result); return true;
       }
 
