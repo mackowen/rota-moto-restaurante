@@ -37,10 +37,12 @@ async function call(_unused, { method = 'GET', url = '/api/admin/backup', body =
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rotamoto-backup-admin-http-'));
   global.store = createBackupControlStore({ directory: root });
   let receivedSecret = false;
+  let requestedDestinationId = null;
+  let disabledDestinationId = null;
   global.destinationStore = { async list() { return [{ id: '09a9b439-7047-4b58-9682-8753da4a809f', name: 'Synthetic', provider: 's3', credentialConfigured: true }]; },
     async save(body) { receivedSecret = body.secretAccessKey === 'synthetic-secret-123456789'; return { id: '09a9b439-7047-4b58-9682-8753da4a809f', name: body.name, credentialConfigured: true }; },
-    async credentials() { return { provider: 's3', endpoint: 'https://backup.example.net', credentials: { secretAccessKey: 'synthetic-secret-123456789' } }; },
-    async disable(id) { return { id, active: false }; } };
+    async credentials(id) { requestedDestinationId = id; throw Object.assign(new Error('synthetic missing destination'), { code: 'BACKUP_DESTINATION_NOT_FOUND' }); },
+    async disable(id) { disabledDestinationId = id; return { id, active: false }; } };
   try {
     assert.equal((await call(null, { allowlisted: false })).status, 503);
     assert.equal((await call(null, { actor: '99a9b439-7047-4b58-9682-8753da4a809f' })).status, 403);
@@ -68,6 +70,11 @@ async function call(_unused, { method = 'GET', url = '/api/admin/backup', body =
     assert.equal(JSON.stringify(status.body).includes('synthetic-secret-123456789'), false);
     const destination = await call(null, { method: 'PUT', url: '/api/admin/backup/destinations', body: { name: 'Synthetic', secretAccessKey: 'synthetic-secret-123456789' } });
     assert.equal(destination.status, 200); assert.equal(receivedSecret, true); assert.equal(JSON.stringify(destination.body).includes('synthetic-secret-123456789'), false);
+    const destinationId = '09a9b439-7047-4b58-9682-8753da4a809f';
+    const destinationTest = await call(null, { method: 'POST', url: `/api/admin/backup/destinations/${destinationId}/test`, body: {} });
+    assert.equal(destinationTest.status, 404); assert.equal(requestedDestinationId, destinationId, 'test endpoint passes the destination UUID to the vault');
+    const disabled = await call(null, { method: 'POST', url: `/api/admin/backup/destinations/${destinationId}/disable`, body: {} });
+    assert.equal(disabled.status, 200); assert.equal(disabledDestinationId, destinationId, 'disable endpoint passes the destination UUID to the vault');
     assert(auditEvents.length >= 5); assert(auditEvents.every(entry => entry.actorRef === ADMIN_A || entry.actorRef === ADMIN_B));
     process.stdout.write('Backup admin HTTP: system allowlist, MFA, CSRF, idempotency, dual approval and sanitized status PASS\n');
   } finally { delete global.store; delete global.destinationStore; await fs.rm(root, { recursive: true, force: true }); }

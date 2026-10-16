@@ -64,12 +64,12 @@ function createBackupAdminHttpHandler({ identityService, store, destinationStore
         if (expected === 'destination-disable') {
           requireRecentMfa(principal); exact(body, []);
           if (!destinationStore) throw Object.assign(new Error(), { code: 'BACKUP_DESTINATION_STORE_UNAVAILABLE' });
-          return { result: await destinationStore.disable(url.pathname.split('/')[4]), actorRef: principal.user_id, action: 'backup.destination.disabled' };
+          return { result: await destinationStore.disable(url.pathname.split('/')[5]), actorRef: principal.user_id, action: 'backup.destination.disabled' };
         }
         if (expected === 'destination-test') {
           requireRecentMfa(principal); exact(body, []);
           if (!destinationStore) throw Object.assign(new Error(), { code: 'BACKUP_DESTINATION_STORE_UNAVAILABLE' });
-          const destination = await destinationStore.credentials(url.pathname.split('/')[4]);
+          const destination = await destinationStore.credentials(url.pathname.split('/')[5]);
           const storageProviders = require('../runtime/backup-storage-providers');
           let result;
           try {
