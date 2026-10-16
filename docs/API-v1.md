@@ -35,7 +35,7 @@ Este documento descreve a API local do backend do Restaurante. O servidor deve p
 | `POST /api/identity/invitations/accept` | Token de owner-invitation | `token,password` | Aceita o provisionamento inicial existente | Não é convite público genérico para memberships. |
 | `POST /api/identity/membership-invitations/accept` | Token de uso único | `token,password` | Cria credencial, verifica email e ativa nova associação; retorna IDs canônicos | Token nunca aparece na resposta; conta existente deve aceitar autenticada. Convite administrativo exige MFA antes de criar sessão. |
 | `POST /api/identity/membership-invitations/accept-authenticated` | Sessão + CSRF; usuário deve ser o destinatário | `token` | Ativa associação convidada para conta já existente | Consumo transacional e único; mudança para empresa exige seleção validada posterior. |
-| `POST /api/admin/tenants/provision` | Adapter de operador privilegiado + rate limit | `companyName,email,idempotencyKey` | 202 com IDs e status de entrega | Sem adapter operacional retorna indisponibilidade; não existe signup público nem bypass. |
+| `POST /api/admin/tenants/provision` | Capacidade local de uso único + conexão loopback + rate limit | `companyName,email,idempotencyKey`; `X-RotaMoto-Bootstrap-Authorization` | 202 com IDs e status de entrega | Digest da capacidade, expiração e latch de instalação são conferidos/consumidos na mesma transação; não existe signup público nem fallback por sessão. O caminho suportado é o CLI local `scripts/bootstrap-owner.js`, que chama o serviço sem expor a capacidade. |
 | `POST /api/admin/invitations` | `members.invite` + MFA verificado + CSRF | `email,roleId` | 202 `{membershipId,delivery}`; token só é entregue ao provider | Sem provider retorna 503 antes de gravar; role acima do nível do ator é rejeitada. |
 
 ## Sync Local-First
@@ -97,6 +97,6 @@ Arquitetura de implementação prevista: adapter validado por provider → servi
 ## Não exposto intencionalmente
 
 - Signup público; CRUD genérico; escrita direta de domínio fora do sync; download/upload de blob sem provider; consulta global de usuários; alteração arbitrária de roles; acesso ao ledger de migrations.
-- MFA de produção segue bloqueado até provider de verificação e armazenamento protegido (KMS/secret manager) estarem configurados. O adapter recebe somente user ID e código; segredos MFA nunca passam pelo cliente. Provisionamento do owner continua fechado sem adapter de operador privilegiado.
+- MFA administrativo segue fechado até provider nativo e keystore protegido estarem configurados. O adapter recebe somente user ID e código; segredos MFA nunca passam pelo cliente. O bootstrap inicial requer autorização pelo operador local, SMTP/provider de email, migrations de identidade e confirmação explícita do alvo `rotamoto`.
 - Email real para recovery/convites depende de provider configurado. Nenhum token bruto é retornado ou persistido.
 - Seleção de empresa valida membership e ID informado, mas a descoberta de outras empresas não é globalmente exposta por causa do RLS; a interface usa IDs entregues pelo fluxo de convite/provisionamento.

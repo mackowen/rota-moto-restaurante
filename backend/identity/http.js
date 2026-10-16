@@ -34,7 +34,7 @@ function problemStatus(code) {
   if (['INVALID_INPUT', 'INVALID_TOKEN', 'INVALID_CREDENTIALS'].includes(code)) return code === 'INVALID_CREDENTIALS' || code === 'INVALID_TOKEN' ? 401 : 400;
   if (code === 'UNAUTHENTICATED') return 401;
   if (['FORBIDDEN', 'PROVISIONER_UNAUTHORIZED', 'MFA_REQUIRED', 'CSRF_INVALID', 'ORIGIN_INVALID'].includes(code)) return 403;
-  if (['PROVISIONER_NOT_CONFIGURED', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE'].includes(code)) return 503;
+  if (['PROVISIONER_NOT_CONFIGURED', 'BOOTSTRAP_NOT_READY', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE'].includes(code)) return 503;
   if (code === 'AUTHENTICATION_REQUIRED') return 401;
   if (code === 'IDEMPOTENCY_CONFLICT') return 409;
   if (['CONFLICT', 'REVISION_CONFLICT'].includes(code)) return 409;
@@ -171,6 +171,7 @@ function publicError(error) {
     FORBIDDEN: 'Operação não autorizada.',
     PROVISIONER_UNAUTHORIZED: 'Provisionamento administrativo não autorizado.',
     PROVISIONER_NOT_CONFIGURED: 'Provisionamento administrativo indisponível.',
+    BOOTSTRAP_NOT_READY: 'Bootstrap ainda não está preparado. Aplique as migrations antes de provisionar.',
     EMAIL_PROVIDER_NOT_CONFIGURED: 'Entrega de email indisponível.',
     EMAIL_DELIVERY_FAILED: 'Entrega do convite indisponível.',
     AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar o convite.',

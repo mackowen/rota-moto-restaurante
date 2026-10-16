@@ -119,7 +119,8 @@ function validateProvisioningInput(input) {
   return { companyName, email, idempotencyKey };
 }
 
-function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaProvider, secretProvider, clock = () => new Date() }) {
+function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaProvider, secretProvider,
+  requireBootstrapAuthorization = false, clock = () => new Date() }) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('Pool PostgreSQL obrigatório.');
   let dummyPasswordHash;
   const dummyVerify = async password => {
@@ -133,9 +134,17 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
       throw new IdentityError('PROVISIONER_NOT_CONFIGURED', 'Autorização administrativa não configurada.');
     }
     let actorRef;
+    let bootstrapCapabilityDigest = null;
     try {
       const actor = await authorizeProvisioner({ action: 'tenant.owner.provision', email, context });
       actorRef = requiredText(actor?.actorRef, 'Identidade administrativa', 160);
+      if (actor?.bootstrapCapabilityDigest !== undefined) {
+        if (!Buffer.isBuffer(actor.bootstrapCapabilityDigest) || actor.bootstrapCapabilityDigest.length !== 32)
+          throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
+        bootstrapCapabilityDigest = actor.bootstrapCapabilityDigest;
+      }
+      if (requireBootstrapAuthorization && !bootstrapCapabilityDigest)
+        throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
     } catch (_) {
       throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
     }
@@ -151,6 +160,21 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
           SELECT request_digest, company_id::text, user_id::text, delivery_status, updated_at
           FROM rotamoto.provisioning_requests WHERE idempotency_key_digest=$1
         `, [keyDigest]);
+        if (requireBootstrapAuthorization || bootstrapCapabilityDigest) {
+          const latch = await client.query(`SELECT completed_at,request_digest FROM rotamoto.installation_bootstrap
+            WHERE singleton=true FOR UPDATE`);
+          if (!latch.rowCount) throw new IdentityError('BOOTSTRAP_NOT_READY', 'Bootstrap ainda não está preparado.');
+          const isReplayOfBootstrap = Boolean(existing.rowCount && latch.rows[0].completed_at &&
+            Buffer.from(latch.rows[0].request_digest || []).equals(keyDigest));
+          const authorized = bootstrapCapabilityDigest && await client.query(`SELECT token_digest,consumed_at FROM rotamoto.bootstrap_authorizations
+            WHERE token_digest=$1 AND installation_scope='rotamoto' AND expires_at>now()
+              AND (consumed_at IS NULL OR $2::boolean)
+            FOR UPDATE`, [bootstrapCapabilityDigest, isReplayOfBootstrap]);
+          if (!authorized?.rowCount || latch.rows[0].completed_at && !isReplayOfBootstrap)
+            throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
+          if (authorized.rows[0].consumed_at === null) await client.query(`UPDATE rotamoto.bootstrap_authorizations SET consumed_at=now()
+            WHERE token_digest=$1 AND consumed_at IS NULL`, [bootstrapCapabilityDigest]);
+        }
         let companyId;
         let userId;
         if (existing.rowCount) {
@@ -195,6 +219,9 @@ function createIdentityService({ pool, authorizeProvisioner, emailProvider, mfaP
             (idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES ($1,$2,$3,$4,'pending')`,
           [keyDigest, requestDigest, companyId, userId]);
         }
+        if (bootstrapCapabilityDigest) await client.query(`UPDATE rotamoto.installation_bootstrap
+          SET completed_at=coalesce(completed_at,now()),request_digest=coalesce(request_digest,$1)
+          WHERE singleton=true`, [keyDigest]);
         const invitation = newToken();
         const expiresAt = new Date(clock().getTime() + INVITATION_TTL_MS);
         await client.query(`INSERT INTO rotamoto.identity_tokens

@@ -372,6 +372,41 @@ async function main() {
       assert.ok(Number(limited.headers.get('retry-after')) > 0);
     } finally { await rateHost.close(); }
 
+    const bootstrapToken = crypto.randomBytes(32).toString('base64url');
+    const bootstrapDigest = crypto.createHash('sha256').update(bootstrapToken).digest();
+    await client.query(`UPDATE rotamoto.installation_bootstrap SET completed_at=NULL,request_digest=NULL WHERE singleton=true`);
+    await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
+      VALUES($1,'rotamoto',now()+interval '10 minutes')`, [bootstrapDigest]);
+    const bootstrapProvider = createEmailDeliveryProvider(async message => { delivered.push(message); return { accepted: true }; });
+    const bootstrapService = createIdentityService({ pool, emailProvider: bootstrapProvider, requireBootstrapAuthorization: true,
+      authorizeProvisioner: async ({ context }) => {
+        if (String(context?.request?.socket?.remoteAddress || '').replace(/^::ffff:/u, '') !== '127.0.0.1' ||
+            context?.request?.headers['x-bootstrap-capability'] !== bootstrapToken) throw new Error('unauthorized');
+        return { actorRef: 'test:local-bootstrap', bootstrapCapabilityDigest: crypto.createHash('sha256').update(bootstrapToken).digest() };
+      } });
+    const bootstrapHost = await listen(createIdentityHttpHandler({ identityService: bootstrapService }));
+    const bootstrapCall = async (authorization, body) => {
+      const response = await fetch(`${bootstrapHost.base}/api/admin/tenants/provision`, { method: 'POST', headers: {
+        Origin: bootstrapHost.base, 'Content-Type': 'application/json', ...(authorization ? { 'X-Bootstrap-Capability': authorization } : {})
+      }, body: JSON.stringify(body) });
+      return { status: response.status, body: await response.json() };
+    };
+    try {
+      const firstBootstrapRequest = { companyName: 'Empresa Bootstrap Sintética', email: `bootstrap-${crypto.randomUUID()}@example.invalid`,
+        idempotencyKey: `bootstrap-${crypto.randomUUID()}` };
+      assert.equal((await bootstrapCall(null, firstBootstrapRequest)).status, 403, 'bootstrap has no unauthenticated public path');
+      const initialized = await bootstrapCall(bootstrapToken, firstBootstrapRequest);
+      assert.equal(initialized.status, 202);
+      assert.equal((await bootstrapCall(bootstrapToken, firstBootstrapRequest)).body.replayed, true,
+        'same idempotency key can safely recover delivery after single-use authorization');
+      const secondToken = crypto.randomBytes(32).toString('base64url');
+      await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
+        VALUES($1,'rotamoto',now()+interval '10 minutes')`, [crypto.createHash('sha256').update(secondToken).digest()]);
+      const secondBootstrap = await bootstrapCall(secondToken, { ...firstBootstrapRequest,
+        email: `second-${crypto.randomUUID()}@example.invalid`, idempotencyKey: `bootstrap-${crypto.randomUUID()}` });
+      assert.equal(secondBootstrap.status, 403, 'installation latch prevents a second initial owner');
+    } finally { await bootstrapHost.close(); bootstrapDigest.fill(0); }
+
     console.log('identity HTTP API, session, CSRF, tenant/RLS, permission, recovery, invite, rate and error tests: OK');
   } finally {
     await host.close();

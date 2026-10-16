@@ -151,7 +151,17 @@ let smtpProviderPromise=null;
 const emailProvider=CONFIG.smtp?.host?{async send(message){if(!smtpProviderPromise)smtpProviderPromise=(async()=>{const secrets=await secretProvider;if(!secrets)throw new Error('Secret provider indisponível.');const password=await secrets.get(CONFIG.smtp.passwordRef,{name:'smtp/password',scope:'installation'});return createSmtpMailProvider({...CONFIG.smtp,password})})();return (await smtpProviderPromise).send(message)}}:null;
 let nativeMfaPromise=null;
 const mfaProvider=secretProvider?{async verify(input){if(!nativeMfaPromise)nativeMfaPromise=(async()=>createNativeMfaProvider({secretProvider:await secretProvider}))();return (await nativeMfaPromise).verify(input)}}:null;
-const identityService=createIdentityService({pool:identityPool,emailProvider,mfaProvider,secretProvider});
+async function authorizeInitialBootstrap({action,context}){
+  const req=context?.request;
+  const peer=String(req?.socket?.remoteAddress||'').replace(/^::ffff:/u,'');
+  const capability=req?.headers?.['x-rotamoto-bootstrap-authorization'];
+  if(action!=='tenant.owner.provision'||!['127.0.0.1','::1'].includes(peer)||
+    typeof capability!=='string'||!/^[A-Za-z0-9_-]{43}$/u.test(capability))
+    throw new Error('Local one-time deployment authorization required.');
+  return {actorRef:'local-deployment-operator',bootstrapCapabilityDigest:crypto.createHash('sha256').update(capability,'utf8').digest()};
+}
+const identityService=createIdentityService({pool:identityPool,authorizeProvisioner:authorizeInitialBootstrap,
+  requireBootstrapAuthorization:true,emailProvider,mfaProvider,secretProvider});
 const LOG_FIELDS=new Set(['event','requestId','method','path','status','durationMs','errorCode','code','host','port','environment','signal']);
 const requestLogger=entry=>{
   const safe={};

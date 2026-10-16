@@ -27,6 +27,8 @@
     "test:e2e-proof-media-tenant": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-proof-media-tenant-isolation-postgres.js",
     "test:availability-concurrency-e2e": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-driver-availability-concurrency-e2e.js",
     "operator": "node scripts/rotamoto-operator.js status",
+    "bootstrap:owner": "node scripts/bootstrap-owner.js",
+    "test:bootstrap-owner": "node tests/test-bootstrap-owner-cli.js",
     "backup:create": "node scripts/rotamoto-operator.js backup-create",
     "backup:verify": "node scripts/rotamoto-operator.js backup-verify",
     "backup:restore": "node scripts/rotamoto-operator.js backup-restore",

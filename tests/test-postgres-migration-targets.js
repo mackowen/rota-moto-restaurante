@@ -51,7 +51,7 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.deepEqual(migrations.slice(-3).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit'], '99Food migrations append without rewriting 0040/0041 history');
+assert.deepEqual(migrations.slice(-5).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch'], 'new bootstrap changes append after immutable marketplace migrations');
 const migration0042 = migrations.find(migration => migration.id === '0042_marketplace_99food_runtime');
 const migration0043 = migrations.find(migration => migration.id === '0043_99food_application_and_cash_commands');
 assert.match(migration0042.up,/claim_marketplace_99food_token_refresh/u);
@@ -64,6 +64,13 @@ assert.match(migration0044.up,/FORCE ROW LEVEL SECURITY/u);
 assert.match(migration0044.up,/consume_99food_rate_limit/u);
 assert.match(migration0044.up,/rotamoto_provider_worker/u);
 assert.match(migration0044.down,/rollback bloqueado/u);
+const migration0045 = migrations.find(migration => migration.id === '0045_installation_bootstrap');
+assert.match(migration0045.up,/bootstrap_authorizations/u);
+assert.match(migration0045.up,/REVOKE ALL[\s\S]*FROM PUBLIC/u);
+assert.match(migration0045.down,/rollback blocked: bootstrap history exists/u);
+const migration0046 = migrations.find(migration => migration.id === '0046_bootstrap_legacy_installation_latch');
+assert.match(migration0046.up,/EXISTS \(SELECT 1 FROM rotamoto\.companies\)/u);
+assert.match(migration0046.down,/rollback blocked/u);
 const ledger0039 = new Map(migrationsThrough0040.slice(0, migration0040Index).map(migration => [migration.id, migration.checksum]));
 const ledger0040 = new Map([...ledger0039, [migrationsThrough0040.at(-1).id, migrationsThrough0040.at(-1).checksum]]);
 assert.equal(assert0115RehearsalState(ledger0039, migrationsThrough0040), '0040_restaurant_driver_queue');
@@ -120,8 +127,9 @@ const official0154Env={NODE_ENV:'production',ROTAMOTO_OFFICIAL_MIGRATION_CAMPAIG
 assert.equal(official0154MigrationConnectionString(official0154Env),official0154Env.MIGRATOR_DATABASE_URL);
 assert.throws(()=>official0154MigrationConnectionString({...official0154Env,ROTAMOTO_OFFICIAL_MIGRATION_CONFIRM_DATABASE:'rotamoto_e2e'}),/confirmações explícitas/u);
 const official0154Prior=new Map(migrations.slice(0,41).map(migration=>[migration.id,migration.checksum]));
-assert.deepEqual(assertOfficial0154State(official0154Prior,migrations),{applied:[],pending:['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit']});
-assert.throws(()=>assertOfficial0154State(new Map([...official0154Prior,['0042_marketplace_99food_runtime','0'.repeat(64)]]),migrations),/ledger íntegro/u);
-assert.throws(()=>assertOfficial0154State(new Map([...official0154Prior,['0043_99food_application_and_cash_commands',migrations.find(item=>item.id==='0043_99food_application_and_cash_commands').checksum]]),migrations,{allowApplied:true}),/fora de sequência/u);
+const migrationsThrough0044=migrations.slice(0,migrations.findIndex(migration=>migration.id==='0045_installation_bootstrap'));
+assert.deepEqual(assertOfficial0154State(official0154Prior,migrationsThrough0044),{applied:[],pending:['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit']});
+assert.throws(()=>assertOfficial0154State(new Map([...official0154Prior,['0042_marketplace_99food_runtime','0'.repeat(64)]]),migrationsThrough0044),/ledger íntegro/u);
+assert.throws(()=>assertOfficial0154State(new Map([...official0154Prior,['0043_99food_application_and_cash_commands',migrations.find(item=>item.id==='0043_99food_application_and_cash_commands').checksum]]),migrationsThrough0044,{allowApplied:true}),/fora de sequência/u);
 
 console.log('PostgreSQL migration target guards: OK');
