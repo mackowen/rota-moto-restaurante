@@ -39,12 +39,21 @@ node scripts/verify-local-recovery-envelopes.js --refresh-stale
 
 O segundo comando solicita em terminal interativo (sem eco) a passphrase da
 chave mestra e a do backup do keystore. Se o backup não corresponder aos
-arquivos atuais, solicita uma passphrase nova (24 caracteres ou mais) duas
-vezes e cria `keys/keystore-recovery-0236.enc` sem substituir o envelope
-anterior. Registra evento sanitizado na auditoria. O arquivo contém cópia
+arquivos atuais, solicita uma passphrase nova (24 a 1024 bytes) duas vezes e
+cria `keys/keystore-recovery-0238.enc` sem substituir o envelope anterior.
+Escreve primeiro um arquivo criptografado privado no mesmo diretório e valida
+o formato legado e a descriptografia antes de publicar por rename atômico sem
+substituição. Registra evento sanitizado na auditoria, com fase e errno
+permitido em caso de erro, sem registrar caminhos. O arquivo contém cópia
 criptografada de `master.key`, referência SMTP e keystore; guarde a nova
 passphrase fora do aparelho. Não use pipe, background, gravação de terminal ou
 ChatGPT para fornecer frases-senha.
+
+Após a Campanha 0238, o erro de publicação `EACCES` do hard link anterior foi
+reproduzido somente com fixtures sintéticas. O helper agora usa `mv` GNU
+`--no-clobber`/`--no-target-directory` (disponível no Termux coreutils) e falha
+sem tocar num destino existente. Em um erro, confira `stage` e `causeCode` no
+diagnóstico JSON sanitizado; não repita com `--force` nem remova envelopes.
 
 O helper grava temporariamente dados recuperados em diretório privado 0700,
 com arquivos 0600, compara a chave restaurada com a chave ativa e valida que a

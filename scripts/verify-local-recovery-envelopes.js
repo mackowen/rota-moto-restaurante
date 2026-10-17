@@ -17,13 +17,19 @@ const SMTP_REF = path.join(IDENTITY, 'keys', 'smtp-password.ref');
 const KEYSTORE = path.join(IDENTITY, 'keystore');
 const OPENSSL = process.env.PREFIX ? path.join(process.env.PREFIX, 'bin', 'openssl') : 'openssl';
 const TAR = process.env.PREFIX ? path.join(process.env.PREFIX, 'bin', 'tar') : 'tar';
+const MV = process.env.PREFIX ? path.join(process.env.PREFIX, 'bin', 'mv') : 'mv';
 const META_ONLY = process.argv.includes('--metadata-only');
 const SALTED = Buffer.from('Salted__');
 const BLOCK_SIZE = 16;
 const MAX_ENVELOPE_BYTES = 32 * 1024 * 1024;
 const REFRESH_STALE = process.argv.includes('--refresh-stale');
 
-function fail(message) { const error = new Error(message); error.safe = true; throw error; }
+function fail(message, causeCode) {
+  const error = new Error(message);
+  error.safe = true;
+  if (causeCode) error.causeCode = causeCode;
+  throw error;
+}
 
 function assertPrivateFile(file, { minSize = 1, maxSize = MAX_ENVELOPE_BYTES } = {}) {
   let stat;
@@ -45,6 +51,15 @@ function inspectEnvelope(file) {
 }
 
 function assertPrivateDirectory(directory) {
+  const absolute = path.resolve(directory);
+  const parsed = path.parse(absolute);
+  let cursor = parsed.root;
+  for (const part of absolute.slice(parsed.root.length).split(path.sep).filter(Boolean)) {
+    cursor = path.join(cursor, part);
+    let component;
+    try { component = fs.lstatSync(cursor); } catch (_) { fail('Diretório privado ausente ou inacessível.'); }
+    if (component.isSymbolicLink()) fail('Paths privados não podem conter symlinks.');
+  }
   let stat;
   try { stat = fs.lstatSync(directory); } catch (_) { fail('Diretório privado ausente ou inacessível.'); }
   if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0 ||
@@ -104,32 +119,34 @@ function readHidden(label) {
   });
 }
 
-function decryptLegacy(file, passphrase) {
+function decryptLegacy(file, passphrase, openssl = OPENSSL) {
   const input = Buffer.concat([passphrase, Buffer.from('\n')]);
   try {
-    const result = spawnSync(OPENSSL, ['enc', '-d', '-aes-256-cbc', '-pbkdf2', '-iter', '600000', '-in', file, '-pass', 'stdin'],
+    const result = spawnSync(openssl, ['enc', '-d', '-aes-256-cbc', '-pbkdf2', '-iter', '600000', '-in', file, '-pass', 'stdin'],
       { input, encoding: null, maxBuffer: MAX_ENVELOPE_BYTES, stdio: ['pipe', 'pipe', 'ignore'] });
-    if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) fail('Abertura do envelope falhou; passphrase ou envelope inválido.');
+    if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) {
+      fail('Abertura do envelope falhou; passphrase ou envelope inválido.', result.error?.code);
+    }
     return result.stdout;
   } finally { input.fill(0); }
 }
 
-function encryptLegacy(inputFile, outputFile, passphrase) {
+function encryptLegacy(inputFile, outputFile, passphrase, openssl = OPENSSL) {
   const input = Buffer.concat([passphrase, Buffer.from('\n')]);
   try {
-    const result = spawnSync(OPENSSL, ['enc', '-aes-256-cbc', '-salt', '-pbkdf2', '-iter', '600000', '-in', inputFile,
+    const result = spawnSync(openssl, ['enc', '-aes-256-cbc', '-salt', '-pbkdf2', '-iter', '600000', '-in', inputFile,
       '-out', outputFile, '-pass', 'stdin'], { input, encoding: null, maxBuffer: 4096, stdio: ['pipe', 'ignore', 'ignore'] });
-    if (result.error || result.status !== 0) fail('Criação do envelope atualizado falhou.');
+    if (result.error || result.status !== 0) fail('Criação do envelope atualizado falhou.', result.error?.code);
     fs.chmodSync(outputFile, 0o600);
   } finally { input.fill(0); }
 }
 
-async function promptNewPassphrase() {
-  const first = await readHidden('Nova passphrase para o envelope atualizado (mínimo 24 caracteres)');
+async function promptNewPassphrase(readPassphrase = readHidden) {
+  const first = await readPassphrase('Nova passphrase para o envelope atualizado (mínimo 24 caracteres)');
   let second;
   try {
-    second = await readHidden('Confirme a nova passphrase');
-    if (first.length < 24 || !equal(first, second)) fail('A nova passphrase é curta ou as confirmações diferem.');
+    second = await readPassphrase('Confirme a nova passphrase');
+    if (first.length < 24 || first.length > 1024 || !equal(first, second)) fail('A nova passphrase é inválida ou as confirmações diferem.');
     return first;
   } catch (error) { first.fill(0); throw error; }
   finally { if (second) second.fill(0); }
@@ -164,55 +181,164 @@ function tarMembers(archive) {
   return members;
 }
 
-function extractMember(archiveFile, member) {
-  const result = spawnSync(TAR, ['-xOf', archiveFile, member.rawName],
+function extractMember(archiveFile, member, tarCommand = TAR) {
+  const result = spawnSync(tarCommand, ['-xOf', archiveFile, member.rawName],
     { encoding: null, maxBuffer: MAX_ENVELOPE_BYTES, stdio: ['ignore', 'pipe', 'ignore'] });
-  if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) fail('Leitura de membro TAR falhou.');
+  if (result.error || result.status !== 0 || !Buffer.isBuffer(result.stdout)) fail('Leitura de membro TAR falhou.', result.error?.code);
   return result.stdout;
 }
 
 function equal(a, b) { return a.length === b.length && crypto.timingSafeEqual(a, b); }
 
-async function main() {
-  const sizes = { masterEnvelopeBytes: inspectEnvelope(MASTER_ENVELOPE), keystoreEnvelopeBytes: inspectEnvelope(KEYSTORE_ENVELOPE) };
-  assertPrivateDirectory(IDENTITY);
-  assertPrivateDirectory(path.join(IDENTITY, 'keys'));
-  assertPrivateDirectory(KEYSTORE);
-  const expectedMasterStat = assertPrivateFile(MASTER_KEY, { minSize: 32, maxSize: 32 });
-  const refStat = assertPrivateFile(SMTP_REF, { minSize: 1, maxSize: 256 });
-  const liveMaster = fs.readFileSync(MASTER_KEY), liveRef = fs.readFileSync(SMTP_REF);
-  const liveStoreNames = fs.readdirSync(KEYSTORE).filter(name => name.endsWith('.enc')).sort();
-  const liveStore = new Map(liveStoreNames.map(name => {
-    const file = path.join(KEYSTORE, name);
-    assertPrivateFile(file, { minSize: 1 });
-    return [name, fs.readFileSync(file)];
-  }));
+function createEncryptedStage(keysDirectory) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const file = path.join(keysDirectory, `.keystore-recovery-stage-${process.pid}-${crypto.randomBytes(8).toString('hex')}.tmp`);
+    try {
+      const fd = fs.openSync(file, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | (fs.constants.O_NOFOLLOW || 0), 0o600);
+      fs.closeSync(fd);
+      return file;
+    } catch (error) { if (error.code !== 'EEXIST') throw error; }
+  }
+  fail('Não foi possível criar o arquivo temporário privado.');
+}
+
+function publishNoReplace(stagedFile, targetFile, mover = MV) {
+  // GNU mv uses a no-replace rename where supported. Unlike hard links, this
+  // works on Android filesystems that deny link(2), and remains atomic.
+  const result = spawnSync(mover, ['--no-clobber', '--no-target-directory', '--', stagedFile, targetFile],
+    { encoding: 'utf8', maxBuffer: 4096, stdio: ['ignore', 'ignore', 'pipe'] });
+  if (result.error) throw result.error;
+  if (result.status !== 0 || fs.existsSync(stagedFile)) {
+    const error = new Error('Publicação atômica indisponível ou destino já existente.');
+    error.code = fs.existsSync(targetFile) ? 'EEXIST' : moverErrorCode(result.stderr) || 'EIO';
+    error.safe = true;
+    throw error;
+  }
+  assertPrivateFile(targetFile, { minSize: 32 });
+  const directoryFd = fs.openSync(path.dirname(targetFile), fs.constants.O_RDONLY);
+  try { fs.fsyncSync(directoryFd); } finally { fs.closeSync(directoryFd); }
+}
+
+function assertAtomicPublisher(mover = MV) {
+  const version = spawnSync(mover, ['--version'], { encoding: 'utf8', maxBuffer: 4096, stdio: ['ignore', 'pipe', 'ignore'] });
+  if (version.error) throw version.error;
+  if (version.status !== 0 || !/^mv \(GNU coreutils\)/u.test(version.stdout || '')) {
+    const error = new Error('Publicação exige mv do GNU coreutils com suporte a no-clobber.');
+    error.code = 'ENOTSUP'; error.safe = true; throw error;
+  }
+}
+
+function moverErrorCode(stderr = '') {
+  const message = String(stderr).toLowerCase();
+  if (message.includes('permission denied')) return 'EACCES';
+  if (message.includes('operation not permitted')) return 'EPERM';
+  if (message.includes('no space left')) return 'ENOSPC';
+  if (message.includes('read-only file system')) return 'EROFS';
+  if (message.includes('cross-device link')) return 'EXDEV';
+  if (message.includes('no such file or directory')) return 'ENOENT';
+  if (message.includes('invalid argument')) return 'EINVAL';
+  return null;
+}
+
+function sanitizedFailure(error, stage = 'preflight') {
+  const allowedCodes = new Set(['ENOENT','EACCES','EPERM','EEXIST','EXDEV','ENOSPC','EMFILE','EIO','EROFS','ENOTSUP','EOPNOTSUPP','EINVAL','EPIPE','USER_ABORTED']);
+  const result = { event: 'recovery.envelopes.failed', code: error.code === 'USER_ABORTED' ? 'USER_ABORTED' : 'RECOVERY_CHECK_FAILED',
+    stage: error.recoveryStage || stage };
+  if (error.published === true) result.published = true;
+  if (error.cleanupFailed === true) result.cleanup = 'FAILED';
+  if (error.safe && typeof error.message === 'string') result.diagnostic = error.message;
+  const causeCode = error.causeCode || error.code;
+  if (allowedCodes.has(causeCode) && causeCode !== 'USER_ABORTED') result.causeCode = causeCode;
+  else if (!error.safe && error.code !== 'USER_ABORTED') result.diagnostic = 'Verificação local falhou.';
+  return result;
+}
+
+async function main(options = {}) {
+  const identityDirectory = options.identityDirectory || IDENTITY;
+  if (!path.isAbsolute(identityDirectory)) fail('O diretório da identidade deve ser absoluto.');
+  const identity = path.resolve(identityDirectory);
+  const keysDirectory = path.join(identity, 'keys');
+  const masterEnvelope = path.join(keysDirectory, 'master-key-recovery.enc');
+  const keystoreEnvelope = path.join(keysDirectory, 'keystore-recovery.enc');
+  const masterKey = path.join(keysDirectory, 'master.key');
+  const smtpRef = path.join(keysDirectory, 'smtp-password.ref');
+  const keystoreDirectory = path.join(identity, 'keystore');
+  const auditDirectory = path.join(identity, 'audit');
+  const openssl = options.openssl || OPENSSL;
+  const tarCommand = options.tarCommand || TAR;
+  const readPassphrase = options.readPassphrase || readHidden;
+  const decryptEnvelope = options.decryptEnvelope || ((file, passphrase) => decryptLegacy(file, passphrase, openssl));
+  const encryptEnvelope = options.encryptEnvelope || ((input, output, passphrase) => encryptLegacy(input, output, passphrase, openssl));
+  const audit = options.appendAudit || require('../backend/runtime/operator-audit').appendOperatorAudit;
+  const customPublisher = typeof options.publish === 'function';
+  const publish = options.publish || ((stagedFile, targetFile) => publishNoReplace(stagedFile, targetFile, options.mover || MV));
+  const refreshStale = options.refreshStale === undefined ? REFRESH_STALE : options.refreshStale;
+  let stage = 'preflight';
+  let encryptedStage;
+  let targetEnvelope;
+  let didPublish = false;
+  let operationError;
+  assertPrivateDirectory(identity);
+  assertPrivateDirectory(keysDirectory);
+  assertPrivateDirectory(keystoreDirectory);
+  assertPrivateDirectory(auditDirectory);
+  const sizes = { masterEnvelopeBytes: inspectEnvelope(masterEnvelope), keystoreEnvelopeBytes: inspectEnvelope(keystoreEnvelope) };
+  if (!META_ONLY && refreshStale && !customPublisher) assertAtomicPublisher(options.mover || MV);
+  const expectedMasterStat = assertPrivateFile(masterKey, { minSize: 32, maxSize: 32 });
+  const refStat = assertPrivateFile(smtpRef, { minSize: 1, maxSize: 256 });
+  let liveMaster, liveRef;
+  let liveStoreNames = [];
+  const liveStore = new Map();
+  try {
+    liveMaster = fs.readFileSync(masterKey); liveRef = fs.readFileSync(smtpRef);
+    liveStoreNames = fs.readdirSync(keystoreDirectory).filter(name => name.endsWith('.enc')).sort();
+    for (const name of liveStoreNames) {
+      const file = path.join(keystoreDirectory, name);
+      assertPrivateFile(file, { minSize: 1 });
+      liveStore.set(name, fs.readFileSync(file));
+    }
+  } catch (error) {
+    for (const value of [liveMaster, liveRef, ...liveStore.values()]) if (Buffer.isBuffer(value)) value.fill(0);
+    if (temp) {
+      try { fs.rmSync(temp, { recursive: true, force: false }); }
+      catch (_) { error.cleanupFailed = true; }
+    }
+    throw error;
+  }
   if (META_ONLY) {
-    process.stdout.write(JSON.stringify({ event: 'recovery.envelopes.metadata', status: 'structurally_valid', ...sizes,
-      masterKeyMode: (expectedMasterStat.mode & 0o777).toString(8), smtpReferenceMode: (refStat.mode & 0o777).toString(8), keystoreEntries: liveStore.size }) + '\n');
-    for (const value of [liveMaster, liveRef, ...liveStore.values()]) value.fill(0);
+    try {
+      process.stdout.write(JSON.stringify({ event: 'recovery.envelopes.metadata', status: 'structurally_valid', ...sizes,
+        masterKeyMode: (expectedMasterStat.mode & 0o777).toString(8), smtpReferenceMode: (refStat.mode & 0o777).toString(8), keystoreEntries: liveStore.size }) + '\n');
+    } finally { for (const value of [liveMaster, liveRef, ...liveStore.values()]) value.fill(0); }
     return;
   }
 
-  const rootStat = fs.lstatSync(IDENTITY);
-  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || (rootStat.mode & 0o077) !== 0) fail('Diretório da identidade não é privado.');
-  const temp = fs.mkdtempSync(path.join(IDENTITY, '.recovery-check-0236-'));
-  fs.chmodSync(temp, 0o700);
+  let temp;
+  try {
+    temp = fs.mkdtempSync(path.join(identity, '.recovery-check-0238-'));
+    fs.chmodSync(temp, 0o700);
+  } catch (error) {
+    for (const value of [liveMaster, liveRef, ...liveStore.values()]) if (Buffer.isBuffer(value)) value.fill(0);
+    throw error;
+  }
   let oldMasterPass, oldKeystorePass, recoveredMaster, recoveredArchive;
   try {
-    oldMasterPass = await readHidden('Passphrase do envelope da chave mestra');
-    recoveredMaster = decryptLegacy(MASTER_ENVELOPE, oldMasterPass);
+    stage = 'master-recovery';
+    oldMasterPass = await readPassphrase('Passphrase do envelope da chave mestra');
+    recoveredMaster = decryptEnvelope(masterEnvelope, oldMasterPass);
     oldMasterPass.fill(0); oldMasterPass = null;
     const recoveredPath = path.join(temp, 'master.key');
     fs.writeFileSync(recoveredPath, recoveredMaster, { mode: 0o600, flag: 'wx' });
     if (!equal(fs.readFileSync(recoveredPath), liveMaster)) fail('A chave recuperada não coincide com a chave operacional.');
     process.stdout.write('master_key_recovery=PASS\n');
 
-    oldKeystorePass = await readHidden('Passphrase do envelope do keystore');
-    recoveredArchive = decryptLegacy(KEYSTORE_ENVELOPE, oldKeystorePass);
+    stage = 'keystore-recovery';
+    oldKeystorePass = await readPassphrase('Passphrase do envelope do keystore');
+    recoveredArchive = decryptEnvelope(keystoreEnvelope, oldKeystorePass);
     oldKeystorePass.fill(0); oldKeystorePass = null;
     const archivePath = path.join(temp, 'keystore.tar');
     fs.writeFileSync(archivePath, recoveredArchive, { mode: 0o600, flag: 'wx' });
+    stage = 'archive-validate';
     const members = tarMembers(recoveredArchive).filter(member => member.type === '0');
     const seen = new Set();
     for (const member of members) {
@@ -222,7 +348,7 @@ async function main() {
     const refMember = members.find(member => member.name === 'keys/smtp-password.ref' || member.name === 'smtp-password.ref');
     let referenceCurrent = false;
     if (refMember) {
-      const fromArchive = extractMember(archivePath, refMember);
+      const fromArchive = extractMember(archivePath, refMember, tarCommand);
       referenceCurrent = equal(fromArchive, liveRef);
       fromArchive.fill(0);
     }
@@ -232,14 +358,14 @@ async function main() {
     for (const [name, member] of archivedStore) {
       const current = liveStore.get(name);
       if (!current) { storeCurrent = false; continue; }
-      const value = extractMember(archivePath, member);
+      const value = extractMember(archivePath, member, tarCommand);
       if (!equal(value, current)) storeCurrent = false;
       value.fill(0);
     }
     const masterMember = members.find(member => member.name === 'keys/master.key' || member.name === 'master.key');
     let archivedMasterCurrent = null;
     if (masterMember) {
-      const value = extractMember(archivePath, masterMember);
+      const value = extractMember(archivePath, masterMember, tarCommand);
       archivedMasterCurrent = equal(value, liveMaster);
       value.fill(0);
     }
@@ -248,40 +374,76 @@ async function main() {
     process.stdout.write(JSON.stringify({ event: 'recovery.keystore.checked', status: current ? 'current' : 'stale',
       smtpReferenceIncluded: smtpIncluded, smtpReferenceMatches: referenceCurrent, keystoreEntriesMatch: storeCurrent,
       masterKeyIncluded: Boolean(masterMember), ...(archivedMasterCurrent === null ? {} : { masterKeyMatches: archivedMasterCurrent }) }) + '\n');
-    if (!current && REFRESH_STALE) {
-      const packed = spawnSync(TAR, ['-cf', '-', '-C', IDENTITY, 'keys/master.key', 'keys/smtp-password.ref', 'keystore'],
+    if (!current && refreshStale) {
+      stage = 'archive-create';
+      const packed = spawnSync(tarCommand, ['-cf', '-', '-C', identity, 'keys/master.key', 'keys/smtp-password.ref', 'keystore'],
         { encoding: null, maxBuffer: MAX_ENVELOPE_BYTES, stdio: ['ignore', 'pipe', 'ignore'] });
       if (packed.error || packed.status !== 0 || !Buffer.isBuffer(packed.stdout)) fail('Empacotamento privado do keystore falhou.');
+      const packedMembers = tarMembers(packed.stdout).filter(member => member.type === '0');
+      const packedNames = new Set(packedMembers.map(member => member.name));
+      if (!packedNames.has('keys/master.key') || !packedNames.has('keys/smtp-password.ref') ||
+          liveStoreNames.some(name => !packedNames.has(`keystore/${name}`))) fail('O TAR temporário não contém o conjunto operacional esperado.');
       const currentTar = path.join(temp, 'keystore-current.tar');
       fs.writeFileSync(currentTar, packed.stdout, { mode: 0o600, flag: 'wx' });
-      const passphrase = await promptNewPassphrase();
-      const encryptedTemp = path.join(temp, 'keystore-recovery-0236.enc');
+      stage = 'passphrase-confirmation';
+      const passphrase = await promptNewPassphrase(readPassphrase);
+      stage = 'envelope-stage';
+      encryptedStage = createEncryptedStage(keysDirectory);
       try {
-        encryptLegacy(currentTar, encryptedTemp, passphrase);
-        const verification = decryptLegacy(encryptedTemp, passphrase);
+        stage = 'envelope-encrypt';
+        encryptEnvelope(currentTar, encryptedStage, passphrase);
+        assertPrivateFile(encryptedStage, { minSize: 32 });
+        inspectEnvelope(encryptedStage);
+        const stageFd = fs.openSync(encryptedStage, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+        try { fs.fsyncSync(stageFd); } finally { fs.closeSync(stageFd); }
+        stage = 'envelope-verify';
+        const verification = decryptEnvelope(encryptedStage, passphrase);
         try { if (!equal(verification, packed.stdout)) fail('Verificação do envelope recém-criado falhou.'); }
         finally { verification.fill(0); }
-        const target = path.join(IDENTITY, 'keys', 'keystore-recovery-0236.enc');
-        const { appendOperatorAudit } = require('../backend/runtime/operator-audit');
-        await appendOperatorAudit('identity.recovery_envelope.refresh_started', { kind: 'keystore' },
-          { file: path.join(IDENTITY, 'audit', 'operator-audit.jsonl'), actorRef: 'operator:termux-local' });
-        fs.linkSync(encryptedTemp, target);
-        fs.unlinkSync(encryptedTemp);
-        await appendOperatorAudit('identity.recovery_envelope.refreshed', { kind: 'keystore' },
-          { file: path.join(IDENTITY, 'audit', 'operator-audit.jsonl'), actorRef: 'operator:termux-local' });
+        targetEnvelope = path.join(keysDirectory, 'keystore-recovery-0238.enc');
+        stage = 'audit-start';
+        await audit('identity.recovery_envelope.refresh_started', { kind: 'keystore' },
+          { file: path.join(auditDirectory, 'operator-audit.jsonl'), actorRef: 'operator:termux-local' });
+        stage = 'publish';
+        publish(encryptedStage, targetEnvelope);
+        didPublish = true;
+        encryptedStage = null;
+        stage = 'audit-complete';
+        await audit('identity.recovery_envelope.refreshed', { kind: 'keystore' },
+          { file: path.join(auditDirectory, 'operator-audit.jsonl'), actorRef: 'operator:termux-local' });
         process.stdout.write('keystore_recovery_refresh=PASS\nprevious_envelope_preserved=YES\nformat=openssl-aes-256-cbc-pbkdf2-600000\n');
-      } finally { passphrase.fill(0); packed.stdout.fill(0); }
+      } finally {
+        passphrase.fill(0); packed.stdout.fill(0);
+      }
     } else if (!current) process.exitCode = 3;
+  } catch (error) {
+    if (!error.recoveryStage) error.recoveryStage = stage;
+    if (didPublish || stage === 'publish' && targetEnvelope && encryptedStage && !fs.existsSync(encryptedStage) && fs.existsSync(targetEnvelope)) {
+      error.published = true;
+    }
+    operationError = error;
   } finally {
     for (const value of [oldMasterPass, oldKeystorePass, recoveredMaster, recoveredArchive, liveMaster, liveRef, ...liveStore.values()])
       if (Buffer.isBuffer(value)) value.fill(0);
-    fs.rmSync(temp, { recursive: true, force: false });
-    if (fs.existsSync(temp)) fail('Diretório temporário de plaintext continua presente.');
-    process.stdout.write('temporary_plaintext_removed=YES (apagamento físico em flash não é garantido)\n');
+    const cleanupErrors = [];
+    try { if (encryptedStage && fs.existsSync(encryptedStage)) fs.unlinkSync(encryptedStage); }
+    catch (cleanupError) { cleanupErrors.push(cleanupError); }
+    try { fs.rmSync(temp, { recursive: true, force: false }); }
+    catch (cleanupError) { cleanupErrors.push(cleanupError); }
+    if (fs.existsSync(temp)) cleanupErrors.push(Object.assign(new Error('Temporary plaintext directory remains.'), { code: 'EIO' }));
+    if (cleanupErrors.length) {
+      if (!operationError) {
+        operationError = Object.assign(new Error('Temporários privados não puderam ser removidos.'),
+          { code: cleanupErrors[0].code, recoveryStage: 'cleanup', safe: true });
+      } else operationError.cleanupFailed = true;
+    } else {
+      process.stdout.write('temporary_plaintext_removed=YES (apagamento físico em flash não é garantido)\n');
+    }
   }
+  if (operationError) throw operationError;
 }
 
-if (process.argv.includes('--test-recovery-tty')) {
+if (require.main === module && process.argv.includes('--test-recovery-tty')) {
   readHidden('Synthetic recovery TTY test').then(value => {
     const accepted = value.length > 0;
     value.fill(0);
@@ -291,10 +453,13 @@ if (process.argv.includes('--test-recovery-tty')) {
     process.stderr.write(`recovery_tty_input=FAIL code=${error.code === 'USER_ABORTED' ? 'USER_ABORTED' : 'TTY_TEST_FAILED'}\n`);
     process.exitCode = 1;
   });
-} else {
+} else if (require.main === module) {
   main().catch(error => {
-    const code = error.code === 'USER_ABORTED' ? 'USER_ABORTED' : 'RECOVERY_CHECK_FAILED';
-    process.stderr.write(`${JSON.stringify({ event: 'recovery.envelopes.failed', code, diagnostic: error.safe ? error.message : 'Verificação local falhou.' })}\n`);
+    const diagnostic = sanitizedFailure(error);
+    process.stderr.write(`${JSON.stringify(diagnostic)}\n`);
+    const code = diagnostic.code;
     process.exitCode = code === 'USER_ABORTED' ? 130 : 1;
   });
 }
+
+module.exports = { main, readHidden, promptNewPassphrase, decryptLegacy, encryptLegacy, tarMembers, publishNoReplace, sanitizedFailure };
