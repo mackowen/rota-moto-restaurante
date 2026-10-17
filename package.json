@@ -15,7 +15,7 @@
     "test:postgres": "node tests/test-postgres-migrations.js && node tests/test-identity-postgres.js && node tests/test-identity-http-postgres.js && node tests/test-domain-sync-postgres.js",
     "bench:postgres-api-0156": "NODE_ENV=test ROTAMOTO_E2E_CAMPAIGN=0156 E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/benchmark-postgres-api-0156.js",
     "bench:postgres-api-0164": "NODE_ENV=test ROTAMOTO_E2E_CAMPAIGN=0164 E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/benchmark-postgres-api-0164.js",
-    "test:e2e-guards": "node tests/test-postgres-e2e-guards.js && node tests/test-e2e-fixture-guards.js",
+    "test:e2e-guards": "node tests/test-postgres-e2e-guards.js && node tests/test-e2e-fixture-guards.js && node tests/test-e2e-reset-guard.js",
     "test:e2e-fixture-manifest": "node tests/test-fixture-manifest.js",
     "test:backup-inventory": "node tests/test-backup-inventory.js",
     "test:backup-storage": "node tests/test-backup-storage-providers.js",

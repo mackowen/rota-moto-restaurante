@@ -20,6 +20,8 @@ async function rejects(fn) { await assert.rejects(fn); }
 
 (async () => {
   assert.equal(assertRecoverySource('rotamoto', { NODE_ENV: 'production' }), 'rotamoto');
+  assert.equal(assertRecoverySource('rotamoto_e2e', { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0240' }), 'rotamoto_e2e');
+  assert.throws(() => assertRecoverySource('rotamoto_e2e', { NODE_ENV: 'production', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0240' }), /not authorized/u);
   assert.throws(() => assertRecoverySource('rotamoto_disposable_0068_source', { NODE_ENV: 'production', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068' }),
     /not authorized/u, 'production never accepts the disposable campaign source');
   assert.equal(assertRecoverySource('rotamoto_disposable_0068_source', { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0068' }),
@@ -34,6 +36,13 @@ async function rejects(fn) { await assert.rejects(fn); }
     { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0138' }), /not authorized/u);
   const priorCampaign = process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN, priorNodeEnv = process.env.NODE_ENV;
   process.env.NODE_ENV = 'test'; process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0138';
+  process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0240';
+  assert.equal(parseSafeUrl('postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_e2e').database, 'rotamoto_e2e');
+  assert.throws(() => parseSafeUrl('postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e'), /Backup exige/u);
+  assert.equal(parseSafeUrl('postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_disposable_0240_restore', { restore: true }).database,
+    'rotamoto_disposable_0240_restore');
+  assert.throws(() => parseSafeUrl('postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto', { restore: true }), /Restore exige/u);
+  process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0138';
   assert.equal(parseSafeUrl('postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto_disposable_0138_20261011_41770017').database,
     'rotamoto_disposable_0138_20261011_41770017');
   assert.throws(() => parseSafeUrl('postgresql://rotamoto_restore@127.0.0.1:5432/rotamoto'), /Backup exige/u);
