@@ -69,7 +69,7 @@
           <details><summary>Perdi o autenticador</summary><form data-mfa-recovery-request><p>A solicitação exige senha atual e confirmação pelo email verificado. Outro administrador deverá aprovar; para proprietário único, somente o operador local pode concluir.</p><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label><label>Senha atual<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código da empresa<input name="companyId" required maxlength="36" autocomplete="off"></label><button type="submit">Solicitar recuperação de MFA</button><p role="status" data-mfa-recovery-status></p></form><form data-mfa-recovery-confirm><label>Código recebido por email<input name="token" autocomplete="one-time-code" required maxlength="43"></label><button type="submit">Confirmar solicitação</button><p role="status" data-mfa-recovery-confirm-status></p></form></details></details>
         <details data-invitation><summary>Aceitar convite</summary><form data-accept-invitation><label>Código do convite<input name="token" required maxlength="43" autocomplete="off"></label><label>Crie sua senha<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><button type="submit">Aceitar convite</button><p role="status" data-invitation-result></p></form></details>
         <section data-admin hidden><h2>Administração da empresa</h2><p data-admin-error role="alert" aria-live="polite"></p><button type="button" data-refresh-admin>Atualizar usuários e perfis</button><form data-company-setup><h3>Configuração da empresa</h3><p>Informe os dados básicos. Contato e endereço são opcionais; o fuso horário é obrigatório para a operação.</p><label>Nome da empresa<input name="name" required maxlength="160" autocomplete="organization"></label><label>Telefone de contato (opcional)<input name="supportPhone" maxlength="40" autocomplete="tel"></label><label>Fuso horário<select name="timeZone" required><option value="America/Sao_Paulo">Brasília · America/Sao_Paulo</option><option value="America/Fortaleza">Fortaleza · America/Fortaleza</option><option value="America/Manaus">Manaus · America/Manaus</option><option value="America/Rio_Branco">Rio Branco · America/Rio_Branco</option><option value="UTC">UTC</option></select></label><label>Endereço operacional (opcional)<input name="address" maxlength="500" autocomplete="street-address"></label><button type="submit">Salvar configuração</button><p role="status" data-company-setup-status aria-live="polite"></p></form><section data-mfa-recovery-admin hidden><h3>Solicitações de recuperação MFA</h3><button type="button" data-refresh-mfa-recovery>Atualizar solicitações</button><div data-mfa-recovery-requests aria-live="polite"></div></section>
-          <form data-invite><h3>Convidar usuário</h3><label>Email<input name="email" type="email" required maxlength="320"></label><label>Perfil<select name="roleId" required></select></label><button type="submit">Enviar convite</button><p role="status" data-invite-result></p></form>
+          <form data-invite><h3>Convidar funcionário ou motoboy</h3><p>O convite cria ou associa uma conta RotaMoto pelo email. Para habilitar entregas, a pessoa deve ativar a conta e depois ser vinculada a um cadastro de motorista desta empresa. Uma conta existente pode aceitar o convite sem criar outra conta.</p><label>Email<input name="email" type="email" required maxlength="320"></label><label>Perfil de acesso<select name="roleId" required></select></label><button type="submit">Enviar convite</button><p role="status" data-invite-result></p></form>
           <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><div data-members aria-live="polite"></div><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><p data-driver-access-note role="status" hidden>Para listar motoristas, sua sessão precisa da permissão de leitura de sync. A desassociação continua disponível para vínculos existentes.</p><section data-roles-list><h3>Perfis existentes</h3></section><form data-create-role><h3>Novo perfil</h3><label>Identificador<input name="key" required pattern="[a-z][a-z0-9_-]{1,63}" maxlength="64"></label><label>Nome<input name="name" required maxlength="100"></label><fieldset><legend>Permissões</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form>
         </section>
         <button type="button" data-offline class="rm-offline">Continuar somente com dados locais</button>
@@ -80,6 +80,37 @@
   const $ = (selector, root = host) => root.querySelector(selector);
   const panel = $('#rmIdentityPanel');
   const trigger = $('.rm-account-trigger');
+  const companyAdminSection = $('[data-admin]');
+  const adminTrigger = document.createElement('button');
+  adminTrigger.type = 'button';
+  adminTrigger.className = 'rm-account-trigger rm-account-trigger--inline rm-company-admin-trigger';
+  adminTrigger.textContent = 'Gerenciar restaurante';
+  adminTrigger.setAttribute('aria-controls', 'rmCompanyAdminPage');
+  adminTrigger.hidden = true;
+  const adminPage = document.createElement('section');
+  adminPage.id = 'rmCompanyAdminPage';
+  adminPage.hidden = true;
+  adminPage.setAttribute('aria-labelledby', 'rmCompanyAdminTitle');
+  adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Administração da empresa</strong><small>Configurações e equipe do restaurante</small></div><button type="button" data-admin-close>Voltar ao painel</button></header><div class="rm-company-admin-content"></div>';
+  host.append(adminPage);
+  if (companyAdminSection) adminPage.querySelector('.rm-company-admin-content')?.append(companyAdminSection);
+  adminTrigger.addEventListener('click', () => {
+    if (!current || mfaLocked || !current.permissions?.includes('company.manage')) return;
+    setOpen(false);
+    adminPage.hidden = false;
+    adminTrigger.setAttribute('aria-expanded', 'true');
+    const app = applicationRoot();
+    if (app) { app.inert = true; app.setAttribute('aria-hidden', 'true'); }
+    adminPage.querySelector('[data-refresh-admin]')?.focus();
+    loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
+  });
+  adminPage.querySelector('[data-admin-close]')?.addEventListener('click', () => {
+    adminPage.hidden = true;
+    adminTrigger.setAttribute('aria-expanded', 'false');
+    const app = applicationRoot();
+    if (app) { app.inert = false; app.removeAttribute('aria-hidden'); }
+    adminTrigger.focus();
+  });
   const applicationRoot = () => document.querySelector('#app, .app');
   let mfaLocked = false;
   const appKind = document.currentScript?.dataset.app || 'restaurante';
@@ -118,6 +149,8 @@
     const parent = anchor || host;
     if (trigger.parentElement !== parent) parent.append(trigger);
     trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
+    if (adminTrigger.parentElement !== parent) parent.append(adminTrigger);
+    adminTrigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
   }
   const placementRoot = document.body;
   if (placementRoot && window.MutationObserver) {
@@ -176,6 +209,7 @@
     host.dataset.mfaLocked = String(mfaLocked);
     host.dataset.gated = String(!session && !offlineMode);
     $('[data-admin]').hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
+    adminTrigger.hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
     $('[data-close]').hidden = mfaLocked;
     $('[data-accept-existing]').hidden = mfaLocked;
     $('[data-switch]').hidden = mfaLocked;
@@ -539,7 +573,7 @@
     members.members.forEach(member => {
       const card = document.createElement('article'); card.className = 'rm-member';
       const title = document.createElement('strong'); title.textContent = member.email; card.append(title);
-      const meta = document.createElement('span'); meta.textContent = `${member.roleName} · ${member.status}${member.disabled ? ' · conta desativada' : ''}`; card.append(meta);
+      const meta = document.createElement('span'); meta.textContent = `${member.roleName} · ${member.status === 'invited' ? 'Convite pendente' : member.status === 'suspended' || member.disabled ? 'Suspenso' : member.driverId ? 'Ativo' : member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push') ? 'Aguardando ativação do vínculo de motoboy' : 'Sem convite de motoboy'}`; card.append(meta);
       if (member.userId !== current.userId) {
         const currentRole = roles.roles.find(role => role.id === member.roleId);
         const canReassignCurrent = currentRole?.permissions.every(permission => current.permissions.includes(permission)) ?? false;
@@ -559,6 +593,13 @@
         const title = document.createElement('strong'); title.textContent = 'Motorista operacional'; linkBox.append(title);
         const feedback = document.createElement('p'); feedback.className = 'rm-driver-link-status'; feedback.setAttribute('role', 'status');
         const driver = driverRows.find(row => row.id === member.driverId);
+        if (member.status === 'invited' && member.userId !== current.userId && current.permissions.includes('members.invite')) {
+          const resend = document.createElement('button'); resend.type = 'button'; resend.className = 'rm-secondary'; resend.textContent = 'Reenviar convite';
+          resend.addEventListener('click', async () => { resend.disabled = true; try { await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: member.email, roleId: member.roleId }) }); feedback.textContent = 'Novo convite enviado; o anterior foi invalidado.'; await loadAdmin(); } catch (error) { feedback.textContent = message(error); resend.disabled = false; } });
+          const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'rm-secondary'; revoke.textContent = 'Revogar convite';
+          revoke.addEventListener('click', async () => { if (!window.confirm(`Revogar o convite de ${member.email}?`)) return; revoke.disabled = true; try { await request(`/admin/memberships/${member.membershipId}`, { method: 'PATCH', body: JSON.stringify({ status: 'revoked' }) }); feedback.textContent = 'Convite revogado.'; await loadAdmin(); } catch (error) { feedback.textContent = message(error); revoke.disabled = false; } });
+          linkBox.append(resend, revoke);
+        }
         if (member.driverId) {
           feedback.textContent = `Vinculado a ${driver?.record?.name || driver?.record?.displayName || `ID ${member.driverId}`}.`;
           const unlink = document.createElement('button'); unlink.type = 'button'; unlink.className = 'rm-secondary'; unlink.textContent = 'Desvincular motorista';

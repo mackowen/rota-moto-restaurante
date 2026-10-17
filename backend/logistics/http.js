@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { COOKIE_NAME, createRateLimiter } = require('../identity/http');
 const { LogisticsServiceError } = require('./service');
+const { requireActiveDriver } = require('../domain/driver-access');
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
 const MAX_BODY = 16 * 1024;
@@ -32,7 +33,7 @@ async function readJson(req) {
 function statusFor(code) {
   if (['INVALID_INPUT','ORIGIN_INVALID'].includes(code)) return 400;
   if (code === 'UNAUTHENTICATED') return 401;
-  if (['FORBIDDEN','CSRF_INVALID','MFA_REQUIRED'].includes(code)) return 403;
+  if (['FORBIDDEN','CSRF_INVALID','MFA_REQUIRED','DRIVER_LINK_REQUIRED','DRIVER_INACTIVE'].includes(code)) return 403;
   if (code === 'RATE_LIMITED') return 429;
   if (['NOT_FOUND'].includes(code)) return 404;
   if (['REVISION_CONFLICT','IDEMPOTENCY_CONFLICT','INVALID_STATE_TRANSITION','PROVIDER_UNAVAILABLE','INVALID_DRIVER','CAPACITY_UNKNOWN','INVALID_ROUTE',
@@ -45,7 +46,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
   if (!identityService || !logisticsService) throw new TypeError('Serviços de identidade e logística obrigatórios.');
   return async function logisticsHttpHandler(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
-    if (!url.pathname.startsWith('/api/logistics/')) return false;
+    if (!url.pathname.startsWith('/api/logistics/') && !url.pathname.startsWith('/api/motoboy/logistics/')) return false;
     const requestId = req.requestId || crypto.randomUUID(); let status = 500, errorCode;
     const respond = (code, body, extra = {}) => { status = code; const text = JSON.stringify({ ...body, requestId });
       res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', Pragma: 'no-cache',
@@ -53,6 +54,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
         'Content-Length': Buffer.byteLength(text), ...extra }); res.end(text); };
     try {
       const routes = [
+        { re: new RegExp(`^/api/motoboy/logistics/routes/(${UUID})/geometry$`, 'u'), methods: ['GET'] },
         { re: new RegExp(`^/api/logistics/routes/(${UUID})/geometry$`, 'u'), methods: ['GET'] },
         { re: /^\/api\/logistics\/providers$/u, methods: ['GET','POST'] },
         { re: /^\/api\/logistics\/internal-provider$/u, methods: ['POST'] },
@@ -87,6 +89,7 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
       const write = !['GET','HEAD'].includes(req.method);
       if (write) sameOrigin(req, allowedOrigin);
       const permission = /\/api\/logistics\/(?:deliveries\/[0-9a-f-]+\/(?:cancel|custody-decisions)|returns\/[0-9a-f-]+\/receipt)$/iu.test(url.pathname) && write ? 'orders.manage' :
+        /^\/api\/motoboy\/logistics\/routes\/[0-9a-f-]+\/geometry$/iu.test(url.pathname) ? 'sync.pull' :
         ['/api/logistics/analytics','/api/logistics/intelligence/analytics','/api/logistics/intelligence/decision-quality'].includes(url.pathname) ||
         /\/custody$/u.test(url.pathname) ||
         /^\/api\/logistics\/routes\/[0-9a-f-]+\/geometry$/iu.test(url.pathname) ||
@@ -120,6 +123,11 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
           ? logisticsService.getRouteSettings(client,principal):logisticsService.updateRouteSettings(client,principal,body);
         match = new RegExp(`^/api/logistics/routes/(${UUID})/geometry$`, 'u').exec(path);
         if (match) return logisticsService.getPlannedRouteGeometry(client,principal,match[1]);
+        match = new RegExp(`^/api/motoboy/logistics/routes/(${UUID})/geometry$`, 'u').exec(path);
+        if (match) {
+          await requireActiveDriver(client, principal);
+          return logisticsService.getPlannedRouteGeometry(client, principal, match[1]);
+        }
         if (path === '/api/logistics/intelligence/analytics') return logisticsService.logisticsEconomicAnalytics(client,principal);
         if (path === '/api/logistics/intelligence/decision-quality') return logisticsService.logisticsDecisionQuality(client,principal);
         match = new RegExp(`^/api/logistics/deliveries/(${UUID})/comparison$`, 'u').exec(path);
@@ -160,7 +168,8 @@ function createLogisticsHttpHandler({ identityService, logisticsService, rateLim
       errorCode = typeof err?.code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/u.test(err.code) ? err.code : 'INTERNAL_ERROR';
       status = statusFor(errorCode); const safeCode = status === 500 ? 'INTERNAL_ERROR' : errorCode;
       const messages = { INVALID_INPUT: 'Solicitação inválida.', UNAUTHENTICATED: 'Sessão inválida ou expirada.', FORBIDDEN: 'Operação não autorizada.',
-        MFA_REQUIRED: 'Esta operação exige MFA verificado.', CSRF_INVALID: 'Validação CSRF inválida.', ORIGIN_INVALID: 'Origem não permitida.',
+        MFA_REQUIRED: 'Esta operação exige MFA verificado.', DRIVER_LINK_REQUIRED: 'Esta conta não está vinculada a um cadastro ativo de motoboy.',
+        DRIVER_INACTIVE: 'O cadastro de motoboy está desativado. Solicite à empresa que revise o vínculo.', CSRF_INVALID: 'Validação CSRF inválida.', ORIGIN_INVALID: 'Origem não permitida.',
         RATE_LIMITED: 'Limite de solicitações excedido.', NOT_FOUND: 'Recurso não encontrado.', PAYLOAD_TOO_LARGE: 'Payload excede o limite permitido.',
         REVISION_CONFLICT: 'O registro mudou. Atualize a tela e tente novamente.', INSTALLATION_REQUIRED: 'Sincronize o painel antes de alterar a alocação.',
         DELIVERY_IN_ACTIVE_ROUTE: 'Remova a entrega da rota da frota própria antes de selecionar um provider externo.',

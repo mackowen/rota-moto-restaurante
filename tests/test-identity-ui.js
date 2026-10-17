@@ -20,8 +20,8 @@ assert.match(source, /data-mfa-start-status role="alert" aria-live="assertive"/u
 assert.match(source, /CSRF_INVALID: 'A sessão de segurança foi renovada/u, 'a failed CSRF refresh gives a visible recovery instruction');
 assert.match(source, /if\(mfaStarting\)return/u, 'duplicate enrollment clicks are ignored while the request is pending');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0245\.1/u, 'identity UI URL changes when the enrollment flow changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v47`[\s\S]*identity-ui\.js\?v=0245\.1/u, 'service worker cache is invalidated with the identity asset');
+assert.match(html, /identity-ui\.js\?v=0247\.1/u, 'identity UI URL changes when the enrollment flow changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v48`[\s\S]*identity-ui\.js\?v=0247\.1/u, 'service worker cache is invalidated with the identity asset');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -44,6 +44,11 @@ assert.match(source, /\/admin\/invitations/u);
 assert.match(source, /members\.invite/u, 'invitation controls are gated by the effective permission');
 assert.match(source, /canReadMembers/u, 'membership data is fetched only with its read permission');
 assert.match(source, /memberships\/\$\{member\.membershipId\}\/driver/u, 'administrators use the tenant-scoped membership-to-driver endpoints');
+assert.match(source, /O convite cria ou associa uma conta RotaMoto pelo email/u, 'the admin UI explains that identity invitation and operational Driver registration are separate');
+assert.match(source, /Reenviar convite/u, 'pending invitations can be resent through the existing identity invitation service');
+assert.match(source, /Revogar convite/u, 'pending invitations can be revoked through audited membership status changes');
+assert.match(source, /Convite pendente/u, 'membership invitation state is presented in plain language');
+assert.match(source, /Aguardando ativação do vínculo de motoboy/u, 'an activated identity without an operational Driver binding is clearly distinguished');
 assert.match(source, /role="dialog" aria-modal="true"/u, 'account access is exposed as a modal dialog');
 assert.match(source, /visibleControls\(\)/u, 'account dialog keeps keyboard focus within visible controls');
 assert.match(source, /driverCursor/u, 'driver linking can navigate a paginated driver list');

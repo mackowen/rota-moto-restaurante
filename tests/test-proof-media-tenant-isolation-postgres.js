@@ -28,6 +28,19 @@ runFixtureLifecycle({ exercise: async fixture => {
   assert.deepEqual(afterDeniedRead.data, PNG, 'denied cross-tenant read did not change the stored object');
   assert.equal(afterDeniedRead.sha256, fixture.proof.sha256);
 
+  const unlinked = await fixture.authenticatedCall(`/api/admin/memberships/${fixture.membershipId}/driver`, { method: 'DELETE' });
+  assert.equal(unlinked.status, 200, JSON.stringify(unlinked.body));
+  const ownerMotoboyRead = await fetch(`${fixture.apiOrigin}/api/motoboy/domain/deliveries/${fixture.deliveryId}/proofs/${fixture.proof.canonicalProofId}/media`, {
+    headers: { Origin: fixture.apiOrigin, Cookie: fixture.browserSessionCookie }
+  });
+  const ownerMotoboyBody = await ownerMotoboyRead.json();
+  assert.equal(ownerMotoboyRead.status, 403, 'restaurant owner without a Driver binding cannot read proof bytes via Motoboy API');
+  assert.equal(ownerMotoboyBody.error.code, 'DRIVER_LINK_REQUIRED');
+  const rebound = await fixture.authenticatedCall(`/api/admin/memberships/${fixture.membershipId}/driver`, {
+    method: 'PUT', body: { driverId: fixture.driverId }
+  });
+  assert.equal(rebound.status, 200, JSON.stringify(rebound.body));
+
   const ownerRead = await fetch(`${fixture.apiOrigin}${path}`, {
     headers: { Origin: fixture.apiOrigin, Cookie: fixture.browserSessionCookie }
   });

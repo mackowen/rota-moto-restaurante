@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const { COOKIE_NAME } = require('../identity/http');
 const { createRateLimiter } = require('../identity/http');
 const { MAX_PROOF_BYTES } = require('./filesystem-object-store');
+const { requireActiveDriver } = require('./driver-access');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 function fail(code, status, message='Solicitação não autorizada.') { return Object.assign(new Error(message), { code, status }); }
@@ -21,14 +22,14 @@ function sameOrigin(req, allowed) {
 }
 
 function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin,rateLimiter=createRateLimiter()}){
-  const upload=/^\/api\/domain\/deliveries\/([0-9a-f-]{36})\/proofs\/media$/iu;
-  const read=/^\/api\/domain\/deliveries\/([0-9a-f-]{36})\/proofs\/([0-9a-f-]{36})\/media$/iu;
+  const upload=/^\/api\/(motoboy\/)?domain\/deliveries\/([0-9a-f-]{36})\/proofs\/media$/iu;
+  const read=/^\/api\/(motoboy\/)?domain\/deliveries\/([0-9a-f-]{36})\/proofs\/([0-9a-f-]{36})\/media$/iu;
   return async function proofMediaHttp(req,res){
     const url=new URL(req.url,'http://127.0.0.1'),up=upload.exec(url.pathname),get=read.exec(url.pathname);
     if(!up&&!get)return url.pathname.startsWith('/api/domain/deliveries/')&&url.pathname.includes('/proofs/')?false:false;
     const requestId=req.requestId||crypto.randomUUID();res.req=req;
     try{
-      const deliveryId=(up||get)[1].toLowerCase();if(!UUID.test(deliveryId))throw fail('NOT_FOUND',404);
+      const match=up||get,motoboySurface=Boolean(match[1]),deliveryId=match[2].toLowerCase();if(!UUID.test(deliveryId))throw fail('NOT_FOUND',404);
       const method=up?'POST':'GET';if(req.method!==method){res.writeHead(405,{Allow:method,'Cache-Control':'no-store'});res.end();return true;}
       const rate=rateLimiter.consume(`${req.clientIp||req.socket.remoteAddress||'unknown'}:proof-media:${method}`,'default');if(!rate.allowed)throw fail('RATE_LIMITED',429,'Limite de solicitações excedido.');
       if(up){sameOrigin(req,allowedOrigin);const proofId=(url.searchParams.get('proofId')||'').toLowerCase();const type=String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase();if(!['image/png','image/jpeg'].includes(type))throw fail('UNSUPPORTED_MEDIA_TYPE',415);
@@ -40,7 +41,7 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
           stored=await identityService.withAuthenticatedTenant(token,async(client,principal)=>{
             if(!await identityService.verifyCsrf(client,principal.session_id,csrf))throw fail('CSRF_INVALID',403);
             if(!UUID.test(proofId||''))throw fail('INVALID_INPUT',400,'Identificador da prova inválido.');
-            if(!principal.driver_id)throw fail('DRIVER_LINK_REQUIRED',403);
+            await requireActiveDriver(client,principal);
             // Shared barrier with coordinated backups and garbage collection.
             // Hold it in this transaction from before blob creation through intent commit.
             await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',['rotamoto:proof-media:snapshot:v1']);
@@ -85,8 +86,9 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
         sendJson(res,201,{provider:stored.provider,storageRef:stored.storageRef,mimeType:stored.mimeType,sizeBytes:stored.sizeBytes,sha256:stored.sha256,requestId});return true;
       }
       const token=cookie(req);if(!token)throw fail('UNAUTHENTICATED',401);
-      const proofId=get[2].toLowerCase();if(!UUID.test(proofId))throw fail('NOT_FOUND',404);
+      const proofId=get[3].toLowerCase();if(!UUID.test(proofId))throw fail('NOT_FOUND',404);
       const result=await identityService.withAuthenticatedTenant(token,async(client,principal)=>{
+        if(motoboySurface||principal.driver_id)await requireActiveDriver(client,principal);
         const proof=await client.query(`SELECT payload,related_record_id::text AS delivery_id FROM rotamoto.domain_records
           WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='DeliveryProof' AND related_entity_type='Delivery'
           AND related_record_id=$3::uuid AND deleted_at IS NULL`,[principal.company_id,proofId,deliveryId]);
@@ -94,7 +96,8 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
         const delivery=await client.query(`SELECT payload->>'driverId' AS driver_id,deleted_at FROM rotamoto.domain_records
           WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Delivery'`,[principal.company_id,deliveryId]);
         if(!delivery.rowCount||delivery.rows[0].deleted_at)throw fail('NOT_FOUND',404);
-        if(principal.driver_id!==delivery.rows[0].driver_id){
+        if(motoboySurface&&principal.driver_id!==delivery.rows[0].driver_id)throw fail('NOT_FOUND',404);
+        if(!motoboySurface&&principal.driver_id!==delivery.rows[0].driver_id){
           const admin=await client.query(`SELECT 1 FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2
             AND catalog_version=1 AND permission_key='company.manage'`,[principal.company_id,principal.role_id]);
           if(!admin.rowCount)throw fail('NOT_FOUND',404);
@@ -105,7 +108,7 @@ function createProofMediaHttpHandler({identityService,mediaStorage,allowedOrigin
         return mediaStorage.read(media.storageRef,{mimeType:media.mimeType,sizeBytes:media.sizeBytes,sha256:media.sha256});
       },'sync.pull');
       res.writeHead(200,{'Content-Type':result.contentType,'Content-Length':result.sizeBytes,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Content-Disposition':'attachment; filename="delivery-proof"'});res.end(result.data);return true;
-    }catch(error){if(up)req.resume();const status=error.status||({'UNAUTHENTICATED':401,'FORBIDDEN':403,'MFA_REQUIRED':403,'CSRF_INVALID':403,'ORIGIN_INVALID':403,'DRIVER_LINK_REQUIRED':403,'NOT_FOUND':404,'INVALID_INPUT':400,'UNSUPPORTED_MEDIA_TYPE':415,'PAYLOAD_TOO_LARGE':413,'MEDIA_STORAGE_UNAVAILABLE':503,'RATE_LIMITED':429,'MEDIA_PROOF_CONFLICT':409}[error.code]||500);sendJson(res,status,{error:{code:status>=500?'INTERNAL_ERROR':error.code,message:status>=500?'Falha interna ao processar mídia.':error.message}});return true;}
+    }catch(error){if(up)req.resume();const status=error.status||({'UNAUTHENTICATED':401,'FORBIDDEN':403,'MFA_REQUIRED':403,'CSRF_INVALID':403,'ORIGIN_INVALID':403,'DRIVER_LINK_REQUIRED':403,'DRIVER_INACTIVE':403,'NOT_FOUND':404,'INVALID_INPUT':400,'UNSUPPORTED_MEDIA_TYPE':415,'PAYLOAD_TOO_LARGE':413,'MEDIA_STORAGE_UNAVAILABLE':503,'RATE_LIMITED':429,'MEDIA_PROOF_CONFLICT':409}[error.code]||500);sendJson(res,status,{error:{code:status>=500?'INTERNAL_ERROR':error.code,message:status>=500?'Falha interna ao processar mídia.':error.message}});return true;}
   };
 }
 module.exports={createProofMediaHttpHandler};

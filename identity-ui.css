@@ -66,6 +66,54 @@
 #rmIdentityRoot [data-mfa-start-status]:empty { display:none; }
 .rm-identity-panel [data-mfa-qr] { display: block; width: min(208px, 72vw); height: auto; aspect-ratio: 1; margin: 12px auto; border: 1px solid var(--rm-id-border); image-rendering: pixelated; }
 
+#rmCompanyAdminPage {
+  position: fixed;
+  inset: 0;
+  z-index: 2302;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left));
+  background: var(--rm-id-surface);
+  color: var(--rm-id-text);
+}
+#rmCompanyAdminPage > header,
+.rm-company-admin-content {
+  width: min(100%, 960px);
+  margin-inline: auto;
+}
+#rmCompanyAdminPage > header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rm-id-border);
+  background: var(--rm-id-surface);
+}
+#rmCompanyAdminPage > header strong,
+#rmCompanyAdminPage > header small { display: block; }
+#rmCompanyAdminPage > header small { margin-block-start: 4px; color: var(--rm-id-muted); }
+#rmCompanyAdminPage > header button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--rm-id-border); border-radius: 10px; background: var(--rm-id-surface); color: var(--rm-id-text); }
+.rm-company-admin-content { padding-block: 16px 32px; }
+.rm-company-admin-content [data-admin] { display: grid; gap: 16px; }
+.rm-company-admin-content [data-admin] > form,
+.rm-company-admin-content [data-admin] > section,
+.rm-company-admin-content [data-admin] > [data-members] {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--rm-id-border);
+  border-radius: 14px;
+  background: var(--rm-id-surface);
+}
+.rm-company-admin-content [data-admin] label { display: grid; gap: 6px; margin-block: 10px; }
+.rm-company-admin-content [data-admin] input,
+.rm-company-admin-content [data-admin] select { width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--rm-id-border); border-radius: 9px; background: var(--rm-id-surface); color: var(--rm-id-text); font: inherit; }
+.rm-company-admin-content [data-admin] button { min-height: 42px; max-width: 100%; }
+#rmCompanyAdminPage :focus-visible { outline: 3px solid var(--rm-id-accent); outline-offset: 2px; }
+
 .rm-identity-panel {
   position: fixed;
   inset-block: 0;

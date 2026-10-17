@@ -7,6 +7,7 @@ const OrderMoney = require('../../order-money');
 const { projectRestaurantDriverAssignment, projectInternalExecution } = require('../logistics/sync-projection');
 const { validateReturnEvent } = require('../logistics/return-events');
 const { SyncError, invalid, boundedText, validatePacket, ENTITY_ARRAYS } = require('./sync-validation');
+const { requireActiveDriver } = require('./driver-access');
 
 const WRITE_OWNERS = Object.freeze({ Order: 'restaurante', Route: 'restaurante', Driver: 'restaurante', Earning: 'restaurante',
   LocationPoint: 'motoboy', DeliveryProof: 'motoboy' });
@@ -147,7 +148,7 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
   }
   async function registerInstallation(client, principal, appKey, deviceId) {
     if (!['restaurante', 'motoboy'].includes(appKey)) invalid('Aplicativo de instalação inválido.');
-    requireDriverInstallation({ app_key: appKey }, principal);
+    if (appKey === 'motoboy') await requireActiveDriver(client, principal);
     const localDeviceId = boundedText(deviceId, 'deviceId', 128);
     const result = await client.query(`INSERT INTO rotamoto.sync_installations
       (id,company_id,app_key,local_device_id,registered_by_user_id) VALUES($1,$2,$3,$4,$5)
@@ -167,14 +168,9 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
     [principal.company_id, principal.user_id, boundedText(deviceId, 'deviceId', 128), appKey]);
     if (!result.rowCount) throw new SyncError('INSTALLATION_REQUIRED', 'Registre este dispositivo na sessão antes de sincronizar.');
     if (result.rowCount > 1) throw new SyncError('INSTALLATION_AMBIGUOUS', 'deviceId está vinculado a mais de um aplicativo.');
+    if (result.rows[0].app_key === 'motoboy') await requireActiveDriver(client, principal);
     await client.query('UPDATE rotamoto.sync_installations SET last_seen_at=greatest(last_seen_at,now()) WHERE company_id=$1 AND id=$2', [principal.company_id, result.rows[0].id]);
     return result.rows[0];
-  }
-
-  function requireDriverInstallation(installation, principal) {
-    if (installation.app_key === 'motoboy' && !principal?.driver_id) {
-      throw new SyncError('DRIVER_LINK_REQUIRED', 'A associação desta conta a um motorista precisa ser configurada pela empresa.');
-    }
   }
 
   async function assertAssignedDriver(client, principal, appKey, deliveryId) {
@@ -252,7 +248,6 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
     const { packetId, deviceId, data, events } = validated;
     const installation = await findInstallation(client, principal, deviceId);
     const appKey = installation.app_key;
-    requireDriverInstallation(installation, principal);
     if ((data.proofs || []).length || (data.tombstones || []).some(item => TOMBSTONE_TYPES[item?.store] === 'DeliveryProof' || item?.entityType === 'DeliveryProof' || item?.type === 'DeliveryProof')) {
       // Serialize canonical proof/intent changes with the backup and media GC barrier.
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', ['rotamoto:proof-media:snapshot:v1']);
@@ -873,7 +868,6 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
   async function pull(client, principal, { cursor = null, limit = 100, deviceId } = {}) {
     const responseDeviceId = boundedText(deviceId, 'deviceId', 128);
     const installation = await findInstallation(client, principal, responseDeviceId);
-    requireDriverInstallation(installation, principal);
     const size = Number(limit);
     if (!Number.isSafeInteger(size) || size < 1 || size > 100) invalid('limit deve estar entre 1 e 100.');
     let afterAt = new Date(0).toISOString();

@@ -8,7 +8,7 @@ const { QUERY_PERMISSIONS } = require('./query-service');
 function createDomainQueryHttpHandler({ identityService, queryService, rateLimiter = createRateLimiter(), logger = () => {}, onProfile = null }) {
   if (!identityService || !queryService) throw new TypeError('Serviços de identidade e consulta de domínio obrigatórios.');
   if (onProfile !== null && typeof onProfile !== 'function') throw new TypeError('Observer de perfil da consulta inválido.');
-  const route = /^\/api\/domain\/([a-z-]+)(?:\/([^/]+))?$/u;
+  const route = /^\/api\/(?:((?:motoboy))\/)?domain\/([a-z-]+)(?:\/([^/]+))?$/u;
   return async function domainQueryHttpHandler(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
     const match = route.exec(url.pathname);
@@ -27,8 +27,9 @@ function createDomainQueryHttpHandler({ identityService, queryService, rateLimit
         res.end(JSON.stringify({ error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' }, requestId }));
         return true;
       }
-      const collection = match[1];
-      const recordId = match[2];
+      const motoboySurface = match[1] === 'motoboy';
+      const collection = match[2];
+      const recordId = match[3];
       const permission = QUERY_PERMISSIONS[collection];
       if (!permission) {
         status = 404;
@@ -50,8 +51,9 @@ function createDomainQueryHttpHandler({ identityService, queryService, rateLimit
       if (!token || !/^[A-Za-z0-9_-]{43}$/u.test(token)) throw Object.assign(new Error('Sessão inválida ou expirada.'), { code: 'UNAUTHENTICATED' });
       const queryStartedAt = onProfile ? performance.now() : 0;
       const result = await identityService.withAuthenticatedTenant(token,
-        (client, principal) => recordId ? queryService.get(client, principal, collection, recordId) :
-          queryService.list(client, principal, collection, rawValues), permission);
+        (client, principal) => motoboySurface
+          ? recordId ? queryService.getForDriver(client, principal, collection, recordId) : queryService.listForDriver(client, principal, collection, rawValues)
+          : recordId ? queryService.get(client, principal, collection, recordId) : queryService.list(client, principal, collection, rawValues), permission);
       if (onProfile) identityAndDomainMs = performance.now() - queryStartedAt;
       status = 200;
       const serializationStartedAt = onProfile ? performance.now() : 0;
@@ -65,13 +67,14 @@ function createDomainQueryHttpHandler({ identityService, queryService, rateLimit
       return true;
     } catch (error) {
       errorCode = /^[A-Z][A-Z0-9_]{1,63}$/u.test(error?.code || '') ? error.code : 'INTERNAL_ERROR';
-      const statusByCode = { INVALID_INPUT: 400, UNAUTHENTICATED: 401, FORBIDDEN: 403, DRIVER_LINK_REQUIRED: 403,
+      const statusByCode = { INVALID_INPUT: 400, UNAUTHENTICATED: 401, FORBIDDEN: 403, DRIVER_LINK_REQUIRED: 403, DRIVER_INACTIVE: 403,
         NOT_FOUND: 404, RATE_LIMITED: 429, DEPENDENCY_UNAVAILABLE: 503 };
       status = statusByCode[errorCode] || 500;
       const code = status === 500 ? 'INTERNAL_ERROR' : errorCode;
       req.apiErrorCode = code;
       const message = status === 400 ? error.message : ({ UNAUTHENTICATED: 'Sessão inválida ou expirada.',
         DRIVER_LINK_REQUIRED: 'A associação desta conta a um motorista precisa ser configurada pela empresa.',
+        DRIVER_INACTIVE: 'O vínculo de motoboy não está ativo ou autorizado nesta empresa.',
         FORBIDDEN: 'Operação não autorizada.', NOT_FOUND: 'Recurso não encontrado.', RATE_LIMITED: 'Limite de solicitações excedido.',
         DEPENDENCY_UNAVAILABLE: 'Dependência indisponível.', INTERNAL_ERROR: 'Falha interna ao consultar o domínio.' })[code];
       const body = JSON.stringify({ error: { code, message }, requestId });

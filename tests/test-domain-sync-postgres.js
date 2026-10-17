@@ -112,12 +112,20 @@ async function main() {
     await client.query("INSERT INTO rotamoto.roles(id,company_id,role_key,display_name) VALUES($1,$2,'qa-tenant-b','Synthetic tenant B role')",
       [tenantBRoleId, tenantBId]);
     await client.query(`INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version)
-      VALUES($1,$2,'orders.read',1),($1,$2,'orders.manage',1)`, [tenantBId, tenantBRoleId]);
+      VALUES($1,$2,'orders.read',1),($1,$2,'orders.manage',1),($1,$2,'sync.pull',1)`, [tenantBId, tenantBRoleId]);
     await client.query("INSERT INTO rotamoto.memberships(id,company_id,user_id,role_id,status,activated_at) VALUES($1,$2,$3,$4,'active',now())",
       [tenantBMembershipId, tenantBId, tenantBUserId, tenantBRoleId]);
     await client.query(`INSERT INTO rotamoto.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at,mfa_verified_at)
       VALUES($1,$2,$3,$4,$5,now(),now(),now()+interval '30 minutes',now()+interval '12 hours',now())`,
     [tenantBSessionId, tenantBUserId, tenantBId, tokenDigest(tenantBToken), tokenDigest(tenantBCsrf)]);
+    const tenantBDriverId = crypto.randomUUID();
+    const tenantBDriverInstallId = crypto.randomUUID();
+    await client.query(`INSERT INTO rotamoto.sync_installations(id,company_id,app_key,local_device_id)
+      VALUES($1,$2,'restaurante',$3)`, [tenantBDriverInstallId, tenantBId, `tenant-b-${tenantBDriverInstallId}`]);
+    await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,payload,version,created_at,updated_at)
+      VALUES($1,$2,'Driver','restaurante',$3,$4::jsonb,1,now(),now())`,
+    [tenantBId, tenantBDriverId, tenantBDriverInstallId, JSON.stringify({ id: tenantBDriverId, companyId: tenantBId, name: 'Motorista tenant B', status: 'ACTIVE' })]);
+    await client.query('UPDATE rotamoto.memberships SET driver_id=$2 WHERE company_id=$1 AND id=$3', [tenantBId, tenantBDriverId, tenantBMembershipId]);
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
 
     const identityService = createIdentityService({ pool: savepointPool(client) });
@@ -230,6 +238,14 @@ async function main() {
       const ownDelivery = await call(`/api/domain/deliveries/${deliveryId}`);
       assert.equal(ownDelivery.status, 200);
       assert.equal(ownDelivery.body.record.status, 'ASSIGNED');
+      const ownerWithoutDriver = await call('/api/motoboy/domain/deliveries?limit=10');
+      assert.equal(ownerWithoutDriver.status, 403);
+      assert.equal(ownerWithoutDriver.body.error.code, 'DRIVER_LINK_REQUIRED',
+        'company owner identity without an explicit Driver binding cannot use the Motoboy operational API');
+      const ownerRouteGeometry = await call(`/api/motoboy/logistics/routes/${crypto.randomUUID()}/geometry`);
+      assert.equal(ownerRouteGeometry.status, 403);
+      assert.equal(ownerRouteGeometry.body.error.code, 'DRIVER_LINK_REQUIRED',
+        'company ownership alone cannot access the Motoboy route geometry surface');
       const hiddenTombstone = await call(`/api/domain/deliveries/${crypto.randomUUID()}`);
       assert.equal(hiddenTombstone.status, 404, 'canonical IDs outside this tenant are indistinguishable from missing records');
       const invalidDomainQuery = await call('/api/domain/orders?companyId=' + companyId);
@@ -274,8 +290,8 @@ async function main() {
       await client.query(`INSERT INTO rotamoto.domain_records(company_id,record_id,entity_type,source_app,source_installation_id,
         payload,version,created_at,updated_at) VALUES($1,$2,'Driver','restaurante',$3,$4::jsonb,1,$5,$5),
         ($1,$6,'Driver','restaurante',$3,$7::jsonb,1,$5,$5)`,
-      [companyId,driverId,restaurantInstall.body.installationId,JSON.stringify({id:driverId,companyId,name:'Motorista sintético',createdAt:driverNow,updatedAt:driverNow,version:1}),driverNow,
-        otherDriverId,JSON.stringify({id:otherDriverId,companyId,name:'Outro motorista sintético',createdAt:driverNow,updatedAt:driverNow,version:1})]);
+      [companyId,driverId,restaurantInstall.body.installationId,JSON.stringify({id:driverId,companyId,name:'Motorista sintético',status:'ACTIVE',createdAt:driverNow,updatedAt:driverNow,version:1}),driverNow,
+        otherDriverId,JSON.stringify({id:otherDriverId,companyId,name:'Outro motorista sintético',status:'ACTIVE',createdAt:driverNow,updatedAt:driverNow,version:1})]);
       const noLinkCsrf=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'PUT',csrf:null,body:{driverId}});
       assert.equal(noLinkCsrf.status,403);assert.equal(noLinkCsrf.body.error.code,'CSRF_INVALID');
       const invalidDriver=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'PUT',body:{driverId:crypto.randomUUID()}});
@@ -300,6 +316,9 @@ async function main() {
       assert.equal(deniedDriverLink.status,403,'ordinary sync membership cannot administer driver bindings');
       const unlinkedDomainRead=await call('/api/domain/deliveries?limit=1',{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
       assert.equal(unlinkedDomainRead.status,403);assert.equal(unlinkedDomainRead.body.error.code,'DRIVER_LINK_REQUIRED');
+      const unlinkedMotoboyRead=await call('/api/motoboy/domain/deliveries?limit=1',{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
+      assert.equal(unlinkedMotoboyRead.status,403);assert.equal(unlinkedMotoboyRead.body.error.code,'DRIVER_LINK_REQUIRED',
+        'the Motoboy API surface rejects an authenticated company user without an explicit Driver link');
       const linkReaderDriver=await call(`/api/admin/memberships/${readOnlyMembershipId}/driver`,{method:'PUT',body:{driverId:otherDriverId}});
       assert.equal(linkReaderDriver.status,200,JSON.stringify(linkReaderDriver.body));
       const earningOrderLocalId='earning-order-local',earningDeliveryLocalId='earning-delivery-local';
@@ -399,6 +418,30 @@ async function main() {
       const readerDomainList=await call('/api/domain/deliveries?limit=100',{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
       assert.equal(readerDomainList.status,200);assert(readerDomainList.body.records.some(row=>row.id===otherDeliveryId));
       assert.equal(readerDomainList.body.records.some(row=>row.id===deliveryId),false,'non-admin domain reads are scoped to the resolved Driver');
+      const linkedMotoboyRead=await call('/api/motoboy/domain/deliveries?limit=100',{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
+      assert.equal(linkedMotoboyRead.status,200,JSON.stringify(linkedMotoboyRead.body));
+      assert(linkedMotoboyRead.body.records.some(row=>row.id===otherDeliveryId),'linked Motoboy can read its assigned company delivery');
+      assert.equal(linkedMotoboyRead.body.records.some(row=>row.id===deliveryId),false,'Motoboy query scope hides another driver delivery');
+      await client.query("UPDATE rotamoto.domain_records SET payload=jsonb_set(payload,'{status}','\"DISABLED\"'::jsonb) WHERE company_id=$1 AND record_id=$2", [companyId, otherDriverId]);
+      const disabledDriverRead=await call('/api/motoboy/domain/deliveries?limit=100',{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
+      assert.equal(disabledDriverRead.status,403);
+      assert.equal(disabledDriverRead.body.error.code,'DRIVER_INACTIVE','a disabled canonical Driver is not an operational identity');
+      const disabledDriverGeometry=await call(`/api/motoboy/logistics/routes/${crypto.randomUUID()}/geometry`,{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
+      assert.equal(disabledDriverGeometry.status,403);
+      assert.equal(disabledDriverGeometry.body.error.code,'DRIVER_INACTIVE','disabled drivers cannot read operational route geometry');
+      const disabledDriverPull=await call('/api/sync/pull?deviceId=moto-earning-test-device',{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
+      assert.equal(disabledDriverPull.status,403);assert.equal(disabledDriverPull.body.error.code,'DRIVER_INACTIVE',
+        'disabled drivers cannot pull Motoboy operational data');
+      const disabledDriverPush=await call('/api/sync/push',{method:'POST',cookie:`${COOKIE_NAME}=${readOnlyToken}`,csrf:readOnlyCsrf,
+        body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,deviceId:'moto-earning-test-device',source:{app:'Motoboy',deviceId:'moto-earning-test-device'},
+          data:{...packet.data,orders:[],deliveries:[],drivers:[],routes:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[]}}});
+      assert.equal(disabledDriverPush.status,403);assert.equal(disabledDriverPush.body.error.code,'DRIVER_INACTIVE',
+        'disabled drivers cannot push Motoboy operational changes');
+      await client.query("UPDATE rotamoto.domain_records SET payload=jsonb_set(payload,'{status}','\"ACTIVE\"'::jsonb) WHERE company_id=$1 AND record_id=$2", [companyId, otherDriverId]);
+      const activeDriverGeometry=await call(`/api/motoboy/logistics/routes/${crypto.randomUUID()}/geometry`,{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
+      assert.equal(activeDriverGeometry.status,404,'an active linked driver passes identity authorization, while nonexistent/cross-tenant routes remain hidden');
+      const crossTenantMotoboyRead=await call(`/api/motoboy/domain/deliveries/${deliveryId}`,{cookie:`${COOKIE_NAME}=${tenantBToken}`});
+      assert.equal(crossTenantMotoboyRead.status,404,'an explicitly linked driver in another tenant cannot read a known delivery UUID');
       const hiddenOtherDelivery=await call(`/api/domain/deliveries/${deliveryId}`,{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
       assert.equal(hiddenOtherDelivery.status,404,'domain record lookup cannot bypass driver assignment');
       const proofPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,deviceId:'moto-proof-test-device',source:{app:'Rota Moto',deviceId:'moto-proof-test-device'},data:{...packet.data,orders:[],deliveries:[],deliveryEvents:[],earnings:[],proofs:[{

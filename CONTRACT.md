@@ -14,6 +14,8 @@ Todo dado compartilhável usa `id` global, `companyId`, `createdAt`, `updatedAt`
 
 O vínculo de execução é mantido somente no servidor: cada Membership pode apontar para zero ou um `Driver` canônico da mesma Company, e cada Driver pode estar associado a no máximo uma Membership. A associação exige uma operação administrativa autorizada; não é inferida por email, perfil local, `source.app` ou `actor`. A sessão retorna o `driverId` resolvido pelo servidor; ele não é autoridade quando enviado pelo cliente.
 
+Cadastro operacional de `Driver` e identidade autenticável são etapas separadas. Convites reutilizam o fluxo de membership e identidade; uma conta RotaMoto existente pode aceitar uma nova associação sem duplicar o usuário. A empresa só habilita operações Motoboy após vincular explicitamente a membership ativa e verificada ao `Driver` canônico ativo da mesma empresa. Ser proprietário ou administrador não concede papel de motoboy. A mesma pessoa pode ter vínculos autorizados em empresas diferentes, cada um limitado ao seu tenant. Sessão sem vínculo ou com Driver desativado pode consultar identidade e encerrar sessão, mas não pode registrar instalação, sincronizar, consultar entregas, rotas, localização ou comprovantes pela API Motoboy.
+
 ## Entidades
 `Company`, `Driver`, `Order`, `Delivery`, `Route`, `DeliveryEvent`, `LocationPoint`, `DeliveryProof`, `Earning`.
 

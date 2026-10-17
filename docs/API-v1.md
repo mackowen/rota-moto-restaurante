@@ -43,9 +43,9 @@ Este documento descreve a API local do backend do Restaurante. O servidor deve p
 | Método/path | Auth/permissão | Entrada | Saída | Idempotência/erros |
 |---|---|---|---|---|
 | `POST /api/sync/installations/restaurante` | Sessão + CSRF + `sync.push` | `{deviceId}` | Identidade da instalação | Repetir para a mesma instalação é idempotente; outra associação é negada. |
-| `POST /api/sync/installations/motoboy` | Sessão + CSRF + `sync.push` | `{deviceId}` | Identidade da instalação | Mesmo comportamento. |
-| `POST /api/sync/push` | Sessão + CSRF + `sync.push` | Envelope `rotamoto-sync` v1/schema v1 | Resultado do pacote e `operationResults` por operação | `accepted`, `duplicate`, `rejected` ou `conflict`; HTTP 200 não significa aceite universal. `packetId` e `eventId` idempotentes. |
-| `GET /api/sync/pull?deviceId=…&limit=…&cursor=…` | Sessão + `sync.pull` | Instalação registrada; cursor keyset | Eventos/snapshots do tenant e próximo cursor | Retry seguro; instalação/tenant validados server-side. |
+| `POST /api/sync/installations/motoboy` | Sessão + CSRF + `sync.push` + Driver ativo vinculado | `{deviceId}` | Identidade da instalação | O servidor confirma membership e registro Driver canônico ativo na empresa antes do registro. |
+| `POST /api/sync/push` | Sessão + CSRF + `sync.push`; Driver ativo para instalação Motoboy | Envelope `rotamoto-sync` v1/schema v1 | Resultado do pacote e `operationResults` por operação | `accepted`, `duplicate`, `rejected` ou `conflict`; HTTP 200 não significa aceite universal. `packetId` e `eventId` idempotentes. |
+| `GET /api/sync/pull?deviceId=…&limit=…&cursor=…` | Sessão + `sync.pull`; Driver ativo para instalação Motoboy | Instalação registrada; cursor keyset | Eventos/snapshots do tenant e próximo cursor | Retry seguro; instalação/tenant validados server-side. |
 
 Operações de negócio autorizadas devem continuar no fluxo outbox/inbox/reconciliação do cliente. O servidor deriva tenant e actor da sessão/instalação registrada; `source.app` não é identidade confiável.
 
@@ -67,6 +67,8 @@ Base: `GET /api/domain/{collection}` ou `GET /api/domain/{collection}/{canonical
 | `earnings` | `sync.pull` | `driverId`, `relatedId` |
 
 Lista retorna `{records:[{id,record,version,createdAt,updatedAt,deletedAt}],nextCursor,hasMore,requestId}`. Busca por ID retorna o mesmo envelope singular sem expor se UUID de outro tenant existe. Registros tombstoned são omitidos por padrão. `includeDeleted` exige a mesma permissão de leitura. Filtros são allowlisted, parametrizados e sempre combinados com o tenant da sessão. Esta API não oferece mutação de Order/Delivery/Route/Event/Earning; autoridade continua no sync.
+
+O Motoboy usa `GET /api/motoboy/domain/{collection}[/{canonicalId}]` para os mesmos recursos de leitura com verificação adicional de vínculo ativo e escopo da entrega ao Driver da sessão. Geometria de rota no app Motoboy usa `GET /api/motoboy/logistics/routes/{routeId}/geometry` e exige `sync.pull` mais Driver ativo; a rota genérica `/api/logistics/routes/{routeId}/geometry` permanece para a interface administrativa do Restaurante. Mídia de comprovante no prefixo `/api/motoboy/domain/...` também exige `sync.pull` para leitura ou `sync.push` para upload, além da atribuição corrente.
 
 ## Administração, memberships e RBAC
 
