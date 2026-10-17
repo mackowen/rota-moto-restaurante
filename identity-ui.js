@@ -438,9 +438,13 @@
     const companyForm=$('[data-company-setup]');
     if(companyForm&&!companyForm.dataset.loaded){companyForm.elements.name.value=company.name||'';companyForm.elements.supportPhone.value=company.supportPhone||'';companyForm.elements.timeZone.value=company.timeZone||'America/Sao_Paulo';companyForm.elements.address.value=company.operationalLocation?.address||'';companyForm.dataset.loaded='true'}
     const integrationBox = $('[data-integrations]'); integrationBox.hidden = !integrations;
-    if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); integrations.integrations.forEach(item => {
+    if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); const providerNav=document.createElement('nav');providerNav.className='rm-provider-nav';providerNav.setAttribute('aria-label','Plataformas e pedidos');const providerPages=document.createElement('div');providerPages.className='rm-provider-pages';let firstProvider=true;const providerPageByCode=new Map(); integrations.integrations.forEach(item => {
+      const providerCode=String(item.provider||'').toLowerCase(),providerTitle=item.displayName||({ifood:'iFood','99food':'99Food',keeta:'Keeta'}[providerCode]||'Integração');
+      const providerPage=document.createElement('section');providerPage.className='rm-provider-page';providerPage.dataset.providerPage=providerCode;providerPage.hidden=!firstProvider;providerPageByCode.set(providerCode,providerPage);
+      const providerTab=document.createElement('button');providerTab.type='button';providerTab.className='rm-provider-tab';providerTab.dataset.providerTab=providerCode;providerTab.setAttribute('aria-pressed',String(firstProvider));providerTab.textContent=providerTitle;providerTab.addEventListener('click',()=>{providerPages.querySelectorAll('[data-provider-page]').forEach(section=>section.hidden=section.dataset.providerPage!==providerCode);providerNav.querySelectorAll('[data-provider-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.providerTab===providerCode)))});providerNav.append(providerTab);firstProvider=false;
       const row = document.createElement('section'); row.className = 'rm-integration-status';
-      const title = document.createElement('strong'); title.textContent = `${item.displayName || item.provider} · ${item.connectionVerified ? 'conectada' : 'sem conexão verificada'}`; row.append(title);
+      const title = document.createElement('strong'); title.textContent = `${providerTitle} · ${item.connectionVerified ? 'conexão confirmada' : 'sem conexão confirmada'}`; row.append(title);
+      const refreshProvider=document.createElement('button');refreshProvider.type='button';refreshProvider.textContent='Atualizar situação no RotaMoto';refreshProvider.addEventListener('click',async()=>{refreshProvider.disabled=true;try{await loadAdmin()}catch(error){const note=document.createElement('p');note.setAttribute('role','status');note.textContent=message(error);row.append(note)}finally{refreshProvider.disabled=false}});row.append(refreshProvider);
       const accounts = document.createElement('div'); accounts.className='rm-integration-accounts';
       const accountStates={active:'autorizada; conexão ainda não verificada',pending:'autorização pendente',disabled:'desativada localmente',revoked:'autorização revogada',reauthorization_required:'precisa reautorizar',error:'erro na conta'};
       const accountErrors={AUTH_EXPIRED:'A autorização expirou. Reautorize a conta.',AUTH_REJECTED:'A plataforma recusou a autorização. Reautorize a conta.',ACCOUNT_UNAVAILABLE:'Conta inativa ou sem vínculo válido.',MARKETPLACE_EVENT_PENDING:'Evento recebido e será processado novamente.',
@@ -453,8 +457,8 @@
         const name=document.createElement('strong');name.textContent=`Loja: ${accountRow.displayName||'identificada'} · ${accountStates[accountRow.accountStatus]||'estado não verificado'}`;account.append(name);
         const sync=document.createElement('p');sync.textContent=`Última atualização: ${accountRow.lastSyncAt?new Date(accountRow.lastSyncAt).toLocaleString():'ainda indisponível'}`;account.append(sync);
         if(accountRow.lastErrorCode){const issue=document.createElement('p');issue.setAttribute('role','status');issue.textContent=accountErrors[accountRow.lastErrorCode]||'A conta registrou um erro. Verifique a autorização e o acesso do fornecedor.';account.append(issue);}
-        if(accountRow.accountStatus==='active'&&accountRow.id){const disable=document.createElement('button');disable.type='button';disable.textContent='Desativar localmente';
-          disable.addEventListener('click',async()=>{disable.disabled=true;try{await request(`/admin/integrations/${encodeURIComponent(item.provider)}/accounts/${encodeURIComponent(accountRow.id)}/disable`,{method:'POST',body:'{}'});await loadAdmin();}
+        if(accountRow.accountStatus==='active'&&accountRow.id){const disable=document.createElement('button');disable.type='button';disable.textContent='Desconectar no RotaMoto';
+          disable.addEventListener('click',async()=>{if(!window.confirm('Desconectar esta loja do RotaMoto? O recebimento de pedidos será interrompido. Esta ação local não revoga a autorização no portal da plataforma.'))return;disable.disabled=true;try{await request(`/admin/integrations/${encodeURIComponent(item.provider)}/accounts/${encodeURIComponent(accountRow.id)}/disable`,{method:'POST',body:'{}'});await loadAdmin();}
             catch(error){disable.disabled=false;const issue=document.createElement('p');issue.setAttribute('role','status');issue.textContent=message(error);account.append(issue);}});account.append(disable);}
         accounts.append(account);
       });
@@ -521,16 +525,14 @@
         feature.append(states); capabilities.append(feature);
       });
       if (!Object.keys(item.capabilities || {}).length) capabilities.append(document.createTextNode('Capacidades ainda não verificadas.'));
-      row.append(capabilities);
+      const technicalDetails=document.createElement('details');technicalDetails.className='rm-integration-technical';const technicalSummary=document.createElement('summary');technicalSummary.textContent='Detalhes técnicos';technicalDetails.append(technicalSummary,capabilities);row.append(technicalDetails);
       const syncState = item.lastEventAt ? new Date(item.lastEventAt).toLocaleString() : 'ainda não há atualização registrada';
       const notes = document.createElement('p'); notes.textContent = `${item.capabilityNotes || 'A conexão ainda não está ativa.'} Última atualização: ${syncState}.`; row.append(notes);
-      list.append(row);
+      providerPage.append(row);providerPages.append(providerPage);
     });
-      const orderPanel=document.createElement('section');orderPanel.className='rm-marketplace-orders';
-      const orderHeading=document.createElement('h4');orderHeading.textContent='Pedidos de plataformas externas';orderPanel.append(orderHeading);
+      for(const providerPage of providerPageByCode.values()){const orderHeading=document.createElement('h3');orderHeading.textContent='Pedidos recebidos';providerPage.append(orderHeading)}
       const orderRows=Array.isArray(marketplaceOrders.orders)?marketplaceOrders.orders:[];
       const commandStates={queued:'Na fila',leased:'Em execução',pending:'Aguardando confirmação da plataforma',succeeded:'Confirmada pela plataforma',rejected:'Falhou',unknown_outcome:'Resultado incerto; reconciliação pendente',needs_review:'Precisa de revisão'};
-      if(!orderRows.length){const empty=document.createElement('p');empty.textContent='Nenhum pedido dessa plataforma foi recebido ainda.';orderPanel.append(empty);}
       orderRows.forEach(order=>{
         const item=document.createElement('article');item.className='rm-marketplace-order';
         const providerName={ifood:'iFood',keeta:'Keeta','99food':'99Food'}[order.provider]||'Plataforma';
@@ -575,9 +577,10 @@
             button.disabled=true;try{const result=await request(`/admin/marketplace/orders/${encodeURIComponent(order.domainOrderId)}/commands`,{method:'POST',body:JSON.stringify({operation,idempotencyKey:crypto.randomUUID(),commandData})});
               status.textContent=result.status==='pending'?'Comando aceito; aguardando confirmação da plataforma.':'Comando registrado para execução.';await loadAdmin();}
             catch(error){button.disabled=false;status.textContent=message(error);}});item.append(button);});
-        orderPanel.append(item);
+        const providerPage=providerPageByCode.get(String(order.provider||'').toLowerCase());if(providerPage)providerPage.append(item);
       });
-      list.append(orderPanel);
+      for(const [providerCode,providerPage] of providerPageByCode){if(!orderRows.some(order=>String(order.provider||'').toLowerCase()===providerCode)){const empty=document.createElement('p');empty.textContent='Nenhum pedido recebido desta plataforma. Os pedidos aparecerão aqui após uma conexão real e confirmação do servidor.';providerPage.append(empty)}}
+      if(integrations.integrations.length)list.append(providerNav,providerPages);else{const empty=document.createElement('p');empty.textContent='Nenhuma plataforma de delivery está disponível neste servidor.';list.append(empty)}
     }
     const roleSelect = $('[data-invite] select'); roleSelect.replaceChildren();
     const assignableRoles = roles.roles.filter(role => role.permissions.every(permission => current.permissions.includes(permission)));
