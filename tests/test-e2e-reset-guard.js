@@ -1,13 +1,17 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { target, PRESERVED, isResetSchema } = require('../scripts/reset-e2e-installation');
+const { target, PRESERVED, isResetSchema, RESET_CONFIRMATION } = require('../scripts/reset-e2e-installation');
 
-const prior = { node: process.env.NODE_ENV, campaign: process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN, url: process.env.E2E_MIGRATOR_DATABASE_URL };
+const prior = { node: process.env.NODE_ENV, campaign: process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN,
+  url: process.env.E2E_MIGRATOR_DATABASE_URL, confirmation: process.env.ROTAMOTO_E2E_RESET_CONFIRM };
 try {
   process.env.NODE_ENV = 'test';
   process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0240';
   process.env.E2E_MIGRATOR_DATABASE_URL = 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e';
+  delete process.env.ROTAMOTO_E2E_RESET_CONFIRM;
+  assert.throws(() => target(), /ROTAMOTO_E2E_RESET_CONFIRM/u);
+  process.env.ROTAMOTO_E2E_RESET_CONFIRM = RESET_CONFIRMATION;
   assert.equal(target(), process.env.E2E_MIGRATOR_DATABASE_URL);
   assert.deepEqual([...PRESERVED].sort(), ['rotamoto.installation_bootstrap', 'rotamoto.permissions', 'rotamoto.schema_migrations'].sort());
   assert.equal(isResetSchema('rotamoto'), true);
@@ -28,7 +32,8 @@ try {
   assert.throws(() => target(), /Reset exige NODE_ENV=test/u);
   console.log('E2E reset target and preservation guards: PASS');
 } finally {
-  for (const [key, value] of [['NODE_ENV', prior.node], ['ROTAMOTO_DISPOSABLE_CAMPAIGN', prior.campaign], ['E2E_MIGRATOR_DATABASE_URL', prior.url]]) {
+  for (const [key, value] of [['NODE_ENV', prior.node], ['ROTAMOTO_DISPOSABLE_CAMPAIGN', prior.campaign],
+    ['E2E_MIGRATOR_DATABASE_URL', prior.url], ['ROTAMOTO_E2E_RESET_CONFIRM', prior.confirmation]]) {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
   }
 }

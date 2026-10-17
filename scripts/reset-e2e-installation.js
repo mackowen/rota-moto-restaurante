@@ -1,19 +1,22 @@
 'use strict';
 
 const fs = require('node:fs/promises');
+const fsc = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { createClient } = require('../backend/postgres/connection');
 const { getMigrations } = require('../backend/postgres/migrate');
 
 const LOCK = 'rotamoto:e2e:campaign:0240:reset:v1';
+const RESET_CONFIRMATION = 'ROTAMOTO_E2E_RESET_0240_CONFIRMED';
 const PRESERVED = new Set(['rotamoto.schema_migrations', 'rotamoto.permissions', 'rotamoto.installation_bootstrap']);
 const CAMPAIGN_SCHEMA = /^campaign\d{4}_[a-f0-9]{32}$/u;
 
 function isResetSchema(schema) { return schema === 'rotamoto' || CAMPAIGN_SCHEMA.test(schema); }
 
 function target(env = process.env) {
-  if (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0240') throw new Error('Reset exige NODE_ENV=test e ROTAMOTO_DISPOSABLE_CAMPAIGN=0240.');
+  if (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0240' || env.ROTAMOTO_E2E_RESET_CONFIRM !== RESET_CONFIRMATION)
+    throw new Error(`Reset exige NODE_ENV=test, campanha 0240 e ROTAMOTO_E2E_RESET_CONFIRM=${RESET_CONFIRMATION}.`);
   let url;
   try { url = new URL(env.E2E_MIGRATOR_DATABASE_URL); } catch (_) { throw new Error('E2E_MIGRATOR_DATABASE_URL inválida.'); }
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.username !== 'rotamoto_migrator' || url.password ||
@@ -38,16 +41,43 @@ function setService(action) {
 async function auditEvent(event, details) {
   const root = path.join(process.env.HOME, 'rotamoto-data', 'development', '0240');
   await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  const rootStat = await fs.lstat(root);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory() || rootStat.uid !== process.getuid() || (rootStat.mode & 0o077))
+    throw new Error('Diretório de auditoria E2E inseguro.');
   await fs.chmod(root, 0o700);
   const file = path.join(root, 'e2e-reset-audit.jsonl');
-  const handle = await fs.open(file, 'a', 0o600);
+  const handle = await fs.open(file, fsc.constants.O_CREAT | fsc.constants.O_APPEND |
+    fsc.constants.O_WRONLY | (fsc.constants.O_NOFOLLOW || 0), 0o600);
+  const fileStat = await handle.stat();
+  if (!fileStat.isFile() || fileStat.nlink !== 1 || fileStat.uid !== process.getuid() || (fileStat.mode & 0o077)) {
+    await handle.close(); throw new Error('Arquivo de auditoria E2E inseguro.');
+  }
   try { await handle.writeFile(`${JSON.stringify({ at: new Date().toISOString(), event, campaign: '0240', ...details })}\n`); await handle.sync(); }
   finally { await handle.close(); }
   await fs.chmod(file, 0o600);
 }
 
+async function assertNoPreviousReset() {
+  const file = path.join(process.env.HOME, 'rotamoto-data', 'development', '0240', 'e2e-reset-audit.jsonl');
+  let handle;
+  try { handle = await fs.open(file, fsc.constants.O_RDONLY | (fsc.constants.O_NOFOLLOW || 0)); }
+  catch (error) { if (error.code === 'ENOENT') return; throw error; }
+  const stat = await handle.stat();
+  if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid() || (stat.mode & 0o077) || stat.size > 1024 * 1024) {
+    await handle.close(); throw new Error('Trilha de reset E2E insegura; interrompido para revisão.');
+  }
+  let contents;
+  try { contents = await handle.readFile('utf8'); } finally { await handle.close(); }
+  const events = contents.split(/\r?\n/u).filter(Boolean).map(line => {
+    try { return JSON.parse(line); } catch (_) { throw new Error('Trilha de reset E2E inválida; interrompido para revisão.'); }
+  });
+  if (events.some(event => event.campaign === '0240' && event.event === 'reset.started'))
+    throw new Error('Já existe tentativa de reset 0240 registrada; nova execução exige revisão da trilha e não será repetida.');
+}
+
 async function resetE2E({ clientFactory = createClient } = {}) {
   const connectionString = target();
+  await assertNoPreviousReset();
   const client = clientFactory({ connectionString });
   const wasRunning = serviceState();
   if (wasRunning) setService('down');
@@ -144,4 +174,4 @@ async function resetE2E({ clientFactory = createClient } = {}) {
 if (require.main === module) resetE2E().then(result => process.stdout.write(`${JSON.stringify({ event: 'e2e.reset.completed', ...result })}\n`))
   .catch(error => { process.stderr.write(`${JSON.stringify({ event: 'e2e.reset.failed', code: /^[A-Z0-9_]{2,64}$/u.test(error.code || '') ? error.code : 'RESET_FAILED', message: error.message })}\n`); process.exitCode = 1; });
 
-module.exports = { resetE2E, target, PRESERVED, isResetSchema };
+module.exports = { resetE2E, target, PRESERVED, isResetSchema, RESET_CONFIRMATION };
