@@ -42,6 +42,7 @@ const {backupWebProcessAllowed,parseGid}=require('./backend/runtime/backup-proce
 const {PROVIDERS}=require('./backend/integrations/registry');
 const {loadRuntimeConfig,hostAllowed,resolveClientAddress}=require('./backend/runtime/config');
 const {loadSecretProvider,loadLocalSecretProvider}=require('./backend/runtime/secret-provider');
+const {resolveE2eSecretStore}=require('./backend/runtime/e2e-secret-store-config');
 const {gracefulShutdown}=require('./backend/runtime/lifecycle');
 const {createRuntimeMetrics,sanitizeLogPath}=require('./backend/runtime/metrics');
 const {createQueueMetrics}=require('./backend/runtime/queue-metrics');
@@ -71,17 +72,8 @@ let secretProvider=null,databaseTlsCa=null;
 try{
   if(CONFIG.production){secretProvider=CONFIG.secretProviderModule?loadSecretProvider(CONFIG.secretProviderModule):loadLocalSecretProvider({directory:CONFIG.secretStoreDirectory,masterKeyFile:CONFIG.secretMasterKeyFile});databaseTlsCa=fs.readFileSync(CONFIG.databaseTlsCaFile,'utf8')}
   else {
-    const testSecretDirectory=process.env.ROTAMOTO_E2E_SECRET_STORE_DIRECTORY||null;
-    const testSecretMasterKeyFile=process.env.ROTAMOTO_E2E_SECRET_MASTER_KEY_FILE||null;
-    if(Boolean(testSecretDirectory)!==Boolean(testSecretMasterKeyFile))throw new Error('E2E secret-store paths must be configured together.');
-    if(testSecretDirectory){
-      const parsed=new URL(CONFIG.databaseUrl);
-      if(CONFIG.nodeEnv!=='test'||!['0229','0230'].includes(process.env.ROTAMOTO_E2E_CAMPAIGN)||parsed.protocol!=='postgresql:'||
-        decodeURIComponent(parsed.username)!=='rotamoto_app'||parsed.password||parsed.pathname!=='/rotamoto_e2e'||
-        !['127.0.0.1','localhost','::1','[::1]'].includes(parsed.hostname)||!require('node:path').isAbsolute(testSecretDirectory)||
-        !require('node:path').isAbsolute(testSecretMasterKeyFile))throw new Error('E2E secret store is restricted to the isolated 0229 rotamoto_e2e runtime.');
-      secretProvider=loadLocalSecretProvider({directory:testSecretDirectory,masterKeyFile:testSecretMasterKeyFile});
-    }
+    const e2eSecretStore=resolveE2eSecretStore(process.env);
+    if(e2eSecretStore)secretProvider=loadLocalSecretProvider(e2eSecretStore);
   }
 }catch(error){bootstrapFailure(error)}
 function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
