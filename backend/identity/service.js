@@ -122,6 +122,19 @@ function validateProvisioningInput(input) {
 function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecoveryOperator, emailProvider, mfaProvider, secretProvider,
   requireBootstrapAuthorization = false, clock = () => new Date() }) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('Pool PostgreSQL obrigatório.');
+  // Runtime secret stores may require asynchronous filesystem/keystore validation
+  // during startup. Resolve once per operation instead of treating the Promise as
+  // the provider object (which would silently make put/get unavailable).
+  const secretProviderPromise = secretProvider ? Promise.resolve(secretProvider) : null;
+  async function requireSecretProvider(method) {
+    if (!secretProviderPromise) throw new IdentityError('MFA_PROVIDER_UNAVAILABLE', 'Keystore MFA indisponível.');
+    let provider;
+    try { provider = await secretProviderPromise; }
+    catch (_) { throw new IdentityError('MFA_PROVIDER_UNAVAILABLE', 'Keystore MFA indisponível.'); }
+    if (!provider || typeof provider[method] !== 'function')
+      throw new IdentityError('MFA_PROVIDER_UNAVAILABLE', 'Keystore MFA indisponível.');
+    return provider;
+  }
   let dummyPasswordHash;
   const dummyVerify = async password => {
     if (!dummyPasswordHash) dummyPasswordHash = hashPassword('identity-nonexistent-account-dummy-value');
@@ -676,8 +689,10 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
   }
 
   async function finishMfaRecovery(outcome) {
-    if (outcome?.secretRef && secretProvider && typeof secretProvider.remove==='function')
-      await secretProvider.remove(outcome.secretRef).catch(()=>{});
+    if (outcome?.secretRef && secretProviderPromise) {
+      try { const provider = await requireSecretProvider('remove'); await provider.remove(outcome.secretRef).catch(()=>{}); }
+      catch (_) { /* Recovery completion remains safe; provider errors are not logged. */ }
+    }
     return { completed:true,reenrollmentRequired:true };
   }
 
@@ -710,21 +725,21 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
   }
 
   async function startMfaEnrollmentForPrincipal(client, principal) {
-    if (!secretProvider || typeof secretProvider.put !== 'function') throw new IdentityError('MFA_PROVIDER_UNAVAILABLE', 'Keystore MFA indisponível.');
+    const provider = await requireSecretProvider('put');
     const current = await client.query(`SELECT mfa_secret_ref,mfa_enrollment_secret_ref FROM rotamoto.credentials
       WHERE user_id=$1 FOR UPDATE`, [principal.user_id]);
     if (!current.rowCount) throw new IdentityError('UNAUTHENTICATED', 'Credencial indisponível.');
     if (current.rows[0].mfa_secret_ref && !principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Verifique MFA antes de substituir o fator.');
     const secret = generateSecret();
-    const ref = (await secretProvider.put({ name: `identity/mfa/${principal.user_id}`, scope: 'installation', value: secret })).secretRef;
+    const ref = (await provider.put({ name: `identity/mfa/${principal.user_id}`, scope: 'installation', value: secret })).secretRef;
     const oldPending = current.rows[0].mfa_enrollment_secret_ref;
     try {
       await client.query(`UPDATE rotamoto.credentials SET mfa_enrollment_secret_ref=$2,mfa_enrollment_expires_at=now()+interval '10 minutes',
         mfa_failed_attempts=0,mfa_locked_until=NULL,updated_at=now() WHERE user_id=$1`, [principal.user_id, ref]);
-    } catch (error) { await secretProvider.remove(ref).catch(() => {}); throw error; }
+    } catch (error) { if (typeof provider.remove === 'function') await provider.remove(ref).catch(() => {}); throw error; }
     await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
       action: 'identity.mfa.enrollment_started', resourceType: 'user', resourceId: principal.user_id });
-    if (oldPending && oldPending !== ref) await secretProvider.remove(oldPending).catch(() => {});
+    if (oldPending && oldPending !== ref && typeof provider.remove === 'function') await provider.remove(oldPending).catch(() => {});
     const user = await client.query('SELECT email FROM rotamoto.users WHERE id=$1', [principal.user_id]);
     return { secret, otpauthUri: otpauthUri(secret, { account: user.rows[0].email }) };
   }
@@ -734,7 +749,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
   }
 
   async function confirmMfaEnrollmentForPrincipal(client, principal, code) {
-    if (!secretProvider || typeof secretProvider.get !== 'function') throw new IdentityError('MFA_PROVIDER_UNAVAILABLE', 'Keystore MFA indisponível.');
+    const provider = await requireSecretProvider('get');
     const current = await client.query(`SELECT c.mfa_secret_ref,c.mfa_enrollment_secret_ref,c.mfa_enrollment_expires_at,
       c.mfa_totp_last_counter,c.mfa_failed_attempts,c.mfa_locked_until,u.email FROM rotamoto.credentials c
       JOIN rotamoto.users u ON u.id=c.user_id WHERE c.user_id=$1 FOR UPDATE OF c`, [principal.user_id]);
@@ -742,7 +757,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
       throw new IdentityError('MFA_ENROLLMENT_EXPIRED', 'Enrollment expirado; inicie novamente.');
     if (current.rows[0].mfa_secret_ref && !principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Verifique MFA antes de substituir o fator.');
     if (current.rows[0].mfa_locked_until && new Date(current.rows[0].mfa_locked_until) > clock()) throw new IdentityError('RATE_LIMITED', 'Muitas tentativas MFA; aguarde antes de tentar novamente.');
-    const secret = await secretProvider.get(current.rows[0].mfa_enrollment_secret_ref,
+    const secret = await provider.get(current.rows[0].mfa_enrollment_secret_ref,
       { name: `identity/mfa/${principal.user_id}`, scope: 'installation' });
     const counter = verifyCode(secret, code, { now: clock().getTime(), lastCounter: -1 });
     if (counter === null) {
@@ -772,7 +787,10 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
 
   async function finishMfaEnrollment(outcome) {
     if (outcome.invalidCode) throw new IdentityError('MFA_REQUIRED', 'Código MFA inválido.');
-    if (outcome.oldRef && outcome.oldRef !== outcome.newRef) await secretProvider.remove(outcome.oldRef).catch(() => {});
+    if (outcome.oldRef && outcome.oldRef !== outcome.newRef) {
+      const provider = await requireSecretProvider('remove');
+      await provider.remove(outcome.oldRef).catch(() => {});
+    }
     return { recoveryCodes: outcome.recoveryCodes };
   }
 

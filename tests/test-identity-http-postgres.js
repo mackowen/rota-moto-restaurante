@@ -58,10 +58,13 @@ async function main() {
   const provider = createEmailDeliveryProvider(async message => { delivered.push(message); return { accepted: true }; });
   const logs = [];
   const syntheticSecrets=new Map();
-  const service = createIdentityService({ pool, emailProvider: provider, mfaProvider: createMfaProvider(async ({ code }) => code === '654321'),
-    secretProvider:{async put({value}){const secretRef=`test:synthetic:${crypto.randomUUID()}`;syntheticSecrets.set(secretRef,value);return{secretRef};},
+  // Match the runtime contract: loadLocalSecretProvider is asynchronous and
+  // resolves to the keystore interface after validating its private files.
+  const secretProvider = Promise.resolve({async put({value}){const secretRef=`test:synthetic:${crypto.randomUUID()}`;syntheticSecrets.set(secretRef,value);return{secretRef};},
       async get(secretRef){if(!syntheticSecrets.has(secretRef))throw new Error('synthetic secret missing');return syntheticSecrets.get(secretRef);},
-      async remove(secretRef){syntheticSecrets.delete(secretRef);}},
+      async remove(secretRef){syntheticSecrets.delete(secretRef);}});
+  const service = createIdentityService({ pool, emailProvider: provider, mfaProvider: createMfaProvider(async ({ code }) => code === '654321'),
+    secretProvider,
     authorizeProvisioner: async ({ context }) => {
       if (context?.request?.headers['x-synthetic-operator'] !== 'test-only') throw new Error('unauthorized');
       return { actorRef: 'test:synthetic-http-operator' };
