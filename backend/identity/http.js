@@ -263,8 +263,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
             companyTimeZone: value.company_time_zone || null,
             permissions: permissions.rows.map(row => row.permission_key),
             mfaVerified: Boolean(value.mfa_verified_at), mfaConfigured: Boolean(value.mfa_configured),
-            mfaEnrollmentRequired: Boolean(value.mfa_enrollment_required), csrfToken };
-        });
+            mfaRequired: Boolean(value.mfa_required), mfaEnrollmentRequired: Boolean(value.mfa_enrollment_required), csrfToken };
+        }, 'identity.session');
         status = 200;
         send(res, status, principal);
         return true;
@@ -327,7 +327,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
       if (path === '/api/identity/logout' && req.method === 'POST') {
         const sessionToken = parseCookie(req);
-        await requireSessionMutation(req, undefined, async client => identityService.revokeSession(sessionToken, client));
+        await requireSessionMutation(req, 'identity.logout', async client => identityService.revokeSession(sessionToken, client));
         status = 204;
         send(res, status, undefined, { 'Set-Cookie': `${COOKIE_NAME}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax` });
         return true;

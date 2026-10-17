@@ -81,6 +81,15 @@
   box-shadow: var(--rm-id-shadow);
 }
 
+body[data-mfa-locked="true"] .rm-identity-panel {
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  max-height: 100dvh;
+  border: 0;
+  box-shadow: none;
+}
+
 .rm-identity-panel > header {
   position: sticky;
   inset-block-start: 0;

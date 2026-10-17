@@ -42,6 +42,11 @@ assert.match(source, /role="dialog" aria-modal="true"/u, 'account access is expo
 assert.match(source, /visibleControls\(\)/u, 'account dialog keeps keyboard focus within visible controls');
 assert.match(source, /driverCursor/u, 'driver linking can navigate a paginated driver list');
 assert.match(source, /app\.inert = open \|\| gated/u, 'opening the account dialog makes the background inert');
+assert.match(source, /mfaLocked = Boolean\(session && \(session\.mfaEnrollmentRequired \|\| \(session\.mfaRequired && !session\.mfaVerified\)\)\)/u,
+  'an enrollment-pending or unverified required-MFA session locks the application root');
+assert.match(source, /if \(mfaLocked\) open = true/u, 'closing the account dialog cannot dismiss mandatory MFA setup');
+assert.match(source, /if \(mfaLocked\) return;/u, 'background synchronization never starts before MFA confirmation');
+assert.match(source, /document\.querySelector\('#app, \.app'\)/u, 'the gate covers both Restaurante and Motoboy application roots');
 assert.match(appSource, /let modalReturnFocus=null/u, 'operational dialogs remember their invoking control');
 assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog=/u, 'operational dialogs trap keyboard focus and handle Escape');
 assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
@@ -66,6 +71,8 @@ assert.equal(fs.existsSync(path.join(__dirname, '..', 'identity-ui.css')), true)
 assert.match(styles, /#rmIdentityRoot \[hidden\],[\s\S]*?display:\s*none\s*!important/u,
   'auth form and permission-gated controls honor the hidden state despite component display rules');
 assert.match(styles, /z-index:\s*2302/u, 'account dialog appears above fixed application navigation');
+assert.match(styles, /body\[data-mfa-locked="true"\] \.rm-identity-panel[\s\S]*?width:\s*100vw/u,
+  'the mandatory MFA dialog covers desktop and mobile viewports');
 assert.match(styles, /safe-area-inset-bottom/u, 'identity panel respects device safe areas');
 assert.match(styles, /prefers-reduced-motion:\s*reduce/u, 'identity panel respects reduced motion');
 console.log('identity UI and secure session client contract: OK');

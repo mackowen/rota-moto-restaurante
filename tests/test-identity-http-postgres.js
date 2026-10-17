@@ -7,6 +7,7 @@ const { createClient } = require('../backend/postgres/connection');
 const { createIdentityService } = require('../backend/identity/service');
 const { createEmailDeliveryProvider } = require('../backend/identity/email-provider');
 const { createMfaProvider } = require('../backend/identity/mfa-provider');
+const { codeAt } = require('../backend/identity/totp');
 const { createIdentityHttpHandler, createRateLimiter, COOKIE_NAME } = require('../backend/identity/http');
 const { createAdminHttpHandler } = require('../backend/admin/http');
 const { createAdminRepository } = require('../backend/admin/repository');
@@ -56,7 +57,11 @@ async function main() {
   const delivered = [];
   const provider = createEmailDeliveryProvider(async message => { delivered.push(message); return { accepted: true }; });
   const logs = [];
+  const syntheticSecrets=new Map();
   const service = createIdentityService({ pool, emailProvider: provider, mfaProvider: createMfaProvider(async ({ code }) => code === '654321'),
+    secretProvider:{async put({value}){const secretRef=`test:synthetic:${crypto.randomUUID()}`;syntheticSecrets.set(secretRef,value);return{secretRef};},
+      async get(secretRef){if(!syntheticSecrets.has(secretRef))throw new Error('synthetic secret missing');return syntheticSecrets.get(secretRef);},
+      async remove(secretRef){syntheticSecrets.delete(secretRef);}},
     authorizeProvisioner: async ({ context }) => {
       if (context?.request?.headers['x-synthetic-operator'] !== 'test-only') throw new Error('unauthorized');
       return { actorRef: 'test:synthetic-http-operator' };
@@ -143,8 +148,39 @@ async function main() {
     const limitedCookie=missingMfa.headers.get('set-cookie').split(';',1)[0];
     const limitedSession=await call('/api/identity/session',{cookie:limitedCookie});
     assert.equal(limitedSession.status,200);assert.equal(limitedSession.body.mfaEnrollmentRequired,true);
+    assert.equal(limitedSession.body.mfaVerified,false);
+    assert.equal(limitedSession.body.mfaRequired,true);
     const limitedAdmin=await call('/api/admin/memberships?limit=100',{cookie:limitedCookie});
     assert.equal(limitedAdmin.status,403,'enrollment-limited session cannot access administrative data');
+    assert.equal(limitedAdmin.body.error.code,'MFA_REQUIRED');
+    const limitedRoles=await call('/api/admin/roles',{cookie:limitedCookie});
+    assert.equal(limitedRoles.status,403,'enrollment-limited session cannot read role configuration directly through the API');
+    const limitedRoleWrite=await call('/api/admin/roles',{method:'POST',cookie:limitedCookie,csrf:missingMfa.body.csrfToken,
+      body:{key:'pre_mfa_write',name:'Pre MFA Write',permissions:['orders.read']}});
+    assert.equal(limitedRoleWrite.status,403,'enrollment-limited session cannot write role configuration through a direct API request');
+    assert.equal(limitedRoleWrite.body.error.code,'MFA_REQUIRED');
+    let preMfaCallbackInvoked=false;
+    await assert.rejects(service.withAuthenticatedTenant(limitedCookie.slice(limitedCookie.indexOf('=')+1),async()=>{
+      preMfaCallbackInvoked=true;return true;
+    }),error=>error.code==='MFA_REQUIRED','the central tenant guard blocks protected operations even when a caller omits a permission key');
+    assert.equal(preMfaCallbackInvoked,false,'the protected operation callback is never invoked before MFA');
+    await client.query('SAVEPOINT mfa_enrollment_http');
+    const enrollment=await call('/api/identity/mfa/enrollment',{method:'POST',body:{},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.equal(enrollment.status,200,'enrollment start remains available to the limited session');
+    assert.equal(typeof enrollment.body.secret,'string');
+    assert.match(enrollment.body.otpauthUri,/^otpauth:\/\/totp\//u);
+    const enrollmentCode=codeAt(enrollment.body.secret,Math.floor(Date.now()/30000));
+    const confirmation=await call('/api/identity/mfa/enrollment/confirm',{method:'POST',body:{code:enrollmentCode},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.equal(confirmation.status,200,'valid TOTP confirmation upgrades the session');
+    assert.equal(Array.isArray(confirmation.body.recoveryCodes),true);
+    const afterMfa=await call('/api/admin/roles',{cookie:limitedCookie});
+    assert.equal(afterMfa.status,200,'protected administrative reads become available after valid MFA confirmation');
+    await client.query('ROLLBACK TO SAVEPOINT mfa_enrollment_http');
+    await client.query('RELEASE SAVEPOINT mfa_enrollment_http');
+    syntheticSecrets.clear();
+    const pendingLogout=await call('/api/identity/logout',{method:'POST',body:{},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.equal(pendingLogout.status,204,'logout remains available before MFA confirmation');
+    assert.equal((await call('/api/admin/roles',{cookie:limitedCookie})).status,401,'logout immediately removes access to protected API reads');
     await client.query(`UPDATE rotamoto.credentials SET mfa_secret_ref='local-v1:synthetic-test-reference' WHERE user_id=$1`, [accepted.body.userId]);
     const rejectedMfa = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId, mfaCode: '000000' } });
     assert.equal(rejectedMfa.status, 403, 'invalid MFA proof cannot establish a session');
@@ -189,6 +225,11 @@ async function main() {
     assert(ownerRole, 'owner role exists in the active tenant');
     const ownerPrincipal = await service.resolveSession(client, sessionCookie.slice(sessionCookie.indexOf('=') + 1));
     await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=NULL WHERE id=$1', [ownerPrincipal.session_id]);
+    const pendingAdminRead=await call('/api/admin/roles',{cookie:sessionCookie});
+    assert.equal(pendingAdminRead.status,403,'a stale session with configured MFA but no verified MFA marker cannot read protected administration data');
+    const pendingAdminWrite=await call('/api/admin/roles',{method:'POST',cookie:sessionCookie,csrf:session.body.csrfToken,
+      body:{key:'pending_mfa_write',name:'Pending MFA Write',permissions:['orders.read']}});
+    assert.equal(pendingAdminWrite.status,403,'a stale session with no MFA marker cannot write protected administration data');
     const noProviderService = createIdentityService({ pool });
     await assert.rejects(noProviderService.inviteMembershipWithSession(sessionCookie.slice(sessionCookie.indexOf('=') + 1),
       session.body.csrfToken, { email: `mfa-gate-${crypto.randomUUID()}@example.invalid`, roleId: ownerRole.id }),
@@ -323,6 +364,7 @@ async function main() {
       idle_expires_at=now()-interval '1 second'
       WHERE token_digest=$1`, [crypto.createHash('sha256').update(idleToken).digest()]);
     assert.equal((await call('/api/identity/session', { cookie: idleCookie })).status, 401, 'expired session is rejected');
+    assert.equal((await call('/api/admin/roles',{cookie:idleCookie})).status,401,'expired sessions cannot read protected API data');
 
     const recovery = await call('/api/identity/recovery', { method: 'POST', body: { email } });
     assert.equal(recovery.status, 202);

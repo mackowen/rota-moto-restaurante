@@ -79,6 +79,8 @@
   const $ = (selector, root = host) => root.querySelector(selector);
   const panel = $('#rmIdentityPanel');
   const trigger = $('.rm-account-trigger');
+  const applicationRoot = () => document.querySelector('#app, .app');
+  let mfaLocked = false;
   const appKind = document.currentScript?.dataset.app || 'restaurante';
   function updateTriggerLabel() {
     trigger.innerHTML = `<span class="rm-account-trigger-label">${offlineMode ? 'Dados locais' : 'Conta'}</span><svg class="rm-account-trigger-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg>`;
@@ -88,6 +90,7 @@
   if (appKind !== 'restaurante') $('[data-admin]').remove();
   function message(error) { return codeMessages[error?.code] || (error?.network ? codeMessages.NETWORK : 'Não foi possível concluir. Revise os dados e tente novamente.'); }
   async function syncAfterAuthentication() {
+    if (mfaLocked) return;
     try {
       await window.RotaMotoSync?.restoreSession?.({ apiBase: API });
       await window.RotaMotoSync?.syncNow?.({ apiBase: API });
@@ -124,11 +127,12 @@
       .filter(element => !element.closest('[hidden]') && element.getClientRects().length > 0);
   }
   function setOpen(open) {
+    if (mfaLocked) open = true;
     if (open && panel.hidden) previousFocus = document.activeElement;
     if (!open) clearMfaEnrollment();
     panel.hidden = !open;
     trigger.setAttribute('aria-expanded', String(open));
-    const app = document.querySelector('#app');
+    const app = applicationRoot();
     const gated = host.dataset.gated === 'true';
     if (app) { app.inert = open || gated; app.setAttribute('aria-hidden', String(open || gated)); }
     if (open) (visibleControls()[0] || panel).focus();
@@ -138,7 +142,8 @@
   panel.tabIndex = -1;
   panel.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
-      if (current || offlineMode) { event.preventDefault(); setOpen(false); }
+      if (mfaLocked) { event.preventDefault(); event.stopPropagation(); return; }
+      if ((current || offlineMode) && !mfaLocked) { event.preventDefault(); setOpen(false); }
       return;
     }
     if (event.key !== 'Tab') return;
@@ -163,25 +168,34 @@
     if (inviteForm) inviteForm.hidden = !session?.permissions?.includes('members.invite');
     if (membersList) membersList.hidden = !session?.permissions?.includes('members.read');
     if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
-    const appRoot = document.querySelector('#app');
-    if (appRoot) { appRoot.inert = !session && !offlineMode; appRoot.setAttribute('aria-hidden', String(!session && !offlineMode)); }
+    mfaLocked = Boolean(session && (session.mfaEnrollmentRequired || (session.mfaRequired && !session.mfaVerified)));
+    const appRoot = applicationRoot();
+    if (appRoot) { appRoot.inert = mfaLocked || (!session && !offlineMode); appRoot.setAttribute('aria-hidden', String(mfaLocked || (!session && !offlineMode))); }
+    document.body.dataset.mfaLocked = String(mfaLocked);
+    host.dataset.mfaLocked = String(mfaLocked);
     host.dataset.gated = String(!session && !offlineMode);
-    $('[data-admin]').hidden = !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
-    trigger.hidden = false;
+    $('[data-admin]').hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
+    $('[data-close]').hidden = mfaLocked;
+    $('[data-accept-existing]').hidden = mfaLocked;
+    $('[data-switch]').hidden = mfaLocked;
+    $('[data-sync]').hidden = mfaLocked;
+    $('[data-offline]').hidden = mfaLocked || Boolean(session);
+    $('[data-recovery]').hidden = mfaLocked || Boolean(session);
+    $('[data-invitation]').hidden = mfaLocked || Boolean(session);
+    trigger.hidden = mfaLocked;
     placeTrigger();
     updateTriggerLabel();
     if (session) {
       $('[data-user-email]').textContent = session.email;
       $('[data-company-id]').textContent = session.activeCompanyId;
       try { localStorage.setItem('rotaMoto.activeCompanyHint', session.activeCompanyId); } catch (_) {}
-      const mfaBox=$('[data-mfa]');mfaBox.hidden=!(session.mfaEnrollmentRequired||session.mfaConfigured);
+      const mfaBox=$('[data-mfa]');mfaBox.hidden=!(mfaLocked||session.mfaConfigured);
       $('[data-mfa-status]').textContent=session.mfaEnrollmentRequired?'Acesso limitado até confirmar o autenticador.':session.mfaConfigured?'Verificação em duas etapas configurada. A chave não pode ser consultada novamente.':'Verificação em duas etapas não configurada.';
-      $('[data-mfa-start]').hidden=!session.mfaEnrollmentRequired&&session.mfaConfigured;
+      $('[data-mfa-start]').hidden=!mfaLocked;
       $('[data-mfa-regenerate]').hidden=!(session.mfaConfigured&&session.mfaVerified&&session.permissions?.includes('company.manage'));
-      $('[data-sync]').hidden=Boolean(session.mfaEnrollmentRequired);
-      setStatus(session.mfaEnrollmentRequired?'Acesso limitado · configure a verificação em duas etapas':'Sessão ativa');
+      setStatus(mfaLocked?'Acesso bloqueado · configure e confirme a verificação em duas etapas':'Sessão ativa');
       $('[data-login-error]').textContent = '';
-      if (!$('[data-admin]').hidden) loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
+      if (!mfaLocked && !$('[data-admin]').hidden) loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
     } else {
       setStatus(offlineMode ? 'Sem conta do servidor · dados deste aparelho' : navigator.onLine === false ? 'Sem conexão · usando dados deste aparelho' : 'Entre para acessar sua conta.');
     }
@@ -598,7 +612,7 @@
   window.addEventListener('online', async () => { if (!current && !offlineMode) { const session = await restore(); if (session) await syncAfterAuthentication(); } else if (current) await syncAfterAuthentication(); });
   window.addEventListener('rotamoto:session-expired', expireSession);
   const initialAppRoot = document.querySelector('#app'); if (initialAppRoot) { initialAppRoot.inert = true; initialAppRoot.setAttribute('aria-hidden', 'true'); }
-  host.dataset.gated = String(!offlineMode); trigger.hidden = false; updateTriggerLabel(); setOpen(!offlineMode); restore().then(async session => { if (session) { setOpen(false); await syncAfterAuthentication(); } });
+  host.dataset.gated = String(!offlineMode); trigger.hidden = false; updateTriggerLabel(); setOpen(!offlineMode); restore().then(async session => { if (session) { if (mfaLocked) setOpen(true); else { setOpen(false); await syncAfterAuthentication(); } } });
   const appRoot = document.querySelector('#app');
   if (appRoot) new MutationObserver(placeTrigger).observe(appRoot, { childList: true, subtree: true });
   window.RotaMotoIdentity = Object.freeze({ restore, getSession: () => current, isOfflineMode: () => offlineMode });

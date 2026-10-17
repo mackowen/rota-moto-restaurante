@@ -987,11 +987,18 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
         const principal = await resolveSession(client, sessionToken);
         if (!principal) throw new IdentityError('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
         await setTenant(client, principal.company_id);
-        if (principal.mfa_enrollment_required && permissionKey && permissionKey !== 'identity.mfa.enroll')
-          throw new IdentityError('MFA_REQUIRED', 'Configure MFA antes de usar a conta.');
+        const sensitiveRole = await client.query(`SELECT EXISTS (
+            SELECT 1 FROM rotamoto.role_permissions
+            WHERE company_id=$1 AND role_id=$2 AND catalog_version=1 AND permission_key=ANY($3::text[])
+          ) AS required`, [principal.company_id, principal.role_id, MFA_PERMISSIONS]);
+        const mfaPending = Boolean(principal.mfa_required || principal.mfa_enrollment_required || sensitiveRole.rows[0]?.required) && !principal.mfa_verified_at;
+        const preMfaOperation = ['identity.session', 'identity.mfa.enroll', 'identity.logout'].includes(permissionKey);
+        if (mfaPending && !preMfaOperation)
+          throw new IdentityError('MFA_REQUIRED', 'Configure e confirme MFA antes de usar a conta.');
         if (permissionKey) {
           const permission = requiredText(permissionKey, 'Permissão', 120);
-          if (permission === 'identity.mfa.enroll') return operation(client, principal);
+          if (permission === 'identity.mfa.enroll' || permission === 'identity.session' || permission === 'identity.logout')
+            return operation(client, principal);
           const permissions = await client.query(`SELECT
               coalesce(bool_or(rp.permission_key=$3),false) AS allowed,
               coalesce(bool_or(rp.permission_key='company.manage'),false) AS company_manage
