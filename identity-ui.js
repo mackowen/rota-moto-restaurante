@@ -62,7 +62,7 @@
           </section>
           <form data-accept-existing><label>Código de convite para sua conta<input name="token" required maxlength="43" autocomplete="off"></label><button type="submit">Aceitar convite</button><p role="status" data-existing-invitation-result></p></form>
           <form data-switch><label>Trocar empresa<input name="companyId" autocomplete="off" spellcheck="false" required></label><button type="submit">Confirmar troca</button><p data-switch-error role="alert"></p></form>
-          <button type="button" data-sync>Atualizar dados agora</button><button type="button" data-logout class="rm-secondary">Sair</button><p data-account-error role="alert" aria-live="polite"></p>
+          <button type="button" data-logout class="rm-secondary">Sair</button><p data-account-error role="alert" aria-live="polite"></p>
         </div>
         <details data-recovery><summary>Recuperar acesso</summary><form data-recovery-request><label>Email<input name="email" type="email" autocomplete="email" required maxlength="320"></label><button type="submit">Solicitar recuperação</button><p role="status" data-recovery-status></p></form>
           <form data-recovery-consume><label>Código recebido<input name="token" autocomplete="one-time-code" required maxlength="43"></label><label>Nova senha<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button type="submit">Alterar senha</button><p role="status" data-recovery-result></p></form>
@@ -83,7 +83,7 @@
   const companyAdminSection = $('[data-admin]');
   const adminTrigger = document.createElement('button');
   adminTrigger.type = 'button';
-  adminTrigger.className = 'rm-account-trigger rm-account-trigger--inline rm-company-admin-trigger';
+  adminTrigger.className = 'rm-company-admin-trigger rm-account-trigger rm-account-trigger--inline';
   adminTrigger.textContent = 'Gerenciar restaurante';
   adminTrigger.setAttribute('aria-controls', 'rmCompanyAdminPage');
   adminTrigger.hidden = true;
@@ -91,9 +91,38 @@
   adminPage.id = 'rmCompanyAdminPage';
   adminPage.hidden = true;
   adminPage.setAttribute('aria-labelledby', 'rmCompanyAdminTitle');
-  adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Administração da empresa</strong><small>Configurações e equipe do restaurante</small></div><button type="button" data-admin-close>Voltar ao painel</button></header><div class="rm-company-admin-content"></div>';
+  adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Administração da empresa</strong><small>Escolha uma área para administrar o restaurante</small></div><button type="button" data-admin-close>Voltar ao painel</button></header><nav class="rm-admin-nav" aria-label="Áreas da empresa"></nav><div class="rm-company-admin-content"></div>';
   host.append(adminPage);
-  if (companyAdminSection) adminPage.querySelector('.rm-company-admin-content')?.append(companyAdminSection);
+  if (companyAdminSection) {
+    const content = adminPage.querySelector('.rm-company-admin-content');
+    const tabs = [
+      ['company','Empresa','Configuração'],
+      ['team','Equipe','Convites e perfis'],
+      ['drivers','Motoboys','Vínculos operacionais'],
+      ['integrations','Integrações','Plataformas conectadas']
+    ];
+    const nav = adminPage.querySelector('.rm-admin-nav');
+    const sections = new Map();
+    for (const [id,label,description] of tabs) {
+      const button = document.createElement('button'); button.type='button'; button.dataset.adminPage=id; button.setAttribute('aria-pressed','false');
+      button.innerHTML = `<strong>${label}</strong><small>${description}</small>`; nav.append(button);
+      const section = document.createElement('section'); section.className='rm-admin-subpage'; section.dataset.adminSubpage=id; section.hidden=true; content.append(section); sections.set(id,section);
+      button.addEventListener('click',()=>showAdminPage(id));
+    }
+    const company = $('[data-company-setup]',companyAdminSection), recovery = $('[data-mfa-recovery-admin]',companyAdminSection), adminError = $('[data-admin-error]',companyAdminSection), adminRefresh = $('[data-refresh-admin]',companyAdminSection);
+    const invite = $('[data-invite]',companyAdminSection), members = $('[data-members]',companyAdminSection), memberNote = $('[data-members-note]',companyAdminSection), roles = $('[data-roles-list]',companyAdminSection), createRole = $('[data-create-role]',companyAdminSection), driverNote = $('[data-driver-access-note]',companyAdminSection), integrations = $('[data-integrations]',companyAdminSection);
+    for (const node of [adminError,adminRefresh,company,recovery]) if(node) sections.get('company').append(node);
+    for (const node of [invite,members,memberNote,roles,createRole]) if(node) sections.get('team').append(node);
+    const driverMembers = document.createElement('div'); driverMembers.dataset.driverMembers=''; driverMembers.setAttribute('aria-live','polite');
+    const driverIntro=document.createElement('p'); driverIntro.className='rm-driver-flow-note'; driverIntro.textContent='O cadastro do motorista é operacional e não cria uma conta. Para liberar o aplicativo, convide o endereço de email da pessoa, aguarde a ativação e vincule a conta ativa ao cadastro correto.'; sections.get('drivers').append(driverIntro);
+    sections.get('drivers').append(driverMembers);
+    for (const node of [driverNote]) if(node) sections.get('drivers').append(node);
+    if(integrations) sections.get('integrations').append(integrations);
+    companyAdminSection.remove();
+    function showAdminPage(id) { for(const [key,section] of sections){section.hidden=key!==id} for(const button of nav.querySelectorAll('[data-admin-page]'))button.setAttribute('aria-pressed',String(button.dataset.adminPage===id)); }
+    adminPage.showPage = showAdminPage;
+    showAdminPage('company');
+  }
   adminTrigger.addEventListener('click', () => {
     if (!current || mfaLocked || !current.permissions?.includes('company.manage')) return;
     setOpen(false);
@@ -101,7 +130,7 @@
     adminTrigger.setAttribute('aria-expanded', 'true');
     const app = applicationRoot();
     if (app) { app.inert = true; app.setAttribute('aria-hidden', 'true'); }
-    adminPage.querySelector('[data-refresh-admin]')?.focus();
+    adminPage.showPage?.('company'); adminPage.querySelector('[data-refresh-admin]')?.focus();
     loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
   });
   adminPage.querySelector('[data-admin-close]')?.addEventListener('click', () => {
@@ -119,7 +148,7 @@
     trigger.setAttribute('aria-label', offlineMode ? 'Dados locais. Abrir opções da conta; sem sessão autenticada' : 'Abrir conta e acesso');
     trigger.title = offlineMode ? 'Modo local: sem sessão autenticada' : 'Abrir conta e acesso';
   }
-  if (appKind !== 'restaurante') $('[data-admin]').remove();
+  if (appKind !== 'restaurante') { adminTrigger.remove(); adminPage.remove(); }
   function message(error) { return codeMessages[error?.code] || (error?.network ? codeMessages.NETWORK : 'Não foi possível concluir. Revise os dados e tente novamente.'); }
   async function syncAfterAuthentication() {
     if (mfaLocked) return;
@@ -149,8 +178,17 @@
     const parent = anchor || host;
     if (trigger.parentElement !== parent) parent.append(trigger);
     trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
-    if (adminTrigger.parentElement !== parent) parent.append(adminTrigger);
-    adminTrigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
+    const settingsNav = app?.querySelector('.settings-nav');
+    if (settingsNav) {
+      if (adminTrigger.parentElement !== settingsNav) settingsNav.append(adminTrigger);
+      if (adminTrigger.className !== 'settings-cat rm-company-admin-trigger') adminTrigger.className = 'settings-cat rm-company-admin-trigger';
+      if (adminTrigger.dataset.adminLabel !== 'settings') { adminTrigger.innerHTML = '<b>Administração da empresa</b><small>Equipe, motoboys e integrações</small>'; adminTrigger.dataset.adminLabel = 'settings'; }
+    } else {
+      const adminParent = app?.querySelector('.top-actions') || host;
+      if (adminTrigger.parentElement !== adminParent) adminParent.append(adminTrigger);
+      if (adminTrigger.className !== 'rm-company-admin-trigger rm-account-trigger rm-account-trigger--inline') adminTrigger.className = 'rm-company-admin-trigger rm-account-trigger rm-account-trigger--inline';
+      if (adminTrigger.dataset.adminLabel !== 'top') { adminTrigger.textContent = 'Gerenciar restaurante'; adminTrigger.dataset.adminLabel = 'top'; }
+    }
   }
   const placementRoot = document.body;
   if (placementRoot && window.MutationObserver) {
@@ -208,12 +246,11 @@
     document.body.dataset.mfaLocked = String(mfaLocked);
     host.dataset.mfaLocked = String(mfaLocked);
     host.dataset.gated = String(!session && !offlineMode);
-    $('[data-admin]').hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
+    adminPage.hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
     adminTrigger.hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
     $('[data-close]').hidden = mfaLocked;
     $('[data-accept-existing]').hidden = mfaLocked;
     $('[data-switch]').hidden = mfaLocked;
-    $('[data-sync]').hidden = mfaLocked;
     $('[data-offline]').hidden = mfaLocked || Boolean(session);
     $('[data-recovery]').hidden = mfaLocked || Boolean(session);
     $('[data-invitation]').hidden = mfaLocked || Boolean(session);
@@ -230,7 +267,7 @@
       $('[data-mfa-regenerate]').hidden=!(session.mfaConfigured&&session.mfaVerified&&session.permissions?.includes('company.manage'));
       setStatus(mfaLocked?'Acesso bloqueado · configure e confirme a verificação em duas etapas':'Sessão ativa');
       $('[data-login-error]').textContent = '';
-      if (!mfaLocked && !$('[data-admin]').hidden) loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
+      if (!mfaLocked && !adminPage.hidden) loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
     } else {
       setStatus(offlineMode ? 'Sem conta do servidor · dados deste aparelho' : navigator.onLine === false ? 'Sem conexão · usando dados deste aparelho' : 'Entre para acessar sua conta.');
     }
@@ -344,7 +381,6 @@
     catch (error) { $('[data-account-error]').textContent = message(error); }
     finally { working = false; }
   });
-  $('[data-sync]')?.addEventListener('click', async () => { try { await window.RotaMotoSync?.syncNow?.(); $('[data-account-error]').textContent = 'Pedido de atualização enviado.'; } catch (error) { $('[data-account-error]').textContent = message(error); } });
   $('[data-recovery-request]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return;
     const email = form.elements.email.value.trim(); setBusy(form, true);
@@ -570,10 +606,19 @@
       }); roleList.append(card);
     });
     const list = $('[data-members]'); list.replaceChildren();
+    const driverList = $('[data-driver-members]'); if(driverList) driverList.replaceChildren();
+    if(driverList){
+      const linkedIds=new Set(members.members.map(member=>member.driverId).filter(Boolean));
+      const identityEmails=new Set(members.members.map(member=>String(member.email||'').trim().toLowerCase()).filter(Boolean));
+      const unlinked=driverRows.filter(row=>!linkedIds.has(row.id)&&!identityEmails.has(String(row.record?.email||'').trim().toLowerCase()));
+      for(const row of unlinked){const item=document.createElement('article');item.className='rm-member';const name=document.createElement('strong');name.textContent=row.record?.name||row.record?.displayName||'Motoboy';const state=document.createElement('span');state.textContent='Sem convite · cadastro operacional sem identidade vinculada';item.append(name,state);const inviteButton=document.createElement('button');inviteButton.type='button';inviteButton.className='rm-primary';inviteButton.textContent='Convidar para acessar o Motoboy';inviteButton.addEventListener('click',()=>{adminPage.showPage?.('team');const emailInput=$('[data-invite] input[name="email"]');if(emailInput&&row.record?.email)emailInput.value=row.record.email;emailInput?.focus();});item.append(inviteButton);driverList.append(item)}
+      if(!unlinked.length&&!members.members.some(member=>member.driverId)){const empty=document.createElement('p');empty.textContent='Nenhum cadastro de motoboy aguardando convite ou vínculo.';driverList.append(empty)}
+    }
     members.members.forEach(member => {
       const card = document.createElement('article'); card.className = 'rm-member';
       const title = document.createElement('strong'); title.textContent = member.email; card.append(title);
-      const meta = document.createElement('span'); meta.textContent = `${member.roleName} · ${member.status === 'invited' ? 'Convite pendente' : member.status === 'suspended' || member.disabled ? 'Suspenso' : member.driverId ? 'Ativo' : member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push') ? 'Aguardando ativação do vínculo de motoboy' : 'Sem convite de motoboy'}`; card.append(meta);
+      const linkedDriver = driverRows.find(row => row.id === member.driverId);
+      const meta = document.createElement('span'); meta.textContent = `${member.roleName} · ${member.status === 'invited' ? (member.userId ? 'Aguardando ativação' : 'Convite pendente') : member.status === 'suspended' || member.status === 'revoked' || member.disabled ? 'Suspenso' : member.driverId ? (!canReadDrivers || !linkedDriver ? 'Vínculo a confirmar' : linkedDriver.record?.status === 'active' ? 'Ativo' : 'Suspenso') : member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push') ? 'Aguardando vínculo operacional' : 'Sem convite'}`; card.append(meta);
       if (member.userId !== current.userId) {
         const currentRole = roles.roles.find(role => role.id === member.roleId);
         const canReassignCurrent = currentRole?.permissions.every(permission => current.permissions.includes(permission)) ?? false;
@@ -592,7 +637,7 @@
         const linkBox = document.createElement('div'); linkBox.className = 'rm-driver-link';
         const title = document.createElement('strong'); title.textContent = 'Motorista operacional'; linkBox.append(title);
         const feedback = document.createElement('p'); feedback.className = 'rm-driver-link-status'; feedback.setAttribute('role', 'status');
-        const driver = driverRows.find(row => row.id === member.driverId);
+        const driver = linkedDriver;
         if (member.status === 'invited' && member.userId !== current.userId && current.permissions.includes('members.invite')) {
           const resend = document.createElement('button'); resend.type = 'button'; resend.className = 'rm-secondary'; resend.textContent = 'Reenviar convite';
           resend.addEventListener('click', async () => { resend.disabled = true; try { await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: member.email, roleId: member.roleId }) }); feedback.textContent = 'Novo convite enviado; o anterior foi invalidado.'; await loadAdmin(); } catch (error) { feedback.textContent = message(error); resend.disabled = false; } });
@@ -601,7 +646,7 @@
           linkBox.append(resend, revoke);
         }
         if (member.driverId) {
-          feedback.textContent = `Vinculado a ${driver?.record?.name || driver?.record?.displayName || `ID ${member.driverId}`}.`;
+          feedback.textContent = driver?.record?.status && driver.record.status !== 'active' ? `Cadastro vinculado, mas sem operação ativa (${driver.record.status}). Entregas continuam bloqueadas.` : `Vinculado a ${driver?.record?.name || driver?.record?.displayName || 'motorista ativo'}.`;
           const unlink = document.createElement('button'); unlink.type = 'button'; unlink.className = 'rm-secondary'; unlink.textContent = 'Desvincular motorista';
           unlink.addEventListener('click', async () => {
             if (!window.confirm(`Desvincular o motoboy ${member.email}? Ele deixará de receber entregas desta empresa até ser vinculado novamente.`)) return;
@@ -636,14 +681,16 @@
             linkBox.append(select, link, feedback);
           }
         }
-        card.append(linkBox);
+        const driverCard=document.createElement('article'); driverCard.className='rm-member';
+        const driverIdentity=document.createElement('strong'); driverIdentity.textContent=member.email; driverCard.append(driverIdentity,linkBox);
+        driverList?.append(driverCard);
       }
       list.append(card);
     });
     if (driverCursor && canReadDrivers) {
       const more = document.createElement('button'); more.type = 'button'; more.className = 'rm-secondary'; more.textContent = 'Carregar mais motoristas';
       more.addEventListener('click', async () => { more.disabled = true; try { await loadAdmin({ appendDrivers: true }); } catch (error) { $('[data-admin-error]').textContent = message(error); more.disabled = false; } });
-      list.append(more);
+      driverList?.append(more);
     }
     await loadMfaRecoveryRequests();
   }

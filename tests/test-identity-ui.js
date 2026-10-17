@@ -20,8 +20,8 @@ assert.match(source, /data-mfa-start-status role="alert" aria-live="assertive"/u
 assert.match(source, /CSRF_INVALID: 'A sessão de segurança foi renovada/u, 'a failed CSRF refresh gives a visible recovery instruction');
 assert.match(source, /if\(mfaStarting\)return/u, 'duplicate enrollment clicks are ignored while the request is pending');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0247\.1/u, 'identity UI URL changes when the enrollment flow changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v48`[\s\S]*identity-ui\.js\?v=0247\.1/u, 'service worker cache is invalidated with the identity asset');
+assert.match(html, /identity-ui\.js\?v=0247\.2/u, 'identity UI URL changes when the enrollment flow changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v49`[\s\S]*identity-ui\.js\?v=0247\.2/u, 'service worker cache is invalidated with the identity asset');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -48,7 +48,12 @@ assert.match(source, /O convite cria ou associa uma conta RotaMoto pelo email/u,
 assert.match(source, /Reenviar convite/u, 'pending invitations can be resent through the existing identity invitation service');
 assert.match(source, /Revogar convite/u, 'pending invitations can be revoked through audited membership status changes');
 assert.match(source, /Convite pendente/u, 'membership invitation state is presented in plain language');
-assert.match(source, /Aguardando ativação do vínculo de motoboy/u, 'an activated identity without an operational Driver binding is clearly distinguished');
+assert.match(source, /Aguardando vínculo operacional/u, 'an activated identity without an operational Driver binding is clearly distinguished');
+assert.match(source, /rm-admin-nav[\s\S]*?Empresa[\s\S]*?Equipe[\s\S]*?Motoboys[\s\S]*?Integrações/u, 'company administration is split into separate task pages');
+assert.match(source, /sections\.get\('drivers'\)[\s\S]*?driverMembers/u, 'driver links have a dedicated administration page');
+assert.match(source, /const settingsNav = app\?\.querySelector\('\.settings-nav'\)/u, 'company administration is reached through the existing settings navigation');
+assert.doesNotMatch(source, /data-sync/u, 'the account panel contains no operational synchronization action');
+assert.match(source, /adminPage\.hidden = mfaLocked/u, 'company administration is hidden after session loss or while MFA is pending');
 assert.match(source, /role="dialog" aria-modal="true"/u, 'account access is exposed as a modal dialog');
 assert.match(source, /visibleControls\(\)/u, 'account dialog keeps keyboard focus within visible controls');
 assert.match(source, /driverCursor/u, 'driver linking can navigate a paginated driver list');

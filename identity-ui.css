@@ -98,20 +98,27 @@
 #rmCompanyAdminPage > header small { margin-block-start: 4px; color: var(--rm-id-muted); }
 #rmCompanyAdminPage > header button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--rm-id-border); border-radius: 10px; background: var(--rm-id-surface); color: var(--rm-id-text); }
 .rm-company-admin-content { padding-block: 16px 32px; }
-.rm-company-admin-content [data-admin] { display: grid; gap: 16px; }
-.rm-company-admin-content [data-admin] > form,
-.rm-company-admin-content [data-admin] > section,
-.rm-company-admin-content [data-admin] > [data-members] {
+.rm-admin-nav { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; width:min(100%,960px); margin:14px auto 0; }
+.rm-admin-nav button { min-height:54px; padding:9px 12px; text-align:left; border:1px solid var(--rm-id-border); border-radius:11px; background:var(--rm-id-surface); color:var(--rm-id-text); cursor:pointer; }
+.rm-admin-nav button[aria-pressed="true"] { border-color:var(--rm-id-accent); background:var(--rm-id-accent-soft); }
+.rm-admin-nav strong,.rm-admin-nav small { display:block; }
+.rm-admin-nav small { margin-top:3px; color:var(--rm-id-muted); }
+.rm-admin-subpage { display:grid; gap:14px; }
+.rm-admin-subpage > form,
+.rm-admin-subpage > section,
+.rm-admin-subpage > [data-members],
+.rm-admin-subpage > [data-driver-members],
+.rm-admin-subpage > [data-admin-error] {
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--rm-id-border);
   border-radius: 14px;
   background: var(--rm-id-surface);
 }
-.rm-company-admin-content [data-admin] label { display: grid; gap: 6px; margin-block: 10px; }
-.rm-company-admin-content [data-admin] input,
-.rm-company-admin-content [data-admin] select { width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--rm-id-border); border-radius: 9px; background: var(--rm-id-surface); color: var(--rm-id-text); font: inherit; }
-.rm-company-admin-content [data-admin] button { min-height: 42px; max-width: 100%; }
+.rm-admin-subpage label { display: grid; gap: 6px; margin-block: 10px; }
+.rm-admin-subpage input,
+.rm-admin-subpage select { width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--rm-id-border); border-radius: 9px; background: var(--rm-id-surface); color: var(--rm-id-text); font: inherit; }
+.rm-admin-subpage button { min-height: 42px; max-width: 100%; }
 #rmCompanyAdminPage :focus-visible { outline: 3px solid var(--rm-id-accent); outline-offset: 2px; }
 
 .rm-identity-panel {
