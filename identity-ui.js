@@ -11,6 +11,7 @@
   let invitationKind = 'membership_invitation';
   const sessionReadGuard = window.RotaMotoSessionGuard.createSessionReadGuard();
   let working = false;
+  let mfaStarting = false;
   let driverRows = [];
   let driverCursor = null;
   let previousFocus = null;
@@ -26,7 +27,7 @@
     }
   } catch (_) {}
   const codeMessages = {
-    INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta precisa de um código de verificação. Configure o aplicativo autenticador para entrar.', MFA_PROVIDER_UNAVAILABLE: 'A verificação em duas etapas está temporariamente indisponível. Tente novamente mais tarde.', RECOVERY_LOCAL_OPERATOR_REQUIRED: 'Esta solicitação exige o procedimento local auditado do operador.',
+    INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta precisa de um código de verificação. Configure o aplicativo autenticador para entrar.', MFA_PROVIDER_UNAVAILABLE: 'A verificação em duas etapas está temporariamente indisponível. Tente novamente mais tarde.', CSRF_INVALID: 'A sessão de segurança foi renovada. Tente configurar novamente; se o erro continuar, atualize a página.', RECOVERY_LOCAL_OPERATOR_REQUIRED: 'Esta solicitação exige o procedimento local auditado do operador.',
     UNAUTHENTICATED: 'Sua sessão expirou. Entre novamente.', EMAIL_PROVIDER_NOT_CONFIGURED: 'Convites e recuperação ainda dependem da configuração segura de entrega de email.',
     FORBIDDEN: 'Seu perfil não permite esta ação.', LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um responsável principal ativo.',
     DRIVER_MEMBERSHIP_INELIGIBLE: 'A conta precisa estar ativa, confirmada e autorizada para usar o app Motoboy.',
@@ -54,7 +55,7 @@
           <button class="rm-primary" type="submit">Entrar</button><p data-login-error role="alert" aria-live="polite"></p></form>
         <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-company-name>Empresa ativa</span><span>Código: <code data-company-id></code></span></div>
           <section data-mfa hidden><h3>Verificação em duas etapas</h3><p data-mfa-status role="status"></p>
-            <button type="button" data-mfa-start>Configurar verificação em duas etapas</button>
+            <p data-mfa-start-status role="alert" aria-live="assertive" aria-atomic="true"></p><button type="button" data-mfa-start>Configurar verificação em duas etapas</button>
           <form data-mfa-confirm hidden><p>Escaneie o QR Code ou informe a chave manual no aplicativo autenticador. Digite o código atual para confirmar.</p><canvas data-mfa-qr width="208" height="208" role="img" aria-label="QR Code para configurar autenticação em duas etapas"></canvas><label>Chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar código</button><p data-mfa-error role="alert"></p></form>
             <section data-recovery-codes hidden><h4>Códigos de recuperação</h4><p>Guarde-os fora deste navegador. Cada código só pode ser usado uma vez.</p><pre data-recovery-code-list></pre><button type="button" data-recovery-codes-dismiss>Ocultar códigos</button></section>
             <button type="button" data-mfa-regenerate hidden>Gerar novos códigos de recuperação</button>
@@ -249,7 +250,31 @@
     context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.fillStyle='#111';
     for(let row=0;row<modules;row++)for(let column=0;column<modules;column++)if(code.isDark(row,column))context.fillRect(offset+column*scale,offset+row*scale,scale,scale);
   }
-  $('[data-mfa-start]').addEventListener('click',async()=>{const button=$('[data-mfa-start]');button.disabled=true;$('[data-mfa-error]').textContent='';try{const result=await request('/identity/mfa/enrollment',{method:'POST',body:'{}'});$('[data-mfa-secret]').value=result.secret;$('[data-mfa-confirm]').hidden=false;renderMfaQr(result.otpauthUri);$('[data-mfa-status]').textContent='Escaneie o QR Code ou use a chave manual. Confirme com o código atual.';$('[data-mfa-confirm] [name=code]').focus()}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{button.disabled=false}});
+  $('[data-mfa-start]').addEventListener('click',async()=>{
+    const button=$('[data-mfa-start]'),feedback=$('[data-mfa-start-status]');
+    if(mfaStarting)return;
+    mfaStarting=true;button.disabled=true;button.setAttribute('aria-busy','true');
+    feedback.textContent='';$('[data-mfa-error]').textContent='';
+    $('[data-mfa-status]').textContent='Preparando a configuração…';
+    try{
+      const result=await request('/identity/mfa/enrollment',{method:'POST',body:'{}'});
+      if(typeof result?.secret!=='string'||!result.secret||typeof result?.otpauthUri!=='string'||!result.otpauthUri.startsWith('otpauth://totp/'))
+        throw Object.assign(new Error('Resposta de configuração inválida.'),{code:'MFA_ENROLLMENT_INVALID_RESPONSE'});
+      $('[data-mfa-secret]').value=result.secret;
+      const form=$('[data-mfa-confirm]');form.hidden=false;
+      try{
+        renderMfaQr(result.otpauthUri);
+        $('[data-mfa-status]').textContent='Escaneie o QR Code ou use a chave manual. Confirme com o código atual.';
+      }catch(_){
+        $('[data-mfa-status]').textContent='O QR Code não pôde ser exibido neste aparelho. Use a chave manual abaixo e confirme com o código atual.';
+        feedback.textContent='QR Code indisponível; a chave manual continua disponível.';
+      }
+      $('[data-mfa-confirm] [name=code]').focus();
+    }catch(error){
+      feedback.textContent=error?.code==='MFA_ENROLLMENT_INVALID_RESPONSE'?'O servidor respondeu de forma inesperada. Atualize a página e tente novamente.':message(error);
+      $('[data-mfa-status]').textContent='Não foi possível iniciar a verificação em duas etapas.';
+    }finally{mfaStarting=false;button.disabled=false;button.removeAttribute('aria-busy')}
+  });
   $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});clearMfaEnrollment();$('[data-mfa-confirm]').hidden=true;$('[data-mfa-status]').textContent='Verificação em duas etapas configurada. A chave foi removida desta tela.';$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore()}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
   $('[data-recovery-codes-dismiss]').addEventListener('click',()=>{$('[data-recovery-code-list]').textContent='';$('[data-recovery-codes]').hidden=true});
   $('[data-mfa-regenerate]').addEventListener('click',async event=>{const button=event.currentTarget;if(working)return;working=true;button.disabled=true;try{const result=await request('/identity/mfa/recovery-codes',{method:'POST',body:'{}'});$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{working=false;button.disabled=false}});

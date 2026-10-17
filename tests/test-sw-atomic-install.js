@@ -45,7 +45,9 @@ async function fire(listener, event = {}) {
   await fire(healthy.listeners.get('install'));
   assert.equal(healthy.stores.size, 1, 'one complete versioned cache is staged');
   const [cacheName] = [...healthy.stores.keys()];
-  assert.match(cacheName, /v46$/u);
+  assert.match(cacheName, /v47$/u);
+  assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('identity-ui.js?v=0245.1')),
+    'current shell stages the versioned MFA UI');
   assert.equal([...healthy.stores.get(cacheName).keys()].some(url => url.includes('maplibre-gl-worker.js')), false,
     'missing optional cartography worker does not block or enter the shell');
 
