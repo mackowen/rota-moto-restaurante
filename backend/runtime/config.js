@@ -64,9 +64,11 @@ function normalizeHosts(values) {
   return Object.freeze(hosts);
 }
 
-function loadRuntimeConfig(env = process.env) {
+function loadRuntimeConfig(env = process.env, { context = 'http' } = {}) {
+  if (!['http', 'operator'].includes(context)) throw new Error('Contexto de configuração inválido.');
   const nodeEnv = env.NODE_ENV === undefined ? 'development' : env.NODE_ENV;
   if (!['development', 'test', 'production'].includes(nodeEnv)) throw new Error('NODE_ENV inválido.');
+  if (context === 'operator' && nodeEnv === 'test') throw new Error('Contexto de operador não pode usar configuração E2E.');
   const production = nodeEnv === 'production';
   const host = env.HOST || (production ? '' : '127.0.0.1');
   if (!host || !LOOPBACK_HOSTS.has(String(host).toLowerCase())) {
@@ -83,7 +85,8 @@ function loadRuntimeConfig(env = process.env) {
   if (nodeEnv === 'test' && !env.E2E_RUNTIME_DATABASE_URL) throw new Error('E2E_RUNTIME_DATABASE_URL é obrigatória no modo de teste.');
   const databaseUrl = validateDatabaseUrl(nodeEnv === 'test' ? env.E2E_RUNTIME_DATABASE_URL : env.DATABASE_URL,
     { production, test: nodeEnv === 'test' });
-  const origins = parseOrigins(production ? [env.ALLOWED_ORIGINS] : [env.ALLOWED_ORIGIN || 'http://localhost:8787', env.ALLOWED_ORIGINS], { production });
+  const origins = parseOrigins(production ? [env.ALLOWED_ORIGINS] : env.ALLOWED_ORIGINS
+    ? [env.ALLOWED_ORIGINS] : [env.ALLOWED_ORIGIN || 'http://localhost:8787'], { production });
   if (production && !origins.length) throw new Error('ALLOWED_ORIGINS HTTPS é obrigatória em produção.');
   const allowedHosts = normalizeHosts(production ? [env.ALLOWED_HOSTS] : [env.ALLOWED_HOSTS || 'localhost,127.0.0.1,[::1]']);
   if (production && !allowedHosts.length) throw new Error('ALLOWED_HOSTS é obrigatória em produção.');
@@ -149,12 +152,19 @@ function loadRuntimeConfig(env = process.env) {
 
   return Object.freeze({ nodeEnv, production, host, port, databaseUrl, allowedOrigins: origins, smtp, mediaDirectory, backupDirectory,
     allowedHosts, trustedProxyAddresses, trustProxy: trustedProxyAddresses.length>0,
+    operatorAudit: context === 'operator' ? Object.freeze({
+      file: env.ROTAMOTO_OPERATOR_AUDIT_LOG || null,
+      actorRef: env.ROTAMOTO_OPERATOR_ACTOR_REF || null,
+    }) : null,
     deliveryQrKeyRef, deliveryQrKeyId, routeDistance,
     databaseTlsCaFile:production?env.DATABASE_TLS_CA_FILE:null, requestTimeoutMs: 30_000, headersTimeoutMs: 10_000,
     keepAliveTimeoutMs: 5_000, shutdownTimeoutMs: 10_000,
-    secretProviderModule: production ? secretProviderModule : null,
-    secretStoreDirectory: production ? secretStoreDirectory : null,
-    secretMasterKeyFile: production ? secretMasterKeyFile : null });
+    // Installation secrets are available to the standalone CLI only through
+    // an explicit operator context. HTTP development and all E2E configs stay
+    // blind to the keystore, while production keeps its existing behavior.
+    secretProviderModule: production || context === 'operator' ? secretProviderModule : null,
+    secretStoreDirectory: production || context === 'operator' ? secretStoreDirectory : null,
+    secretMasterKeyFile: production || context === 'operator' ? secretMasterKeyFile : null });
 }
 
 function hostAllowed(header, allowedHosts, production = false) {

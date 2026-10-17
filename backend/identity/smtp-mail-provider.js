@@ -3,13 +3,22 @@
 const nodemailer = require('nodemailer');
 const { createEmailDeliveryProvider } = require('./email-provider');
 
-function createSmtpMailProvider({ host, port, secure = false, requireTLS = true, user, password, from, baseUrl }) {
+function createSmtpTransport({ host, port, secure = false, requireTLS = true, user, password }) {
   if (!host || !Number.isInteger(Number(port)) || Number(port) < 1 || Number(port) > 65535 ||
-      !from || !/^https:\/\//u.test(baseUrl || '') || typeof password !== 'string' || !password ||
+      typeof password !== 'string' || !password || user !== undefined && (typeof user !== 'string' || !user) ||
       (user && !secure && !requireTLS)) throw new Error('Configuração SMTP segura incompleta.');
-  const transport = nodemailer.createTransport({ host, port: Number(port), secure: Boolean(secure), requireTLS: Boolean(requireTLS),
+  return nodemailer.createTransport({ host, port: Number(port), secure: Boolean(secure), requireTLS: Boolean(requireTLS),
     auth: user ? { user, pass: password } : undefined, tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
     disableFileAccess: true, disableUrlAccess: true, connectionTimeout: 8000, greetingTimeout: 8000, socketTimeout: 15000 });
+}
+async function verifySmtpConnection(options) {
+  if (typeof options?.user !== 'string' || !options.user) throw new Error('Verificação SMTP exige autenticação explícita.');
+  const transport = createSmtpTransport(options);
+  try { await transport.verify(); return true; } finally { transport.close(); }
+}
+function createSmtpMailProvider({ host, port, secure = false, requireTLS = true, user, password, from, baseUrl }) {
+  if (!from || !/^https:\/\//u.test(baseUrl || '')) throw new Error('Envio SMTP exige remetente e URL pública HTTPS.');
+  const transport = createSmtpTransport({ host, port, secure, requireTLS, user, password });
   const send = async message => {
     const link = new URL(baseUrl);
     link.hash = new URLSearchParams({ action: message.kind, token: message.token }).toString();
@@ -23,4 +32,4 @@ function createSmtpMailProvider({ host, port, secure = false, requireTLS = true,
   const provider = createEmailDeliveryProvider(send);
   return Object.freeze({ ...provider, async verify() { await transport.verify(); return true; }, close() { transport.close(); } });
 }
-module.exports = { createSmtpMailProvider };
+module.exports = { createSmtpMailProvider, verifySmtpConnection };

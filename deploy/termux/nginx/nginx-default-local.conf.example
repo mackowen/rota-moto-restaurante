@@ -1,0 +1,8 @@
+# Use for the Termux welcome server only. Keep all local app interfaces on loopback.
+server {
+    listen 127.0.0.1:8080;
+    server_name localhost;
+    root /data/data/com.termux/files/usr/share/nginx/html;
+    index index.html index.htm;
+    location / { try_files $uri $uri/ =404; }
+}

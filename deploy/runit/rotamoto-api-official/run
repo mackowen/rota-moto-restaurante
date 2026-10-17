@@ -1,0 +1,29 @@
+#!/data/data/com.termux/files/usr/bin/sh
+set -eu
+umask 077
+
+ENV_FILE="$HOME/rotamoto-data/official-api/runtime.env"
+[ -f "$ENV_FILE" ] && [ ! -L "$ENV_FILE" ] || exit 111
+[ "$(stat -c '%u' "$ENV_FILE")" = "$(id -u)" ] || exit 111
+case "$(stat -c '%a' "$ENV_FILE")" in 400|600) ;; *) exit 111 ;; esac
+
+set -a
+. "$ENV_FILE"
+set +a
+: "${ROTAMOTO_APP_ROOT:?application root is required}"
+: "${ROTAMOTO_NODE_BINARY:?Node binary is required}"
+[ "${NODE_ENV:-}" = development ] || exit 111
+[ "${HOST:-}" = 127.0.0.1 ] || exit 111
+[ "${PORT:-}" = 8788 ] || exit 111
+[ "${DATABASE_URL:-}" = "postgresql://rotamoto_app@127.0.0.1:5432/rotamoto" ] || exit 111
+[ -z "${MIGRATOR_DATABASE_URL:-}" ] || exit 111
+[ -f "$HOME/.pgpass" ] && [ ! -L "$HOME/.pgpass" ] || exit 111
+[ "$(stat -c '%u' "$HOME/.pgpass")" = "$(id -u)" ] || exit 111
+[ "$(stat -c '%a' "$HOME/.pgpass")" = 600 ] || exit 111
+
+cd "$ROTAMOTO_APP_ROOT"
+exec "$PREFIX/bin/env" -i \
+  HOME="$HOME" PREFIX="$PREFIX" PATH="$PREFIX/bin" TMPDIR="$PREFIX/tmp" PGPASSFILE="$HOME/.pgpass" \
+  NODE_ENV="$NODE_ENV" HOST="$HOST" PORT="$PORT" DATABASE_URL="$DATABASE_URL" \
+  ALLOWED_HOSTS="$ALLOWED_HOSTS" ALLOWED_ORIGINS="$ALLOWED_ORIGINS" \
+  "$ROTAMOTO_NODE_BINARY" server.js

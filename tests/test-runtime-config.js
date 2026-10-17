@@ -9,6 +9,18 @@ assert.equal(dev.databaseUrl,'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto'
 assert.equal(dev.trustProxy,false);
 assert.equal(dev.routeDistance.enabled,false);
 assert.equal(dev.routeDistance.baseUrl,null);
+const configuredDevHttp=loadRuntimeConfig({NODE_ENV:'development',ROTAMOTO_SECRET_STORE_DIRECTORY:'/private/identity/keystore',
+  ROTAMOTO_SECRET_MASTER_KEY_FILE:'/private/identity/keys/master.key'});
+assert.equal(configuredDevHttp.secretStoreDirectory,null,'HTTP development context cannot see the keystore');
+assert.equal(configuredDevHttp.secretMasterKeyFile,null,'HTTP development context cannot see the master key');
+const operatorConfig=loadRuntimeConfig({NODE_ENV:'development',ROTAMOTO_SECRET_STORE_DIRECTORY:'/private/identity/keystore',
+  ROTAMOTO_SECRET_MASTER_KEY_FILE:'/private/identity/keys/master.key'},{context:'operator'});
+assert.equal(operatorConfig.secretStoreDirectory,'/private/identity/keystore','standalone operator context can use the local keystore');
+assert.equal(operatorConfig.secretMasterKeyFile,'/private/identity/keys/master.key');
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e',
+  ROTAMOTO_SECRET_STORE_DIRECTORY:'/private/identity/keystore',ROTAMOTO_SECRET_MASTER_KEY_FILE:'/private/identity/keys/master.key'},
+  {context:'operator'}),/não pode usar configuração E2E/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development'},{context:'unknown'}),/Contexto de configuração inválido/u);
 const e2e=loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e'});
 assert.equal(e2e.databaseUrl,'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e');
 assert.equal(e2e.nodeEnv,'test');
@@ -22,6 +34,9 @@ assert.deepEqual(localRoad.routeDistance,{enabled:true,baseUrl:'http://127.0.0.1
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true'}),/exige ROUTEMOTO_ROUTE_DISTANCE_URL/u);
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_URL:'http://example.org'}),/HTTPS/u);
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_URL:'http://127.0.0.1:5000?token=x'}),/base HTTP/u);
+const localOfficial=loadRuntimeConfig({NODE_ENV:'development',PORT:'8788',ALLOWED_ORIGINS:'http://localhost:8081,http://localhost:8082'});
+assert.deepEqual(localOfficial.allowedOrigins,['http://localhost:8081','http://localhost:8082'],
+  'explicit local API origins replace the development fallback instead of inheriting the E2E origin');
 assert.equal(hostAllowed('127.0.0.1:8787',dev.allowedHosts,false),true);
 assert.equal(hostAllowed('[::1]:8787',dev.allowedHosts,false),true);
 assert.equal(hostAllowed('attacker.example',dev.allowedHosts,false),false);

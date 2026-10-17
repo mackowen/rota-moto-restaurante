@@ -1,8 +1,9 @@
 'use strict';
 const fs = require('node:fs/promises');
 const path = require('node:path');
-async function appendOperatorAudit(action, details = {}) {
-  const file = process.env.ROTAMOTO_OPERATOR_AUDIT_LOG, actorRef = process.env.ROTAMOTO_OPERATOR_ACTOR_REF;
+async function appendOperatorAudit(action, details = {}, options = {}) {
+  const file = options.file || process.env.ROTAMOTO_OPERATOR_AUDIT_LOG;
+  const actorRef = options.actorRef || process.env.ROTAMOTO_OPERATOR_ACTOR_REF;
   if (!file || !path.isAbsolute(file) || !actorRef || !/^[A-Za-z0-9_.:@/-]{1,128}$/u.test(actorRef) || !/^[a-z][a-z0-9_.-]{2,63}$/u.test(action)) {
     const error = new Error('Identidade e arquivo privado de auditoria do operador são obrigatórios.');
     error.code = 'OPERATOR_AUDIT_CONFIGURATION_REQUIRED';

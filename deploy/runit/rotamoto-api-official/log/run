@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/sh
+set -eu
+umask 077
+exec /data/data/com.termux/files/usr/bin/svlogd -tt -b 8192 \
+  /data/data/com.termux/files/usr/var/log/sv/rotamoto-api-official

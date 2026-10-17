@@ -1,14 +1,18 @@
 'use strict';
 const fs = require('node:fs/promises');
-const { loadRuntimeConfig } = require('../backend/runtime/config');
+const { loadOperatorRuntimeConfig } = require('../backend/runtime/operator-config');
 const { createFileSecretProvider } = require('../backend/runtime/file-secret-provider');
-const { createSmtpMailProvider } = require('../backend/identity/smtp-mail-provider');
+const { verifySmtpConnection } = require('../backend/identity/smtp-mail-provider');
 const crypto = require('node:crypto');
 const path = require('node:path');
 const { createRecoverySet, verifyRecoverySet, restoreRecoverySet } = require('../backend/runtime/recovery-set');
 const { appendOperatorAudit } = require('../backend/runtime/operator-audit');
 const { createFilesystemObjectStore } = require('../backend/domain/filesystem-object-store');
 const { createFilesystemBackupProvider } = require('../backend/runtime/backup-provider');
+
+function auditOperator(action, details, config) {
+  return appendOperatorAudit(action, details, config?.operatorAudit || undefined);
+}
 
 async function writeBackupStatus(directory, value) {
   if (!path.isAbsolute(directory || '')) return;
@@ -32,7 +36,7 @@ async function readBackupStatus(directory) {
 
 (async () => {
   const command = process.argv[2] || 'status';
-  const config = ['status', 'secret-put', 'smtp-verify', 'delivery-qr-key-init'].includes(command) ? loadRuntimeConfig() : null;
+  const config = ['status', 'secret-put', 'smtp-verify', 'delivery-qr-key-init'].includes(command) ? await loadOperatorRuntimeConfig() : null;
   if (command === 'status') {
     let secrets = { configured: false, provider: null, status: 'not_configured' };
     let storage = { configured: false, provider: null, status: 'not_configured' };
@@ -60,7 +64,9 @@ async function readBackupStatus(directory) {
       } catch (_) { secrets = { configured: true, provider: 'filesystem-keystore-v1', status: 'error' }; }
     } else if (config.secretProviderModule) secrets = { configured: true, provider: 'external', status: 'configured' };
     process.stdout.write(`${JSON.stringify({ installation: { storage,
-      smtp: { configured: Boolean(config.smtp.host && config.smtp.passwordRef && config.smtp.from && config.smtp.baseUrl), status: config.smtp.host ? 'configured' : 'not_configured' },
+      smtp: { configured: Boolean(config.smtp.host && config.smtp.user && config.smtp.passwordRef && config.smtp.from && config.smtp.baseUrl),
+        transportConfigured: Boolean(config.smtp.host && config.smtp.user && config.smtp.passwordRef),
+        status: config.smtp.host && config.smtp.user && config.smtp.passwordRef ? 'ready_to_verify' : 'incomplete' },
       secrets, backup: { ...backup, key: backupKey,
         media: { configured: Boolean(config.mediaDirectory && storage.configured), status: config.mediaDirectory ? storage.status : 'not_configured' },
         retentionDays: Number(process.env.ROTAMOTO_BACKUP_RETENTION_DAYS || 30), schedule: { managedExternally: true, runner: 'backup-create' } },
@@ -76,19 +82,19 @@ async function readBackupStatus(directory) {
     for await (const chunk of process.stdin) { bytes += chunk.length; if (bytes > 16384) throw new Error('Secret excede limite.'); chunks.push(chunk); }
     const value = Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/u, '');
     const provider = await createFileSecretProvider({ directory: config.secretStoreDirectory, masterKeyFile: config.secretMasterKeyFile });
-    await appendOperatorAudit('secret.put.started', { name });
+    await auditOperator('secret.put.started', { name }, config);
     const { secretRef } = await provider.put({ name, scope: 'installation', value });
-    await appendOperatorAudit('secret.put.completed', { name, secretRef });
+    await auditOperator('secret.put.completed', { name, secretRef }, config);
     process.stdout.write(`${JSON.stringify({ event: 'operator.secret.updated', configured: true, secretRef })}\n`);
     return;
   }
   if (command === 'smtp-verify') {
-    if (!config.smtp.host || !config.smtp.passwordRef || !config.smtp.from || !config.smtp.baseUrl || !config.secretStoreDirectory || !config.secretMasterKeyFile) throw new Error('SMTP ou keystore não configurado.');
+    if (!config.smtp.host || !config.smtp.passwordRef || !config.smtp.user || !config.secretStoreDirectory || !config.secretMasterKeyFile) throw new Error('SMTP autenticado ou keystore não configurado.');
     const secrets = await createFileSecretProvider({ directory: config.secretStoreDirectory, masterKeyFile: config.secretMasterKeyFile });
     const password = await secrets.get(config.smtp.passwordRef, { name: 'smtp/password', scope: 'installation' });
-    const mail = createSmtpMailProvider({ ...config.smtp, password });
-    await mail.verify();
-    await appendOperatorAudit('smtp.verify.completed', { host: config.smtp.host });
+    await verifySmtpConnection({ host: config.smtp.host, port: config.smtp.port, secure: config.smtp.secure,
+      requireTLS: true, user: config.smtp.user, password });
+    await auditOperator('smtp.verify.completed', { host: config.smtp.host }, config);
     process.stdout.write(`${JSON.stringify({ event: 'operator.smtp.verified', status: 'verified' })}\n`);
     return;
   }
@@ -100,9 +106,9 @@ async function readBackupStatus(directory) {
     const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
     const publicKey = pair.publicKey.export({ type: 'spki', format: 'der' }).toString('base64url');
     const provider = await createFileSecretProvider({ directory: config.secretStoreDirectory, masterKeyFile: config.secretMasterKeyFile });
-    await appendOperatorAudit('delivery_qr.key_init.started', { kid });
+    await auditOperator('delivery_qr.key_init.started', { kid }, config);
     const { secretRef } = await provider.put({ name: `delivery/qr-signing-key/${kid}`, scope: 'installation', value: privateKey });
-    await appendOperatorAudit('delivery_qr.key_init.completed', { kid, secretRef });
+    await auditOperator('delivery_qr.key_init.completed', { kid, secretRef }, config);
     process.stdout.write(`${JSON.stringify({ event: 'operator.delivery_qr.key_initialized', kid, secretRef, algorithm: 'Ed25519', publicKeySpki: publicKey })}\n`);
     return;
   }
