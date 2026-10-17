@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { target, PRESERVED } = require('../scripts/reset-e2e-installation');
+const { target, PRESERVED, isResetSchema } = require('../scripts/reset-e2e-installation');
 
 const prior = { node: process.env.NODE_ENV, campaign: process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN, url: process.env.E2E_MIGRATOR_DATABASE_URL };
 try {
@@ -10,6 +10,10 @@ try {
   process.env.E2E_MIGRATOR_DATABASE_URL = 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e';
   assert.equal(target(), process.env.E2E_MIGRATOR_DATABASE_URL);
   assert.deepEqual([...PRESERVED].sort(), ['rotamoto.installation_bootstrap', 'rotamoto.permissions', 'rotamoto.schema_migrations'].sort());
+  assert.equal(isResetSchema('rotamoto'), true);
+  assert.equal(isResetSchema('campaign0239_0123456789abcdef0123456789abcdef'), true);
+  assert.equal(isResetSchema('public'), false);
+  assert.equal(isResetSchema('campaign0239_unverified'), false);
   for (const invalid of [
     'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto',
     'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e',

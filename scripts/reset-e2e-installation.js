@@ -8,6 +8,9 @@ const { getMigrations } = require('../backend/postgres/migrate');
 
 const LOCK = 'rotamoto:e2e:campaign:0240:reset:v1';
 const PRESERVED = new Set(['rotamoto.schema_migrations', 'rotamoto.permissions', 'rotamoto.installation_bootstrap']);
+const CAMPAIGN_SCHEMA = /^campaign\d{4}_[a-f0-9]{32}$/u;
+
+function isResetSchema(schema) { return schema === 'rotamoto' || CAMPAIGN_SCHEMA.test(schema); }
 
 function target(env = process.env) {
   if (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0240') throw new Error('Reset exige NODE_ENV=test e ROTAMOTO_DISPOSABLE_CAMPAIGN=0240.');
@@ -71,7 +74,8 @@ async function resetE2E({ clientFactory = createClient } = {}) {
       has_table_privilege(current_user,c.oid,'TRUNCATE') AS can_truncate
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE c.relkind IN ('r','p') AND n.nspname !~ '^(pg_|information_schema$)' ORDER BY n.nspname,c.relname`);
-    const resetTables = rels.rows.filter(row => !PRESERVED.has(`${row.nspname}.${row.relname}`));
+    if (rels.rows.some(row => !isResetSchema(row.nspname))) throw new Error('Há tabelas fora do schema operacional E2E e schemas campaignNNNN_hash; reset cancelado.');
+    const resetTables = rels.rows.filter(row => isResetSchema(row.nspname) && !PRESERVED.has(`${row.nspname}.${row.relname}`));
     if (!resetTables.length || resetTables.some(row => !row.migrator_owner && !row.can_truncate)) throw new Error('Há tabela fora do escopo de propriedade/grant do migrator; reset cancelado.');
     const structureBefore = await client.query(`SELECT n.nspname,c.relname,c.relkind,c.relrowsecurity,c.relforcerowsecurity,
       coalesce(array_to_string(c.relacl,','),'') AS acl FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -140,4 +144,4 @@ async function resetE2E({ clientFactory = createClient } = {}) {
 if (require.main === module) resetE2E().then(result => process.stdout.write(`${JSON.stringify({ event: 'e2e.reset.completed', ...result })}\n`))
   .catch(error => { process.stderr.write(`${JSON.stringify({ event: 'e2e.reset.failed', code: /^[A-Z0-9_]{2,64}$/u.test(error.code || '') ? error.code : 'RESET_FAILED', message: error.message })}\n`); process.exitCode = 1; });
 
-module.exports = { resetE2E, target, PRESERVED };
+module.exports = { resetE2E, target, PRESERVED, isResetSchema };
