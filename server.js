@@ -87,14 +87,15 @@ try{
 function runtimeDatabaseConnectionString(value=CONFIG.databaseUrl){
   const parsed=new URL(value);
   const databasePath=CONFIG.nodeEnv==='test'?'/rotamoto_e2e':'/rotamoto';
-  if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!=='rotamoto_app'||parsed.password||parsed.pathname!==databasePath||
+  const expectedLogin=CONFIG.nodeEnv==='test'?CONFIG.databaseSessionUser:'rotamoto_app';
+  if(!['postgres:','postgresql:'].includes(parsed.protocol)||decodeURIComponent(parsed.username)!==expectedLogin||parsed.password||parsed.pathname!==databasePath||
     CONFIG.nodeEnv==='test'&&!['127.0.0.1','localhost','::1','[::1]'].includes(parsed.hostname))
     throw new Error(CONFIG.nodeEnv==='test'
-      ?'E2E_RUNTIME_DATABASE_URL deve apontar para rotamoto_app local em rotamoto_e2e.'
+      ?'E2E_RUNTIME_DATABASE_URL deve apontar para a role E2E configurada local em rotamoto_e2e.'
       :'DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
   return value;
 }
-const identityPool=createPool({connectionString:runtimeDatabaseConnectionString(),...(CONFIG.production&&secretProvider?{password:async()=>{const provider=await secretProvider;return provider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
+const identityPool=createPool({connectionString:runtimeDatabaseConnectionString(),...(CONFIG.databaseSessionOptions?{options:CONFIG.databaseSessionOptions}:{}),...(CONFIG.production&&secretProvider?{password:async()=>{const provider=await secretProvider;return provider.getDatabasePassword({host:databaseUrl.hostname,port:Number(databaseUrl.port||5432),database:'rotamoto',user:'rotamoto_app'})}}:{}),...(databaseTlsCa?{ssl:{ca:databaseTlsCa,rejectUnauthorized:true}}:{}),max:5,allowExitOnIdle:true,connectionTimeoutMillis:1500,application_name:'rotamoto-http-runtime',statement_timeout:5000,idleTimeoutMillis:10000});
 let marketplaceResolverPool=null;
 const marketplaceResolverUrl=process.env.ROTAMOTO_PROVIDER_RESOLVER_DATABASE_URL;
 const marketplaceResolverPasswordRef=process.env.ROTAMOTO_PROVIDER_RESOLVER_PASSWORD_REF;
@@ -312,6 +313,10 @@ async function route(req,res,dependencies={}){
 
 async function startServer({pool=identityPool,config=CONFIG,logger=requestLogger}={}){
   assertLoopbackHost(config.host);
+  const identityResult=await pool.query('SELECT current_database() AS database,current_user AS role,session_user AS session_role');
+  if(identityResult.rows?.[0]?.database!==config.databaseName||identityResult.rows?.[0]?.role!==config.databaseUser||
+    identityResult.rows?.[0]?.session_role!==config.databaseSessionUser)
+    throw Object.assign(new Error('Runtime PostgreSQL identity does not match configured target.'),{code:'DATABASE_IDENTITY_MISMATCH'});
   if(config.mediaDirectory)await getMediaStorage();
   if(!await databaseReadiness(pool))throw new Error('Schema PostgreSQL incompatível com a versão do servidor.');
   const server=http.createServer({maxHeaderSize:16*1024},(req,res)=>route(req,res,{pool,logger,databaseReadiness}));

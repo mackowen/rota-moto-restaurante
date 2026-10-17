@@ -24,17 +24,17 @@ function parseOrigins(values, { production }) {
   return Object.freeze(origins);
 }
 
-function validateDatabaseUrl(value, { production, test = false }) {
+function validateDatabaseUrl(value, { production, test = false, testRuntimeRole = 'rotamoto_app' }) {
   if (!value && production) throw new Error('DATABASE_URL runtime é obrigatória em produção.');
   const connectionString = value || DEVELOPMENT_DATABASE_URL;
   let parsed;
   try { parsed = new URL(connectionString); } catch (_) { throw new Error('DATABASE_URL runtime inválida.'); }
   const databasePath = test ? '/rotamoto_e2e' : '/rotamoto';
   if (!['postgres:', 'postgresql:'].includes(parsed.protocol) ||
-      decodeURIComponent(parsed.username) !== 'rotamoto_app' || parsed.password ||
+      decodeURIComponent(parsed.username) !== (test ? testRuntimeRole : 'rotamoto_app') || parsed.password ||
       !parsed.hostname || parsed.pathname !== databasePath || parsed.hash) {
     throw new Error(test
-      ? 'E2E_RUNTIME_DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto_e2e.'
+      ? 'E2E_RUNTIME_DATABASE_URL deve apontar sem senha para a role runtime E2E configurada no banco rotamoto_e2e.'
       : 'DATABASE_URL deve apontar sem senha para rotamoto_app no banco rotamoto.');
   }
   const databaseHost = parsed.hostname.replace(/^\[|\]$/gu, '').toLowerCase();
@@ -83,8 +83,13 @@ function loadRuntimeConfig(env = process.env, { context = 'http' } = {}) {
 
   if (nodeEnv === 'test' && env.DATABASE_URL) throw new Error('Use E2E_RUNTIME_DATABASE_URL no modo de teste.');
   if (nodeEnv === 'test' && !env.E2E_RUNTIME_DATABASE_URL) throw new Error('E2E_RUNTIME_DATABASE_URL é obrigatória no modo de teste.');
+  const e2eRuntimeRole = env.ROTAMOTO_E2E_RUNTIME_ROLE || 'rotamoto_app';
+  if (nodeEnv === 'test' && !['rotamoto_app', 'rotamoto_e2e_app'].includes(e2eRuntimeRole))
+    throw new Error('ROTAMOTO_E2E_RUNTIME_ROLE não permitida.');
   const databaseUrl = validateDatabaseUrl(nodeEnv === 'test' ? env.E2E_RUNTIME_DATABASE_URL : env.DATABASE_URL,
-    { production, test: nodeEnv === 'test' });
+    { production, test: nodeEnv === 'test', testRuntimeRole: e2eRuntimeRole });
+  const databaseIdentity = new URL(databaseUrl);
+  const isolatedE2eRole = nodeEnv === 'test' && e2eRuntimeRole === 'rotamoto_e2e_app';
   const origins = parseOrigins(production ? [env.ALLOWED_ORIGINS] : env.ALLOWED_ORIGINS
     ? [env.ALLOWED_ORIGINS] : [env.ALLOWED_ORIGIN || 'http://localhost:8787'], { production });
   if (production && !origins.length) throw new Error('ALLOWED_ORIGINS HTTPS é obrigatória em produção.');
@@ -150,7 +155,12 @@ function loadRuntimeConfig(env = process.env, { context = 'http' } = {}) {
   const routeDistance = Object.freeze({ enabled: routeDistanceEnabled, baseUrl: routeDistanceEnabled ? routeDistanceBaseUrl : null,
     version: routeDistanceVersion, timeoutMs: routeDistanceTimeoutMs });
 
-  return Object.freeze({ nodeEnv, production, host, port, databaseUrl, allowedOrigins: origins, smtp, mediaDirectory, backupDirectory,
+  return Object.freeze({ nodeEnv, production, host, port, databaseUrl,
+    databaseName: decodeURIComponent(databaseIdentity.pathname.slice(1)),
+    databaseUser: isolatedE2eRole ? 'rotamoto_app' : decodeURIComponent(databaseIdentity.username),
+    databaseSessionUser: decodeURIComponent(databaseIdentity.username),
+    databaseSessionOptions: isolatedE2eRole ? '-c role=rotamoto_app' : null,
+    allowedOrigins: origins, smtp, mediaDirectory, backupDirectory,
     allowedHosts, trustedProxyAddresses, trustProxy: trustedProxyAddresses.length>0,
     operatorAudit: context === 'operator' ? Object.freeze({
       file: env.ROTAMOTO_OPERATOR_AUDIT_LOG || null,

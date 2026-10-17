@@ -7,16 +7,17 @@ const { spawnSync } = require('node:child_process');
 const { createClient } = require('../backend/postgres/connection');
 const { getMigrations } = require('../backend/postgres/migrate');
 
-const LOCK = 'rotamoto:e2e:campaign:0240:reset:v1';
-const RESET_CONFIRMATION = 'ROTAMOTO_E2E_RESET_0240_CONFIRMED';
+const CAMPAIGN = '0241';
+const LOCK = 'rotamoto:e2e:campaign:0241:reset:v1';
+const RESET_CONFIRMATION = 'ROTAMOTO_E2E_RESET_0241_CONFIRMED';
 const PRESERVED = new Set(['rotamoto.schema_migrations', 'rotamoto.permissions', 'rotamoto.installation_bootstrap']);
 const CAMPAIGN_SCHEMA = /^campaign\d{4}_[a-f0-9]{32}$/u;
 
 function isResetSchema(schema) { return schema === 'rotamoto' || CAMPAIGN_SCHEMA.test(schema); }
 
 function target(env = process.env) {
-  if (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0240' || env.ROTAMOTO_E2E_RESET_CONFIRM !== RESET_CONFIRMATION)
-    throw new Error(`Reset exige NODE_ENV=test, campanha 0240 e ROTAMOTO_E2E_RESET_CONFIRM=${RESET_CONFIRMATION}.`);
+  if (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== CAMPAIGN || env.ROTAMOTO_E2E_RESET_CONFIRM !== RESET_CONFIRMATION)
+    throw new Error(`Reset exige NODE_ENV=test, campanha ${CAMPAIGN} e ROTAMOTO_E2E_RESET_CONFIRM=${RESET_CONFIRMATION}.`);
   let url;
   try { url = new URL(env.E2E_MIGRATOR_DATABASE_URL); } catch (_) { throw new Error('E2E_MIGRATOR_DATABASE_URL inválida.'); }
   if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.username !== 'rotamoto_migrator' || url.password ||
@@ -26,6 +27,21 @@ function target(env = process.env) {
 }
 
 function ident(value) { return `"${String(value).replaceAll('"', '""')}"`; }
+
+async function structuralSnapshot(client) {
+  const queries = [
+    `SELECT n.nspname,c.relname,c.relkind,c.relrowsecurity,c.relforcerowsecurity,coalesce(array_to_string(c.relacl,','),'') AS acl FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname='rotamoto' ORDER BY 1,2`,
+    `SELECT schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check FROM pg_policies WHERE schemaname='rotamoto' ORDER BY 1,2,3`,
+    `SELECT n.nspname,c.relname,t.tgname,t.tgenabled,pg_get_triggerdef(t.oid,true) AS def FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND n.nspname='rotamoto' ORDER BY 1,2,3`,
+    `SELECT n.nspname,p.oid::regprocedure::text AS signature,pg_get_functiondef(p.oid) AS definition,coalesce(array_to_string(p.proacl,','),'') AS acl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE p.prokind IN ('f','p') AND n.nspname='rotamoto' ORDER BY 1,2`,
+    `SELECT n.nspname,c.relname,k.conname,k.contype,pg_get_constraintdef(k.oid,true) AS definition FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rotamoto' ORDER BY 1,2,3`,
+    `SELECT n.nspname,c.relname,i.relname AS index_name,pg_get_indexdef(i.oid) AS definition FROM pg_index x JOIN pg_class c ON c.oid=x.indrelid JOIN pg_class i ON i.oid=x.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='rotamoto' ORDER BY 1,2,3`,
+    `SELECT nspname,nspowner,coalesce(array_to_string(nspacl,','),'') AS acl FROM pg_namespace WHERE nspname='rotamoto'`,
+  ];
+  const rows = [];
+  for (const sql of queries) rows.push((await client.query(sql)).rows);
+  return JSON.stringify(rows);
+}
 
 function serviceState() {
   const result = spawnSync('sv', ['status', 'rotamoto-api-e2e'], { encoding: 'utf8', timeout: 5000 });
@@ -39,7 +55,7 @@ function setService(action) {
 }
 
 async function auditEvent(event, details) {
-  const root = path.join(process.env.HOME, 'rotamoto-data', 'development', '0240');
+  const root = path.join(process.env.HOME, 'rotamoto-data', 'development', CAMPAIGN);
   await fs.mkdir(root, { recursive: true, mode: 0o700 });
   const rootStat = await fs.lstat(root);
   if (rootStat.isSymbolicLink() || !rootStat.isDirectory() || rootStat.uid !== process.getuid() || (rootStat.mode & 0o077))
@@ -52,13 +68,13 @@ async function auditEvent(event, details) {
   if (!fileStat.isFile() || fileStat.nlink !== 1 || fileStat.uid !== process.getuid() || (fileStat.mode & 0o077)) {
     await handle.close(); throw new Error('Arquivo de auditoria E2E inseguro.');
   }
-  try { await handle.writeFile(`${JSON.stringify({ at: new Date().toISOString(), event, campaign: '0240', ...details })}\n`); await handle.sync(); }
+  try { await handle.writeFile(`${JSON.stringify({ at: new Date().toISOString(), event, campaign: CAMPAIGN, ...details })}\n`); await handle.sync(); }
   finally { await handle.close(); }
   await fs.chmod(file, 0o600);
 }
 
 async function assertNoPreviousReset() {
-  const file = path.join(process.env.HOME, 'rotamoto-data', 'development', '0240', 'e2e-reset-audit.jsonl');
+  const file = path.join(process.env.HOME, 'rotamoto-data', 'development', CAMPAIGN, 'e2e-reset-audit.jsonl');
   let handle;
   try { handle = await fs.open(file, fsc.constants.O_RDONLY | (fsc.constants.O_NOFOLLOW || 0)); }
   catch (error) { if (error.code === 'ENOENT') return; throw error; }
@@ -71,8 +87,12 @@ async function assertNoPreviousReset() {
   const events = contents.split(/\r?\n/u).filter(Boolean).map(line => {
     try { return JSON.parse(line); } catch (_) { throw new Error('Trilha de reset E2E inválida; interrompido para revisão.'); }
   });
-  if (events.some(event => event.campaign === '0240' && event.event === 'reset.started'))
-    throw new Error('Já existe tentativa de reset 0240 registrada; nova execução exige revisão da trilha e não será repetida.');
+  const campaignEvents = events.filter(event => event.campaign === CAMPAIGN);
+  if (campaignEvents.some(event => event.event === 'reset.completed')) throw new Error('Reset 0241 já concluído; segunda execução proibida.');
+  const last = campaignEvents.at(-1);
+  if (last?.event === 'reset.started' || last && !['reset.failed', 'fixture_schema.dropped'].includes(last.event) ||
+      last?.event === 'reset.failed' && last.rollbackConfirmed !== true)
+    throw new Error('Tentativa anterior sem rollback confirmado; revisão da trilha obrigatória.');
 }
 
 async function resetE2E({ clientFactory = createClient } = {}) {
@@ -86,7 +106,7 @@ async function resetE2E({ clientFactory = createClient } = {}) {
   try {
     await client.connect();
     const identity = await client.query(`SELECT current_database() AS database,current_user AS role,
-      inet_server_addr()::text AS address, current_setting('server_version_num')::int AS version`);
+      host(inet_server_addr()) AS address, current_setting('server_version_num')::int AS version`);
     const actual = identity.rows[0];
     if (actual.database !== 'rotamoto_e2e' || actual.role !== 'rotamoto_migrator' || actual.address !== '127.0.0.1' || actual.version < 180000 || actual.version >= 190000)
       throw new Error('Alvo PostgreSQL diverge do E2E local PostgreSQL 18; reset cancelado.');
@@ -105,26 +125,35 @@ async function resetE2E({ clientFactory = createClient } = {}) {
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE c.relkind IN ('r','p') AND n.nspname !~ '^(pg_|information_schema$)' ORDER BY n.nspname,c.relname`);
     if (rels.rows.some(row => !isResetSchema(row.nspname))) throw new Error('Há tabelas fora do schema operacional E2E e schemas campaignNNNN_hash; reset cancelado.');
-    const resetTables = rels.rows.filter(row => isResetSchema(row.nspname) && !PRESERVED.has(`${row.nspname}.${row.relname}`));
+    const campaignSchemas = [...new Set(rels.rows.map(row => row.nspname).filter(name => CAMPAIGN_SCHEMA.test(name)))];
+    const schemaOwners = await client.query(`SELECT n.nspname,pg_get_userbyid(n.nspowner) AS owner,
+      bool_and(c.relowner=to_regrole('rotamoto_migrator')) AS objects_owned
+      FROM pg_namespace n LEFT JOIN pg_class c ON c.relnamespace=n.oid AND c.relkind IN ('r','p','v','m','f','S')
+      WHERE n.nspname=ANY($1::text[]) GROUP BY n.nspname,n.nspowner`, [campaignSchemas]);
+    if (schemaOwners.rows.length !== campaignSchemas.length || schemaOwners.rows.some(row => row.owner !== 'rotamoto_migrator' || row.objects_owned === false))
+      throw new Error('Schema fixture fora da propriedade exclusiva do migrator; reset cancelado.');
+    const resetTables = rels.rows.filter(row => row.nspname === 'rotamoto' && !PRESERVED.has(`${row.nspname}.${row.relname}`));
     if (!resetTables.length || resetTables.some(row => !row.migrator_owner && !row.can_truncate)) throw new Error('Há tabela fora do escopo de propriedade/grant do migrator; reset cancelado.');
-    const structureBefore = await client.query(`SELECT n.nspname,c.relname,c.relkind,c.relrowsecurity,c.relforcerowsecurity,
-      coalesce(array_to_string(c.relacl,','),'') AS acl FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2`);
-    const policiesBefore = await client.query(`SELECT schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check
-      FROM pg_policies ORDER BY 1,2,3`);
-    const triggersBefore = await client.query(`SELECT n.nspname,c.relname,t.tgname,t.tgenabled,pg_get_triggerdef(t.oid,true) AS def
-      FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE NOT t.tgisinternal AND n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2,3`);
-    const functionsBefore = await client.query(`SELECT n.nspname,p.oid::regprocedure::text AS signature,pg_get_functiondef(p.oid) AS definition,
-      coalesce(array_to_string(p.proacl,','),'') AS acl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-      WHERE p.prokind IN ('f','p') AND n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2`);
-    const constraintsBefore = await client.query(`SELECT n.nspname,c.relname,k.conname,k.contype,pg_get_constraintdef(k.oid,true) AS definition
-      FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2,3`);
-    const indexesBefore = await client.query(`SELECT n.nspname,c.relname,i.relname AS index_name,pg_get_indexdef(i.oid) AS definition
-      FROM pg_index x JOIN pg_class c ON c.oid=x.indrelid JOIN pg_class i ON i.oid=x.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2,3`);
-    await auditEvent('reset.started', { tableCount: resetTables.length, schemaCount: new Set(rels.rows.map(row => row.nspname)).size });
+    const droppedSchemas = campaignSchemas;
+    const structureBefore = await structuralSnapshot(client);
+    await auditEvent('reset.started', { tableCount: resetTables.length, fixtureSchemaCount: droppedSchemas.length, fixtureTableCount: rels.rows.filter(row => CAMPAIGN_SCHEMA.test(row.nspname)).length });
+    let rollbackConfirmed = false;
+
+    for (const schema of droppedSchemas) {
+      await client.query('BEGIN');
+      try {
+        await client.query("SET LOCAL lock_timeout='5s'");
+        await client.query("SET LOCAL statement_timeout='120s'");
+        await client.query(`DROP SCHEMA ${ident(schema)} CASCADE`);
+        if (await structuralSnapshot(client) !== structureBefore) throw new Error('Schema fixture alterou a estrutura operacional; rollback aplicado.');
+        await client.query('COMMIT');
+        await auditEvent('fixture_schema.dropped', { fixtureSchemaCount: 1 });
+      } catch (error) {
+        try { await client.query('ROLLBACK'); rollbackConfirmed = true; } catch (_) { rollbackConfirmed = false; }
+        await auditEvent('reset.failed', { rollbackConfirmed, code: /^[A-Z0-9_]{2,64}$/u.test(error.code || '') ? error.code : 'RESET_FAILED' }).catch(() => {});
+        throw error;
+      }
+    }
 
     await client.query('BEGIN');
     try {
@@ -135,35 +164,20 @@ async function resetE2E({ clientFactory = createClient } = {}) {
       const latch = await client.query(`UPDATE rotamoto.installation_bootstrap SET completed_at=NULL,request_digest=NULL
         WHERE singleton=true RETURNING singleton`);
       if (latch.rowCount !== 1) throw new Error('Latch singleton ausente ou duplicado; rollback aplicado.');
+      if (await structuralSnapshot(client) !== structureBefore) throw new Error('Estrutura/ACL/RLS do schema operacional mudou; rollback aplicado.');
+      const remainingCampaignSchemas = await client.query(`SELECT nspname FROM pg_namespace WHERE nspname ~ '^campaign[0-9]{4}_[a-f0-9]{32}$'`);
+      if (remainingCampaignSchemas.rowCount !== 0) throw new Error('Schema de fixture permaneceu após reset; rollback aplicado.');
       await client.query('COMMIT');
-    } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+    } catch (error) {
+      try { await client.query('ROLLBACK'); rollbackConfirmed = true; } catch (_) { rollbackConfirmed = false; }
+      await auditEvent('reset.failed', { rollbackConfirmed, code: /^[A-Z0-9_]{2,64}$/u.test(error.code || '') ? error.code : 'RESET_FAILED' }).catch(() => {});
+      throw error;
+    }
 
-    const structureAfter = await client.query(`SELECT n.nspname,c.relname,c.relkind,c.relrowsecurity,c.relforcerowsecurity,
-      coalesce(array_to_string(c.relacl,','),'') AS acl FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE c.relkind IN ('r','p','v','m','f','S') AND n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2`);
-    const policiesAfter = await client.query(`SELECT schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check FROM pg_policies ORDER BY 1,2,3`);
-    const triggersAfter = await client.query(`SELECT n.nspname,c.relname,t.tgname,t.tgenabled,pg_get_triggerdef(t.oid,true) AS def
-      FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE NOT t.tgisinternal AND n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2,3`);
-    const functionsAfter = await client.query(`SELECT n.nspname,p.oid::regprocedure::text AS signature,pg_get_functiondef(p.oid) AS definition,
-      coalesce(array_to_string(p.proacl,','),'') AS acl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-      WHERE p.prokind IN ('f','p') AND n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2`);
-    const constraintsAfter = await client.query(`SELECT n.nspname,c.relname,k.conname,k.contype,pg_get_constraintdef(k.oid,true) AS definition
-      FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2,3`);
-    const indexesAfter = await client.query(`SELECT n.nspname,c.relname,i.relname AS index_name,pg_get_indexdef(i.oid) AS definition
-      FROM pg_index x JOIN pg_class c ON c.oid=x.indrelid JOIN pg_class i ON i.oid=x.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE n.nspname !~ '^(pg_|information_schema$)' ORDER BY 1,2,3`);
-    if (JSON.stringify(structureBefore.rows) !== JSON.stringify(structureAfter.rows) ||
-        JSON.stringify(policiesBefore.rows) !== JSON.stringify(policiesAfter.rows) ||
-        JSON.stringify(triggersBefore.rows) !== JSON.stringify(triggersAfter.rows) ||
-        JSON.stringify(functionsBefore.rows) !== JSON.stringify(functionsAfter.rows) ||
-        JSON.stringify(constraintsBefore.rows) !== JSON.stringify(constraintsAfter.rows) ||
-        JSON.stringify(indexesBefore.rows) !== JSON.stringify(indexesAfter.rows)) throw new Error('A estrutura, ACL, RLS/policies, funções, constraints, índices ou triggers mudou inesperadamente após o reset.');
     const latchState = await client.query('SELECT completed_at IS NULL AND request_digest IS NULL AS available FROM rotamoto.installation_bootstrap WHERE singleton=true');
     if (latchState.rows[0]?.available !== true) throw new Error('Latch não está disponível após reset.');
-    await auditEvent('reset.completed', { tableCount: resetTables.length, migrationCount: applied.length, latchAvailable: true });
-    return { database: actual.database, migrationCount: applied.length, resetTableCount: resetTables.length, latchAvailable: true };
+    await auditEvent('reset.completed', { tableCount: resetTables.length, fixtureSchemaCount: droppedSchemas.length, migrationCount: applied.length, latchAvailable: true });
+    return { database: actual.database, migrationCount: applied.length, resetTableCount: resetTables.length, droppedFixtureSchemaCount: droppedSchemas.length, latchAvailable: true };
   } finally {
     if (locked) await client.query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [LOCK]).catch(() => {});
     await client.end().catch(() => {});

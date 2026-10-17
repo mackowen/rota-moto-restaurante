@@ -9,6 +9,10 @@ const {createSyncHttpHandler}=require('../backend/domain/sync-http');
 const {createIdentityHttpHandler}=require('../backend/identity/http');
 
 async function main(){
+  await assert.rejects(()=>require('../server').startServer({
+    pool:{async query(){return{rows:[{database:'rotamoto',role:'rotamoto_app',session_role:'rotamoto_e2e_app'}]};}},
+    config:{host:'127.0.0.1',databaseName:'rotamoto_e2e',databaseUser:'rotamoto_app',databaseSessionUser:'rotamoto_e2e_app'}
+  }),/identity/,'startup refuses a database/user identity mismatch before listening');
   assert.equal(assertLoopbackHost('127.0.0.1'),true);
   assert.equal(assertLoopbackHost('::1'),true);
   assert.equal(assertLoopbackHost('localhost'),true);

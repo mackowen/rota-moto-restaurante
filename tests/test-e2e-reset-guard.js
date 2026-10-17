@@ -7,7 +7,7 @@ const prior = { node: process.env.NODE_ENV, campaign: process.env.ROTAMOTO_DISPO
   url: process.env.E2E_MIGRATOR_DATABASE_URL, confirmation: process.env.ROTAMOTO_E2E_RESET_CONFIRM };
 try {
   process.env.NODE_ENV = 'test';
-  process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0240';
+  process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0241';
   process.env.E2E_MIGRATOR_DATABASE_URL = 'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e';
   delete process.env.ROTAMOTO_E2E_RESET_CONFIRM;
   assert.throws(() => target(), /ROTAMOTO_E2E_RESET_CONFIRM/u);
@@ -28,7 +28,7 @@ try {
     assert.throws(() => target(), /Reset aceita somente/u);
   }
   process.env.E2E_MIGRATOR_DATABASE_URL = prior.url || '';
-  process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0239';
+  process.env.ROTAMOTO_DISPOSABLE_CAMPAIGN = '0240';
   assert.throws(() => target(), /Reset exige NODE_ENV=test/u);
   console.log('E2E reset target and preservation guards: PASS');
 } finally {

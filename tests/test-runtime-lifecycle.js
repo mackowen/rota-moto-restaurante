@@ -15,7 +15,7 @@ async function main(){
     pool:{async end(){forced.push('pool')}},timeoutMs:5,onTimeout(){forced.push('timeout')}});
   assert.deepEqual(forced,['timeout','connections','pool']);
   const events=[];
-  const pool={async connect(){return{async query(sql){
+  const pool={async query(sql){if(sql.includes('current_database()'))return{rows:[{database:'rotamoto',role:'rotamoto_app',session_role:'rotamoto_app'}]};return{rows:[]};},async connect(){return{async query(sql){
     if(sql.includes('to_regclass'))return{rows:[{role:'rotamoto_app',domain_ready:true,sync_installations_ready:true,mfa_schema_ready:true,membership_driver_ready:true,logistics_schema_ready:true,territorial_analytics_schema_ready:true,marketplace_schema_ready:true,driver_availability_schema_ready:true}]};
     if(sql.includes('current_user'))return{rows:[{role:'rotamoto_app'}]};return{rows:[]};
   },release(){}}},async end(){events.push('pool_closed')}};

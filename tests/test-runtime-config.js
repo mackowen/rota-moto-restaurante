@@ -24,6 +24,16 @@ assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development'},{context:'unknown'}
 const e2e=loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e'});
 assert.equal(e2e.databaseUrl,'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e');
 assert.equal(e2e.nodeEnv,'test');
+const isolatedE2e=loadRuntimeConfig({NODE_ENV:'test',ROTAMOTO_E2E_RUNTIME_ROLE:'rotamoto_e2e_app',
+  E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_e2e_app@127.0.0.1:5432/rotamoto_e2e'});
+assert.equal(isolatedE2e.databaseName,'rotamoto_e2e');
+assert.equal(isolatedE2e.databaseUser,'rotamoto_app','E2E session activates only the existing application role');
+assert.equal(isolatedE2e.databaseSessionUser,'rotamoto_e2e_app','login role remains E2E-exclusive');
+assert.equal(isolatedE2e.databaseSessionOptions,'-c role=rotamoto_app');
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',ROTAMOTO_E2E_RUNTIME_ROLE:'rotamoto_e2e_app',
+  E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e'}),/role runtime E2E configurada/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',ROTAMOTO_E2E_RUNTIME_ROLE:'rotamoto',
+  E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto@127.0.0.1:5432/rotamoto_e2e'}),/ROLE não permitida/u);
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test'}),/E2E_RUNTIME_DATABASE_URL é obrigatória/u);
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto'}),/rotamoto_e2e/u);
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@db.example:5432/rotamoto_e2e'}),/PostgreSQL local/u);
