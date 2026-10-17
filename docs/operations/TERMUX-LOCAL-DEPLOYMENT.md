@@ -74,6 +74,11 @@ configure endereço ou domínio presumidos. Bootstrap real, convite e primeiro
 proprietário continuam bloqueados até autorização específica e HTTPS público
 válido.
 
+Use o checklist [OWNER-BOOTSTRAP-CHECKLIST-0236.md](OWNER-BOOTSTRAP-CHECKLIST-0236.md)
+antes de iniciar a criação da primeira conta. A sequência de recovery do
+PostgreSQL, identity envelopes e serviços em outro Termux/Linux está em
+[RECOVERY-TERMUX-LINUX-0236.md](RECOVERY-TERMUX-LINUX-0236.md).
+
 ## Acesso remoto e produção
 
 As interfaces e API estão limitadas a loopback. Android/Termux não permite

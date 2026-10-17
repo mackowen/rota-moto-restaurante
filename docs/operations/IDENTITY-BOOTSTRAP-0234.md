@@ -2,7 +2,7 @@
 
 ## Escopo e proteção
 
-O bootstrap é executado somente por um operador local em terminal interativo. O servidor HTTP e a interface web nunca inicializam instalação automaticamente. O comando exige confirmação explícita do banco `rotamoto`, frase de confirmação, conexão como `rotamoto_app`, migrations `0045` e `0046`, keystore protegido com segredo do banco, provedor MFA nativo e entrega de email configurada. O serviço recusa instalação já inicializada; a migration `0046` também fecha o caminho de primeira instalação quando já existem empresas ou registros de provisionamento.
+O bootstrap é executado somente por um operador local em terminal interativo. O servidor HTTP e a interface web nunca inicializam instalação automaticamente. O comando exige confirmação explícita do banco `rotamoto`, frase de confirmação, conexão como `rotamoto_app`, migrations `0045`–`0047`, keystore protegido com segredo do banco, provedor MFA nativo e entrega de email configurada. O serviço recusa instalação já inicializada; a migration `0046` também fecha o caminho de primeira instalação quando já existem empresas ou registros de provisionamento. A migration `0047` fornece o fluxo de recuperação administrativa de MFA.
 
 Durante esta campanha, o comando real não foi executado. Não houve criação de empresa, proprietário ou usuário real. O teste exercitou a mesma transação em `rotamoto_e2e` dentro de rollback e com destinatários sintéticos.
 
