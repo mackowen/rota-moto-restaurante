@@ -20,6 +20,9 @@ const OFFICIAL_0234_MIGRATIONS = Object.freeze([
   '0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery'
 ]);
 const OFFICIAL_0234_CHECKSUM_0044 = 'ac5f82463dd933657f4c4d921dc4dab2684437fe5e9163bf90c8750e55c28a95';
+function checksumMatches(migration, appliedChecksum) {
+  return appliedChecksum === migration.checksum;
+}
 
 function getMigrations() {
   return fs.readdirSync(MIGRATION_DIR)
@@ -228,12 +231,14 @@ function official0234MigrationConnectionString(env = process.env) {
 
 function assertOfficial0234State(applied, migrations, { allowApplied = false } = {}) {
   const baseline = migrations.find(migration => migration.id === '0044_99food_distributed_rate_limit');
-  const pending = migrations.filter(migration => OFFICIAL_0234_MIGRATIONS.includes(migration.id));
+  const pending = migrations.slice(44, 47);
   const prefix = migrations.slice(0, 44);
+  const knownPost0234 = new Set(['0048_platform_administration','0049_platform_administration_hardening']);
   if (!baseline || baseline.checksum !== OFFICIAL_0234_CHECKSUM_0044 || prefix.length !== 44 ||
       prefix.at(-1)?.id !== '0044_99food_distributed_rate_limit' || pending.length !== 3 ||
       pending.some((migration,index) => migration.id !== OFFICIAL_0234_MIGRATIONS[index]) ||
-      migrations.length !== 47 || migrations.at(-1)?.id !== OFFICIAL_0234_MIGRATIONS.at(-1)) {
+      migrations.length < 47 || migrations[46]?.id !== OFFICIAL_0234_MIGRATIONS.at(-1) ||
+      migrations.slice(47).some(migration => !knownPost0234.has(migration.id))) {
     throw new Error('Gate oficial 0234 exige baseline 0001–0044 íntegra e somente 0045–0047 como migrations finais conhecidas.');
   }
   if (applied.size < 44 || applied.size > 47 ||
@@ -337,7 +342,7 @@ async function assertChecksums(client, migrations) {
   }
   for (const migration of migrations) {
     const checksum = applied.get(migration.id);
-    if (checksum && checksum !== migration.checksum) {
+    if (checksum && !checksumMatches(migration, checksum)) {
       throw new Error(`Checksum divergente na migration ${migration.id}; arquivo aplicado foi alterado.`);
     }
   }
@@ -647,7 +652,7 @@ if (require.main === module) main().catch(error => {
   console.error(error.message);
   process.exitCode = 1;
 });
-module.exports = { getMigrations, assertChecksums, withTransaction, migrationConnectionString,
+module.exports = { getMigrations, assertChecksums, checksumMatches, withTransaction, migrationConnectionString,
   e2eMigrationConnectionString, disposableCampaignMigrationConnectionString, disposable0110MigrationConnectionString,
   disposable0115MigrationConnectionString, disposable0116MigrationConnectionString, official0116MigrationConnectionString, assertOfficial0116State,
   official0154MigrationConnectionString, assertOfficial0154State, official0234MigrationConnectionString, assertOfficial0234State,

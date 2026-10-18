@@ -74,4 +74,40 @@ function createMarketplaceAdminHandler({identityService,accountService,adminServ
   };
 }
 
-module.exports={createMarketplaceAdminHandler};
+// Keep authenticated clients on the canonical endpoint contract when this
+// installation has no marketplace worker/runtime. A missing optional runtime
+// is an availability condition, never a fabricated empty success response.
+function createMarketplaceUnavailableHandler({identityService,allowedOrigin=[],logger=()=>{}}={}){
+ if(!identityService)throw new TypeError('Identity service is required.');
+ const allow=Array.isArray(allowedOrigin)?allowedOrigin:[allowedOrigin];
+ return async function marketplaceUnavailable(req,res){
+  const url=new URL(req.url,'http://127.0.0.1');const list=url.pathname==='/api/admin/marketplace/orders'&&req.method==='GET';
+  const command=/^\/api\/admin\/marketplace\/orders\/([0-9a-f-]{36})\/commands$/iu.test(url.pathname);
+  if(!list&&!command)return false;
+  const requestId=req.requestId||crypto.randomUUID();res.req=req;
+  try{
+   if(list&&([...url.searchParams.keys()].some(key=>key!=='limit')||url.searchParams.getAll('limit').length>1||
+      url.searchParams.has('limit')&&!/^(?:[1-9]\d?|100)$/u.test(url.searchParams.get('limit'))))throw Object.assign(new Error(),{code:'INVALID_INPUT'});
+   if(command&&req.method!=='POST')throw Object.assign(new Error(),{code:'METHOD_NOT_ALLOWED'});
+   if(list&&req.method!=='GET')throw Object.assign(new Error(),{code:'METHOD_NOT_ALLOWED'});
+   const tokenParts=String(req.headers.cookie||'').split(';').map(v=>v.trim()).filter(v=>v.startsWith('__Host-rotamoto_session='));
+   const token=tokenParts.length===1?tokenParts[0].slice('__Host-rotamoto_session='.length):'';
+   if(!/^[A-Za-z0-9_-]{43}$/u.test(token))throw Object.assign(new Error(),{code:'UNAUTHENTICATED'});
+   const permission=list?'orders.read':'orders.manage';
+   await identityService.withAuthenticatedTenant(token,async(client,principal)=>{
+    if(command){const origin=req.headers.origin,expected=`${req.socket.encrypted?'https':'http'}://${String(req.headers.host||'').toLowerCase()}`;
+     if(origin&&origin.toLowerCase()!==expected&&!allow.some(v=>String(v).toLowerCase()===origin.toLowerCase()))throw Object.assign(new Error(),{code:'ORIGIN_INVALID'});
+     if(!await identityService.verifyCsrf(client,principal.session_id,req.headers['x-csrf-token']))throw Object.assign(new Error(),{code:'CSRF_INVALID'});
+    }
+   },permission);
+   const error=Object.assign(new Error(),{code:'MARKETPLACE_RUNTIME_UNAVAILABLE'});
+   try{logger({event:'marketplace_runtime_unavailable',requestId,operation:list?'orders':'command'})}catch(_){}
+   send(res,503,{error:{code:error.code,message:'Pedidos da plataforma indisponíveis neste servidor. A conexão comercial precisa estar configurada.'},requestId});return true;
+  }catch(error){const code=error?.code||'MARKETPLACE_ADMIN_FAILED';const status=code==='UNAUTHENTICATED'?401:['FORBIDDEN','MFA_REQUIRED','CSRF_INVALID','ORIGIN_INVALID'].includes(code)?403:code==='METHOD_NOT_ALLOWED'?405:code==='INVALID_INPUT'?400:500;
+   try{logger({event:'marketplace_request_rejected',requestId,operation:list?'orders':'command',status,errorCode:code})}catch(_){}
+   send(res,status,{error:{code,message:status>=500?'Serviço de pedidos indisponível.':'Não foi possível autorizar esta consulta.'},requestId});return true;
+  }
+ };
+}
+
+module.exports={createMarketplaceAdminHandler,createMarketplaceUnavailableHandler};

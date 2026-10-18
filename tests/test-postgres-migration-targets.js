@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { getMigrations, resolveMigrationInvocation, assert0110RehearsalState, assert0115RehearsalState,
+const { getMigrations, checksumMatches, resolveMigrationInvocation, assert0110RehearsalState, assert0115RehearsalState,
   assert0116RehearsalState, assertOfficial0116State, assertOfficial0154State,
   official0154MigrationConnectionString, official0234MigrationConnectionString, assertOfficial0234State } = require('../backend/postgres/migrate');
 
@@ -59,7 +59,7 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.deepEqual(migrations.slice(-6).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery'], 'identity recovery appends after immutable bootstrap migrations');
+assert.deepEqual(migrations.slice(-8).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening'], 'platform administration appends after immutable identity migrations');
 const migration0042 = migrations.find(migration => migration.id === '0042_marketplace_99food_runtime');
 const migration0043 = migrations.find(migration => migration.id === '0043_99food_application_and_cash_commands');
 assert.match(migration0042.up,/claim_marketplace_99food_token_refresh/u);
@@ -84,6 +84,20 @@ assert.match(migration0047.up,/FORCE ROW LEVEL SECURITY/u);
 assert.match(migration0047.up,/token_digest bytea NOT NULL UNIQUE/u);
 assert.match(migration0047.up,/request_id uuid REFERENCES rotamoto\.mfa_recovery_requests/u);
 assert.match(migration0047.down,/rollback blocked/u);
+const migration0048=migrations.find(migration=>migration.id==='0048_platform_administration');
+assert.match(migration0048.up,/platform_administrators/u);
+assert.match(migration0048.up,/platform_admin_context_is_active/u);
+assert.match(migration0048.up,/platform_admin_audit_log/u);
+assert.match(migration0048.up,/platform_admin_bootstrap_founder/u);
+assert.match(migration0048.up,/session_user <> 'rotamoto_migrator'/u);
+assert.match(migration0048.up,/current_database\(\) NOT IN \('rotamoto','rotamoto_e2e'\)/u);
+assert.match(migration0048.down,/rollback blocked/u);
+const migration0049=migrations.find(migration=>migration.id==='0049_platform_administration_hardening');
+assert.match(migration0049.up,/actor_kind,action,resource_type/u);
+assert.match(migration0049.down,/rollback 0049 blocked/u);
+assert.equal(checksumMatches(migration0048,'ac8d0896daa6b5b75b98c15c79d2ade03943d0f6e5cfc93525d5d026d745e547'),true,
+  'the original 0048 content matches its recorded E2E digest');
+assert.equal(checksumMatches(migration0048,'0'.repeat(64)),false,'unknown checksum changes remain rejected');
 const ledger0039 = new Map(migrationsThrough0040.slice(0, migration0040Index).map(migration => [migration.id, migration.checksum]));
 const ledger0040 = new Map([...ledger0039, [migrationsThrough0040.at(-1).id, migrationsThrough0040.at(-1).checksum]]);
 assert.equal(assert0115RehearsalState(ledger0039, migrationsThrough0040), '0040_restaurant_driver_queue');

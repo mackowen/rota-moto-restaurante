@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { createMarketplaceAdminHandler } = require('../backend/integrations/marketplace-admin-http');
+const { createMarketplaceAdminHandler, createMarketplaceUnavailableHandler } = require('../backend/integrations/marketplace-admin-http');
 
 function response() {
   return { status: null, headers: null, body: null,
@@ -54,6 +54,15 @@ async function main() {
   const csrfDenied=await invoke(handler,{method:'POST',url:'/api/admin/marketplace/orders/00000000-0000-4000-8000-000000000002/commands',
     body:{operation:'CONFIRM',idempotencyKey:'campaign0143-command-key2',commandData:{}}});
   assert.equal(csrfDenied.status,403);assert.equal(csrfDenied.body.error.code,'CSRF_INVALID');
+  let authMode='authorized';
+  const unavailable=createMarketplaceUnavailableHandler({identityService:{async withAuthenticatedTenant(_token,callback,permission){
+    if(authMode==='expired')throw Object.assign(new Error(),{code:'UNAUTHENTICATED'});
+    if(authMode==='forbidden'||permission!=='orders.read')throw Object.assign(new Error(),{code:'FORBIDDEN'});
+    return callback({query:async()=>({rows:[]})},{session_id:'session-e2e'});
+  }},allowedOrigin:['https://app.example.test']});
+  const missingRuntime=await invoke(unavailable);assert.equal(missingRuntime.status,503);assert.equal(missingRuntime.body.error.code,'MARKETPLACE_RUNTIME_UNAVAILABLE');
+  authMode='forbidden';const missingPermission=await invoke(unavailable);assert.equal(missingPermission.status,403);
+  authMode='expired';const expiredSession=await invoke(unavailable);assert.equal(expiredSession.status,401);
   process.stdout.write('Marketplace admin HTTP: PASS (tenant-scoped order read, command enqueue, permission and CSRF gates)\n');
 }
 

@@ -55,9 +55,10 @@ async function main() {
           AND a.attnum>0 AND NOT a.attisdropped) has_id
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p') ORDER BY c.relname`)).rows;
-    assert.equal(relations.length, 51, 'the audit baseline includes migrations through 0047');
+    assert.equal(relations.length, 54, 'the audit baseline includes platform administration migrations through 0049');
     const expectedWithoutRls = new Set(['credentials','identity_tokens','marketplace_account_routes',
-      'bootstrap_authorizations','installation_bootstrap','mfa_recovery_challenges','permissions',
+      'bootstrap_authorizations','installation_bootstrap','mfa_recovery_challenges','platform_administrators',
+      'platform_admin_bootstrap_latch','platform_admin_audit_log','permissions',
       'provisioning_requests','recovery_tokens','schema_migrations','sessions','users']);
     assert.deepEqual(new Set(relations.filter(row => !row.relrowsecurity).map(row => row.relname)), expectedWithoutRls);
     assert(relations.filter(row => row.relrowsecurity).every(row => row.relforcerowsecurity),
@@ -66,12 +67,12 @@ async function main() {
 
     const policies = (await migrator.query(`SELECT tablename,policyname,permissive,roles,cmd,qual,with_check
       FROM pg_policies WHERE schemaname='rotamoto' ORDER BY tablename,policyname`)).rows;
-    assert.equal(policies.length, 39, 'every RLS table has its expected restrictive policy');
+    assert.equal(policies.length, 42, 'tenant policies remain alongside the three explicit platform-admin policies');
     for (const relation of relations.filter(row => row.relrowsecurity)) {
       const tablePolicies = policies.filter(policy => policy.tablename === relation.relname);
-      assert.equal(tablePolicies.length, 1, `${relation.relname} has exactly one policy`);
-      const policy = tablePolicies[0];
       if (relation.relname === 'marketplace_99food_rate_limits') {
+        assert.equal(tablePolicies.length,1);
+        const policy=tablePolicies[0];
         assert.equal(policy.policyname, 'marketplace_99food_rate_limits_owner_policy');
         assert.equal(policy.roles, '{rotamoto_migrator}');
         assert.equal(policy.cmd, 'ALL');
@@ -79,13 +80,18 @@ async function main() {
         assert.equal(policy.with_check, 'true');
         continue;
       }
-      assert.equal(policy.policyname, 'tenant_isolation');
+      const platformPolicies = relation.relname==='companies'?['platform_admin_read_companies','platform_admin_update_companies']:
+        relation.relname==='memberships'?['platform_admin_read_memberships']:[];
+      assert.equal(tablePolicies.length, 1+platformPolicies.length, `${relation.relname} has its tenant policy and only the explicit platform policies`);
+      const policy = tablePolicies.find(item=>item.policyname==='tenant_isolation');
+      assert.ok(policy,`${relation.relname} retains tenant isolation`);
       assert.equal(policy.permissive, 'PERMISSIVE');
       assert.equal(policy.roles, '{public}');
       assert.equal(policy.cmd, 'ALL');
       const scopeColumn = relation.has_company_id ? 'company_id' : 'id';
       assert.match(policy.qual, new RegExp(`${scopeColumn} = rotamoto\\.current_tenant_id\\(\\)`));
       assert.match(policy.with_check, new RegExp(`${scopeColumn} = rotamoto\\.current_tenant_id\\(\\)`));
+      for(const name of platformPolicies){const globalPolicy=tablePolicies.find(item=>item.policyname===name);assert.ok(globalPolicy,`${name} exists`);assert.match(globalPolicy.qual,/platform_admin_context_is_active/u);if(name==='platform_admin_update_companies')assert.match(globalPolicy.with_check,/platform_admin_context_is_active/u)}
     }
 
     const roleAudit = (await migrator.query(`SELECT rolname,rolsuper,rolcreatedb,rolcreaterole,
@@ -166,7 +172,7 @@ async function main() {
         error => error.code === '42501');
     });
 
-    console.log('Tenant RLS E2E: PASS (51-table catalog, 39 forced tenant policies, two-tenant SELECT/INSERT/UPDATE/DELETE, positive writes, missing/invalid context, runtime/internal ACLs)');
+    console.log('Tenant RLS E2E: PASS (54-table catalog, 39 forced tenant policies plus three explicit platform policies, two-tenant isolation and runtime/internal ACLs)');
     completed = true;
   } finally {
     await Promise.all([runtime.end().catch(() => {}), migrator.end().catch(() => {})]);

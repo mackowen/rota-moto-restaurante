@@ -18,6 +18,7 @@
   return tombstone?'tombstone':'apply';
  }
  function statusFromAck(status){return ['accepted','duplicate','rejected','conflict'].includes(status)?status:'invalid'}
+ function hasSyncPushPermission(session){return Boolean(session&&Array.isArray(session.permissions)&&session.permissions.includes('sync.push'))}
  function retryAfterMilliseconds(value,now=Date.now()){
   if(typeof value!=='string'||!value.trim())return null;
   const seconds=Number(value);if(Number.isFinite(seconds)&&seconds>=0)return seconds*1000;
@@ -138,5 +139,5 @@
    .every(field=>JSON.stringify(local[field])===JSON.stringify(remote[field]));
  }
  function createCoordinator({locks,lockName='rotamoto-sync'}={}){let active=null;return Object.freeze({run(task){if(typeof task!=='function')return Promise.reject(new TypeError('Tarefa de sync inválida.'));if(active)return active;const execute=()=>Promise.resolve().then(task);active=locks?.request?locks.request(lockName,{mode:'exclusive'},execute):execute();return active.finally(()=>{active=null})}})}
- return Object.freeze({canonicalEvent,decide,statusFromAck,expectedAckOperations,validateOperationAck,sourceVersionMatches,canonicalBaseVersion,captureSourceVersions,retryAfterMilliseconds,retryDelay,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,findExternalOrder,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
+ return Object.freeze({canonicalEvent,decide,statusFromAck,hasSyncPushPermission,expectedAckOperations,validateOperationAck,sourceVersionMatches,canonicalBaseVersion,captureSourceVersions,retryAfterMilliseconds,retryDelay,hasCurrentCanonicalAck,shouldRetry,findCanonicalFact,findExternalOrder,compactInbox,createCoordinator,projectMotoboyDelivery,projectRestaurantDelivery,projectRestaurantOrderFromDelivery,isSupersededRestaurantDeliveryOperation});
 });

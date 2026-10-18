@@ -34,6 +34,7 @@ const {createTerritorialAnalyticsHttpHandler}=require('./backend/analytics/terri
 const {createAdminRepository}=require('./backend/admin/repository');
 const {createAdminService}=require('./backend/admin/service');
 const {createAdminHttpHandler}=require('./backend/admin/http');
+const {createPlatformAdminHttpHandler}=require('./backend/admin/platform-http');
 const {createBackupAdminHttpHandler}=require('./backend/admin/backup-http');
 const {createBackupDestinationStore}=require('./backend/runtime/backup-destination-store');
 const {createBackupAdminAuditLogger}=require('./backend/runtime/backup-admin-audit');
@@ -55,7 +56,7 @@ const {create99FoodAdapter}=require('./backend/integrations/99food-protocol');
 const {create99FoodRateLimiter}=require('./backend/integrations/99food-rate-limiter');
 const {createMarketplaceAccountWriter}=require('./backend/integrations/marketplace-account-writer');
 const {createMarketplaceAccountService,validPublicUrl}=require('./backend/integrations/marketplace-account-service');
-const {createMarketplaceAdminHandler}=require('./backend/integrations/marketplace-admin-http');
+const {createMarketplaceAdminHandler,createMarketplaceUnavailableHandler}=require('./backend/integrations/marketplace-admin-http');
 const {createMarketplaceRuntime}=require('./backend/integrations/marketplace-runtime');
 
 function bootstrapFailure(error){
@@ -201,6 +202,8 @@ const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService
 const territorialAnalyticsHttp=createTerritorialAnalyticsHttpHandler({identityService,service:createTerritorialAnalyticsService(),logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const adminService=createAdminService({repository:createAdminRepository()});
 const adminHttp=createAdminHttpHandler({identityService,adminService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
+const platformAdminHttp=createPlatformAdminHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
+const marketplaceUnavailableHttp=createMarketplaceUnavailableHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const backupControlGid=parseGid(process.env.ROTAMOTO_BACKUP_CONTROL_GROUP_GID);
 const backupAdminAudit=process.env.ROTAMOTO_BACKUP_ADMIN_AUDIT_LOG
   ? createBackupAdminAuditLogger(process.env.ROTAMOTO_BACKUP_ADMIN_AUDIT_LOG) : null;
@@ -265,11 +268,17 @@ async function route(req,res,dependencies={}){
       if(handlers?.admin&&await handlers.admin(req,res))return;
       if(/\/(?:authorize|complete|accounts\/[^/]+\/disable)$/u.test(u.pathname))return json(res,503,{error:{code:'MARKETPLACE_ACCOUNT_LIFECYCLE_UNAVAILABLE',message:'Configure HTTPS público, credenciais do aplicativo e o resolver privilegiado para conectar contas.'},requestId:req.requestId});
     }
+    if(u.pathname.startsWith('/api/admin/marketplace/')){
+      const handlers=await getMarketplaceHttp();
+      if(handlers?.admin&&await handlers.admin(req,res))return;
+    }
+    if(await marketplaceUnavailableHttp(req,res))return;
     if(u.pathname.startsWith('/api/admin/backup')){
       if(!backupAdminHttp)return json(res,503,{error:{code:'BACKUP_ADMIN_NOT_CONFIGURED',message:'Central de backup indisponível neste servidor.'},requestId:req.requestId});
       if(await backupAdminHttp(req,res))return;
     }
     if(await adminHttp(req,res))return;
+    if(await platformAdminHttp(req,res))return;
     if(u.pathname.startsWith('/api/marketplace/')){
       const handlers=await getMarketplaceHttp();
       if(handlers?.webhook&&await handlers.webhook(req,res))return;

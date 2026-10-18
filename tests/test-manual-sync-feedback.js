@@ -16,6 +16,9 @@ assert.equal(offline.state, 'offline');
 assert.match(offline.detail, /continuam salvas/u);
 const expired = classify({error:Object.assign(new Error('UNAUTHENTICATED'),{status:401})});
 assert.equal(expired.label, 'Sessão encerrada');
+const denied = classify({error:new Error('SYNC_PERMISSION_REQUIRED')});
+assert.equal(denied.label, 'Sincronização não habilitada');
+assert.match(denied.detail, /administrador da empresa/u);
 const serverFailure = classify({error:Object.assign(new Error('HTTP'),{status:503})});
 assert.equal(serverFailure.state, 'retry');
 assert.doesNotMatch(serverFailure.detail, /confirmou/u);
@@ -34,6 +37,8 @@ const conflicts = classify({after:{conflicts:1,rejected:0,pending:0}});
 assert.equal(conflicts.state, 'attention');
 assert.match(conflicts.label, /precisa de atenção/u);
 assert.match(source, /syncNowButton\.onclick=\(\)=>runManualSync\(syncNowButton\)/u);
+assert.match(source, /hasSyncPushPermission\(session\)\)throw new Error\('SYNC_PERMISSION_REQUIRED'\)/u,
+  'client must reject unauthorized sync before registering an installation or sending data');
 assert.match(source, /button\.setAttribute\('aria-busy'/u);
 assert.match(source, /data-app-toast/u, 'toast surface is reused instead of stacking duplicate notifications');
 assert.match(source, /d\.setAttribute\('role',type==='error'\?'alert':'status'\)/u,

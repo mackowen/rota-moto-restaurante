@@ -30,8 +30,8 @@ assert.match(source, /if\(mfaStarting\)return/u, 'duplicate enrollment clicks ar
 assert.match(source, /serverUpdateBus\.publish\(topic\)/u, 'confirmed administrative mutations announce only a safe refresh category to other tabs');
 assert.match(source, /serverUpdateBus\.subscribe\(\(\{ topic \}\)/u, 'open administrative pages reload authoritative server snapshots after cross-tab changes');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0253\.1/u, 'identity UI URL changes when the administration interface changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v55`[\s\S]*identity-ui\.js\?v=0253\.1/u, 'service worker cache is invalidated with the current administration UI');
+assert.match(html, /identity-ui\.js\?v=0255\.2/u, 'identity UI URL changes when the administration interface changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v57`[\s\S]*identity-ui\.js\?v=0255\.2/u, 'service worker cache is invalidated with the current administration UI');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');

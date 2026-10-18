@@ -257,13 +257,18 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           const user = await client.query(`SELECT email,email_verified_at IS NOT NULL AS email_verified
             FROM rotamoto.users WHERE id=$1 AND disabled_at IS NULL`, [value.user_id]);
           if (!user.rowCount) throw fail('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
+          const platformSchema = await client.query(`SELECT to_regclass('rotamoto.platform_administrators') IS NOT NULL AS ready`);
+          const platformAdmin = platformSchema.rows[0]?.ready
+            ? await client.query(`SELECT EXISTS(SELECT 1 FROM rotamoto.platform_administrators WHERE user_id=$1 AND revoked_at IS NULL) AS active`, [value.user_id])
+            : { rows: [{ active: false }] };
           const csrfToken = await identityService.renewCsrfToken(client, value.session_id, sessionToken);
           return { userId: value.user_id, email: user.rows[0].email, emailVerified: user.rows[0].email_verified,
             activeCompanyId: value.company_id, activeRoleId: value.role_id, driverId: value.driver_id || null,
             companyTimeZone: value.company_time_zone || null,
             permissions: permissions.rows.map(row => row.permission_key),
             mfaVerified: Boolean(value.mfa_verified_at), mfaConfigured: Boolean(value.mfa_configured),
-            mfaRequired: Boolean(value.mfa_required), mfaEnrollmentRequired: Boolean(value.mfa_enrollment_required), csrfToken };
+            mfaRequired: Boolean(value.mfa_required), mfaEnrollmentRequired: Boolean(value.mfa_enrollment_required),
+            platformAdmin: Boolean(platformAdmin.rows[0]?.active), csrfToken };
         }, 'identity.session');
         status = 200;
         send(res, status, principal);

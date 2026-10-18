@@ -25,17 +25,17 @@ for(const icon of manifest.icons){
 }
 assert.match(worker,/\/favicon\.svg\?v=0140\.1/u);
 assert.match(worker,/\/identity-ui\.css\?v=0252\.1/u);
-assert.match(worker,/\/identity-ui\.js\?v=0253\.1/u);
+assert.match(worker,/\/identity-ui\.js\?v=0255\.2/u);
 assert.match(worker,/\/server-update-coordinator\.js\?v=0253\.1/u);
 assert.match(worker,/\/design-system\.css\?v=0140\.16/u);
 assert.match(html,/styles\.css\?v=0254\.1/u);
 assert.match(worker,/styles\.css\?v=0254\.1/u);
 assert.match(html,/analytics-view\.js\?v=0254\.1/u);
 assert.match(worker,/analytics-view\.js\?v=0254\.1/u);
-assert.match(html,/app\.js\?v=0254\.1/u);assert.match(worker,/\/app\.js\?v=0254\.1/u);
+assert.match(html,/app\.js\?v=0255\.1/u);assert.match(worker,/\/app\.js\?v=0255\.1/u);
 assert.match(html,/pilot-views\.css\?v=0140\.3/u);
 assert.match(worker,/pilot-views\.css\?v=0140\.3/u);
-assert.match(worker,/\$\{CACHE_PREFIX\}v55/u);
+assert.match(worker,/\$\{CACHE_PREFIX\}v57/u);
 assert.match(worker,/optionalURLs\.has/u);
 assert.match(worker,/shellURLs\.has\(url\.href\)/u);
 assert.match(worker,/catch \(error\)[\s\S]*await caches\.delete\(CACHE_NAME\)/u);assert.doesNotMatch(worker,/skipWaiting/u);

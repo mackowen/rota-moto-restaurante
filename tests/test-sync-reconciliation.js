@@ -2,6 +2,9 @@
 const assert=require('node:assert/strict');
 const R=require('../sync-reconciliation.js');
 const uuid='00000000-0000-4000-8000-000000000001';
+assert.equal(R.hasSyncPushPermission({permissions:['sync.push']}),true);
+assert.equal(R.hasSyncPushPermission({permissions:['sync.pull']}),false);
+assert.equal(R.hasSyncPushPermission(null),false);
 const externalOrder={id:'local-external',source:{origin:'ifood',id:'provider-order-1'},externalId:'provider-order-1'};
 assert.equal(R.findExternalOrder([externalOrder],{source:'ifood',externalId:'provider-order-1'}),externalOrder,
   'a pulled canonical Order reuses the local order with the same provider and external ID');

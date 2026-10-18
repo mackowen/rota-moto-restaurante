@@ -15,6 +15,7 @@
   let mfaStarting = false;
   let driverRows = [];
   let driverCursor = null;
+  let marketplaceOrderCache = { orders: [], loaded: false, error: null };
   let previousFocus = null;
   let marketplaceCallback = null;
   try {
@@ -94,6 +95,26 @@
   adminPage.setAttribute('aria-labelledby', 'rmCompanyAdminTitle');
   adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Administração da empresa</strong><small>Escolha uma área para administrar o restaurante</small></div><button type="button" data-admin-close>Voltar ao painel</button></header><nav class="rm-admin-nav" aria-label="Áreas da empresa"></nav><div class="rm-company-admin-content"></div>';
   host.append(adminPage);
+  const platformAdminTrigger=document.createElement('button');platformAdminTrigger.type='button';platformAdminTrigger.className='rm-platform-admin-trigger';platformAdminTrigger.textContent='Administração RotaMoto';platformAdminTrigger.hidden=true;platformAdminTrigger.setAttribute('aria-controls','rmPlatformAdminPage');
+  const platformAdminPage=document.createElement('section');platformAdminPage.id='rmPlatformAdminPage';platformAdminPage.className='rm-company-admin-page';platformAdminPage.hidden=true;
+  platformAdminPage.innerHTML='<header><div><strong>Administração da plataforma</strong><small>Acesso global independente das permissões dos restaurantes</small></div><button type="button" data-platform-close>Voltar</button></header><nav class="rm-admin-nav" aria-label="Administração global"><button type="button" data-platform-list="companies">Empresas</button><button type="button" data-platform-list="users">Usuários</button><button type="button" data-platform-list="memberships">Vínculos</button></nav><p data-platform-error role="alert" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite"></div>';
+  host.append(platformAdminPage);
+  platformAdminTrigger.addEventListener('click',()=>{if(!current?.platformAdmin||mfaLocked)return;adminPage.hidden=true;platformAdminPage.hidden=false;const app=applicationRoot();if(app){app.inert=true;app.setAttribute('aria-hidden','true')}loadPlatformAdmin('companies').catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)})});
+  platformAdminPage.querySelector('[data-platform-close]').addEventListener('click',()=>{platformAdminPage.hidden=true;const app=applicationRoot();if(app){app.inert=false;app.removeAttribute('aria-hidden')}platformAdminTrigger.focus()});
+  async function loadPlatformAdmin(kind='companies'){
+    if(!current?.platformAdmin||mfaLocked)throw Object.assign(new Error('FORBIDDEN'),{code:'FORBIDDEN'});
+    const route={companies:'/platform-admin/companies',users:'/platform-admin/users',memberships:'/platform-admin/memberships'}[kind];if(!route)throw new Error('INVALID_INPUT');
+    const data=await request(route),rows=data.items||[],box=platformAdminPage.querySelector('[data-platform-results]');box.replaceChildren();
+    for(const row of rows){const card=document.createElement('article');card.className='rm-member';const title=document.createElement('strong');title.textContent=kind==='companies'?row.name:kind==='users'?row.email:`${row.email} · ${row.companyName}`;card.append(title);
+      const detail=document.createElement('p');detail.textContent=kind==='companies'?`Estado: ${row.status} · ${row.memberCount} vínculo(s)`:kind==='users'?`Email verificado: ${row.emailVerified?'sim':'não'} · ${row.disabled?'suspenso':'ativo'} · Administrador global: ${row.platformAdmin?'sim':'não'}`:`${row.companyName} · ${row.roleName} · ${row.status}${row.hasDriverLink?' · motorista vinculado':''}`;card.append(detail);
+      if(kind==='companies'&&['active','suspended'].includes(row.status)){const button=document.createElement('button');button.type='button';button.textContent=row.status==='active'?'Suspender empresa':'Reativar empresa';button.addEventListener('click',async()=>{const next=row.status==='active'?'suspended':'active';if(!window.confirm(`${next==='suspended'?'Suspender':'Reativar'} ${row.name}? A alteração será registrada na auditoria.`))return;button.disabled=true;try{await request(`/platform-admin/companies/${encodeURIComponent(row.id)}`,{method:'PATCH',body:JSON.stringify({status:next,reason:'business_review'})});await loadPlatformAdmin(kind)}catch(error){platformAdminPage.querySelector('[data-platform-error]').textContent=message(error);button.disabled=false}});card.append(button)}
+      if(kind==='users'&&row.id!==current.userId){const button=document.createElement('button');button.type='button';button.textContent=row.disabled?'Reativar conta':'Suspender conta';button.addEventListener('click',async()=>{const next=!row.disabled;if(!window.confirm(`${next?'Suspender':'Reativar'} a conta ${row.email}? A alteração será registrada na auditoria.`))return;button.disabled=true;try{await request(`/platform-admin/users/${encodeURIComponent(row.id)}`,{method:'PATCH',body:JSON.stringify({disabled:next,reason:'security_review'})});await loadPlatformAdmin(kind)}catch(error){platformAdminPage.querySelector('[data-platform-error]').textContent=message(error);button.disabled=false}});card.append(button)}
+      box.append(card)
+    }
+    platformAdminPage.querySelector('[data-platform-error]').textContent=rows.length?'':'Nenhum registro para exibir.';
+  }
+  platformAdminPage.querySelectorAll('[data-platform-list]').forEach(button=>button.addEventListener('click',()=>{platformAdminPage.querySelectorAll('[data-platform-list]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));loadPlatformAdmin(button.dataset.platformList).catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)})}));
+  platformAdminPage.querySelector('[data-platform-refresh]').addEventListener('click',()=>{const selected=platformAdminPage.querySelector('[data-platform-list][aria-pressed="true"]')?.dataset.platformList||'companies';loadPlatformAdmin(selected).catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)})});
   if (companyAdminSection) {
     const content = adminPage.querySelector('.rm-company-admin-content');
     const tabs = [
@@ -187,6 +208,8 @@
     if (trigger.parentElement !== parent) parent.append(trigger);
     trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
     const settingsNav = app?.querySelector('.settings-nav');
+    if(settingsNav&&appKind==='restaurante'&&current?.platformAdmin&&!mfaLocked){if(platformAdminTrigger.parentElement!==settingsNav)settingsNav.append(platformAdminTrigger)}
+    else if(platformAdminTrigger.parentElement){platformAdminTrigger.remove()}
     if (settingsNav) {
       if (adminTrigger.parentElement !== settingsNav) settingsNav.append(adminTrigger);
       if (adminTrigger.className !== 'settings-cat rm-company-admin-trigger') adminTrigger.className = 'settings-cat rm-company-admin-trigger';
@@ -255,6 +278,8 @@
     host.dataset.mfaLocked = String(mfaLocked);
     host.dataset.gated = String(!session && !offlineMode);
     adminPage.hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
+    platformAdminPage.hidden=mfaLocked||!(session&&appKind==='restaurante'&&session.platformAdmin);
+    platformAdminTrigger.hidden=mfaLocked||!(session&&appKind==='restaurante'&&session.platformAdmin);
     adminTrigger.hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
     $('[data-close]').hidden = mfaLocked;
     $('[data-accept-existing]').hidden = mfaLocked;
@@ -464,11 +489,11 @@
   async function loadAdmin({ appendDrivers = false } = {}) {
     const canReadMembers = current.permissions.includes('members.read');
     const canReadDrivers = current.permissions.includes('sync.pull');
-    const [company, members, roles, permissionResult, integrations, marketplaceOrders] = await Promise.all([
+    const [company, members, roles, permissionResult, integrations] = await Promise.all([
       request('/admin/company'), canReadMembers ? request('/admin/memberships?limit=100') : Promise.resolve({ members: [] }), request('/admin/roles'), request('/admin/permissions'),
-      current.permissions.includes('integrations.manage') ? request('/admin/integrations') : Promise.resolve(null),
-      current.permissions.includes('orders.read') ? request('/admin/marketplace/orders?limit=50').catch(() => ({orders:[]})) : Promise.resolve({orders:[]})
+      current.permissions.includes('integrations.manage') ? request('/admin/integrations') : Promise.resolve(null)
     ]);
+    const marketplaceOrders = marketplaceOrderCache;
     const driverPage = canReadDrivers ? await request(`/domain/drivers?limit=100${appendDrivers && driverCursor ? `&cursor=${encodeURIComponent(driverCursor)}` : ''}`) : { records: [], nextCursor: null };
     $('[data-admin-error]').textContent='';
     if (!appendDrivers) driverRows = [];
@@ -574,7 +599,11 @@
       const notes = document.createElement('p'); notes.textContent = `${item.capabilityNotes || 'A conexão ainda não está ativa.'} Última atualização: ${syncState}.`; row.append(notes);
       providerPage.append(row);providerPages.append(providerPage);
     });
-      for(const providerPage of providerPageByCode.values()){const orderHeading=document.createElement('h3');orderHeading.textContent='Pedidos recebidos';providerPage.append(orderHeading)}
+      for(const providerPage of providerPageByCode.values()){
+        const orderHeading=document.createElement('h3');orderHeading.textContent='Pedidos recebidos';providerPage.append(orderHeading);
+        if(current.permissions.includes('orders.read')){const refreshOrders=document.createElement('button');refreshOrders.type='button';refreshOrders.textContent=marketplaceOrders.loaded?'Atualizar pedidos':'Consultar pedidos';refreshOrders.addEventListener('click',async()=>{refreshOrders.disabled=true;refreshOrders.setAttribute('aria-busy','true');let feedback=providerPage.querySelector('[data-marketplace-orders-feedback]');if(!feedback){feedback=document.createElement('p');feedback.dataset.marketplaceOrdersFeedback='';feedback.setAttribute('role','status');providerPage.append(feedback)}feedback.textContent='Consultando os pedidos no servidor…';try{marketplaceOrderCache={...await request('/admin/marketplace/orders?limit=50'),loaded:true,error:null};await loadAdmin()}catch(error){marketplaceOrderCache={orders:[],loaded:false,error:error.code||'MARKETPLACE_ADMIN_FAILED'};feedback.textContent=message(error)}finally{refreshOrders.disabled=false;refreshOrders.removeAttribute('aria-busy')}});providerPage.append(refreshOrders)}
+      }
+      if(marketplaceOrders.error){const errorNote=document.createElement('p');errorNote.setAttribute('role','status');errorNote.textContent=marketplaceOrders.error==='MARKETPLACE_RUNTIME_UNAVAILABLE'?'A conexão de pedidos desta plataforma não está configurada neste servidor.':`Não foi possível consultar pedidos (${marketplaceOrders.error}).`;providerPages.append(errorNote)}
       const orderRows=Array.isArray(marketplaceOrders.orders)?marketplaceOrders.orders:[];
       const commandStates={queued:'Na fila',leased:'Em execução',pending:'Aguardando confirmação da plataforma',succeeded:'Confirmada pela plataforma',rejected:'Falhou',unknown_outcome:'Resultado incerto; reconciliação pendente',needs_review:'Precisa de revisão'};
       orderRows.forEach(order=>{
@@ -623,7 +652,7 @@
             catch(error){button.disabled=false;status.textContent=message(error);}});item.append(button);});
         const providerPage=providerPageByCode.get(String(order.provider||'').toLowerCase());if(providerPage)providerPage.append(item);
       });
-      for(const [providerCode,providerPage] of providerPageByCode){if(!orderRows.some(order=>String(order.provider||'').toLowerCase()===providerCode)){const empty=document.createElement('p');empty.textContent='Nenhum pedido recebido desta plataforma. Os pedidos aparecerão aqui após uma conexão real e confirmação do servidor.';providerPage.append(empty)}}
+      for(const [providerCode,providerPage] of providerPageByCode){if(marketplaceOrders.loaded&&!orderRows.some(order=>String(order.provider||'').toLowerCase()===providerCode)){const empty=document.createElement('p');empty.textContent='Nenhum pedido recebido desta plataforma. Os pedidos aparecerão aqui após uma conexão real e confirmação do servidor.';providerPage.append(empty)}}
       if(integrations.integrations.length)list.append(providerNav,providerPages);else{const empty=document.createElement('p');empty.textContent='Nenhuma plataforma de delivery está disponível neste servidor.';list.append(empty)}
     }
     const roleSelect = $('[data-invite] select'); roleSelect.replaceChildren();
