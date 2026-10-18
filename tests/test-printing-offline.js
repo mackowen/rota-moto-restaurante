@@ -49,7 +49,7 @@ installed.then(async () => {
   assert.ok(added.includes('/index.html'));
   assert.ok(added.includes('/ticket-renderer.js?v=1'));
   assert.ok(added.includes('/browser-printer-provider.js?v=1'));
-  assert.ok(added.includes('/app.js?v=0253.1'));
+  assert.ok(added.includes('/app.js?v=0254.1'));
   assert.ok(added.includes('/design-system.css?v=0140.16'));
   assert.ok(added.includes('/identity-ui.js?v=0253.1'));
   assert.ok(added.includes('/server-update-coordinator.js?v=0253.1'));
@@ -59,7 +59,7 @@ installed.then(async () => {
   let activated;
   handlers.activate({ waitUntil(promise) { activated = promise; } });
   await activated;
-  assert.deepEqual(deleted, ['rotamoto-restaurante-shell-v54', 'rotamoto-restaurante-shell-old']);
+  assert.deepEqual(deleted, ['rotamoto-restaurante-shell-v55', 'rotamoto-restaurante-shell-old']);
 
   let apiResponded = false;
   handlers.fetch({ request: { method: 'GET', url: 'http://localhost:8788/api/identity/session', mode: 'cors' }, respondWith() { apiResponded = true; } });

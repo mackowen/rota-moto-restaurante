@@ -612,7 +612,7 @@ function reports(){
  const sources=Object.fromEntries((state.settings.orders?.sources||[]).map(source=>[source.id,source.name]));sources.unknown="Sem origem registrada";
  const sync=state.settings.global?.sync||{};
  const freshNote=sync.transport==="connected"&&sync.status==="ready"&&sync.lastReceivedAt?("Dados recebidos do servidor em "+dateFmt(sync.lastReceivedAt)):"A sincronização ainda não foi confirmada. Este relatório usa os dados salvos neste aparelho.";
- return header("Relatórios","Pedidos, entregas, taxas e repasses no período selecionado.")+RotaMotoAnalyticsView.render({report:report,filters:q,statusLabel:statusLabel,typeLabel:typeLabel,sources:sources,bikes:state.bikes,types:TYPES,freshNote:freshNote,emptyState:emptyStateMarkup})+card('<div id="fulfillment-analytics"><span class="muted">Carregando indicadores de atendimento…</span></div>')+card('<div id="territorial-heatmap"><span class="muted">Carregando resumo por região…</span></div>');
+ return header("Relatórios","Pedidos, entregas, taxas e repasses no período selecionado.")+RotaMotoAnalyticsView.render({report:report,filters:q,statusLabel:statusLabel,typeLabel:typeLabel,sources:sources,bikes:state.bikes,types:TYPES,freshNote:freshNote,emptyState:emptyStateMarkup});
 }
 function orderSources(){const list=state.settings.orders?.sources||[];return list.filter(x=>x&&x.active!==false)}
 function sourceById(id){return (state.settings.orders?.sources||[]).find(x=>x.id===id)||null}
@@ -1305,13 +1305,18 @@ async function runStagedImport(data,diff){
 }
 
 function exportCSV(){
- const q=state.report;
- const report=RotaMotoAnalytics.aggregate({orders:state.orders,deliveries:state.deliveries,deliveryEvents:state.deliveryEvents,earnings:state.earnings,bikes:state.bikes},{period:q.period,driver:q.bike,status:q.status,type:q.type,source:q.source,now:Date.now(),timeZone:state.companyTimeZone,includeExportRows:true});
- const rows=[["Pedido","Cliente","Motoboy","Status da entrega","Tipo","Origem comercial","Taxa de entrega conhecida (BRL)","Subtotal itens (minor units)","Desconto (minor units)","Taxa de entrega no pedido (minor units)","Taxa de serviço (minor units)","Outras taxas (minor units)","Total do pedido (minor units)","Moeda ISO","Completude monetária","Distância estimada (km)","Distância real (km)","Criado em"]];
- for(const row of report.exportRows){rows.push(["#"+row.num,row.customer,row.driverName,statusLabel(row.status),typeLabel(row.type),row.source,row.deliveryFeeBRL==null?"":row.deliveryFeeBRL,row.itemsSubtotalMinor??"",row.discountMinor??"",row.deliveryFeeMinor??"",row.serviceFeeMinor??"",row.otherFeeMinor??"",row.totalMinor??"",row.moneyCurrency,row.moneyCompleteness,row.estimatedDistanceKm==null?"":row.estimatedDistanceKm,row.actualDistanceKm==null?"":row.actualDistanceKm,dateFmt(row.createdAt)]);}
- const csv="\uFEFF"+rows.map(RotaMotoAnalytics.csvRow).join("\r\n");
- const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download="relatorio-rota-moto.csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);event("success","Relatório CSV exportado.");toast("Relatório exportado.");
+ let objectUrl=null;
+ try{
+  const q=state.report;
+  const report=RotaMotoAnalytics.aggregate({orders:state.orders,deliveries:state.deliveries,deliveryEvents:state.deliveryEvents,earnings:state.earnings,bikes:state.bikes},{period:q.period,driver:q.bike,status:q.status,type:q.type,source:q.source,now:Date.now(),timeZone:state.companyTimeZone,includeExportRows:true});
+  const rows=[["Pedido","Cliente","Motoboy","Status da entrega","Tipo","Origem comercial","Taxa de entrega conhecida (BRL)","Subtotal itens (minor units)","Desconto (minor units)","Taxa de entrega no pedido (minor units)","Taxa de serviço (minor units)","Outras taxas (minor units)","Total do pedido (minor units)","Moeda ISO","Completude monetária","Distância estimada (km)","Distância real (km)","Criado em"]];
+  for(const row of report.exportRows){rows.push(["#"+row.num,row.customer,row.driverName,statusLabel(row.status),typeLabel(row.type),row.source,row.deliveryFeeBRL==null?"":row.deliveryFeeBRL,row.itemsSubtotalMinor??"",row.discountMinor??"",row.deliveryFeeMinor??"",row.serviceFeeMinor??"",row.otherFeeMinor??"",row.totalMinor??"",row.moneyCurrency,row.moneyCompleteness,row.estimatedDistanceKm==null?"":row.estimatedDistanceKm,row.actualDistanceKm==null?"":row.actualDistanceKm,dateFmt(row.createdAt)]);}
+  const csv="\uFEFF"+rows.map(RotaMotoAnalytics.csvRow).join("\r\n");
+  const link=document.createElement("a");objectUrl=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));link.href=objectUrl;link.download="relatorio-rota-moto.csv";document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>{if(objectUrl)URL.revokeObjectURL(objectUrl)},1000);event("success","Relatório CSV exportado.");toast("Relatório exportado.");return true;
+ }catch(_){if(objectUrl)try{URL.revokeObjectURL(objectUrl)}catch(__){}event("error","Falha ao exportar o relatório CSV.");toast("Não foi possível exportar o relatório. Tente novamente.","error");return false}
 }
+
 window.addEventListener('error',e=>log('error',e.message||'Erro de interface','window.error'));bootstrap().then(async()=>{syncBootstrapReady=true;const session=await restoreSyncSession();if(session)scheduleServerSync(0)}).catch(e=>{console.error(e);document.querySelector('#app').innerHTML='<div class="fatal">Não foi possível abrir a base local. Recarregue o aplicativo.</div>'});
 window.RotaMotoBackupDestinations&&(window.RotaMotoBackupDestinations.bind=bindBackupDestinationControls);
 })();
