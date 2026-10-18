@@ -470,7 +470,7 @@
     $('[data-driver-access-note]').hidden = canReadDrivers;
     $('[data-company-name]').textContent = company.name;
     const companyForm=$('[data-company-setup]');
-    if(companyForm&&!companyForm.dataset.loaded){companyForm.elements.name.value=company.name||'';companyForm.elements.supportPhone.value=company.supportPhone||'';companyForm.elements.timeZone.value=company.timeZone||'America/Sao_Paulo';companyForm.elements.address.value=company.operationalLocation?.address||'';companyForm.dataset.loaded='true'}
+    if(companyForm&&!companyForm.dataset.dirty){companyForm.elements.name.value=company.name||'';companyForm.elements.supportPhone.value=company.supportPhone||'';companyForm.elements.timeZone.value=company.timeZone||'America/Sao_Paulo';companyForm.elements.address.value=company.operationalLocation?.address||'';companyForm.dataset.loaded='true'}
     const integrationBox = $('[data-integrations]'); integrationBox.hidden = !integrations;
     if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); const providerNav=document.createElement('nav');providerNav.className='rm-provider-nav';providerNav.setAttribute('aria-label','Plataformas e pedidos');const providerPages=document.createElement('div');providerPages.className='rm-provider-pages';let firstProvider=true;const providerPageByCode=new Map(); integrations.integrations.forEach(item => {
       const providerCode=String(item.provider||'').toLowerCase(),providerTitle=item.displayName||({ifood:'iFood','99food':'99Food',keeta:'Keeta'}[providerCode]||'Integração');
@@ -478,7 +478,7 @@
       const providerTab=document.createElement('button');providerTab.type='button';providerTab.className='rm-provider-tab';providerTab.dataset.providerTab=providerCode;providerTab.setAttribute('aria-pressed',String(firstProvider));providerTab.textContent=providerTitle;providerTab.addEventListener('click',()=>{providerPages.querySelectorAll('[data-provider-page]').forEach(section=>section.hidden=section.dataset.providerPage!==providerCode);providerNav.querySelectorAll('[data-provider-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.providerTab===providerCode)))});providerNav.append(providerTab);firstProvider=false;
       const row = document.createElement('section'); row.className = 'rm-integration-status';
       const title = document.createElement('strong'); title.textContent = `${providerTitle} · ${item.connectionVerified ? 'conexão confirmada' : 'sem conexão confirmada'}`; row.append(title);
-      const refreshProvider=document.createElement('button');refreshProvider.type='button';refreshProvider.textContent='Atualizar situação no RotaMoto';refreshProvider.addEventListener('click',async()=>{refreshProvider.disabled=true;try{await loadAdmin()}catch(error){const note=document.createElement('p');note.setAttribute('role','status');note.textContent=message(error);row.append(note)}finally{refreshProvider.disabled=false}});row.append(refreshProvider);
+      const refreshProvider=document.createElement('button');refreshProvider.type='button';refreshProvider.textContent='Atualizar situação no RotaMoto';const providerFeedback=document.createElement('p');providerFeedback.setAttribute('role','status');providerFeedback.setAttribute('aria-live','polite');refreshProvider.addEventListener('click',async()=>{refreshProvider.disabled=true;providerFeedback.textContent='Consultando estado registrado…';try{await loadAdmin();providerFeedback.textContent='Estado registrado atualizado. Isso não confirma conexão com a plataforma.'}catch(error){providerFeedback.textContent=message(error)}finally{refreshProvider.disabled=false}});row.append(refreshProvider,providerFeedback);
       const accounts = document.createElement('div'); accounts.className='rm-integration-accounts';
       const accountStates={active:'autorizada; conexão ainda não verificada',pending:'autorização pendente',disabled:'desativada localmente',revoked:'autorização revogada',reauthorization_required:'precisa reautorizar',error:'erro na conta'};
       const accountErrors={AUTH_EXPIRED:'A autorização expirou. Reautorize a conta.',AUTH_REJECTED:'A plataforma recusou a autorização. Reautorize a conta.',ACCOUNT_UNAVAILABLE:'Conta inativa ou sem vínculo válido.',MARKETPLACE_EVENT_PENDING:'Evento recebido e será processado novamente.',
@@ -497,10 +497,12 @@
         accounts.append(account);
       });
       if (['ifood','keeta','99food'].includes(item.provider)) {
+        const actionArea=document.createElement('div');actionArea.className='rm-integration-action';actionArea.setAttribute('aria-live','polite');
         const connect = document.createElement('button'); connect.type = 'button';
         connect.textContent = item.provider==='99food'?'Vincular loja':accountRows.some(account => ['disabled','revoked','reauthorization_required','error'].includes(account.accountStatus)) ? 'Reautorizar conta' : 'Conectar conta';
         connect.addEventListener('click', async () => {
           connect.disabled = true;
+          actionArea.replaceChildren();
           try {
             if(item.provider==='99food'){
               const form=document.createElement('form');form.className='rm-marketplace-auth';
@@ -511,7 +513,7 @@
                   form.elements.appShopId.value='';form.elements.displayName.value='';form.querySelector('[role=status]').textContent='Loja vinculada. Confira a última sincronização e o diagnóstico da conta.';await loadAdmin();}
                 catch(error){form.querySelector('[role=status]').textContent=message(error);button.disabled=false;}
               });
-              row.append(form);connect.textContent='Vincular outra loja';connect.disabled=false;return;
+              actionArea.replaceChildren(form);connect.textContent='Vincular outra loja';connect.disabled=false;return;
             }
             const started = await request(`/admin/integrations/${item.provider}/authorize`, { method: 'POST', body: '{}' });
             if (item.provider === 'keeta') { location.assign(started.authorizationUrl); return; }
@@ -528,10 +530,10 @@
               try { await request('/admin/integrations/ifood/complete', { method: 'POST', body: JSON.stringify({ state: started.state, authorizationCode: input.value }) }); input.value = ''; form.querySelector('[role=status]').textContent = 'Autorização concluída. Atualize Integrações para conferir as lojas vinculadas.'; await loadAdmin(); }
               catch (error) { input.value = ''; form.querySelector('[role=status]').textContent = message(error); if(error.code==='AUTHORIZED_MERCHANT_NOT_VISIBLE_YET')resume.hidden=false; button.disabled = false; }
             });
-            instructions.append(text, link, form); row.append(instructions); connect.textContent = 'Autorização iniciada';
-          } catch (error) { const note = document.createElement('p'); note.setAttribute('role','status'); note.textContent = message(error); row.append(note); connect.disabled = false; }
+            instructions.append(text, link, form); actionArea.replaceChildren(instructions); connect.textContent = 'Autorização iniciada';
+          } catch (error) { const note = document.createElement('p'); note.setAttribute('role','status'); note.textContent = message(error); actionArea.replaceChildren(note); connect.disabled = false; }
         });
-        row.append(connect);
+        row.append(connect,actionArea);
       } else {
         const blocked = document.createElement('p'); blocked.textContent = 'O portal oficial anuncia API de pedidos, webhooks e sandbox. O contrato detalhado, credenciais e certificação exigem onboarding de parceiro; por isso o adapter e a conexão continuam desabilitados.';
         const docs = document.createElement('a'); docs.href = 'https://developer-food.99app.com/'; docs.target = '_blank'; docs.rel = 'noopener noreferrer'; docs.textContent = 'Abrir portal oficial de desenvolvimento 99Food'; row.append(blocked, docs);
@@ -748,9 +750,11 @@
   $('[data-refresh-mfa-recovery]')?.addEventListener('click',()=>loadMfaRecoveryRequests().catch(error=>{$('[data-admin-error]').textContent=message(error)}));
   $('[data-company-setup]')?.addEventListener('submit',async event=>{
     event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||!companySnapshot)return;setBusy(form,true);const status=$('[data-company-setup-status]');status.textContent='Salvando…';
-    try{const address=form.elements.address.value.trim()||null;await request('/admin/company/profile',{method:'PUT',body:JSON.stringify({expectedVersion:companySnapshot.settingsVersion,name:form.elements.name.value.trim(),supportPhone:form.elements.supportPhone.value.trim()||null})});await request('/admin/company',{method:'PUT',body:JSON.stringify({timeZone:form.elements.timeZone.value})});if(address!==(companySnapshot.operationalLocation?.address||null)){await request('/admin/company/location',{method:'PUT',body:JSON.stringify({expectedVersion:companySnapshot.operationalLocationVersion,address,latitude:null,longitude:null})})}form.dataset.loaded='';status.textContent='Configuração da empresa salva.';await loadAdmin()}
-    catch(error){form.dataset.loaded='';const text=message(error);await loadAdmin().catch(()=>{});status.textContent=text}finally{setBusy(form,false)}
+    try{const address=form.elements.address.value.trim()||null;const profile=await request('/admin/company/profile',{method:'PUT',body:JSON.stringify({expectedVersion:companySnapshot.settingsVersion,name:form.elements.name.value.trim(),supportPhone:form.elements.supportPhone.value.trim()||null})});if(!profile||typeof profile.name!=='string')throw Object.assign(new Error(),{code:'COMPANY_PROFILE_SAVE_UNCONFIRMED'});const settings=await request('/admin/company',{method:'PUT',body:JSON.stringify({timeZone:form.elements.timeZone.value})});if(settings?.timeZone!==form.elements.timeZone.value)throw Object.assign(new Error(),{code:'COMPANY_SETTINGS_SAVE_UNCONFIRMED'});if(address!==(companySnapshot.operationalLocation?.address||null)){const location=await request('/admin/company/location',{method:'PUT',body:JSON.stringify({expectedVersion:companySnapshot.operationalLocationVersion,address,latitude:null,longitude:null})});if(!location||!Object.prototype.hasOwnProperty.call(location,'operationalLocation'))throw Object.assign(new Error(),{code:'COMPANY_LOCATION_SAVE_UNCONFIRMED'})}form.dataset.dirty='';status.textContent='Configuração confirmada pelo servidor.';await loadAdmin()}
+    catch(error){form.dataset.dirty='';const text=message(error);await loadAdmin().catch(()=>{});status.textContent=text}finally{setBusy(form,false)}
   });
+  $('[data-company-setup]')?.addEventListener('input',event=>{if(event.target?.form===event.currentTarget)event.currentTarget.dataset.dirty='true'});
+  $('[data-company-setup]')?.addEventListener('change',event=>{if(event.target?.form===event.currentTarget)event.currentTarget.dataset.dirty='true'});
   $('[data-invite]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true);
     try { await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: form.elements.email.value.trim(), roleId: form.elements.roleId.value }) }); form.reset(); $('[data-invite-result]').textContent = 'Convite enviado.'; await loadAdmin(); }
     catch (error) { $('[data-invite-result]').textContent = message(error); } finally { setBusy(form, false); }

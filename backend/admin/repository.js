@@ -15,6 +15,16 @@ function decodeCursor(cursor) {
   return { createdAt: value[0], id: value[1].toLowerCase() };
 }
 function encodeCursor(row) { return Buffer.from(`${row.created_at_cursor}\n${row.id}`).toString('base64url'); }
+function operationalLocationFromRow(row) {
+  if (row.operational_address == null && row.operational_latitude == null && row.operational_longitude == null) return null;
+  return {
+    address: row.operational_address,
+    latitude: row.operational_latitude == null ? null : Number(row.operational_latitude),
+    longitude: row.operational_longitude == null ? null : Number(row.operational_longitude),
+    provenance: row.operational_location_provenance,
+    version: Number(row.operational_location_version)
+  };
+}
 
 function createAdminRepository() {
   async function permissions(client) {
@@ -204,9 +214,7 @@ function createAdminRepository() {
     if (!result.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
     const row = result.rows[0];
     return { id: row.id, name: row.name, status: row.status, timeZone: row.time_zone, supportPhone: row.support_phone,
-      operationalLocation: row.operational_latitude == null ? null : { address: row.operational_address,
-        latitude: Number(row.operational_latitude), longitude: Number(row.operational_longitude),
-        provenance: row.operational_location_provenance, version: Number(row.operational_location_version) },
+      operationalLocation: operationalLocationFromRow(row),
       operationalLocationVersion: Number(row.operational_location_version), settingsVersion: Number(row.company_settings_version),
       routeGroupingPolicy: row.route_grouping_policy, createdAt: row.created_at, updatedAt: row.updated_at };
   }
@@ -243,9 +251,7 @@ function createAdminRepository() {
     await writeAudit(client, principal, 'company.operational_location.changed', 'company', principal.company_id,
       { configured: row.operational_latitude !== null, provenance: row.operational_location_provenance,
         version: Number(row.operational_location_version) });
-    return { operationalLocation: row.operational_latitude == null ? null : { address: row.operational_address,
-      latitude: Number(row.operational_latitude), longitude: Number(row.operational_longitude),
-      provenance: row.operational_location_provenance, version: Number(row.operational_location_version) },
+    return { operationalLocation: operationalLocationFromRow(row),
       operationalLocationVersion: Number(row.operational_location_version) };
   }
   async function updateCompanyProfile(client, principal, input) {
@@ -346,4 +352,4 @@ function createAdminRepository() {
     updateCompanyTimeZone, updateCompanyLocation, updateCompanyProfile, updateCompanyRouteGrouping, associateMembershipDriver, disassociateMembershipDriver });
 }
 
-module.exports = { createAdminRepository, decodeCursor, encodeCursor };
+module.exports = { createAdminRepository, decodeCursor, encodeCursor, operationalLocationFromRow };

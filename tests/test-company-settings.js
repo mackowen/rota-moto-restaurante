@@ -1,5 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict');
+const { operationalLocationFromRow } = require('../backend/admin/repository');
 const fs=require('node:fs');
 const path=require('node:path');
 const {Readable}=require('node:stream');
@@ -7,6 +8,9 @@ const {createAdminHttpHandler}=require('../backend/admin/http');
 const {createAdminService}=require('../backend/admin/service');
 
 const migration=fs.readFileSync(path.join(__dirname,'../backend/postgres/migrations/0033_company_operational_location.up.sql'),'utf8');
+const addressOnly=operationalLocationFromRow({operational_address:'Rua de teste, 10',operational_latitude:null,operational_longitude:null,operational_location_provenance:null,operational_location_version:'4'});
+assert.deepEqual(addressOnly,{address:'Rua de teste, 10',latitude:null,longitude:null,provenance:null,version:4},'a saved address must remain readable before geocoding is confirmed');
+assert.equal(operationalLocationFromRow({operational_address:null,operational_latitude:null,operational_longitude:null,operational_location_version:'0'}),null,'an empty location remains absent');
 for(const column of ['support_phone','operational_address','operational_latitude','operational_longitude','operational_location_provenance','operational_location_version','company_settings_version'])assert.match(migration,new RegExp(`ADD COLUMN ${column}`));
 assert.match(migration,/operational_location_provenance IS NULL OR operational_location_provenance = 'operator_confirmed'/u);
 assert.match(migration,/GRANT SELECT \(support_phone, operational_address, operational_latitude, operational_longitude,/u);
