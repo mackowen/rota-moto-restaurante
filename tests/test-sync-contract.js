@@ -42,8 +42,10 @@ assert.match(appSource,/isSupersededRestaurantDeliveryOperation\(localDelivery,d
   'a superseded pull conflict is cleared only against the latest canonical assignment tuple');
 assert.match(appSource,/const pending=!confirmed&&\(order\.sync\?\.state==='local'\|\|\['rejected','conflict'\]\.includes\(operation\?\.status\)\)/,
   'canonical projection preserves unresolved local Order operations');
-assert.match(appSource,/!document\.querySelector\('\.modal-back'\)/,
-  'sync refreshes the Order view without replacing an open dialog');
+assert.match(appSource,/const editing=!!document\.querySelector\('\.modal-back,#main form\[data-user-edited="true"\]'\)/,
+  'server refresh protects open dialogs and forms with unsaved user edits');
+assert.match(appSource,/if\(pulled&&!editing\)\{if\(state\.tab==='orders'\)filterOrders\(\);else render\(\)\}/,
+  'confirmed server pulls refresh the current view when it is safe to replace');
 assert.match(appSource,/multiStoreTransaction\(\[\.\.\.localStores,'inbox','syncState'\]/);
 assert.match(appSource,/function multiStoreTransaction\(storeNames,mode,work\)/,'multi-store persistence helper used by sync is defined');
 assert.match(appSource,/X-CSRF-Token/);

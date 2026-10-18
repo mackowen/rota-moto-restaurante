@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const API = String(window.ROTA_MOTO_API_BASE || '/api').replace(/\/$/u, '');
+  const serverUpdateBus = window.RotaMotoServerUpdateCoordinator?.create();
   let csrf = null;
   let current = null;
   let companySnapshot = null;
@@ -170,6 +171,13 @@
       const session = await restore(); if (session) return request(path, options, true);
     }
     if (!response.ok) { const error = new Error(body.error?.code || 'REQUEST_FAILED'); error.code = body.error?.code; error.status = response.status; throw error; }
+    if (method !== 'GET' && serverUpdateBus) {
+      const topic = path.startsWith('/admin/company') ? 'company'
+        : path.startsWith('/admin/integrations') || path.startsWith('/admin/marketplace') ? 'integrations'
+          : path.startsWith('/admin/invitations') || path.startsWith('/admin/memberships') || path.startsWith('/admin/roles') ? 'team'
+            : path.startsWith('/domain/drivers') ? 'drivers' : null;
+      if (topic) serverUpdateBus.publish(topic);
+    }
     return body;
   }
   function placeTrigger() {
@@ -732,6 +740,16 @@
       driverList?.append(more);
     }
     await loadMfaRecoveryRequests();
+  }
+  if (serverUpdateBus && appKind === 'restaurante') {
+    serverUpdateBus.subscribe(({ topic }) => {
+      if (adminPage.hidden || !current || document.visibilityState === 'hidden') return;
+      const companyForm = $('[data-company-setup]');
+      if (companyForm?.dataset.dirty === 'true') return;
+      if (['company', 'team', 'drivers', 'integrations'].includes(topic)) {
+        loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
+      }
+    });
   }
   $('[data-refresh-admin]')?.addEventListener('click', () => loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); }));
   async function loadMfaRecoveryRequests(){

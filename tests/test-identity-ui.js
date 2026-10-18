@@ -27,9 +27,11 @@ assert.match(appSource, /Email de contato \(opcional\)/u, 'driver registration c
 assert.match(appSource, /O convite ainda não foi enviado/u, 'adding a driver never implies that an invitation was sent');
 assert.match(source, /CSRF_INVALID: 'A sessão de segurança foi renovada/u, 'a failed CSRF refresh gives a visible recovery instruction');
 assert.match(source, /if\(mfaStarting\)return/u, 'duplicate enrollment clicks are ignored while the request is pending');
+assert.match(source, /serverUpdateBus\.publish\(topic\)/u, 'confirmed administrative mutations announce only a safe refresh category to other tabs');
+assert.match(source, /serverUpdateBus\.subscribe\(\(\{ topic \}\)/u, 'open administrative pages reload authoritative server snapshots after cross-tab changes');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0252\.1/u, 'identity UI URL changes when the administration interface changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v53`[\s\S]*identity-ui\.js\?v=0252\.1/u, 'service worker cache is invalidated with the current administration UI');
+assert.match(html, /identity-ui\.js\?v=0253\.1/u, 'identity UI URL changes when the administration interface changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v54`[\s\S]*identity-ui\.js\?v=0253\.1/u, 'service worker cache is invalidated with the current administration UI');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
