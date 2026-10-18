@@ -69,7 +69,8 @@ function createE2eClients(env = process.env, ClientType = createClient) {
     runtime: new ClientType({ ...clientConfig(targets.runtime, 'rotamoto_app'),
       application_name: 'rotamoto-e2e-fixture-runtime' }),
     migrator: new ClientType({ ...clientConfig(targets.migrator, 'rotamoto_migrator'),
-      application_name: 'rotamoto-e2e-fixture-verifier' })
+      application_name: 'rotamoto-e2e-fixture-verifier' }),
+    database, port, disposable0234: Boolean(targets.disposable0234)
   });
 }
 

@@ -57,7 +57,7 @@ function rateLimiter() {
     invitation: { limit: 50, windowMs: 60000 }, provision: { limit: 50, windowMs: 60000 }, mfa: { limit: 50, windowMs: 60000 }, default: { limit: 1000, windowMs: 60000 } } });
 }
 
-async function start(handler, requestContext, onRequestProfile = null, onRequestStart = null) {
+async function start(handler, requestContext, onRequestProfile = null, onRequestStart = null, listenPort = 0) {
   // The rollback fixture uses one PostgreSQL client and savepoints, so keep its
   // legacy serialized mode until it explicitly switches to independent pool
   // transactions. Concurrent mode is used only by the opt-in E2E scenario.
@@ -97,7 +97,7 @@ async function start(handler, requestContext, onRequestProfile = null, onRequest
     inFlight.add(settled);
     settled.finally(() => inFlight.delete(settled));
   });
-  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(listenPort, '127.0.0.1', resolve); });
   return { server, base: `http://127.0.0.1:${server.address().port}`,
     async pauseAndDrain() { paused = true; await pending; await Promise.allSettled([...inFlight]); },
     resumeConcurrent() { serialized = false; paused = false; } };
@@ -105,12 +105,17 @@ async function start(handler, requestContext, onRequestProfile = null, onRequest
 
 async function runFixtureLifecycle({ env = process.env, exercise = async () => {}, allowedOrigins = [],
   persistDisposableFixture = false, mediaDirectory: requestedMediaDirectory, extraHttpHandlers = () => [], navigationFixture = false,
+  listenPort = 0,
   businessFixture = true, onTestEmail = null, independentRequestTransactions = false, retainIndependentFixture = false,
   onIndependentFixtureRetained = null, onIndependentConnection = null, onIndependentTransaction = null,
   onRequestProfile = null, onRequestStart = null, independentPoolSize = 8 } = {}) {
   if (env.NODE_ENV !== 'test' || typeof extraHttpHandlers !== 'function') throw new Error('Handlers extras do fixture só são aceitos no modo test.');
   if (onTestEmail !== null && typeof onTestEmail !== 'function') throw new Error('Observador de email E2E inválido.');
   const clients = createE2eClients(env); // Validate both exact targets before a socket/client is opened.
+  if (listenPort !== 0 && (listenPort !== 8787 || env.NODE_ENV !== 'test' || env.ROTAMOTO_E2E_CAMPAIGN !== '0251' ||
+      clients.database !== 'rotamoto_e2e' || env.DATABASE_URL || env.MIGRATOR_DATABASE_URL)) {
+    throw new Error('Porta E2E 8787 fixa permitida somente para fixture autenticada 0251 em rotamoto_e2e.');
+  }
   const disposableCampaign = clients.migrator ? env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' : false;
   if (persistDisposableFixture && (!disposableCampaign || env.NODE_ENV !== 'test' ||
       requestedMediaDirectory !== path.resolve(requestedMediaDirectory || '') ||
@@ -281,7 +286,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     // Test-only domain adapters must run before the broad /api/admin handler so
     // mounted marketplace/admin subdomains can use their canonical routes.
     host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext,
-      onRequestProfile, onRequestStart);
+      onRequestProfile, onRequestStart, listenPort);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {}, timeoutMs = 30_000 } = {}) => {
       if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120_000) throw new Error('E2E HTTP timeout is invalid.');
@@ -612,17 +617,19 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
         membershipId: ownerMembership.membershipId, driverId: tenantDriverId, cookie: ownerCookie,
         csrf: ownerSession.body.csrfToken, email: tenantEmail });
     };
-    const createSyntheticAdminSessions = async ({ ownerCookie, ownerCsrf, labels, permissions = ['company.manage', 'orders.read'] }) => {
+    const createSyntheticAdminSessions = async ({ ownerCookie, ownerCsrf, labels, permissions = ['company.manage', 'orders.read'],
+      roleName = 'Administradores sintéticos de benchmark' }) => {
       if (typeof ownerCookie !== 'string' || typeof ownerCsrf !== 'string' || !Array.isArray(labels) || labels.length < 1 ||
           labels.length > 10 || labels.some(label => !/^[a-z0-9_-]{1,24}$/iu.test(label)) || !Array.isArray(permissions) ||
-          permissions.length < 1 || permissions.length > 20 || permissions.some(permission => !/^[a-z][a-z0-9._-]{1,80}$/iu.test(permission))) {
+          permissions.length < 1 || permissions.length > 20 || permissions.some(permission => !/^[a-z][a-z0-9._-]{1,80}$/iu.test(permission)) ||
+          typeof roleName !== 'string' || roleName.trim().length < 2 || roleName.length > 100) {
         throw new Error('Sessões sintéticas de benchmark inválidas.');
       }
       const activeOwnerSession = await call('/api/identity/session', { cookie: ownerCookie });
       assert.equal(activeOwnerSession.status, 200);
       const companyId = activeOwnerSession.body.activeCompanyId;
       const role = await call('/api/admin/roles', { method: 'POST', cookie: ownerCookie, csrf: ownerCsrf,
-        body: { key: `perf_0156_${crypto.randomBytes(5).toString('hex')}`, name: 'Administradores sintéticos de benchmark',
+        body: { key: `perf_0156_${crypto.randomBytes(5).toString('hex')}`, name: roleName.trim(),
           permissions } });
       assert.equal(role.status, 201, JSON.stringify(role.body));
       trackFixtureRecord(companyId, 'roles', role.body.id);
@@ -691,7 +698,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
           csrf: session.body.csrfToken, permissions: Object.freeze([...(session.body.permissions || [])]),
           // Synthetic credentials stay in memory for Browser login tests; never include them in manifests or logs.
           browserCredentials: Object.freeze({ email: account.email, password: account.password,
-            ...(account.requiresMfa ? { mfaSecret: account.secret } : {}) }) }));
+            ...(account.requiresMfa ? { mfaSecret: account.secret, mfaLastCounter: targetCounter } : {}) }) }));
       }
       await syncFixtureManifest();
       return Object.freeze(sessions);
@@ -749,6 +756,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       provisionAdditionalTenant, createSyntheticAdminSessions, runtime, call, authenticatedCall, driverAvailabilityService,
       enableIndependentRequestTransactions, registerFixtureTenant,
       fixtureManifest: fixtureManifest ? Object.freeze({ runId: fixtureManifest.runId, file: fixtureManifest.file }) : null,
+      browserCredentials: Object.freeze({ email, password, mfaSecret: enrollment.body.secret, mfaLastCounter: firstLoginCounter }),
       acquireIndependentRuntimeClient: async () => {
         if (!independentPool) throw new Error('Transações independentes ainda não habilitadas.');
         return independentPool.connect();

@@ -111,8 +111,8 @@
     }
     const company = $('[data-company-setup]',companyAdminSection), recovery = $('[data-mfa-recovery-admin]',companyAdminSection), adminError = $('[data-admin-error]',companyAdminSection), adminRefresh = $('[data-refresh-admin]',companyAdminSection);
     const invite = $('[data-invite]',companyAdminSection), members = $('[data-members]',companyAdminSection), memberNote = $('[data-members-note]',companyAdminSection), roles = $('[data-roles-list]',companyAdminSection), createRole = $('[data-create-role]',companyAdminSection), driverNote = $('[data-driver-access-note]',companyAdminSection), integrations = $('[data-integrations]',companyAdminSection);
-    for (const node of [adminError,adminRefresh,company,recovery]) if(node) sections.get('company').append(node);
-    for (const node of [invite,members,memberNote,roles,createRole]) if(node) sections.get('team').append(node);
+    for (const node of [adminError,company,recovery]) if(node) sections.get('company').append(node);
+    for (const node of [adminRefresh,invite,members,memberNote,roles,createRole]) if(node) sections.get('team').append(node);
     const driverMembers = document.createElement('div'); driverMembers.dataset.driverMembers=''; driverMembers.setAttribute('aria-live','polite');
     const driverIntro=document.createElement('p'); driverIntro.className='rm-driver-flow-note'; driverIntro.textContent='O cadastro do motorista é operacional e não cria uma conta. Para liberar o aplicativo, convide o endereço de email da pessoa, aguarde a ativação e vincule a conta ativa ao cadastro correto.'; sections.get('drivers').append(driverIntro);
     sections.get('drivers').append(driverMembers);
