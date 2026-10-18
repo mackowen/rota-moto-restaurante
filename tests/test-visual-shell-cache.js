@@ -34,7 +34,7 @@ assert.match(worker,/analytics-view\.js\?v=4/u);
 assert.match(html,/app\.js\?v=0247\.2/u);assert.match(worker,/\/app\.js\?v=0247\.2/u);
 assert.match(html,/pilot-views\.css\?v=0140\.3/u);
 assert.match(worker,/pilot-views\.css\?v=0140\.3/u);
-assert.match(worker,/\$\{CACHE_PREFIX\}v50/u);
+assert.match(worker,/\$\{CACHE_PREFIX\}v51/u);
 assert.match(worker,/optionalURLs\.has/u);
 assert.match(worker,/shellURLs\.has\(url\.href\)/u);
 assert.match(worker,/catch \(error\)[\s\S]*await caches\.delete\(CACHE_NAME\)/u);assert.doesNotMatch(worker,/skipWaiting/u);

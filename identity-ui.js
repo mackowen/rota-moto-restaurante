@@ -419,6 +419,40 @@
       form.reset(); $('[data-existing-invitation-result]').textContent = `Convite aceito para a empresa ${result.companyId}. Confirme a troca para ativar o vínculo.`; $('[data-switch] [name=companyId]').value = result.companyId; }
     catch (error) { $('[data-existing-invitation-result]').textContent = message(error); } finally { setBusy(form, false); }
   });
+  function appendPermissionOptions(container, permissions, selectedKeys = []) {
+    const groups = new Map();
+    const groupNames = { company: 'Empresa', members: 'Equipe', orders: 'Pedidos e entregas', integrations: 'Integrações', sync: 'Sincronização', backup: 'Cópias e recuperação', identity: 'Identidade e segurança' };
+    for (const permission of permissions) {
+      const key = String(permission.key || '');
+      const category = key.split('.', 1)[0] || 'other';
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push(permission);
+    }
+    for (const [category, entries] of groups) {
+      const fieldset = document.createElement('fieldset');
+      fieldset.className = 'rm-permission-group';
+      const legend = document.createElement('legend');
+      legend.textContent = groupNames[category] || 'Outros acessos';
+      fieldset.append(legend);
+      const options = document.createElement('div');
+      options.className = 'rm-role-permissions';
+      for (const permission of entries) {
+        const label = document.createElement('label');
+        label.className = 'rm-permission-option';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.value = permission.key;
+        input.checked = selectedKeys.includes(permission.key);
+        input.dataset.permissionKey = permission.key;
+        const description = String(permission.description || '').trim() || 'Permissão específica da empresa';
+        label.append(input, document.createTextNode(` ${description}`));
+        options.append(label);
+      }
+      fieldset.append(options);
+      container.append(fieldset);
+    }
+  }
+
   async function loadAdmin({ appendDrivers = false } = {}) {
     const canReadMembers = current.permissions.includes('members.read');
     const canReadDrivers = current.permissions.includes('sync.pull');
@@ -587,7 +621,7 @@
     assignableRoles.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; roleSelect.append(option); });
     const permissionBox = $('[data-permissions]'); permissionBox.replaceChildren();
     const grantablePermissions = permissionResult.permissions.filter(permission => current.permissions.includes(permission.key));
-    grantablePermissions.forEach(permission => { const label = document.createElement('label'); const input = document.createElement('input'); input.type = 'checkbox'; input.value = permission.key; label.append(input, document.createTextNode(` ${permission.key}`)); permissionBox.append(label); });
+    appendPermissionOptions(permissionBox, grantablePermissions);
     const roleList = $('[data-roles-list]'); roleList.replaceChildren();
     const roleHeading = document.createElement('h3'); roleHeading.textContent = 'Perfis existentes'; roleList.append(roleHeading);
     roles.roles.forEach(role => {
@@ -599,7 +633,7 @@
       const nameLabel = document.createElement('label'); nameLabel.textContent = 'Nome do perfil'; const nameInput = document.createElement('input'); nameInput.name = 'name'; nameInput.required = true; nameInput.maxLength = 100; nameInput.value = role.name; nameLabel.append(nameInput); card.append(nameLabel);
       const fieldset = document.createElement('fieldset'); const legend = document.createElement('legend'); legend.textContent = 'Permissões'; fieldset.append(legend);
       const checks = document.createElement('div'); checks.className = 'rm-role-permissions';
-      grantablePermissions.forEach(permission => { const label = document.createElement('label'); const input = document.createElement('input'); input.type = 'checkbox'; input.value = permission.key; input.checked = role.permissions.includes(permission.key); label.append(input, document.createTextNode(` ${permission.key}`)); checks.append(label); });
+      appendPermissionOptions(checks, grantablePermissions, role.permissions);
       fieldset.append(checks); card.append(fieldset);
       const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Salvar perfil'; const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); card.append(save, feedback);
       card.addEventListener('submit', async event => { event.preventDefault(); if (!card.reportValidity()) return; save.disabled = true;

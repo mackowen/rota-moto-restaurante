@@ -45,7 +45,7 @@ async function fire(listener, event = {}) {
   await fire(healthy.listeners.get('install'));
   assert.equal(healthy.stores.size, 1, 'one complete versioned cache is staged');
   const [cacheName] = [...healthy.stores.keys()];
-  assert.match(cacheName, /v50$/u);
+  assert.match(cacheName, /v51$/u);
   assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('identity-ui.js?v=0247.3')),
     'current shell stages the versioned identity UI');
   assert.equal([...healthy.stores.get(cacheName).keys()].some(url => url.includes('maplibre-gl-worker.js')), false,

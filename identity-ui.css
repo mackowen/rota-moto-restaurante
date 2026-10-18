@@ -112,6 +112,11 @@
 .rm-admin-nav strong,.rm-admin-nav small { display:block; }
 .rm-admin-nav small { margin-top:3px; color:var(--rm-id-muted); }
 .rm-admin-subpage { display:grid; gap:14px; }
+.rm-admin-subpage .rm-permission-group { min-width:0; margin:0; padding:12px; border:1px solid var(--rm-id-border); border-radius:10px; }
+.rm-admin-subpage .rm-permission-group legend { padding-inline:6px; color:var(--rm-id-muted); font-size:.88rem; font-weight:700; }
+.rm-admin-subpage .rm-role-permissions { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:8px; }
+.rm-admin-subpage .rm-permission-option { display:flex; align-items:flex-start; gap:9px; min-height:44px; margin:0; padding:9px; border-radius:8px; background:var(--rm-id-surface); font-weight:500; line-height:1.4; }
+.rm-admin-subpage .rm-permission-option input[type="checkbox"] { flex:0 0 18px; width:18px; height:18px; min-height:18px; margin:2px 0 0; accent-color:var(--rm-id-accent); }
 .rm-admin-subpage > form,
 .rm-admin-subpage > section,
 .rm-admin-subpage > [data-members],

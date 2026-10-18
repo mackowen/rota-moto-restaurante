@@ -7,6 +7,9 @@ const { createAdminRepository } = require('../backend/admin/repository');
 const { ROUTES: ADMIN_ROUTES } = require('../backend/admin/http');
 const { create99FoodService } = require('../99food-service');
 const { createKeetaService } = require('../keeta-service');
+const restaurantUi = fs.readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
+assert.match(restaurantUi, /Situação do iFood atualizada[\s\S]*não testa a conexão externa/u,
+  'a local status endpoint is not presented as proof of a live provider connection');
 
 assert.deepEqual(PROVIDERS.map(provider => provider.key), ['ifood', '99food', 'keeta']);
 const catalog = publicCatalog([{ provider: 'ifood', status: 'active', externalAccount: { displayName: 'Conta', linkStatus: 'confirmed', confirmedAt: '2026-01-01' } }]);

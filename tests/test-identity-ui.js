@@ -11,6 +11,7 @@ const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const html = fs.readFileSync(htmlPath, 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, '..', 'identity-ui.css'), 'utf8');
 assert.match(html, /identity-session-guard\.js[\s\S]*?app\.js/u, 'shared session/CSRF guard loads before the sync client');
+assert.match(html, /<div id="app" inert aria-hidden="true">/u, 'the operational app starts inert before identity/session authorization resolves');
 
 assert.match(source, /autocomplete="current-password"/u);
 assert.match(source, /autocomplete="one-time-code"/u);
@@ -21,7 +22,7 @@ assert.match(source, /CSRF_INVALID: 'A sessão de segurança foi renovada/u, 'a 
 assert.match(source, /if\(mfaStarting\)return/u, 'duplicate enrollment clicks are ignored while the request is pending');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
 assert.match(html, /identity-ui\.js\?v=0247\.3/u, 'identity UI URL changes when the enrollment flow changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v50`[\s\S]*identity-ui\.js\?v=0247\.3/u, 'service worker cache is invalidated with the identity asset');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v51`[\s\S]*identity-ui\.js\?v=0247\.3/u, 'service worker cache is invalidated with the initial authorization gate');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -52,6 +53,7 @@ assert.match(source, /Aguardando vínculo operacional/u, 'an activated identity 
 assert.match(source, /rm-admin-nav[\s\S]*?Empresa[\s\S]*?Equipe[\s\S]*?Motoboys[\s\S]*?Integrações/u, 'company administration is split into separate task pages');
 assert.match(source, /dataset\.providerPage[\s\S]*?dataset\.providerTab/u, 'delivery platform configuration and received orders have separate provider pages');
 assert.match(source, /textContent='Detalhes técnicos'/u, 'protocol capability details stay behind an optional disclosure');
+assert.match(source, /function appendPermissionOptions\([\s\S]*groupNames[\s\S]*permission\.description/u, 'role permissions are grouped and described in plain language while retaining internal keys');
 assert.match(source, /Atualizar situação no RotaMoto/u, 'provider state refresh is distinct from an external connection test');
 assert.match(source, /window\.confirm\('Desconectar esta loja do RotaMoto/u, 'local provider disconnection requires explicit confirmation and explains portal authorization remains separate');
 assert.match(styles, /\.rm-provider-nav/u, 'provider navigation remains touch friendly and horizontally scrollable');
