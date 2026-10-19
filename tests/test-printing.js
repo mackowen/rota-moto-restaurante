@@ -62,27 +62,47 @@ assert.equal(Ticket.normalizeSettings({ copies: 5 }).copies, undefined);
 const root = { innerHTML: '', replaceChildren() { this.innerHTML = ''; }, setAttribute() {} };
 const body = { appendChild(node) { this.child = node; } };
 const doc = { body, getElementById(id) { return id === 'printRoot' ? root : null; }, createElement() { return root; } };
+async function testPrinter() {
 let prints = 0;
-assert.deepEqual(Printer.print('<article>ticket</article>', doc, { print() { prints += 1; } }), { ok: true });
+assert.deepEqual(await Printer.print('<article>ticket</article>', doc, { print() { prints += 1; } }), { ok: true });
 assert.equal(root.innerHTML, '<article>ticket</article>');
 assert.equal(prints, 1);
-assert.deepEqual(Printer.print('x', doc, { print() { throw new Error('browser blocked'); } }), { ok: false, reason: 'blocked' });
+assert.deepEqual(await Printer.print('x', doc, { print() { throw new Error('browser blocked'); } }), { ok: false, reason: 'blocked' });
 assert.equal(root.innerHTML, '');
 Printer.clear(doc);
 assert.equal(root.innerHTML, '');
-assert.deepEqual(Printer.print('x', {}, {}), { ok: false, reason: 'unsupported' });
+assert.deepEqual(await Printer.print('x', {}, {}), { ok: false, reason: 'unsupported' });
+
+let imageDecoded = false;
+const image = { alt: 'Código QR da comanda', complete: false, addEventListener() {}, decode: async () => { await Promise.resolve(); imageDecoded = true; } };
+const imageRoot = { ...root, querySelectorAll() { return [image]; } };
+const imageDoc = { ...doc, getElementById(id) { return id === 'printRoot' ? imageRoot : null; } };
+assert.deepEqual(await Printer.print('<img alt="QR" src="data:image/png;base64,AA==">', imageDoc, {
+  requestAnimationFrame(fn) { fn(); },
+  print() { assert.equal(imageDecoded, true, 'print waits for QR image decode'); prints += 1; }
+}), { ok: true });
+let printAfterBrokenQr = false;
+const brokenImage = { ...image, decode: async () => { throw new Error('invalid image'); } };
+const brokenImageDoc = { ...doc, getElementById(id) { return id === 'printRoot' ? { ...imageRoot, querySelectorAll() { return [brokenImage]; } } : null; } };
+assert.deepEqual(await Printer.print('<img alt="Código QR da comanda" src="invalid">', brokenImageDoc, {
+  requestAnimationFrame(fn) { fn(); }, print() { printAfterBrokenQr = true; }
+}), { ok: false, reason: 'blocked' });
+assert.equal(printAfterBrokenQr, false, 'failed required QR prevents an empty print');
 
 let afterPrint;
 let clearedTimer = false;
 const browserWindow = {
   print() {},
+  requestAnimationFrame(fn) { fn(); },
   setTimeout(fn) { this.cleanup = fn; return 7; },
   clearTimeout(id) { clearedTimer = id === 7; },
   addEventListener(name, fn) { if (name === 'afterprint') afterPrint = fn; }
 };
-assert.deepEqual(Printer.print('<article>private ticket</article>', doc, browserWindow), { ok: true });
+assert.deepEqual(await Printer.print('<article>private ticket</article>', doc, browserWindow), { ok: true });
 afterPrint();
 assert.equal(clearedTimer, true);
 assert.equal(root.innerHTML, '');
 
-console.log('printing tests passed');
+}
+
+testPrinter().then(() => console.log('printing tests passed')).catch(error => { console.error(error); process.exitCode = 1; });
