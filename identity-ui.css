@@ -159,19 +159,18 @@
 
 .rm-identity-panel {
   position: fixed;
-  inset-block: 0;
-  inset-inline-end: 0;
+  inset: 0;
   z-index: 2302;
   display: flex;
   flex-direction: column;
-  width: min(480px, 100vw);
+  width: 100vw;
   max-height: 100vh;
   max-height: 100dvh;
   overflow: hidden;
-  border-inline-start: 1px solid var(--rm-id-border);
+  border: 0;
   background: var(--rm-id-surface);
   color: var(--rm-id-text);
-  box-shadow: var(--rm-id-shadow);
+  box-shadow: none;
 }
 
 body[data-mfa-locked="true"] .rm-identity-panel {
@@ -464,3 +463,26 @@ body[data-mfa-locked="true"] .rm-identity-panel {
   .rm-identity-content,
   .rm-identity-content * { scroll-behavior: auto; transition: none; animation: none; }
 }
+
+/* Authentication owns the full viewport until the server confirms the session. */
+.rm-identity-panel { align-items: stretch; }
+.rm-identity-content { width: min(100%, 520px); margin-inline: auto; }
+.rm-identity-content > form[data-login] { width: 100%; }
+.rm-identity-content > .rm-privacy { margin: 0; color: var(--rm-id-muted); font-size: .82rem; line-height: 1.5; }
+.rm-account-settings-page { width: min(100%, 960px); margin: 0 auto; padding: 0 0 max(24px, env(safe-area-inset-bottom)); color: var(--rm-id-text); }
+.rm-account-settings-page[hidden] { display: none !important; }
+.rm-account-settings-page > header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:8px 0 16px; border-bottom:1px solid var(--rm-id-border); }
+.rm-account-settings-page > header h2,.rm-account-settings-page > header p { margin:0; }
+.rm-account-settings-page > header p { margin-top:4px; color:var(--rm-id-muted); }
+.rm-account-settings-page > header button { min-height:44px; padding:8px 12px; border:1px solid var(--rm-id-border); border-radius:10px; background:var(--rm-id-surface); color:var(--rm-id-text); }
+.rm-account-settings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:12px; padding-top:16px; }
+.rm-account-settings-card { display:grid; align-content:start; gap:12px; min-width:0; padding:16px; border:1px solid var(--rm-id-border); border-radius:14px; background:var(--rm-id-surface); }
+.rm-account-settings-card h3 { margin:0; font-size:1rem; }
+.rm-account-settings-page button { min-height:44px; max-width:100%; padding:9px 13px; border:1px solid var(--rm-id-border); border-radius:10px; background:var(--rm-id-surface); color:var(--rm-id-text); font:inherit; font-weight:650; cursor:pointer; }
+.rm-account-settings-page button:focus-visible { outline:3px solid var(--rm-id-focus,#2563eb); outline-offset:2px; }
+.rm-account-settings-page button:disabled { opacity:.6; cursor:not-allowed; }
+.rm-account-settings-page .rm-account-summary { padding:0; border:0; }
+.rm-account-settings-page .rm-mfa-only > header button,.rm-account-settings-page.rm-mfa-only > .rm-account-settings-grid > .rm-account-settings-card:not(:nth-child(2)) { display:none; }
+.rm-account-settings-page.rm-mfa-only { width:min(100%,520px); }
+.rm-account-settings-page.rm-mfa-only .rm-account-settings-grid { display:block; }
+@media(max-width:600px) { .rm-account-settings-page > header { align-items:flex-start; flex-direction:column; } .rm-account-settings-grid { grid-template-columns:minmax(0,1fr); } }

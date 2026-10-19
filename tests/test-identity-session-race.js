@@ -37,12 +37,10 @@ async function run() {
   });
 
   guard.invalidate();
-  offlineMode = true;
-  gated = false;
   releaseSessionRead({ status: 401 });
   await restore;
-  assert.equal(offlineMode, true, 'the explicit local-only choice remains selected');
-  assert.equal(gated, false, 'a delayed anonymous 401 cannot gate the local application');
+  assert.equal(offlineMode, false, 'an unauthenticated browser cannot enter an operational local mode');
+  assert.equal(gated, true, 'a delayed anonymous 401 cannot release the application gate');
 
   const nextVersion = guard.capture();
   currentSession = { activeCompanyId: 'authorized-session' };
@@ -54,7 +52,8 @@ async function run() {
 
   const source = fs.readFileSync(path.join(__dirname, '..', 'identity-ui.js'), 'utf8');
   assert.match(source, /const readVersion = sessionReadGuard\.capture\(\)/u);
-  assert.match(source, /sessionReadGuard\.invalidate\(\); offlineMode = true/u);
+  assert.match(source, /sessionReadGuard\.invalidate\(\);\s*csrf = null/u);
+  assert.match(source, /window\.dispatchEvent\(new CustomEvent\(session && !mfaLocked \? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'\)\)/u);
   assert.match(source, /const hadAuthenticatedSession = Boolean\(current\)/u);
   assert.match(source, /sessionRestoreErrorMessage\(error, hadAuthenticatedSession, message\)/u);
   console.log('identity local-choice/session race regression: OK');

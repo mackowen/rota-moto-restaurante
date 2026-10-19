@@ -5,10 +5,7 @@
   let csrf = null;
   let current = null;
   let companySnapshot = null;
-  const LOCAL_MODE_KEY = 'rotamoto.restaurante.local-mode.v1';
-  function readLocalMode() { try { return localStorage.getItem(LOCAL_MODE_KEY) === '1'; } catch (_) { return false; } }
-  function writeLocalMode(enabled) { try { enabled ? localStorage.setItem(LOCAL_MODE_KEY, '1') : localStorage.removeItem(LOCAL_MODE_KEY); } catch (_) { /* O modo local continua disponível nesta página. */ } }
-  let offlineMode = readLocalMode();
+  let offlineMode = false;
   let invitationKind = 'membership_invitation';
   const sessionReadGuard = window.RotaMotoSessionGuard.createSessionReadGuard();
   let working = false;
@@ -46,7 +43,7 @@
   const host = document.createElement('div');
   host.id = 'rmIdentityRoot';
   host.innerHTML = `<button type="button" class="rm-account-trigger" aria-label="Abrir conta e acesso" aria-controls="rmIdentityPanel" aria-expanded="false">Conta</button>
-    <section id="rmIdentityPanel" class="rm-identity-panel" role="dialog" aria-modal="true" aria-labelledby="rmIdentityTitle" hidden>
+    <section id="rmIdentityPanel" class="rm-identity-panel" role="main" aria-labelledby="rmIdentityTitle" hidden>
       <header><div><strong id="rmIdentityTitle">Conta RotaMoto</strong><small data-identity-status>Verificando sua conta…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
       <div class="rm-identity-content">
         <form data-login novalidate><h2>Entrar</h2><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label>
@@ -55,8 +52,8 @@
           <label>Código da empresa<input name="companyId" autocomplete="off" spellcheck="false" aria-describedby="companyHelp" required></label>
           <small id="companyHelp">Use o código recebido no convite. O servidor confirma o vínculo da conta.</small>
           <button class="rm-primary" type="submit">Entrar</button><p data-login-error role="alert" aria-live="polite"></p></form>
-        <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-company-name>Empresa ativa</span><span>Código: <code data-company-id></code></span></div>
-          <section data-mfa hidden><h3>Verificação em duas etapas</h3><p data-mfa-status role="status"></p>
+        <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-company-name>Empresa ativa</span><span data-company-code-row>Identificador da empresa: <code data-company-id></code> <button type="button" data-copy-company-id>Copiar</button></span></div>
+          <section data-mfa hidden><p data-mfa-status role="status"></p>
             <p data-mfa-start-status role="alert" aria-live="assertive" aria-atomic="true"></p><button type="button" data-mfa-start>Configurar verificação em duas etapas</button>
           <form data-mfa-confirm hidden><p>Escaneie o QR Code ou informe a chave manual no aplicativo autenticador. Digite o código atual para confirmar.</p><canvas data-mfa-qr width="208" height="208" role="img" aria-label="QR Code para configurar autenticação em duas etapas"></canvas><label>Chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar código</button><p data-mfa-error role="alert"></p></form>
             <section data-recovery-codes hidden><h4>Códigos de recuperação</h4><p>Guarde-os fora deste navegador. Cada código só pode ser usado uma vez.</p><pre data-recovery-code-list></pre><button type="button" data-recovery-codes-dismiss>Ocultar códigos</button></section>
@@ -74,15 +71,34 @@
           <form data-invite><h3>Convidar funcionário ou motoboy</h3><p>O convite cria ou associa uma conta RotaMoto pelo email. Para habilitar entregas, a pessoa deve ativar a conta e depois ser vinculada a um cadastro de motorista desta empresa. Uma conta existente pode aceitar o convite sem criar outra conta.</p><label>Email<input name="email" type="email" required maxlength="320"></label><label>Perfil de acesso<select name="roleId" required></select></label><button type="submit">Enviar convite</button><p role="status" data-invite-result></p></form>
           <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><div data-members aria-live="polite"></div><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><p data-driver-access-note role="status" hidden>Para listar motoristas, sua sessão precisa da permissão de leitura de sync. A desassociação continua disponível para vínculos existentes.</p><section data-roles-list><h3>Perfis existentes</h3></section><form data-create-role><h3>Novo perfil</h3><label>Identificador<input name="key" required pattern="[a-z][a-z0-9_-]{1,63}" maxlength="64"></label><label>Nome<input name="name" required maxlength="100"></label><fieldset><legend>Permissões</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form>
         </section>
-        <button type="button" data-offline class="rm-offline">Continuar somente com dados locais</button>
-        <p class="rm-privacy">Em produção, sua senha e seus códigos são enviados ao servidor por uma conexão segura. Eles não ficam salvos neste aparelho.</p>
+        <p class="rm-privacy">Use apenas seu email, senha e códigos de verificação. Não compartilhe esses dados.</p>
       </div>
     </section>`;
   document.body.append(host);
   const $ = (selector, root = host) => root.querySelector(selector) || (root === host ? document.querySelector(selector) : null);
   const panel = $('#rmIdentityPanel');
   const trigger = $('.rm-account-trigger');
+  if (trigger) trigger.hidden = true;
   const companyAdminSection = $('[data-admin]');
+  const authenticatedContent = $('[data-authenticated]');
+  const accountPage = document.createElement('section');
+  accountPage.id = 'rmAccountSettingsPage';
+  accountPage.className = 'rm-account-settings-page';
+  accountPage.hidden = true;
+  accountPage.innerHTML = '<header><div><h2>Conta e segurança</h2><p>Gerencie sua identidade, acesso e empresas vinculadas.</p></div></header><div class="rm-account-settings-grid"><section class="rm-account-settings-card"><h3>Minha conta</h3></section><section class="rm-account-settings-card"><h3>Verificação em duas etapas</h3></section><section class="rm-account-settings-card"><h3>Senha e acesso</h3></section><section class="rm-account-settings-card"><h3>Empresas vinculadas e convites</h3></section><section class="rm-account-settings-card"><h3>Recuperação de acesso</h3></section></div>';
+  const accountCards = accountPage.querySelectorAll('.rm-account-settings-card');
+  const accountSummary = $('[data-account-summary]') || $('.rm-account-summary');
+  if (accountSummary) { accountSummary.dataset.accountSummary = ''; accountCards[0].append(accountSummary); }
+  const mfaSection = $('[data-mfa]'); if (mfaSection) accountCards[1].append(mfaSection);
+  const switchForm = $('[data-switch]'); const invitationForm = $('[data-accept-existing]');
+  if (switchForm) accountCards[3].append(switchForm);
+  if (invitationForm) accountCards[3].append(invitationForm);
+  const recoveryDetails = $('[data-recovery]'); if (recoveryDetails) accountCards[4].append(recoveryDetails);
+  const logoutButton = $('[data-logout]'); const accountError = $('[data-account-error]');
+  if (logoutButton) accountCards[2].append(logoutButton);
+  if (accountError) accountCards[2].append(accountError);
+  authenticatedContent?.remove();
+  host.append(accountPage);
   const adminPage = document.createElement('section');
   adminPage.id = 'rmCompanyAdminPage';
   adminPage.className = 'rm-company-admin-page';
@@ -228,10 +244,9 @@
   function setBusy(form, busy) { form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); }
   function showSession(session) {
     current = session;
-    if (session) { offlineMode = false; writeLocalMode(false); }
-    else offlineMode = readLocalMode();
-    $('[data-login]').hidden = Boolean(session); $('[data-authenticated]').hidden = !session;
-    $('[data-offline]').hidden = Boolean(session); $('[data-recovery]').hidden = Boolean(session);
+    offlineMode = false;
+    $('[data-login]').hidden = Boolean(session);
+    $('[data-recovery]').hidden = Boolean(session);
     $('[data-invitation]').hidden = Boolean(session);
     const inviteForm = $('[data-invite]');
     const membersList = $('[data-members]');
@@ -240,20 +255,23 @@
     if (membersList) membersList.hidden = !session?.permissions?.includes('members.read');
     if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
     mfaLocked = Boolean(session && (session.mfaEnrollmentRequired || (session.mfaRequired && !session.mfaVerified)));
+    $('[data-login]').hidden = Boolean(session);
+    if (accountPage) { accountPage.classList.toggle('rm-mfa-only', mfaLocked); if (mfaLocked) { panel.append(accountPage); accountPage.hidden = false; } else if (accountPage.parentElement === panel) { host.append(accountPage); accountPage.hidden = true; } else accountPage.hidden = !session; }
+    if (recoveryDetails) { if (session && !mfaLocked) { accountCards[4].append(recoveryDetails); recoveryDetails.hidden = false; } else { $('.rm-identity-content').append(recoveryDetails); recoveryDetails.hidden = Boolean(session); } }
     const appRoot = applicationRoot();
-    if (appRoot) { appRoot.inert = mfaLocked || (!session && !offlineMode); appRoot.setAttribute('aria-hidden', String(mfaLocked || (!session && !offlineMode))); }
+    if (appRoot) { const authorized = Boolean(session && !mfaLocked); appRoot.hidden = !authorized; appRoot.inert = !authorized; appRoot.setAttribute('aria-hidden', String(!authorized)); }
+    window.dispatchEvent(new CustomEvent(session && !mfaLocked ? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'));
     document.body.dataset.mfaLocked = String(mfaLocked);
     host.dataset.mfaLocked = String(mfaLocked);
     host.dataset.gated = String(!session && !offlineMode);
     adminPage.hidden = true;
     platformAdminPage.hidden=true;
-    $('[data-close]').hidden = mfaLocked;
+    $('[data-close]').hidden = !session || mfaLocked;
     $('[data-accept-existing]').hidden = mfaLocked;
     $('[data-switch]').hidden = mfaLocked;
-    $('[data-offline]').hidden = mfaLocked || Boolean(session);
-    $('[data-recovery]').hidden = mfaLocked || Boolean(session);
+    $('[data-recovery]').hidden = Boolean(session) && !mfaLocked;
     $('[data-invitation]').hidden = mfaLocked || Boolean(session);
-    trigger.hidden = mfaLocked;
+    trigger.hidden = true;
     placeTrigger();
     updateTriggerLabel();
     if (session) {
@@ -274,7 +292,7 @@
   function expireSession() {
     if (!current) return;
     sessionReadGuard.invalidate();
-    csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; offlineMode = false; writeLocalMode(false);
+    csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; offlineMode = false;
     Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {});
     showSession(null); setOpen(true);
     $('[data-login-error]').textContent = 'Sua sessão expirou ou deixou de estar válida. Entre novamente.';
@@ -348,7 +366,12 @@
   $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});clearMfaEnrollment();$('[data-mfa-confirm]').hidden=true;$('[data-mfa-status]').textContent='Verificação em duas etapas configurada. A chave foi removida desta tela.';$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore()}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
   $('[data-recovery-codes-dismiss]').addEventListener('click',()=>{$('[data-recovery-code-list]').textContent='';$('[data-recovery-codes]').hidden=true});
   $('[data-mfa-regenerate]').addEventListener('click',async event=>{const button=event.currentTarget;if(working)return;working=true;button.disabled=true;try{const result=await request('/identity/mfa/recovery-codes',{method:'POST',body:'{}'});$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{working=false;button.disabled=false}});
-  $('.rm-account-trigger').addEventListener('click', () => setOpen(panel.hidden));
+  $('.rm-account-trigger')?.addEventListener('click', () => {});
+  document.addEventListener('rotamoto:settings-page', event => {
+    if (event.detail?.section === 'seguranca') { if (!current || mfaLocked) return; const mount=document.querySelector('#rmAccountSettingsMount'); if(mount){ mount.append(accountPage); accountPage.hidden=false; } panel.hidden=true; return; }
+    if (!event.detail?.section) { accountPage.hidden=true; host.append(accountPage); }
+  });
+  $('[data-copy-company-id]').addEventListener('click', async event => { try { await navigator.clipboard.writeText(current?.activeCompanyId || ''); event.currentTarget.textContent='Copiado'; setTimeout(()=>{event.currentTarget.textContent='Copiar'},1600); } catch (_) { $('[data-account-error]').textContent='Não foi possível copiar o identificador neste navegador.'; } });
   $('[data-close]').addEventListener('click', () => { if (current || offlineMode) setOpen(false); });
   $('[data-login]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
@@ -365,7 +388,6 @@
     } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } $('[data-login-error]').textContent = message(error); setStatus('Não foi possível autenticar'); }
     finally { working = false; setBusy(form, false); }
   });
-  $('[data-offline]').addEventListener('click', () => { sessionReadGuard.invalidate(); offlineMode = true; writeLocalMode(true); updateTriggerLabel(); const appRoot = document.querySelector('#app'); if (appRoot) { appRoot.inert = false; appRoot.setAttribute('aria-hidden', 'false'); } host.dataset.gated = 'false'; setStatus('Sem conta do servidor · dados deste aparelho'); setOpen(false); });
   $('[data-switch]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
     working = true; setBusy(form, true); $('[data-switch-error]').textContent = '';
@@ -376,9 +398,9 @@
   $('[data-logout]').addEventListener('click', async () => {
     if (working) return; working = true;
     sessionReadGuard.invalidate();
-    try { await request('/identity/logout', { method: 'POST', body: '{}' }); csrf = null; current = null; await window.RotaMotoSync?.clearSession?.().catch(() => {}); showSession(null); setOpen(true); }
-    catch (error) { $('[data-account-error]').textContent = message(error); }
-    finally { working = false; }
+    try { await request('/identity/logout', { method: 'POST', body: '{}' }); sessionReadGuard.invalidate(); csrf = null; current = null; showSession(null); setOpen(true); Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {}).finally(() => { if (!current) setOpen(true); }); }
+    catch (error) { const feedback = $('[data-account-error]'); if (feedback) feedback.textContent = message(error); }
+    finally { working = false; if (!current) { panel.hidden = false; setOpen(true); } }
   });
   $('[data-recovery-request]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return;
@@ -789,8 +811,8 @@
   });
   window.addEventListener('online', async () => { if (!current && !offlineMode) { const session = await restore(); if (session) await syncAfterAuthentication(); } else if (current) await syncAfterAuthentication(); });
   window.addEventListener('rotamoto:session-expired', expireSession);
-  const initialAppRoot = document.querySelector('#app'); if (initialAppRoot) { initialAppRoot.inert = true; initialAppRoot.setAttribute('aria-hidden', 'true'); }
-  host.dataset.gated = String(!offlineMode); trigger.hidden = false; updateTriggerLabel(); setOpen(!offlineMode); restore().then(async session => { if (session) { if (mfaLocked) setOpen(true); else { setOpen(false); await syncAfterAuthentication(); } } });
+  const initialAppRoot = document.querySelector('#app'); if (initialAppRoot) { initialAppRoot.hidden = true; initialAppRoot.inert = true; initialAppRoot.setAttribute('aria-hidden', 'true'); }
+  offlineMode = false; host.dataset.gated = 'true'; trigger.hidden = true; updateTriggerLabel(); setOpen(true); restore().then(async session => { if (session) { if (mfaLocked) setOpen(true); else { panel.hidden = true; await syncAfterAuthentication(); } } else { panel.hidden = false; setOpen(true); } });
   const appRoot = document.querySelector('#app');
   if (appRoot) new MutationObserver(placeTrigger).observe(appRoot, { childList: true, subtree: true });
   window.RotaMotoIdentity = Object.freeze({ restore, getSession: () => current, isOfflineMode: () => offlineMode });

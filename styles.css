@@ -879,6 +879,17 @@ button.analytics-bar-row{width:100%;border:0;background:transparent;cursor:point
 @media(min-width:1024px){.report-dashboard{gap:22px}.report-filter-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.report-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.report-metric-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.report-driver-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.report-section-nav{top:0}.report-filters-card{padding:19px}.report-card{padding:18px}}
 @media(max-width:430px){.report-intro{align-items:stretch;flex-direction:column;gap:10px}.report-freshness{max-width:none}.report-filters-heading{align-items:stretch;flex-direction:column}.report-filters-heading .btn{align-self:flex-start}.report-filter-grid{grid-template-columns:minmax(0,1fr)}.report-export-card{align-items:stretch;flex-direction:column}.report-export-card .btn{width:100%}.report-section-nav{margin-inline:-4px;padding-inline:4px}.analytics-bar-row{grid-template-columns:minmax(64px,auto) minmax(24px,1fr) auto;gap:6px}}
 
-/* Compact selector keeps Ajustes usable on phone-sized screens. */
-@media(max-width:800px){.settings-nav{display:none!important}.settings-mobile-select{display:grid;gap:6px;margin:0 0 4px;font-size:12px;font-weight:700}.settings-mobile-select select{width:100%;min-height:44px}}
-@media(min-width:801px){.settings-mobile-select{display:none}}
+
+.settings-layout--cards,.settings-layout--page { display:block; }
+.settings-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:12px; }
+.settings-card { display:flex; align-items:flex-start; gap:12px; min-width:0; min-height:112px; padding:16px; border:1px solid var(--border); border-radius:14px; background:var(--surface); color:var(--text); text-align:left; cursor:pointer; transition:border-color .15s ease,background-color .15s ease; }
+.settings-card:hover,.settings-card:focus-visible { border-color:var(--accent); background:var(--surface2); }
+.settings-card:focus-visible,.settings-back:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+.settings-card-icon { display:grid; flex:0 0 40px; width:40px; height:40px; place-items:center; border-radius:12px; background:var(--accent-bg,var(--surface2)); color:var(--accent); }
+.settings-card-icon svg { width:21px; height:21px; }
+.settings-card-copy { display:grid; gap:5px; min-width:0; }
+.settings-card-copy b { font-size:.95rem; line-height:1.3; }
+.settings-card-copy small { color:var(--muted); font-size:.78rem; line-height:1.4; }
+.settings-page { min-width:0; }
+.settings-back { min-height:44px; margin-bottom:12px; padding:8px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text); font:inherit; cursor:pointer; }
+@media(max-width:520px) { .settings-cards { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .settings-card { min-height:120px; padding:11px; gap:8px; } .settings-card-icon { flex-basis:34px; width:34px; height:34px; } .settings-card-copy b { font-size:.84rem; } .settings-card-copy small { font-size:.7rem; } }

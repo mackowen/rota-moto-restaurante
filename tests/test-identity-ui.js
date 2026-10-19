@@ -10,8 +10,9 @@ const source = fs.readFileSync(uiPath, 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const html = fs.readFileSync(htmlPath, 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, '..', 'identity-ui.css'), 'utf8');
+const appStyles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 assert.match(html, /identity-session-guard\.js[\s\S]*?app\.js/u, 'shared session/CSRF guard loads before the sync client');
-assert.match(html, /<div id="app" inert aria-hidden="true">/u, 'the operational app starts inert before identity/session authorization resolves');
+assert.match(html, /<div id="app" hidden inert aria-hidden="true">/u, 'the operational app starts inert before identity/session authorization resolves');
 
 assert.match(source, /autocomplete="current-password"/u);
 assert.match(source, /autocomplete="one-time-code"/u);
@@ -38,14 +39,15 @@ assert.match(appSource, /if\(generation!==companyProfileLoadGeneration\|\|compan
 assert.match(source, /root\.querySelector\(selector\) \|\| \(root === host \? document\.querySelector\(selector\) : null\)/u, 'identity operations continue resolving controls after their page moves into the application shell');
 assert.match(source, /rotamoto:settings-page/u, 'administration navigation uses the application settings route');
 assert.match(source, /document\.addEventListener\('rotamoto:settings-page',[\s\S]*?loadAdmin\(\)/u, 'each company settings page loads its server snapshot from the single navigation');
-assert.match(appSource, /data-settings-select aria-label="Escolha uma configuração"/u, 'settings expose a compact mobile category selector');
-assert.match(appSource, /data-settings-select.*?addEventListener\('change'/u, 'mobile settings selector changes the active section');
+assert.match(appSource, /settings-cards[\s\S]*?settings-card/u, 'all Ajustes categories render as selectable cards on mobile and desktop');
+assert.match(appSource, /data-settings-back/u, 'each Ajustes category page has a clear return to the card grid');
+assert.match(appStyles, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/u, 'the mobile Ajustes card grid uses two columns when space permits');
 assert.doesNotMatch(source, /adminParent = app\?\.querySelector\('\.top-actions'\)/u, 'company administration is never injected into the top bar');
 assert.match(styles, /#rmCompanyAdminPage,\s*#rmPlatformAdminPage \{\s*position: static/u, 'administrative pages stay in normal Settings document flow');
 assert.match(styles, /\.rm-admin-subpage\[hidden\] \{ display:none !important; \}/u, 'inactive administrative pages respect their hidden state despite grid layout');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0256a\.1/u, 'identity UI URL changes when the administration interface changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v60`[\s\S]*identity-ui\.js\?v=0256a\.1/u, 'service worker cache is invalidated with the current administration UI');
+assert.match(html, /identity-ui\.js\?v=0256b\.2/u, 'identity UI URL changes when the administration interface changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v62`[\s\S]*identity-ui\.js\?v=0256b\.2/u, 'service worker cache is invalidated with the current administration UI');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -88,10 +90,14 @@ assert.match(source, /rotamoto:settings-page/u, 'company administration is reach
 assert.doesNotMatch(source, /data-sync/u, 'the account panel contains no operational synchronization action');
 assert.match(source, /adminPage\.hidden = true/u, 'company administration starts hidden and is revealed only inside its authorized Settings mount');
 assert.match(source, /const canManageCompany=Boolean\(current&&appKind==='restaurante'&&!mfaLocked&&current\.permissions\?\.includes\('company\.manage'\)\)/u, 'company administration requires a live authorized session and is withheld during MFA');
-assert.match(source, /role="dialog" aria-modal="true"/u, 'account access is exposed as a modal dialog');
+assert.match(source, /role="main" aria-labelledby="rmIdentityTitle"/u, 'unauthenticated access is a dedicated full-page authentication screen');
+assert.match(source, /rotamoto:auth-ready[\s\S]*rotamoto:auth-revoked/u, 'the app mounts only after a valid session and unmounts when authorization is lost');
+assert.match(appSource, /window\.addEventListener\('rotamoto:auth-ready',startAuthenticatedApp\)/u, 'operational bootstrap waits for identity authorization');
+assert.match(appSource, /window\.addEventListener\('rotamoto:auth-revoked',[\s\S]*root\.replaceChildren\(\)/u, 'logout and expiry remove operational UI from the DOM');
+assert.match(source, /rmAccountSettingsPage/u, 'account management has a dedicated page mounted under Ajustes');
 assert.match(source, /visibleControls\(\)/u, 'account dialog keeps keyboard focus within visible controls');
 assert.match(source, /driverCursor/u, 'driver linking can navigate a paginated driver list');
-assert.match(source, /app\.inert = open \|\| gated/u, 'opening the account dialog makes the background inert');
+assert.match(source, /app\.inert = open \|\| gated/u, 'authentication keeps the application inaccessible until authorized');
 assert.match(source, /mfaLocked = Boolean\(session && \(session\.mfaEnrollmentRequired \|\| \(session\.mfaRequired && !session\.mfaVerified\)\)\)/u,
   'an enrollment-pending or unverified required-MFA session locks the application root');
 assert.match(source, /if \(mfaLocked\) open = true/u, 'closing the account dialog cannot dismiss mandatory MFA setup');
@@ -106,14 +112,14 @@ assert.match(source, /Última sincronização:|conexão ainda não está ativa/u
 assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');
 assert.match(source, /function expireSession/u, 'an HTTP 401 also clears the authenticated UI state');
 assert.match(source, /response\.status === 401 && path !== '\/identity\/session'\) expireSession\(\)/u, 'session restoration applies its own generation check before changing identity');
-assert.match(source, /sessionReadGuard\.invalidate\(\); offlineMode = true/u, 'explicit local mode invalidates older session reads');
-assert.match(source, /LOCAL_MODE_KEY = 'rotamoto\.restaurante\.local-mode\.v1'/u, 'local mode has a non-authentication preference key scoped to this app');
-assert.match(source, /writeLocalMode\(true\)/u, 'explicit local mode survives a reload');
-assert.match(source, /if \(session\) \{ offlineMode = false; writeLocalMode\(false\); \}[\s\S]{0,60}else offlineMode = readLocalMode\(\)/u, 'restored local preference never creates an authenticated session');
+assert.doesNotMatch(source, /data-offline/u, 'unauthenticated users cannot bypass identity through local mode');
+
+assert.match(source, /offlineMode = false;/u, 'local mode cannot authorize an operational session');
+assert.doesNotMatch(source, /localStorage\.(?:removeItem|setItem)\([^)]*local-mode/u, 'session changes do not mutate persisted local-mode preferences');
 assert.match(source, /if \(!sessionReadGuard\.isCurrent\(readVersion\)\) return current;/u, 'late session results cannot replace newer user intent');
 assert.match(html, /identity-session-guard\.js[\s\S]{0,300}identity-ui\.js/u, 'session read guard loads before identity UI');
 assert.match(source, /clearSession/u, 'logout clears in-memory sync credentials');
-assert.match(source, /somente com dados locais/iu, 'offline mode is explicitly distinct from authenticated access');
+
 assert.doesNotMatch(source, /localStorage\.(?:setItem|getItem)\(['"](?:session|csrf|password|token)/iu);
 assert.match(html, /identity-ui\.css/u);
 assert.match(html, /identity-ui\.js/u);
