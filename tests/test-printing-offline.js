@@ -47,11 +47,11 @@ let installed;
 handlers.install({ waitUntil(promise) { installed = promise; } });
 installed.then(async () => {
   assert.ok(added.includes('/index.html'));
-  assert.ok(added.includes('/ticket-renderer.js?v=1'));
+  assert.ok(added.includes('/ticket-renderer.js?v=0256d1.1'));
   assert.ok(added.includes('/browser-printer-provider.js?v=1'));
-  assert.ok(added.includes('/app.js?v=0256d.1'));
-  assert.ok(added.includes('/design-system.css?v=0256d.1'));
-  assert.ok(added.includes('/identity-ui.js?v=0256d.1'));
+  assert.ok(added.includes('/app.js?v=0256d1.1'));
+  assert.ok(added.includes('/design-system.css?v=0256d1.1'));
+  assert.ok(added.includes('/identity-ui.js?v=0256d1.1'));
   assert.ok(added.includes('/server-update-coordinator.js?v=0253.1'));
   assert.ok(!added.includes('/vendor/maplibre/maplibre-gl-worker.js?v=0139.1'), 'missing optional map asset does not prevent app shell installation');
   assert.match(html, /serviceWorker\.register\('\/sw\.js'/);
@@ -59,7 +59,7 @@ installed.then(async () => {
   let activated;
   handlers.activate({ waitUntil(promise) { activated = promise; } });
   await activated;
-  assert.deepEqual(deleted, ['rotamoto-restaurante-shell-v72', 'rotamoto-restaurante-shell-old']);
+  assert.deepEqual(deleted, ['rotamoto-restaurante-shell-v73', 'rotamoto-restaurante-shell-old']);
 
   let apiResponded = false;
   handlers.fetch({ request: { method: 'GET', url: 'http://localhost:8788/api/identity/session', mode: 'cors' }, respondWith() { apiResponded = true; } });
@@ -71,7 +71,7 @@ installed.then(async () => {
   assert.equal(await appResponse, 'cached:/index.html', 'offline navigation falls back to the app shell');
 
   let assetResponse;
-  handlers.fetch({ request: { method: 'GET', url: 'http://localhost:8788/ticket-renderer.js?v=1', mode: 'no-cors' }, respondWith(promise) { assetResponse = promise; } });
+  handlers.fetch({ request: { method: 'GET', url: 'http://localhost:8788/ticket-renderer.js?v=0256d1.1', mode: 'no-cors' }, respondWith(promise) { assetResponse = promise; } });
   assert.equal(await assetResponse, 'cached:/ticket-renderer.js', 'ticket renderer is served from the offline shell cache');
   console.log('Restaurant print offline shell and API cache exclusion passed');
 }).catch(error => { console.error(error); process.exitCode = 1; });

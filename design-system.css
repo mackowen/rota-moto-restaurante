@@ -16,6 +16,8 @@ body{font-family:var(--font-ui);background:var(--canvas);color:var(--text-primar
 .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .btn,.iconbtn,.select,.input,.textarea{min-height:var(--control-h);border-radius:11px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 15px;white-space:normal;line-height:1.2;font-weight:700}
+.help-context-link .textBtn{min-height:40px;padding:7px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--accent);font:inherit;font-weight:700;cursor:pointer}
+.help-context-link .textBtn:hover,.help-context-link .textBtn:focus-visible{background:var(--surface2);border-color:var(--accent)}
 .btn span,.btn svg{flex:none}.btn:focus-visible,.iconbtn:focus-visible,.nav-item:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:2px}
 .card,.kpi.card{background:var(--surface);border:1px solid var(--border-subtle);border-radius:16px;box-shadow:var(--elevation-1)}
 .card{padding:20px}.grid{gap:16px}.command-kpis{grid-template-columns:repeat(6,minmax(0,1fr));margin:18px 0 20px}

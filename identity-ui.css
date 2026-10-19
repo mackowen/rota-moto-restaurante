@@ -135,7 +135,7 @@
 .rm-admin-subpage .rm-role-card details { margin-top:10px; }
 .rm-admin-subpage .rm-role-card > strong { font-size:1rem; }
 .rm-admin-subpage .rm-role-card input,.rm-admin-subpage .rm-role-card select { box-sizing:border-box; }
-.rm-admin-subpage .rm-permission-group { min-width:0; margin:0; padding:12px; border:1px solid var(--rm-id-border); border-radius:10px; }
+.rm-admin-subpage .rm-permission-group { min-width:0; margin:0; padding:12px 0 0; border:0; border-top:1px solid var(--rm-id-border); border-radius:0; }
 .rm-admin-subpage .rm-permission-group legend { padding-inline:6px; color:var(--rm-id-muted); font-size:.88rem; font-weight:700; }
 .rm-admin-subpage .rm-role-permissions { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:8px; }
 .rm-admin-subpage .rm-permission-option { display:flex; align-items:flex-start; gap:9px; min-height:44px; margin:0; padding:9px; border-radius:8px; background:var(--rm-id-surface); font-weight:500; line-height:1.4; }

@@ -46,8 +46,8 @@ assert.doesNotMatch(source, /adminParent = app\?\.querySelector\('\.top-actions'
 assert.match(styles, /#rmCompanyAdminPage,\s*#rmPlatformAdminPage \{\s*position: static/u, 'administrative pages stay in normal Settings document flow');
 assert.match(styles, /\.rm-admin-subpage\[hidden\] \{ display:none !important; \}/u, 'inactive administrative pages respect their hidden state despite grid layout');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0256d\.1/u, 'identity UI URL changes when the account page lifecycle changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v72`[\s\S]*identity-ui\.js\?v=0256d\.1/u, 'service worker cache is invalidated with the current account page lifecycle');
+assert.match(html, /identity-ui\.js\?v=0256d1\.1/u, 'identity UI URL changes when the account page lifecycle changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v73`[\s\S]*identity-ui\.js\?v=0256d1\.1/u, 'service worker cache is invalidated with the current account page lifecycle');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -106,6 +106,7 @@ assert.match(source, /mfaLocked = Boolean\(session && \(session\.mfaEnrollmentRe
 assert.match(source, /if \(mfaLocked\) open = true/u, 'closing the account dialog cannot dismiss mandatory MFA setup');
 assert.match(source, /if \(mfaLocked\) return;/u, 'background synchronization never starts before MFA confirmation');
 assert.match(source, /document\.querySelector\('#app, \.app'\)/u, 'the gate covers both Restaurante and Motoboy application roots');
+assert.match(appSource, /error\.status!==401&&sameIdentity/u, 'transient session checks do not revoke a same-account session, while identity changes remain isolated');
 assert.match(appSource, /let modalReturnFocus=null/u, 'operational dialogs remember their invoking control');
 assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog=/u, 'operational dialogs trap keyboard focus and handle Escape');
 assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
@@ -114,6 +115,12 @@ assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed
 assert.match(source, /Última sincronização:|conexão ainda não está ativa/u, 'integration state distinguishes account authorization from an active connection and records sync time');
 assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');
 assert.match(source, /function expireSession/u, 'an HTTP 401 also clears the authenticated UI state');
+assert.match(source, /error\.status !== 401 && hadAuthenticatedSession/u, 'temporary network failures on resume do not discard a valid in-memory identity');
+assert.match(source, /document\.addEventListener\('visibilitychange'/u, 'foreground resume revalidates session with the server');
+assert.match(source, /rotamoto:app-ready/u, 'server sync waits until IndexedDB settings have finished hydrating');
+assert.match(source, /Verificando sua sessão…/u, 'the initial identity state stays neutral until session verification completes');
+assert.match(source, /\$\('\[data-mfa-start\]'\)\.hidden=!Boolean\(session\.mfaEnrollmentRequired\)/u, 'MFA enrollment guidance is not shown for an already configured factor');
+
 assert.match(source, /response\.status === 401 && path !== '\/identity\/session'\) expireSession\(\)/u, 'session restoration applies its own generation check before changing identity');
 assert.doesNotMatch(source, /data-offline/u, 'unauthenticated users cannot bypass identity through local mode');
 

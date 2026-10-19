@@ -99,6 +99,7 @@
       observations: String(order.obs || '').trim().slice(0, 1000), items: itemLines(order.items), payments: paymentLabels(order.payments),
       type: String(order.type || '').slice(0, 60), status: String(options.status || order.status || '').slice(0, 60),
       timezone: String(options.timeZone || ''), money: canonicalMoney(order), qrDataUrl: options.qrDataUrl || null,
+      qrLabel: String(options.qrLabel || 'QR seguro da entrega. Referência assinada; não autoriza acesso.').slice(0, 180),
       qrUnavailable: options.includeQr === true && !options.qrDataUrl
     });
   }
@@ -109,7 +110,7 @@
     const rows = snapshot.money.map(row => `<div class="ticket-money-row ${row.total ? 'ticket-total' : ''}"><span>${esc(row.label)}</span><b>${esc(row.value)}</b></div>`).join('');
     const items = snapshot.items.length ? `<section class="ticket-section"><h2>Itens</h2><ul class="ticket-items">${snapshot.items.map(item => `<li><span>${item.quantity ? `${esc(item.quantity)} × ` : ''}${esc(item.name)}${item.note ? `<small>${esc(item.note)}</small>` : ''}</span></li>`).join('')}</ul></section>` : '';
     const payments = snapshot.payments.length ? `<section class="ticket-section"><h2>Pagamento</h2><p>${snapshot.payments.map(esc).join(', ')}</p></section>` : '';
-    const qr = snapshot.qrDataUrl ? `<section class="ticket-qr"><img alt="QR seguro da entrega" src="${esc(snapshot.qrDataUrl)}"><small>Referência assinada da entrega. Não autoriza acesso.</small></section>` : snapshot.qrUnavailable ? '<p class="ticket-qr-unavailable">QR seguro indisponível; esta comanda não inclui código.</p>' : '';
+    const qr = snapshot.qrDataUrl ? `<section class="ticket-qr"><img alt="Código QR da comanda" src="${esc(snapshot.qrDataUrl)}"><small>${esc(snapshot.qrLabel)}</small></section>` : snapshot.qrUnavailable ? '<p class="ticket-qr-unavailable">QR seguro indisponível; esta comanda não inclui código.</p>' : '';
     return `<article class="ticket ${options.sample ? 'ticket-sample' : ''}" lang="pt-BR"><header class="ticket-header"><strong>${esc(options.restaurant || 'RotaMoto')}</strong><h1>Comanda #${esc(snapshot.number)}</h1><p>${esc(snapshot.origin)} · ${esc(snapshot.createdAt)}</p></header><section class="ticket-section"><h2>Cliente</h2><p>${esc(snapshot.customer || 'Não informado')}</p>${snapshot.phone ? `<p>Telefone: ${esc(snapshot.phone)}</p>` : ''}<p class="ticket-address">${esc(snapshot.address || 'Endereço não informado')}</p></section>${items}${snapshot.observations ? `<section class="ticket-section"><h2>Observações</h2><p class="ticket-notes">${esc(snapshot.observations)}</p></section>` : ''}${payments}${rows ? `<section class="ticket-section ticket-money">${rows}</section>` : ''}<footer class="ticket-footer">${snapshot.type ? `<span>${esc(snapshot.type)}</span>` : ''}${snapshot.status ? `<span>${esc(snapshot.status)}</span>` : ''}</footer>${qr}${options.sample ? '<p class="ticket-sample-label">Prévia de teste — não é um pedido real</p>' : ''}</article>`;
   }
 

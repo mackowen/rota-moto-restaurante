@@ -41,9 +41,10 @@ assert.equal(Ticket.render(complete).includes('Total do pedido'), true);
 
 const qrSnapshot = Ticket.createSnapshot(order, { timeZone: 'UTC', qrDataUrl: 'data:image/png;base64,U0FGRV9RUl9JTUFHRQ==', includeQr: true });
 const qrHtml = Ticket.render(qrSnapshot);
-const qrSrc = qrHtml.match(/<img alt="QR seguro da entrega" src="([^"]+)"/)[1];
+const qrSrc = qrHtml.match(/<img alt="Código QR da comanda" src="([^"]+)"/)[1];
 assert.match(qrSrc, /^data:image\/png;base64,/);
 assert.doesNotMatch(qrSrc, /Cliente|11999990000|Rua|PII/);
+assert.match(qrHtml, /Referência assinada; não autoriza acesso/u);
 assert.equal(Ticket.shouldRequestQr({ includeQr: true, online: false, deliveryId: 'delivery-1' }), false);
 assert.equal(Ticket.shouldRequestQr({ includeQr: true, online: true, deliveryId: 'delivery-1' }), true);
 assert.equal(Ticket.shouldRequestQr({ includeQr: true, online: true, deliveryId: '' }), false);

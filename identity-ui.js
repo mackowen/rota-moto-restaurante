@@ -160,6 +160,10 @@
   async function syncAfterAuthentication() {
     if (mfaLocked) return;
     try {
+      if (appKind === 'restaurante' && !window.RotaMotoAppReady) {
+        const ready = await new Promise(resolve => document.addEventListener('rotamoto:app-ready', event => resolve(event.detail?.ok === true), { once: true }));
+        if (!ready) return;
+      }
       await window.RotaMotoSync?.restoreSession?.({ apiBase: API });
       await window.RotaMotoSync?.syncNow?.({ apiBase: API });
     } catch (_) { /* a falha de rede mantém a sessão e os dados locais utilizáveis */ }
@@ -281,7 +285,7 @@
       try { localStorage.setItem('rotaMoto.activeCompanyHint', session.activeCompanyId); } catch (_) {}
       const mfaBox=$('[data-mfa]');mfaBox.hidden=!(mfaLocked||session.mfaConfigured);
       $('[data-mfa-status]').textContent=session.mfaEnrollmentRequired?'Acesso limitado até confirmar o autenticador.':session.mfaConfigured?'Verificação em duas etapas configurada. A chave não pode ser consultada novamente.':'Verificação em duas etapas não configurada.';
-      $('[data-mfa-start]').hidden=!mfaLocked;
+      $('[data-mfa-start]').hidden=!Boolean(session.mfaEnrollmentRequired);
       $('[data-mfa-regenerate]').hidden=!(session.mfaConfigured&&session.mfaVerified&&session.permissions?.includes('company.manage'));
       setStatus(mfaLocked?'Acesso bloqueado · configure e confirme a verificação em duas etapas':'Sessão ativa');
       $('[data-login-error]').textContent = '';
@@ -320,6 +324,10 @@
       return session;
     } catch (error) {
       if (!sessionReadGuard.isCurrent(readVersion)) return current;
+      if (error.status !== 401 && hadAuthenticatedSession) {
+        setStatus('Sem conexão para verificar a sessão. Os dados locais continuam disponíveis; ações do servidor serão retomadas quando houver conexão.');
+        return current;
+      }
       csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; showSession(null);
       if (error.status === 401) {
         $('[data-login-error]').textContent = window.RotaMotoSessionGuard.sessionRestoreErrorMessage(error, hadAuthenticatedSession, message);
@@ -816,9 +824,14 @@
     catch (error) { $('[data-role-result]').textContent = message(error); } finally { setBusy(form, false); }
   });
   window.addEventListener('online', async () => { if (!current && !offlineMode) { const session = await restore(); if (session) await syncAfterAuthentication(); } else if (current) await syncAfterAuthentication(); });
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || !current) return;
+    const session = await restore();
+    if (session && !mfaLocked) await syncAfterAuthentication();
+  });
   window.addEventListener('rotamoto:session-expired', expireSession);
   const initialAppRoot = document.querySelector('#app'); if (initialAppRoot) { initialAppRoot.hidden = true; initialAppRoot.inert = true; initialAppRoot.setAttribute('aria-hidden', 'true'); }
-  offlineMode = false; host.dataset.gated = 'true'; trigger.hidden = true; updateTriggerLabel(); setOpen(true); restore().then(async session => { if (session) { if (mfaLocked) setOpen(true); else { panel.hidden = true; await syncAfterAuthentication(); } } else { panel.hidden = false; setOpen(true); } });
+  offlineMode = false; host.dataset.gated = 'true'; trigger.hidden = true; updateTriggerLabel(); setStatus('Verificando sua sessão…'); setOpen(false); restore().then(async session => { if (session) { if (mfaLocked) setOpen(true); else { panel.hidden = true; await syncAfterAuthentication(); } } else { panel.hidden = false; setOpen(true); } }).catch(() => { panel.hidden = false; setOpen(true); });
   const appRoot = document.querySelector('#app');
   if (appRoot) new MutationObserver(placeTrigger).observe(appRoot, { childList: true, subtree: true });
   window.RotaMotoIdentity = Object.freeze({ restore, getSession: () => current, isOfflineMode: () => offlineMode });
