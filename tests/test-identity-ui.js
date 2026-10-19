@@ -33,6 +33,8 @@ assert.match(source, /serverUpdateBus\.subscribe\(\(\{ topic \}\)/u, 'open admin
 assert.match(appSource, /companyAdminSettingsMount/u, 'company administration mounts inside Settings instead of a fixed overlay');
 assert.match(appSource, /body\.timeZone[\s\S]*body\.operationalLocation[\s\S]*restaurantAddress/u, 'the single Empresa page reads timezone and address from the canonical company endpoint');
 assert.match(appSource, /companyProfileDraftDirty[\s\S]*companyAddressDraftDirty/u, 'late server responses preserve fields the user has started editing');
+assert.match(appSource, /Object\.assign\(new Error\(body\.error\?\.code\|\|'COMPANY_READ_FAILED'\),\{status:response\.status\}\)/u, 'company read failures retain HTTP status for distinct 401 and 403 messages');
+assert.match(appSource, /if\(generation!==companyProfileLoadGeneration\|\|companyId!==syncSession\?\.companyId\)return;if\(name\)name\.disabled=false/u, 'stale asynchronous company responses cannot re-enable or overwrite the active form');
 assert.match(source, /root\.querySelector\(selector\) \|\| \(root === host \? document\.querySelector\(selector\) : null\)/u, 'identity operations continue resolving controls after their page moves into the application shell');
 assert.match(source, /rotamoto:settings-page/u, 'administration navigation uses the application settings route');
 assert.match(source, /document\.addEventListener\('rotamoto:settings-page',[\s\S]*?loadAdmin\(\)/u, 'each company settings page loads its server snapshot from the single navigation');
