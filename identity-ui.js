@@ -79,7 +79,7 @@
       </div>
     </section>`;
   document.body.append(host);
-  const $ = (selector, root = host) => root.querySelector(selector);
+  const $ = (selector, root = host) => root.querySelector(selector) || (root === host ? document.querySelector(selector) : null);
   const panel = $('#rmIdentityPanel');
   const trigger = $('.rm-account-trigger');
   const companyAdminSection = $('[data-admin]');
@@ -91,16 +91,17 @@
   adminTrigger.hidden = true;
   const adminPage = document.createElement('section');
   adminPage.id = 'rmCompanyAdminPage';
+  adminPage.className = 'rm-company-admin-page';
   adminPage.hidden = true;
   adminPage.setAttribute('aria-labelledby', 'rmCompanyAdminTitle');
-  adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Administração da empresa</strong><small>Escolha uma área para administrar o restaurante</small></div><button type="button" data-admin-close>Voltar ao painel</button></header><nav class="rm-admin-nav" aria-label="Áreas da empresa"></nav><div class="rm-company-admin-content"></div>';
+  adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Administração da empresa</strong><small>Configurações vinculadas à empresa ativa</small></div><button type="button" data-admin-close>Voltar a Ajustes</button></header><nav class="rm-admin-nav" aria-label="Áreas da empresa"></nav><div class="rm-company-admin-content"></div>';
   host.append(adminPage);
-  const platformAdminTrigger=document.createElement('button');platformAdminTrigger.type='button';platformAdminTrigger.className='rm-platform-admin-trigger';platformAdminTrigger.textContent='Administração RotaMoto';platformAdminTrigger.hidden=true;platformAdminTrigger.setAttribute('aria-controls','rmPlatformAdminPage');
+  const platformAdminTrigger=document.createElement('button');platformAdminTrigger.type='button';platformAdminTrigger.className='settings-cat rm-platform-admin-trigger';platformAdminTrigger.innerHTML='<b>Administração da plataforma</b><small>Empresas, usuários e vínculos globais</small>';platformAdminTrigger.hidden=true;platformAdminTrigger.setAttribute('aria-controls','rmPlatformAdminPage');platformAdminTrigger.setAttribute('aria-pressed','false');
   const platformAdminPage=document.createElement('section');platformAdminPage.id='rmPlatformAdminPage';platformAdminPage.className='rm-company-admin-page';platformAdminPage.hidden=true;
-  platformAdminPage.innerHTML='<header><div><strong>Administração da plataforma</strong><small>Acesso global independente das permissões dos restaurantes</small></div><button type="button" data-platform-close>Voltar</button></header><nav class="rm-admin-nav" aria-label="Administração global"><button type="button" data-platform-list="companies">Empresas</button><button type="button" data-platform-list="users">Usuários</button><button type="button" data-platform-list="memberships">Vínculos</button></nav><p data-platform-error role="alert" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite"></div>';
+  platformAdminPage.innerHTML='<header><div><strong>Administração da plataforma</strong><small>Acesso global independente das permissões dos restaurantes</small></div><button type="button" data-platform-close>Voltar a Ajustes</button></header><nav class="rm-admin-nav" aria-label="Administração global"><button type="button" data-platform-list="companies">Empresas</button><button type="button" data-platform-list="users">Usuários</button><button type="button" data-platform-list="memberships">Vínculos</button></nav><p data-platform-error role="alert" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite"></div>';
   host.append(platformAdminPage);
-  platformAdminTrigger.addEventListener('click',()=>{if(!current?.platformAdmin||mfaLocked)return;adminPage.hidden=true;platformAdminPage.hidden=false;const app=applicationRoot();if(app){app.inert=true;app.setAttribute('aria-hidden','true')}loadPlatformAdmin('companies').catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)})});
-  platformAdminPage.querySelector('[data-platform-close]').addEventListener('click',()=>{platformAdminPage.hidden=true;const app=applicationRoot();if(app){app.inert=false;app.removeAttribute('aria-hidden')}platformAdminTrigger.focus()});
+  platformAdminTrigger.addEventListener('click',()=>{if(!current?.platformAdmin||mfaLocked)return;document.dispatchEvent(new CustomEvent('rotamoto:navigate-settings',{detail:{section:'platform-admin'}}))});
+  platformAdminPage.querySelector('[data-platform-close]').addEventListener('click',()=>{document.dispatchEvent(new CustomEvent('rotamoto:navigate-settings',{detail:{section:'geral'}}))});
   async function loadPlatformAdmin(kind='companies'){
     if(!current?.platformAdmin||mfaLocked)throw Object.assign(new Error('FORBIDDEN'),{code:'FORBIDDEN'});
     const route={companies:'/platform-admin/companies',users:'/platform-admin/users',memberships:'/platform-admin/memberships'}[kind];if(!route)throw new Error('INVALID_INPUT');
@@ -147,20 +148,16 @@
   }
   adminTrigger.addEventListener('click', () => {
     if (!current || mfaLocked || !current.permissions?.includes('company.manage')) return;
-    setOpen(false);
-    adminPage.hidden = false;
-    adminTrigger.setAttribute('aria-expanded', 'true');
-    const app = applicationRoot();
-    if (app) { app.inert = true; app.setAttribute('aria-hidden', 'true'); }
-    adminPage.showPage?.('company'); adminPage.querySelector('[data-refresh-admin]')?.focus();
-    loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
+    document.dispatchEvent(new CustomEvent('rotamoto:navigate-settings',{detail:{section:'company-admin'}}));
+    adminPage.showPage?.('company');
+  });
+  document.addEventListener('rotamoto:navigate-settings', event => {
+    const section=event.detail?.section;
+    if(section==='company-admin'&&current&&!mfaLocked&&current.permissions?.includes('company.manage'))setTimeout(()=>loadAdmin().catch(error=>{ $('[data-admin-error]').textContent=message(error); }),0);
+    if(section==='platform-admin'&&current?.platformAdmin&&!mfaLocked)setTimeout(()=>loadPlatformAdmin('companies').catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)}),0);
   });
   adminPage.querySelector('[data-admin-close]')?.addEventListener('click', () => {
-    adminPage.hidden = true;
-    adminTrigger.setAttribute('aria-expanded', 'false');
-    const app = applicationRoot();
-    if (app) { app.inert = false; app.removeAttribute('aria-hidden'); }
-    adminTrigger.focus();
+    document.dispatchEvent(new CustomEvent('rotamoto:navigate-settings',{detail:{section:'geral'}}));
   });
   const applicationRoot = () => document.querySelector('#app, .app');
   let mfaLocked = false;
@@ -208,17 +205,33 @@
     if (trigger.parentElement !== parent) parent.append(trigger);
     trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
     const settingsNav = app?.querySelector('.settings-nav');
-    if(settingsNav&&appKind==='restaurante'&&current?.platformAdmin&&!mfaLocked){if(platformAdminTrigger.parentElement!==settingsNav)settingsNav.append(platformAdminTrigger)}
+    const settingsSelect = app?.querySelector('[data-settings-select]');
+    if (settingsSelect) {
+      const permittedOptions = [];
+      if (current && appKind === 'restaurante' && !mfaLocked && current.permissions?.includes('company.manage')) permittedOptions.push(['company-admin', 'Empresa e equipe']);
+      if (current && appKind === 'restaurante' && !mfaLocked && current.platformAdmin) permittedOptions.push(['platform-admin', 'Administração da plataforma']);
+      for (const [value, label] of permittedOptions) {
+        if (!settingsSelect.querySelector(`option[value="${value}"]`)) settingsSelect.add(new Option(label, value));
+      }
+      settingsSelect.value = document.querySelector('#companyAdminSettingsMount') ? 'company-admin' : document.querySelector('#platformAdminSettingsMount') ? 'platform-admin' : settingsSelect.value;
+    }
+    if(settingsNav&&appKind==='restaurante'&&current?.platformAdmin&&!mfaLocked){if(platformAdminTrigger.parentElement!==settingsNav)settingsNav.append(platformAdminTrigger);platformAdminTrigger.setAttribute('aria-pressed',String(Boolean(platformMount)))}
     else if(platformAdminTrigger.parentElement){platformAdminTrigger.remove()}
-    if (settingsNav) {
+    const companyMount=app?.querySelector('#companyAdminSettingsMount');
+    const platformMount=app?.querySelector('#platformAdminSettingsMount');
+    const canManageCompany=Boolean(current&&appKind==='restaurante'&&!mfaLocked&&current.permissions?.includes('company.manage'));
+    const canManagePlatform=Boolean(current&&appKind==='restaurante'&&!mfaLocked&&current.platformAdmin);
+    if(companyMount&&canManageCompany){if(adminPage.parentElement!==companyMount)companyMount.append(adminPage);adminPage.hidden=false}
+    else {adminPage.hidden=true;if(adminPage.parentElement!==host)host.append(adminPage)}
+    if(platformMount&&canManagePlatform){if(platformAdminPage.parentElement!==platformMount)platformMount.append(platformAdminPage);platformAdminPage.hidden=false}
+    else {platformAdminPage.hidden=true;if(platformAdminPage.parentElement!==host)host.append(platformAdminPage)}
+    if (settingsNav && canManageCompany) {
       if (adminTrigger.parentElement !== settingsNav) settingsNav.append(adminTrigger);
       if (adminTrigger.className !== 'settings-cat rm-company-admin-trigger') adminTrigger.className = 'settings-cat rm-company-admin-trigger';
-      if (adminTrigger.dataset.adminLabel !== 'settings') { adminTrigger.innerHTML = '<b>Administração da empresa</b><small>Equipe, motoboys e integrações</small>'; adminTrigger.dataset.adminLabel = 'settings'; }
+      if (adminTrigger.dataset.adminLabel !== 'settings') { adminTrigger.innerHTML = '<b>Empresa e equipe</b><small>Cadastro, pessoas, motoristas e integrações</small>'; adminTrigger.dataset.adminLabel = 'settings'; }
+      adminTrigger.setAttribute('aria-pressed',String(Boolean(companyMount)));
     } else {
-      const adminParent = app?.querySelector('.top-actions') || host;
-      if (adminTrigger.parentElement !== adminParent) adminParent.append(adminTrigger);
-      if (adminTrigger.className !== 'rm-company-admin-trigger rm-account-trigger rm-account-trigger--inline') adminTrigger.className = 'rm-company-admin-trigger rm-account-trigger rm-account-trigger--inline';
-      if (adminTrigger.dataset.adminLabel !== 'top') { adminTrigger.textContent = 'Gerenciar restaurante'; adminTrigger.dataset.adminLabel = 'top'; }
+      if(adminTrigger.parentElement)adminTrigger.remove();
     }
   }
   const placementRoot = document.body;
@@ -243,6 +256,11 @@
     else if (!gated) trigger.focus();
   }
   panel.tabIndex = -1;
+  document.addEventListener('click', event => {
+    if (!event.target?.closest?.('[data-account-security]')) return;
+    event.preventDefault();
+    setOpen(true);
+  });
   panel.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       if (mfaLocked) { event.preventDefault(); event.stopPropagation(); return; }
@@ -277,8 +295,8 @@
     document.body.dataset.mfaLocked = String(mfaLocked);
     host.dataset.mfaLocked = String(mfaLocked);
     host.dataset.gated = String(!session && !offlineMode);
-    adminPage.hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
-    platformAdminPage.hidden=mfaLocked||!(session&&appKind==='restaurante'&&session.platformAdmin);
+    adminPage.hidden = true;
+    platformAdminPage.hidden=true;
     platformAdminTrigger.hidden=mfaLocked||!(session&&appKind==='restaurante'&&session.platformAdmin);
     adminTrigger.hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
     $('[data-close]').hidden = mfaLocked;
@@ -511,7 +529,7 @@
       const providerTab=document.createElement('button');providerTab.type='button';providerTab.className='rm-provider-tab';providerTab.dataset.providerTab=providerCode;providerTab.setAttribute('aria-pressed',String(firstProvider));providerTab.textContent=providerTitle;providerTab.addEventListener('click',()=>{providerPages.querySelectorAll('[data-provider-page]').forEach(section=>section.hidden=section.dataset.providerPage!==providerCode);providerNav.querySelectorAll('[data-provider-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.providerTab===providerCode)))});providerNav.append(providerTab);firstProvider=false;
       const row = document.createElement('section'); row.className = 'rm-integration-status';
       const title = document.createElement('strong'); title.textContent = `${providerTitle} · ${item.connectionVerified ? 'conexão confirmada' : 'sem conexão confirmada'}`; row.append(title);
-      const refreshProvider=document.createElement('button');refreshProvider.type='button';refreshProvider.textContent='Atualizar situação no RotaMoto';const providerFeedback=document.createElement('p');providerFeedback.setAttribute('role','status');providerFeedback.setAttribute('aria-live','polite');refreshProvider.addEventListener('click',async()=>{refreshProvider.disabled=true;providerFeedback.textContent='Consultando estado registrado…';try{await loadAdmin();providerFeedback.textContent='Estado registrado atualizado. Isso não confirma conexão com a plataforma.'}catch(error){providerFeedback.textContent=message(error)}finally{refreshProvider.disabled=false}});row.append(refreshProvider,providerFeedback);
+      const refreshProvider=document.createElement('button');refreshProvider.type='button';refreshProvider.textContent='Atualizar situação no RotaMoto';const providerFeedback=document.createElement('p');providerFeedback.setAttribute('role','status');providerFeedback.setAttribute('aria-live','polite');refreshProvider.addEventListener('click',async()=>{refreshProvider.disabled=true;refreshProvider.setAttribute('aria-busy','true');providerFeedback.textContent='Consultando estado registrado…';try{await loadAdmin();const refreshedPage=adminPage.querySelector(`[data-provider-page="${providerCode}"]`);if(refreshedPage){adminPage.querySelectorAll('[data-provider-page]').forEach(section=>section.hidden=section.dataset.providerPage!==providerCode);refreshedPage.hidden=false;adminPage.querySelectorAll('[data-provider-tab]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.providerTab===providerCode)));const freshStatus=document.createElement('p');freshStatus.setAttribute('role','status');freshStatus.setAttribute('aria-live','polite');freshStatus.textContent='Estado registrado atualizado. Isso não confirma conexão com a plataforma.';refreshedPage.querySelector('.rm-integration-status')?.append(freshStatus)}else throw new Error('INTEGRATION_STATUS_UNAVAILABLE')}catch(error){const freshPage=adminPage.querySelector(`[data-provider-page="${providerCode}"]`);const freshStatus=document.createElement('p');freshStatus.setAttribute('role','alert');freshStatus.textContent=message(error);freshPage?.querySelector('.rm-integration-status')?.append(freshStatus)}finally{const freshButton=adminPage.querySelector(`[data-provider-page="${providerCode}"] .rm-integration-status button`);if(freshButton){freshButton.disabled=false;freshButton.removeAttribute('aria-busy')}}});refreshProvider.dataset.providerRefresh=providerCode;row.append(refreshProvider,providerFeedback);
       const accounts = document.createElement('div'); accounts.className='rm-integration-accounts';
       const accountStates={active:'autorizada; conexão ainda não verificada',pending:'autorização pendente',disabled:'desativada localmente',revoked:'autorização revogada',reauthorization_required:'precisa reautorizar',error:'erro na conta'};
       const accountErrors={AUTH_EXPIRED:'A autorização expirou. Reautorize a conta.',AUTH_REJECTED:'A plataforma recusou a autorização. Reautorize a conta.',ACCOUNT_UNAVAILABLE:'Conta inativa ou sem vínculo válido.',MARKETPLACE_EVENT_PENDING:'Evento recebido e será processado novamente.',

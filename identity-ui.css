@@ -66,24 +66,29 @@
 #rmIdentityRoot [data-mfa-start-status]:empty { display:none; }
 .rm-identity-panel [data-mfa-qr] { display: block; width: min(208px, 72vw); height: auto; aspect-ratio: 1; margin: 12px auto; border: 1px solid var(--rm-id-border); image-rendering: pixelated; }
 
-#rmCompanyAdminPage {
-  position: fixed;
-  inset: 0;
-  z-index: 2302;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left));
-  background: var(--rm-id-surface);
+#rmCompanyAdminPage,
+#rmPlatformAdminPage {
+  position: static;
+  width: min(100%, 960px);
+  max-width: 100%;
+  margin: 0 auto;
+  overflow: visible;
+  overscroll-behavior: auto;
+  padding: 0 0 env(safe-area-inset-bottom);
+  background: transparent;
   color: var(--rm-id-text);
 }
+#rmCompanyAdminPage[hidden],
+#rmPlatformAdminPage[hidden] { display: none !important; }
 #rmCompanyAdminPage > header,
+#rmPlatformAdminPage > header,
 .rm-company-admin-content {
   width: min(100%, 960px);
   margin-inline: auto;
 }
-#rmCompanyAdminPage > header {
-  position: sticky;
-  inset-block-start: 0;
+#rmCompanyAdminPage > header,
+#rmPlatformAdminPage > header {
+  position: static;
   z-index: 1;
   display: flex;
   align-items: center;
@@ -91,12 +96,16 @@
   gap: 16px;
   padding: 14px 0;
   border-bottom: 1px solid var(--rm-id-border);
-  background: var(--rm-id-surface);
+  background: transparent;
 }
 #rmCompanyAdminPage > header strong,
-#rmCompanyAdminPage > header small { display: block; }
-#rmCompanyAdminPage > header small { margin-block-start: 4px; color: var(--rm-id-muted); }
-#rmCompanyAdminPage > header button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--rm-id-border); border-radius: 10px; background: var(--rm-id-surface); color: var(--rm-id-text); }
+#rmCompanyAdminPage > header small,
+#rmPlatformAdminPage > header strong,
+#rmPlatformAdminPage > header small { display: block; }
+#rmCompanyAdminPage > header small,
+#rmPlatformAdminPage > header small { margin-block-start: 4px; color: var(--rm-id-muted); }
+#rmCompanyAdminPage > header button,
+#rmPlatformAdminPage > header button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--rm-id-border); border-radius: 10px; background: var(--rm-id-surface); color: var(--rm-id-text); }
 .rm-company-admin-content { padding-block: 16px 32px; }
 .rm-admin-nav { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; width:min(100%,960px); margin:14px auto 0; }
 .rm-admin-nav button { min-height:54px; padding:9px 12px; text-align:left; border:1px solid var(--rm-id-border); border-radius:11px; background:var(--rm-id-surface); color:var(--rm-id-text); cursor:pointer; }
@@ -112,6 +121,7 @@
 .rm-admin-nav strong,.rm-admin-nav small { display:block; }
 .rm-admin-nav small { margin-top:3px; color:var(--rm-id-muted); }
 .rm-admin-subpage { display:grid; gap:14px; }
+.rm-admin-subpage[hidden] { display:none !important; }
 .rm-admin-subpage .rm-permission-group { min-width:0; margin:0; padding:12px; border:1px solid var(--rm-id-border); border-radius:10px; }
 .rm-admin-subpage .rm-permission-group legend { padding-inline:6px; color:var(--rm-id-muted); font-size:.88rem; font-weight:700; }
 .rm-admin-subpage .rm-role-permissions { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:8px; }

@@ -20,7 +20,8 @@ assert.match(source, /renderMfaQr\(result\.otpauthUri\)/u, 'the enrollment URI i
 assert.match(source, /data-mfa-start-status role="alert" aria-live="assertive"/u, 'enrollment errors are announced outside the initially hidden confirmation form');
 assert.match(source, /!companyForm\.dataset\.dirty/u, 'fresh server company data refreshes a form unless the user is editing it');
 assert.match(source, /Configuração confirmada pelo servidor/u, 'company save feedback is tied to server response validation');
-assert.match(source, /providerFeedback\.textContent=message\(error\)/u, 'provider refresh reuses one accessible feedback area on errors');
+assert.match(source, /freshStatus\.textContent=message\(error\)/u, 'provider refresh reports errors in the newly rendered accessible page');
+assert.match(source, /refreshProvider\.dataset\.providerRefresh=providerCode/u, 'provider refresh controls remain identifiable after a server snapshot reload');
 assert.match(source, /actionArea\.replaceChildren\(\)/u, 'starting a provider connection replaces prior instructions instead of stacking them');
 assert.match(source, /actionArea\.replaceChildren\(note\)/u, 'provider connection failures reuse a single visible message area');
 assert.match(appSource, /Email de contato \(opcional\)/u, 'driver registration can retain a contact email for an explicit later invitation');
@@ -29,9 +30,18 @@ assert.match(source, /CSRF_INVALID: 'A sessão de segurança foi renovada/u, 'a 
 assert.match(source, /if\(mfaStarting\)return/u, 'duplicate enrollment clicks are ignored while the request is pending');
 assert.match(source, /serverUpdateBus\.publish\(topic\)/u, 'confirmed administrative mutations announce only a safe refresh category to other tabs');
 assert.match(source, /serverUpdateBus\.subscribe\(\(\{ topic \}\)/u, 'open administrative pages reload authoritative server snapshots after cross-tab changes');
+assert.match(appSource, /companyAdminSettingsMount/u, 'company administration mounts inside Settings instead of a fixed overlay');
+assert.match(source, /root\.querySelector\(selector\) \|\| \(root === host \? document\.querySelector\(selector\) : null\)/u, 'identity operations continue resolving controls after their page moves into the application shell');
+assert.match(source, /rotamoto:navigate-settings/u, 'administration navigation uses the application settings route');
+assert.match(source, /document\.addEventListener\('rotamoto:navigate-settings', event =>[\s\S]*?loadAdmin\(\)/u, 'all settings entry points load current company data, including the mobile selector');
+assert.match(appSource, /data-settings-select aria-label="Escolha uma configuração"/u, 'settings expose a compact mobile category selector');
+assert.match(appSource, /data-settings-select.*?addEventListener\('change'/u, 'mobile settings selector changes the active section');
+assert.doesNotMatch(source, /adminParent = app\?\.querySelector\('\.top-actions'\)/u, 'company administration is never injected into the top bar');
+assert.match(styles, /#rmCompanyAdminPage,\s*#rmPlatformAdminPage \{\s*position: static/u, 'administrative pages stay in normal Settings document flow');
+assert.match(styles, /\.rm-admin-subpage\[hidden\] \{ display:none !important; \}/u, 'inactive administrative pages respect their hidden state despite grid layout');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0255\.2/u, 'identity UI URL changes when the administration interface changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v57`[\s\S]*identity-ui\.js\?v=0255\.2/u, 'service worker cache is invalidated with the current administration UI');
+assert.match(html, /identity-ui\.js\?v=0256\.1/u, 'identity UI URL changes when the administration interface changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v58`[\s\S]*identity-ui\.js\?v=0256\.1/u, 'service worker cache is invalidated with the current administration UI');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -69,7 +79,8 @@ assert.match(styles, /\.rm-provider-nav/u, 'provider navigation remains touch fr
 assert.match(source, /sections\.get\('drivers'\)[\s\S]*?driverMembers/u, 'driver links have a dedicated administration page');
 assert.match(source, /const settingsNav = app\?\.querySelector\('\.settings-nav'\)/u, 'company administration is reached through the existing settings navigation');
 assert.doesNotMatch(source, /data-sync/u, 'the account panel contains no operational synchronization action');
-assert.match(source, /adminPage\.hidden = mfaLocked/u, 'company administration is hidden after session loss or while MFA is pending');
+assert.match(source, /adminPage\.hidden = true/u, 'company administration starts hidden and is revealed only inside its authorized Settings mount');
+assert.match(source, /const canManageCompany=Boolean\(current&&appKind==='restaurante'&&!mfaLocked&&current\.permissions\?\.includes\('company\.manage'\)\)/u, 'company administration requires a live authorized session and is withheld during MFA');
 assert.match(source, /role="dialog" aria-modal="true"/u, 'account access is exposed as a modal dialog');
 assert.match(source, /visibleControls\(\)/u, 'account dialog keeps keyboard focus within visible controls');
 assert.match(source, /driverCursor/u, 'driver linking can navigate a paginated driver list');
@@ -82,7 +93,7 @@ assert.match(source, /document\.querySelector\('#app, \.app'\)/u, 'the gate cove
 assert.match(appSource, /let modalReturnFocus=null/u, 'operational dialogs remember their invoking control');
 assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog=/u, 'operational dialogs trap keyboard focus and handle Escape');
 assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
-assert.match(appSource, /Escopo dos ajustes[\s\S]{0,300}fuso horário usado nos relatórios é definido pela administração da empresa/u, 'settings distinguish local preferences from the canonical Company timezone');
+assert.match(appSource, /Escopo dos ajustes[\s\S]{0,500}Preferências visuais e locais ficam neste aparelho[\s\S]{0,200}dados empresariais confirmados pelo servidor/u, 'settings distinguish local preferences from server-confirmed company data');
 assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed');
 assert.match(source, /Última sincronização:|conexão ainda não está ativa/u, 'integration state distinguishes account authorization from an active connection and records sync time');
 assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');

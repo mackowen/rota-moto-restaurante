@@ -161,7 +161,8 @@ html[data-resolved-theme="dark"] .status.cancel,html.system-dark .status.cancel{
 @media(max-width:800px){.permission-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:430px){.permission-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-@media(max-width:800px){.settings-layout{grid-template-columns:1fr;gap:8px}.settings-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.settings-cat{width:100%;margin:0;min-height:70px}.settings-content{min-height:0}.settings-content .card{margin-top:0}}
+@media(max-width:800px){.settings-layout{grid-template-columns:1fr;gap:8px}.settings-nav{display:none}.settings-mobile-select{display:grid;gap:6px;margin:0 0 4px;font-size:12px;font-weight:700}.settings-mobile-select select{width:100%;min-height:44px}.settings-content{min-height:0}.settings-content .card{margin-top:0}}
+@media(min-width:801px){.settings-mobile-select{display:none}}
 
 /* v5.5 — auditoria visual ampla: densidade, responsividade e mapa operacional */
 .card{padding:15px;border-radius:16px;box-shadow:0 7px 22px rgba(15,23,42,.055)}
@@ -877,3 +878,7 @@ button.analytics-bar-row{width:100%;border:0;background:transparent;cursor:point
 @media(min-width:600px){.report-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.report-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.report-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-card-grid,.report-note-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-driver-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-technical-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:1024px){.report-dashboard{gap:22px}.report-filter-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.report-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.report-metric-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.report-driver-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.report-section-nav{top:0}.report-filters-card{padding:19px}.report-card{padding:18px}}
 @media(max-width:430px){.report-intro{align-items:stretch;flex-direction:column;gap:10px}.report-freshness{max-width:none}.report-filters-heading{align-items:stretch;flex-direction:column}.report-filters-heading .btn{align-self:flex-start}.report-filter-grid{grid-template-columns:minmax(0,1fr)}.report-export-card{align-items:stretch;flex-direction:column}.report-export-card .btn{width:100%}.report-section-nav{margin-inline:-4px;padding-inline:4px}.analytics-bar-row{grid-template-columns:minmax(64px,auto) minmax(24px,1fr) auto;gap:6px}}
+
+/* Compact selector keeps Ajustes usable on phone-sized screens. */
+@media(max-width:800px){.settings-nav{display:none!important}.settings-mobile-select{display:grid;gap:6px;margin:0 0 4px;font-size:12px;font-weight:700}.settings-mobile-select select{width:100%;min-height:44px}}
+@media(min-width:801px){.settings-mobile-select{display:none}}
