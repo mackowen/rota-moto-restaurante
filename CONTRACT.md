@@ -12,6 +12,8 @@
 ## Identidade
 Todo dado compartilhável usa `id` global, `companyId`, `createdAt`, `updatedAt` e `version`.
 
+Perfis RBAC empresariais são limitados à empresa ativa. Quando o cliente não fornece chave, o servidor a gera a partir do nome e resolve colisões de forma previsível. Nome e descrição são campos de apresentação; a descrição aceita até 240 bytes UTF-8. O servidor só permite conceder permissões já presentes no perfil da sessão e protege perfis de sistema. Usuários e perfis Local-First do IndexedDB são controles locais do aplicativo, não identidades nem permissões RBAC do servidor.
+
 O vínculo de execução é mantido somente no servidor: cada Membership pode apontar para zero ou um `Driver` canônico da mesma Company, e cada Driver pode estar associado a no máximo uma Membership. A associação exige uma operação administrativa autorizada; não é inferida por email, perfil local, `source.app` ou `actor`. A sessão retorna o `driverId` resolvido pelo servidor; ele não é autoridade quando enviado pelo cliente.
 
 Cadastro operacional de `Driver` e identidade autenticável são etapas separadas. Convites reutilizam o fluxo de membership e identidade; uma conta RotaMoto existente pode aceitar uma nova associação sem duplicar o usuário. A empresa só habilita operações Motoboy após vincular explicitamente a membership ativa e verificada ao `Driver` canônico ativo da mesma empresa. Ser proprietário ou administrador não concede papel de motoboy. A mesma pessoa pode ter vínculos autorizados em empresas diferentes, cada um limitado ao seu tenant. Sessão sem vínculo ou com Driver desativado pode consultar identidade e encerrar sessão, mas não pode registrar instalação, sincronizar, consultar entregas, rotas, localização ou comprovantes pela API Motoboy.

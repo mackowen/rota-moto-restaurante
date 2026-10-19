@@ -233,7 +233,7 @@ function assertOfficial0234State(applied, migrations, { allowApplied = false } =
   const baseline = migrations.find(migration => migration.id === '0044_99food_distributed_rate_limit');
   const pending = migrations.slice(44, 47);
   const prefix = migrations.slice(0, 44);
-  const knownPost0234 = new Set(['0048_platform_administration','0049_platform_administration_hardening']);
+  const knownPost0234 = new Set(['0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update']);
   if (!baseline || baseline.checksum !== OFFICIAL_0234_CHECKSUM_0044 || prefix.length !== 44 ||
       prefix.at(-1)?.id !== '0044_99food_distributed_rate_limit' || pending.length !== 3 ||
       pending.some((migration,index) => migration.id !== OFFICIAL_0234_MIGRATIONS[index]) ||

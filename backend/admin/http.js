@@ -32,13 +32,14 @@ async function readBody(req) {
 }
 function exact(body, keys) { if (Object.keys(body).some(key => !keys.includes(key))) throw error('INVALID_INPUT'); }
 function validateRole(body, create) {
-  exact(body, create ? ['key', 'name', 'permissions'] : ['name', 'permissions']);
-  if (create && (typeof body.key !== 'string' || !/^[a-z][a-z0-9_-]{1,63}$/u.test(body.key))) throw error('INVALID_INPUT');
+  exact(body, create ? ['key', 'name', 'description', 'permissions'] : ['name', 'description', 'permissions']);
+  if (create && body.key !== undefined && (typeof body.key !== 'string' || !/^[a-z][a-z0-9_-]{1,63}$/u.test(body.key))) throw error('INVALID_INPUT');
   if (typeof body.name !== 'string' || !body.name.trim() || Buffer.byteLength(body.name.trim(), 'utf8') > 100 ||
       /[\u0000-\u001f\u007f]/u.test(body.name)) throw error('INVALID_INPUT');
+  if (body.description !== undefined && (typeof body.description !== 'string' || Buffer.byteLength(body.description.trim(), 'utf8') > 240 || /[\u0000-\u001f\u007f]/u.test(body.description))) throw error('INVALID_INPUT');
   if (!Array.isArray(body.permissions) || body.permissions.length > 128 || body.permissions.some(key =>
     typeof key !== 'string' || !/^[a-z][a-z0-9_.:-]{1,119}$/u.test(key)) || new Set(body.permissions).size !== body.permissions.length) throw error('INVALID_INPUT');
-  return { ...(create ? { key: body.key } : {}), name: body.name.trim(), permissions: body.permissions };
+  return { ...(create && body.key !== undefined ? { key: body.key } : {}), name: body.name.trim(), description: body.description?.trim() || '', permissions: body.permissions };
 }
 function validateMembership(body) {
   exact(body, ['roleId', 'status']);

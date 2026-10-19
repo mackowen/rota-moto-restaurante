@@ -46,8 +46,8 @@ assert.doesNotMatch(source, /adminParent = app\?\.querySelector\('\.top-actions'
 assert.match(styles, /#rmCompanyAdminPage,\s*#rmPlatformAdminPage \{\s*position: static/u, 'administrative pages stay in normal Settings document flow');
 assert.match(styles, /\.rm-admin-subpage\[hidden\] \{ display:none !important; \}/u, 'inactive administrative pages respect their hidden state despite grid layout');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0256b1\.1/u, 'identity UI URL changes when the account page lifecycle changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v63`[\s\S]*identity-ui\.js\?v=0256b1\.1/u, 'service worker cache is invalidated with the current account page lifecycle');
+assert.match(html, /identity-ui\.js\?v=0256c\.8/u, 'identity UI URL changes when the account page lifecycle changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v71`[\s\S]*identity-ui\.js\?v=0256c\.8/u, 'service worker cache is invalidated with the current account page lifecycle');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -70,7 +70,10 @@ assert.match(source, /\/admin\/invitations/u);
 assert.match(source, /members\.invite/u, 'invitation controls are gated by the effective permission');
 assert.match(source, /canReadMembers/u, 'membership data is fetched only with its read permission');
 assert.match(source, /memberships\/\$\{member\.membershipId\}\/driver/u, 'administrators use the tenant-scoped membership-to-driver endpoints');
-assert.match(source, /O convite cria ou associa uma conta RotaMoto pelo email/u, 'the admin UI explains that identity invitation and operational Driver registration are separate');
+assert.match(source, /O convite cria ou associa uma conta pelo email[\s\S]*?cadastro operacional correto de motoboy/u, 'the admin UI explains the identity invitation and operational Driver registration are separate');
+assert.match(source, /código técnico é gerado automaticamente/u, 'role creation does not require a user-generated identifier');
+assert.match(source, /data-permissions/u, 'role permissions retain the server permission catalog');
+assert.match(appSource, /Controles locais deste aparelho/u, 'local users and profiles are clearly scoped to this browser');
 assert.match(source, /Reenviar convite/u, 'pending invitations can be resent through the existing identity invitation service');
 assert.match(source, /Revogar convite/u, 'pending invitations can be revoked through audited membership status changes');
 assert.match(source, /Convite pendente/u, 'membership invitation state is presented in plain language');

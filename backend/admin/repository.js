@@ -52,12 +52,27 @@ function createAdminRepository() {
   async function createRole(client, principal, input) {
     const allowed = await actorPermissions(client, principal.company_id, principal.role_id);
     assertGrantable(input.permissions, allowed);
-    if (!/^[a-z][a-z0-9_-]{1,63}$/u.test(input.key) || ['owner', 'admin'].includes(input.key)) {
+    let base = String(input.key || input.name.normalize('NFKD').replace(/[\u0300-\u036f]/gu, '')
+      .toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-+|-+$/gu, '') || 'perfil')
+      .slice(0, 54).replace(/-+$/u, '');
+    if (!input.key && (base.length < 2 || ['owner', 'admin'].includes(base))) base += '-perfil';
+    if (!/^[a-z][a-z0-9_-]{1,63}$/u.test(base) || ['owner', 'admin'].includes(base)) {
       const error = new Error('Identificador de perfil inválido ou reservado.'); error.code = 'INVALID_INPUT'; throw error;
     }
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))', [principal.company_id]);
+    let key = input.key || base;
+    if (!input.key) {
+      let suffix = 1;
+      for (;;) {
+        const exists = await client.query('SELECT 1 FROM rotamoto.roles WHERE company_id=$1 AND role_key=$2', [principal.company_id, key]);
+        if (!exists.rowCount) break;
+        suffix += 1;
+        key = base.slice(0, 63 - String(suffix).length - 1) + '-' + suffix;
+      }
+    }
     const id = crypto.randomUUID();
-    await client.query(`INSERT INTO rotamoto.roles(id,company_id,role_key,display_name)
-      VALUES ($1,$2,$3,$4)`, [id, principal.company_id, input.key, input.name]);
+    await client.query(`INSERT INTO rotamoto.roles(id,company_id,role_key,display_name,description)
+      VALUES ($1,$2,$3,$4,$5)`, [id, principal.company_id, key, input.name, input.description || '']);
     if (input.permissions.length) await client.query(`INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version)
       SELECT $1,$2,p.permission_key,1 FROM rotamoto.permissions p
       WHERE p.catalog_version=1 AND p.permission_key=ANY($3::text[])`, [principal.company_id, id, input.permissions]);
@@ -67,7 +82,7 @@ function createAdminRepository() {
       const error = new Error('Catálogo de permissões inválido.'); error.code = 'INVALID_INPUT'; throw error;
     }
     await writeAudit(client, principal, 'role.created', 'role', id, { permissionCount: input.permissions.length });
-    return { id, key: input.key, name: input.name, permissions: input.permissions };
+    return { id, key, name: input.name, description: input.description || '', permissions: input.permissions };
   }
   async function updateRole(client, principal, roleId, input) {
     const actor = await actorPermissions(client, principal.company_id, principal.role_id);
@@ -82,8 +97,8 @@ function createAdminRepository() {
       WHERE company_id=$1 AND user_id=$2 AND role_id=$3 AND status='active'`,
     [principal.company_id, principal.user_id, roleId]);
     if (actorUsesRole.rowCount) { const error = new Error('Não é permitido editar o perfil atualmente associado ao solicitante.'); error.code = 'FORBIDDEN'; throw error; }
-    await client.query(`UPDATE rotamoto.roles SET display_name=$3,updated_at=now() WHERE company_id=$1 AND id=$2`,
-      [principal.company_id, roleId, input.name]);
+    await client.query(`UPDATE rotamoto.roles SET display_name=$3,description=$4,updated_at=now() WHERE company_id=$1 AND id=$2`,
+      [principal.company_id, roleId, input.name, input.description || '']);
     await client.query(`DELETE FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2`, [principal.company_id, roleId]);
     if (input.permissions.length) await client.query(`INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version)
       SELECT $1,$2,p.permission_key,1 FROM rotamoto.permissions p
@@ -315,11 +330,11 @@ function createAdminRepository() {
       nextCursor: hasMore && rows.length ? encodeCursor(rows.at(-1)) : null, hasMore };
   }
   async function roles(client, companyId) {
-    const result = await client.query(`SELECT r.id::text,r.role_key,r.display_name,r.is_system_template,r.created_at,r.updated_at,
+    const result = await client.query(`SELECT r.id::text,r.role_key,r.display_name,r.description,r.is_system_template,r.created_at,r.updated_at,
         coalesce(jsonb_agg(rp.permission_key ORDER BY rp.permission_key) FILTER (WHERE rp.permission_key IS NOT NULL),'[]'::jsonb) AS permissions
       FROM rotamoto.roles r LEFT JOIN rotamoto.role_permissions rp ON rp.company_id=r.company_id AND rp.role_id=r.id
       WHERE r.company_id=$1 GROUP BY r.id ORDER BY r.role_key`, [companyId]);
-    return { roles: result.rows.map(row => ({ id: row.id, key: row.role_key, name: row.display_name,
+    return { roles: result.rows.map(row => ({ id: row.id, key: row.role_key, name: row.display_name, description: row.description || '',
       systemTemplate: row.is_system_template, permissions: row.permissions,
       createdAt: row.created_at, updatedAt: row.updated_at })) };
   }

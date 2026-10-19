@@ -59,7 +59,7 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.deepEqual(migrations.slice(-8).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening'], 'platform administration appends after immutable identity migrations');
+assert.deepEqual(migrations.slice(-10).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update'], 'company role descriptions append after immutable identity migrations');
 const migration0042 = migrations.find(migration => migration.id === '0042_marketplace_99food_runtime');
 const migration0043 = migrations.find(migration => migration.id === '0043_99food_application_and_cash_commands');
 assert.match(migration0042.up,/claim_marketplace_99food_token_refresh/u);

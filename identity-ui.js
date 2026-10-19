@@ -68,8 +68,8 @@
           <details><summary>Perdi o autenticador</summary><form data-mfa-recovery-request><p>A solicitação exige senha atual e confirmação pelo email verificado. Outro administrador deverá aprovar; para proprietário único, somente o operador local pode concluir.</p><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label><label>Senha atual<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código da empresa<input name="companyId" required maxlength="36" autocomplete="off"></label><button type="submit">Solicitar recuperação de MFA</button><p role="status" data-mfa-recovery-status></p></form><form data-mfa-recovery-confirm><label>Código recebido por email<input name="token" autocomplete="one-time-code" required maxlength="43"></label><button type="submit">Confirmar solicitação</button><p role="status" data-mfa-recovery-confirm-status></p></form></details></details>
         <details data-invitation><summary>Aceitar convite</summary><form data-accept-invitation><label>Código do convite<input name="token" required maxlength="43" autocomplete="off"></label><label>Crie sua senha<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><button type="submit">Aceitar convite</button><p role="status" data-invitation-result></p></form></details>
         <section data-admin hidden><h2>Administração da empresa</h2><p data-admin-error role="alert" aria-live="polite"></p><button type="button" data-refresh-admin>Atualizar usuários e perfis</button><form data-company-setup><h3>Configuração da empresa</h3><p>Informe os dados básicos. Contato e endereço são opcionais; o fuso horário é obrigatório para a operação.</p><label>Nome da empresa<input name="name" required maxlength="160" autocomplete="organization"></label><label>Telefone de contato (opcional)<input name="supportPhone" maxlength="40" autocomplete="tel"></label><label>Fuso horário<select name="timeZone" required><option value="America/Sao_Paulo">Brasília · America/Sao_Paulo</option><option value="America/Fortaleza">Fortaleza · America/Fortaleza</option><option value="America/Manaus">Manaus · America/Manaus</option><option value="America/Rio_Branco">Rio Branco · America/Rio_Branco</option><option value="UTC">UTC</option></select></label><label>Endereço operacional (opcional)<input name="address" maxlength="500" autocomplete="street-address"></label><button type="submit">Salvar configuração</button><p role="status" data-company-setup-status aria-live="polite"></p></form><section data-mfa-recovery-admin hidden><h3>Solicitações de recuperação MFA</h3><button type="button" data-refresh-mfa-recovery>Atualizar solicitações</button><div data-mfa-recovery-requests aria-live="polite"></div></section>
-          <form data-invite><h3>Convidar funcionário ou motoboy</h3><p>O convite cria ou associa uma conta RotaMoto pelo email. Para habilitar entregas, a pessoa deve ativar a conta e depois ser vinculada a um cadastro de motorista desta empresa. Uma conta existente pode aceitar o convite sem criar outra conta.</p><label>Email<input name="email" type="email" required maxlength="320"></label><label>Perfil de acesso<select name="roleId" required></select></label><button type="submit">Enviar convite</button><p role="status" data-invite-result></p></form>
-          <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><div data-members aria-live="polite"></div><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><p data-driver-access-note role="status" hidden>Para listar motoristas, sua sessão precisa da permissão de leitura de sync. A desassociação continua disponível para vínculos existentes.</p><section data-roles-list><h3>Perfis existentes</h3></section><form data-create-role><h3>Novo perfil</h3><label>Identificador<input name="key" required pattern="[a-z][a-z0-9_-]{1,63}" maxlength="64"></label><label>Nome<input name="name" required maxlength="100"></label><fieldset><legend>Permissões</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form>
+          <details class="rm-admin-form-disclosure"><summary>Convidar pessoa</summary><form data-invite><h3>Convidar funcionário ou motoboy</h3><p>O convite cria ou associa uma conta pelo email. Para liberar entregas, convide a pessoa, aguarde a ativação e depois vincule a conta ao cadastro operacional correto de motoboy. Não é criada uma segunda conta.</p><label>Email<input name="email" type="email" required maxlength="320" autocomplete="email"></label><label>Perfil de acesso<select name="roleId" required></select></label><button type="submit">Enviar convite</button><p role="status" data-invite-result></p></form></details>
+          <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><section class="rm-admin-list-section"><h3>Usuários e convites</h3><div data-members aria-live="polite"></div></section><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><p data-driver-access-note role="status" hidden>Para listar motoristas, sua sessão precisa da permissão de leitura de sync. A desassociação continua disponível.</p><details class="rm-admin-form-disclosure"><summary>Criar perfil</summary><form data-create-role><p>Escolha um nome e permissões que seu próprio perfil pode conceder. O código técnico é gerado automaticamente.</p><label>Nome do perfil<input name="name" required maxlength="100"></label><label>Descrição<input name="description" maxlength="240"></label><fieldset><legend>Permissões por função</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form></details><section data-roles-list><h3>Perfis de acesso</h3></section>
         </section>
         <p class="rm-privacy">Use apenas seu email, senha e códigos de verificação. Não compartilhe esses dados.</p>
       </div>
@@ -132,8 +132,9 @@
     }
     const company = $('[data-company-setup]',companyAdminSection), recovery = $('[data-mfa-recovery-admin]',companyAdminSection), adminError = $('[data-admin-error]',companyAdminSection), adminRefresh = $('[data-refresh-admin]',companyAdminSection);
     const invite = $('[data-invite]',companyAdminSection), members = $('[data-members]',companyAdminSection), memberNote = $('[data-members-note]',companyAdminSection), roles = $('[data-roles-list]',companyAdminSection), createRole = $('[data-create-role]',companyAdminSection), driverNote = $('[data-driver-access-note]',companyAdminSection), integrations = $('[data-integrations]',companyAdminSection);
+    const teamIntro=document.createElement('div');teamIntro.className='rm-admin-team-intro';teamIntro.innerHTML='<h2>Equipe e permissões</h2><p>Consulte quem tem acesso à empresa, acompanhe convites e defina funções com permissões limitadas ao seu próprio nível.</p>';sections.get('team').prepend(teamIntro);
     for (const node of [adminError,adminRefresh,recovery]) if(node) sections.get('team').append(node);
-    for (const node of [invite,members,memberNote,roles,createRole]) if(node) sections.get('team').append(node);
+    for (const node of [invite?.closest('details')||invite,members,memberNote,roles,createRole?.closest('details')||createRole]) if(node) sections.get('team').append(node);
     const driverMembers = document.createElement('div'); driverMembers.dataset.driverMembers=''; driverMembers.setAttribute('aria-live','polite');
     const driverIntro=document.createElement('p'); driverIntro.className='rm-driver-flow-note'; driverIntro.textContent='O cadastro do motorista é operacional e não cria uma conta. Para liberar o aplicativo, convide o endereço de email da pessoa, aguarde a ativação e vincule a conta ativa ao cadastro correto.'; sections.get('drivers').append(driverIntro);
     sections.get('drivers').append(driverMembers);
@@ -444,7 +445,8 @@
   });
   function appendPermissionOptions(container, permissions, selectedKeys = []) {
     const groups = new Map();
-    const groupNames = { company: 'Empresa', members: 'Equipe', orders: 'Pedidos e entregas', integrations: 'Integrações', sync: 'Sincronização', backup: 'Cópias e recuperação', identity: 'Identidade e segurança' };
+    const groupNames = { company: 'Empresa', members: 'Equipe', orders: 'Pedidos', deliveries: 'Entregas', driver: 'Entregas', integrations: 'Integrações', sync: 'Sincronização', backup: 'Cópias e recuperação', identity: 'Identidade e segurança' };
+    const descriptions = { 'sync.pull': 'Consultar alterações autorizadas desta empresa.', 'sync.push': 'Enviar alterações autorizadas deste dispositivo para a empresa.' };
     for (const permission of permissions) {
       const key = String(permission.key || '');
       const category = key.split('.', 1)[0] || 'other';
@@ -467,7 +469,7 @@
         input.value = permission.key;
         input.checked = selectedKeys.includes(permission.key);
         input.dataset.permissionKey = permission.key;
-        const description = String(permission.description || '').trim() || 'Permissão específica da empresa';
+        const description = descriptions[permission.key] || String(permission.description || '').trim() || 'Permissão específica da empresa';
         label.append(input, document.createTextNode(` ${description}`));
         options.append(label);
       }
@@ -500,7 +502,6 @@
     driverCursor = driverPage.nextCursor;
     companySnapshot = company;
     $('[data-driver-access-note]').hidden = canReadDrivers;
-    $('[data-company-name]').textContent = company.name;
     const companyForm=$('[data-company-setup]');
     if(companyForm&&!companyForm.dataset.dirty){companyForm.elements.name.value=company.name||'';companyForm.elements.supportPhone.value=company.supportPhone||'';companyForm.elements.timeZone.value=company.timeZone||'America/Sao_Paulo';companyForm.elements.address.value=company.operationalLocation?.address||'';companyForm.dataset.loaded='true'}
     const integrationBox = $('[data-integrations]'); integrationBox.hidden = false;
@@ -664,20 +665,23 @@
     const roleList = $('[data-roles-list]'); roleList.replaceChildren();
     const roleHeading = document.createElement('h3'); roleHeading.textContent = 'Perfis existentes'; roleList.append(roleHeading);
     roles.roles.forEach(role => {
-      const card = document.createElement('form'); card.className = 'rm-member';
-      const heading = document.createElement('strong'); heading.textContent = `${role.name} · ${role.key}`; card.append(heading);
+      const card = document.createElement('article'); card.className = 'rm-member rm-role-card';
+      const heading = document.createElement('strong'); heading.textContent = role.name; card.append(heading);
+      if(role.description){const description=document.createElement('p');description.textContent=role.description;card.append(description)}
       if (role.key === 'owner' || role.systemTemplate) { const note = document.createElement('span'); note.textContent = 'Perfil de sistema protegido.'; card.append(note); roleList.append(card); return; }
       if (role.id === current.activeRoleId) { const note = document.createElement('span'); note.textContent = 'Perfil atualmente associado à sua sessão; não pode ser alterado por você.'; card.append(note); roleList.append(card); return; }
       if (!role.permissions.every(permission => current.permissions.includes(permission))) { const note = document.createElement('span'); note.textContent = 'Este perfil excede suas permissões; somente um perfil de nível suficiente pode alterá-lo.'; card.append(note); roleList.append(card); return; }
-      const nameLabel = document.createElement('label'); nameLabel.textContent = 'Nome do perfil'; const nameInput = document.createElement('input'); nameInput.name = 'name'; nameInput.required = true; nameInput.maxLength = 100; nameInput.value = role.name; nameLabel.append(nameInput); card.append(nameLabel);
+      const disclosure=document.createElement('details');disclosure.className='rm-admin-form-disclosure';const summary=document.createElement('summary');summary.textContent='Editar perfil';disclosure.append(summary);
+      const nameLabel = document.createElement('label'); nameLabel.textContent = 'Nome do perfil'; const nameInput = document.createElement('input'); nameInput.name = 'name'; nameInput.required = true; nameInput.maxLength = 100; nameInput.value = role.name; nameLabel.append(nameInput); disclosure.append(nameLabel);
+      const descriptionLabel=document.createElement('label');descriptionLabel.textContent='Descrição';const descriptionInput=document.createElement('input');descriptionInput.name='description';descriptionInput.maxLength=240;descriptionInput.value=role.description||'';descriptionLabel.append(descriptionInput);disclosure.append(descriptionLabel);
       const fieldset = document.createElement('fieldset'); const legend = document.createElement('legend'); legend.textContent = 'Permissões'; fieldset.append(legend);
       const checks = document.createElement('div'); checks.className = 'rm-role-permissions';
       appendPermissionOptions(checks, grantablePermissions, role.permissions);
-      fieldset.append(checks); card.append(fieldset);
-      const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Salvar perfil'; const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); card.append(save, feedback);
-      card.addEventListener('submit', async event => { event.preventDefault(); if (!card.reportValidity()) return; save.disabled = true;
+      fieldset.append(checks); disclosure.append(fieldset);
+      const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Salvar perfil'; const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); disclosure.append(save, feedback);card.append(disclosure);
+      save.addEventListener('click', async () => { if (!card.querySelector('input[name="name"]').reportValidity()) return; save.disabled = true;
         const permissions = [...checks.querySelectorAll('input:checked')].map(input => input.value);
-        try { await request(`/admin/roles/${role.id}`, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value.trim(), permissions }) }); feedback.textContent = 'Perfil atualizado.'; await loadAdmin(); }
+        try { await request(`/admin/roles/${role.id}`, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value.trim(), description:descriptionInput.value.trim(), permissions }) }); feedback.textContent = 'Perfil atualizado.'; await loadAdmin(); }
         catch (error) { feedback.textContent = message(error); } finally { save.disabled = false; }
       }); roleList.append(card);
     });
@@ -808,7 +812,7 @@
     catch (error) { $('[data-invite-result]').textContent = message(error); } finally { setBusy(form, false); }
   });
   $('[data-create-role]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true);
-    try { const permissions = [...form.querySelectorAll('[data-permissions] input:checked')].map(input => input.value); await request('/admin/roles', { method: 'POST', body: JSON.stringify({ key: form.elements.key.value.trim(), name: form.elements.name.value.trim(), permissions }) }); form.reset(); $('[data-role-result]').textContent = 'Perfil criado.'; await loadAdmin(); }
+    try { const permissions = [...form.querySelectorAll('[data-permissions] input:checked')].map(input => input.value); await request('/admin/roles', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value.trim(), description:form.elements.description.value.trim(), permissions }) }); form.reset(); $('[data-role-result]').textContent = 'Perfil criado.'; await loadAdmin(); }
     catch (error) { $('[data-role-result]').textContent = message(error); } finally { setBusy(form, false); }
   });
   window.addEventListener('online', async () => { if (!current && !offlineMode) { const session = await restore(); if (session) await syncAfterAuthentication(); } else if (current) await syncAfterAuthentication(); });
