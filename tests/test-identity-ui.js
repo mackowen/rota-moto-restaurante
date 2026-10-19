@@ -31,17 +31,19 @@ assert.match(source, /if\(mfaStarting\)return/u, 'duplicate enrollment clicks ar
 assert.match(source, /serverUpdateBus\.publish\(topic\)/u, 'confirmed administrative mutations announce only a safe refresh category to other tabs');
 assert.match(source, /serverUpdateBus\.subscribe\(\(\{ topic \}\)/u, 'open administrative pages reload authoritative server snapshots after cross-tab changes');
 assert.match(appSource, /companyAdminSettingsMount/u, 'company administration mounts inside Settings instead of a fixed overlay');
+assert.match(appSource, /body\.timeZone[\s\S]*body\.operationalLocation[\s\S]*restaurantAddress/u, 'the single Empresa page reads timezone and address from the canonical company endpoint');
+assert.match(appSource, /companyProfileDraftDirty[\s\S]*companyAddressDraftDirty/u, 'late server responses preserve fields the user has started editing');
 assert.match(source, /root\.querySelector\(selector\) \|\| \(root === host \? document\.querySelector\(selector\) : null\)/u, 'identity operations continue resolving controls after their page moves into the application shell');
-assert.match(source, /rotamoto:navigate-settings/u, 'administration navigation uses the application settings route');
-assert.match(source, /document\.addEventListener\('rotamoto:navigate-settings', event =>[\s\S]*?loadAdmin\(\)/u, 'all settings entry points load current company data, including the mobile selector');
+assert.match(source, /rotamoto:settings-page/u, 'administration navigation uses the application settings route');
+assert.match(source, /document\.addEventListener\('rotamoto:settings-page',[\s\S]*?loadAdmin\(\)/u, 'each company settings page loads its server snapshot from the single navigation');
 assert.match(appSource, /data-settings-select aria-label="Escolha uma configuração"/u, 'settings expose a compact mobile category selector');
 assert.match(appSource, /data-settings-select.*?addEventListener\('change'/u, 'mobile settings selector changes the active section');
 assert.doesNotMatch(source, /adminParent = app\?\.querySelector\('\.top-actions'\)/u, 'company administration is never injected into the top bar');
 assert.match(styles, /#rmCompanyAdminPage,\s*#rmPlatformAdminPage \{\s*position: static/u, 'administrative pages stay in normal Settings document flow');
 assert.match(styles, /\.rm-admin-subpage\[hidden\] \{ display:none !important; \}/u, 'inactive administrative pages respect their hidden state despite grid layout');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0256\.1/u, 'identity UI URL changes when the administration interface changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v58`[\s\S]*identity-ui\.js\?v=0256\.1/u, 'service worker cache is invalidated with the current administration UI');
+assert.match(html, /identity-ui\.js\?v=0256a\.1/u, 'identity UI URL changes when the administration interface changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v60`[\s\S]*identity-ui\.js\?v=0256a\.1/u, 'service worker cache is invalidated with the current administration UI');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -69,7 +71,10 @@ assert.match(source, /Reenviar convite/u, 'pending invitations can be resent thr
 assert.match(source, /Revogar convite/u, 'pending invitations can be revoked through audited membership status changes');
 assert.match(source, /Convite pendente/u, 'membership invitation state is presented in plain language');
 assert.match(source, /Aguardando vínculo operacional/u, 'an activated identity without an operational Driver binding is clearly distinguished');
-assert.match(source, /rm-admin-nav[\s\S]*?Empresa[\s\S]*?Equipe[\s\S]*?Motoboys[\s\S]*?Integrações/u, 'company administration is split into separate task pages');
+assert.match(appSource, /company-admin-team[\s\S]*?company-admin-drivers[\s\S]*?company-admin-integrations/u, 'team, drivers and integrations are first-class Ajustes categories');
+assert.match(source, /Acesso e funções de pessoas vinculadas à empresa/u, 'team page has its own heading and contextual description');
+assert.doesNotMatch(source, /data-admin-close|data-platform-close/u, 'administrative pages do not add redundant return-to-settings controls');
+assert.doesNotMatch(source, /data-admin-page="/u, 'company pages do not duplicate category navigation inside the content');
 assert.match(source, /dataset\.providerPage[\s\S]*?dataset\.providerTab/u, 'delivery platform configuration and received orders have separate provider pages');
 assert.match(source, /textContent='Detalhes técnicos'/u, 'protocol capability details stay behind an optional disclosure');
 assert.match(source, /function appendPermissionOptions\([\s\S]*groupNames[\s\S]*permission\.description/u, 'role permissions are grouped and described in plain language while retaining internal keys');
@@ -77,7 +82,7 @@ assert.match(source, /Atualizar situação no RotaMoto/u, 'provider state refres
 assert.match(source, /window\.confirm\('Desconectar esta loja do RotaMoto/u, 'local provider disconnection requires explicit confirmation and explains portal authorization remains separate');
 assert.match(styles, /\.rm-provider-nav/u, 'provider navigation remains touch friendly and horizontally scrollable');
 assert.match(source, /sections\.get\('drivers'\)[\s\S]*?driverMembers/u, 'driver links have a dedicated administration page');
-assert.match(source, /const settingsNav = app\?\.querySelector\('\.settings-nav'\)/u, 'company administration is reached through the existing settings navigation');
+assert.match(source, /rotamoto:settings-page/u, 'company administration is reached through the existing settings navigation');
 assert.doesNotMatch(source, /data-sync/u, 'the account panel contains no operational synchronization action');
 assert.match(source, /adminPage\.hidden = true/u, 'company administration starts hidden and is revealed only inside its authorized Settings mount');
 assert.match(source, /const canManageCompany=Boolean\(current&&appKind==='restaurante'&&!mfaLocked&&current\.permissions\?\.includes\('company\.manage'\)\)/u, 'company administration requires a live authorized session and is withheld during MFA');

@@ -83,25 +83,16 @@
   const panel = $('#rmIdentityPanel');
   const trigger = $('.rm-account-trigger');
   const companyAdminSection = $('[data-admin]');
-  const adminTrigger = document.createElement('button');
-  adminTrigger.type = 'button';
-  adminTrigger.className = 'rm-company-admin-trigger rm-account-trigger rm-account-trigger--inline';
-  adminTrigger.textContent = 'Gerenciar restaurante';
-  adminTrigger.setAttribute('aria-controls', 'rmCompanyAdminPage');
-  adminTrigger.hidden = true;
   const adminPage = document.createElement('section');
   adminPage.id = 'rmCompanyAdminPage';
   adminPage.className = 'rm-company-admin-page';
   adminPage.hidden = true;
   adminPage.setAttribute('aria-labelledby', 'rmCompanyAdminTitle');
-  adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Administração da empresa</strong><small>Configurações vinculadas à empresa ativa</small></div><button type="button" data-admin-close>Voltar a Ajustes</button></header><nav class="rm-admin-nav" aria-label="Áreas da empresa"></nav><div class="rm-company-admin-content"></div>';
+  adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Configurações da empresa</strong><small data-admin-page-context>Empresa ativa</small></div></header><p data-admin-load-status role="status" aria-live="polite"></p><div class="rm-company-admin-content"></div>';
   host.append(adminPage);
-  const platformAdminTrigger=document.createElement('button');platformAdminTrigger.type='button';platformAdminTrigger.className='settings-cat rm-platform-admin-trigger';platformAdminTrigger.innerHTML='<b>Administração da plataforma</b><small>Empresas, usuários e vínculos globais</small>';platformAdminTrigger.hidden=true;platformAdminTrigger.setAttribute('aria-controls','rmPlatformAdminPage');platformAdminTrigger.setAttribute('aria-pressed','false');
   const platformAdminPage=document.createElement('section');platformAdminPage.id='rmPlatformAdminPage';platformAdminPage.className='rm-company-admin-page';platformAdminPage.hidden=true;
-  platformAdminPage.innerHTML='<header><div><strong>Administração da plataforma</strong><small>Acesso global independente das permissões dos restaurantes</small></div><button type="button" data-platform-close>Voltar a Ajustes</button></header><nav class="rm-admin-nav" aria-label="Administração global"><button type="button" data-platform-list="companies">Empresas</button><button type="button" data-platform-list="users">Usuários</button><button type="button" data-platform-list="memberships">Vínculos</button></nav><p data-platform-error role="alert" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite"></div>';
+  platformAdminPage.innerHTML='<header><div><strong>Administração da plataforma</strong><small>Acesso global independente das permissões dos restaurantes</small></div></header><nav class="rm-admin-nav" aria-label="Administração global"><button type="button" data-platform-list="companies">Empresas</button><button type="button" data-platform-list="users">Usuários</button><button type="button" data-platform-list="memberships">Vínculos</button></nav><p data-platform-error role="alert" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite"></div>';
   host.append(platformAdminPage);
-  platformAdminTrigger.addEventListener('click',()=>{if(!current?.platformAdmin||mfaLocked)return;document.dispatchEvent(new CustomEvent('rotamoto:navigate-settings',{detail:{section:'platform-admin'}}))});
-  platformAdminPage.querySelector('[data-platform-close]').addEventListener('click',()=>{document.dispatchEvent(new CustomEvent('rotamoto:navigate-settings',{detail:{section:'geral'}}))});
   async function loadPlatformAdmin(kind='companies'){
     if(!current?.platformAdmin||mfaLocked)throw Object.assign(new Error('FORBIDDEN'),{code:'FORBIDDEN'});
     const route={companies:'/platform-admin/companies',users:'/platform-admin/users',memberships:'/platform-admin/memberships'}[kind];if(!route)throw new Error('INVALID_INPUT');
@@ -118,47 +109,27 @@
   platformAdminPage.querySelector('[data-platform-refresh]').addEventListener('click',()=>{const selected=platformAdminPage.querySelector('[data-platform-list][aria-pressed="true"]')?.dataset.platformList||'companies';loadPlatformAdmin(selected).catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)})});
   if (companyAdminSection) {
     const content = adminPage.querySelector('.rm-company-admin-content');
-    const tabs = [
-      ['company','Empresa','Configuração'],
-      ['team','Equipe','Convites e perfis'],
-      ['drivers','Motoboys','Vínculos operacionais'],
-      ['integrations','Integrações','Plataformas conectadas']
-    ];
-    const nav = adminPage.querySelector('.rm-admin-nav');
     const sections = new Map();
-    for (const [id,label,description] of tabs) {
-      const button = document.createElement('button'); button.type='button'; button.dataset.adminPage=id; button.setAttribute('aria-pressed','false');
-      button.innerHTML = `<strong>${label}</strong><small>${description}</small>`; nav.append(button);
+    for (const [id,label,description] of [['team','Equipe e permissões','Pessoas, perfis e convites'],['drivers','Motoboys','Cadastros e vínculos operacionais'],['integrations','Integrações','Contas e estado das plataformas']]) {
       const section = document.createElement('section'); section.className='rm-admin-subpage'; section.dataset.adminSubpage=id; section.hidden=true; content.append(section); sections.set(id,section);
-      button.addEventListener('click',()=>showAdminPage(id));
+      const status=document.createElement('p');status.dataset.adminPageStatus=id;status.setAttribute('role','status');status.setAttribute('aria-live','polite');section.append(status);
     }
     const company = $('[data-company-setup]',companyAdminSection), recovery = $('[data-mfa-recovery-admin]',companyAdminSection), adminError = $('[data-admin-error]',companyAdminSection), adminRefresh = $('[data-refresh-admin]',companyAdminSection);
     const invite = $('[data-invite]',companyAdminSection), members = $('[data-members]',companyAdminSection), memberNote = $('[data-members-note]',companyAdminSection), roles = $('[data-roles-list]',companyAdminSection), createRole = $('[data-create-role]',companyAdminSection), driverNote = $('[data-driver-access-note]',companyAdminSection), integrations = $('[data-integrations]',companyAdminSection);
-    for (const node of [adminError,company,recovery]) if(node) sections.get('company').append(node);
-    for (const node of [adminRefresh,invite,members,memberNote,roles,createRole]) if(node) sections.get('team').append(node);
+    for (const node of [adminError,adminRefresh,recovery]) if(node) sections.get('team').append(node);
+    for (const node of [invite,members,memberNote,roles,createRole]) if(node) sections.get('team').append(node);
     const driverMembers = document.createElement('div'); driverMembers.dataset.driverMembers=''; driverMembers.setAttribute('aria-live','polite');
     const driverIntro=document.createElement('p'); driverIntro.className='rm-driver-flow-note'; driverIntro.textContent='O cadastro do motorista é operacional e não cria uma conta. Para liberar o aplicativo, convide o endereço de email da pessoa, aguarde a ativação e vincule a conta ativa ao cadastro correto.'; sections.get('drivers').append(driverIntro);
     sections.get('drivers').append(driverMembers);
     for (const node of [driverNote]) if(node) sections.get('drivers').append(node);
     if(integrations) sections.get('integrations').append(integrations);
+    for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.setAttribute('aria-busy','true');const submit=form.querySelector('[type="submit"]');if(submit)submit.disabled=true;}
     companyAdminSection.remove();
-    function showAdminPage(id) { for(const [key,section] of sections){section.hidden=key!==id} for(const button of nav.querySelectorAll('[data-admin-page]'))button.setAttribute('aria-pressed',String(button.dataset.adminPage===id)); }
+    function showAdminPage(id) { if(!sections.has(id))return;for(const [key,section] of sections)section.hidden=key!==id;adminPage.dataset.activePage=id;const title=adminPage.querySelector('#rmCompanyAdminTitle'),context=adminPage.querySelector('[data-admin-page-context]');title.textContent=({team:'Equipe e permissões',drivers:'Motoboys',integrations:'Integrações'})[id];context.textContent=({team:'Acesso e funções de pessoas vinculadas à empresa',drivers:'Cadastros e vínculos operacionais',integrations:'Estado informado pelos serviços do RotaMoto'})[id]; }
     adminPage.showPage = showAdminPage;
-    showAdminPage('company');
+    showAdminPage('team');
   }
-  adminTrigger.addEventListener('click', () => {
-    if (!current || mfaLocked || !current.permissions?.includes('company.manage')) return;
-    document.dispatchEvent(new CustomEvent('rotamoto:navigate-settings',{detail:{section:'company-admin'}}));
-    adminPage.showPage?.('company');
-  });
-  document.addEventListener('rotamoto:navigate-settings', event => {
-    const section=event.detail?.section;
-    if(section==='company-admin'&&current&&!mfaLocked&&current.permissions?.includes('company.manage'))setTimeout(()=>loadAdmin().catch(error=>{ $('[data-admin-error]').textContent=message(error); }),0);
-    if(section==='platform-admin'&&current?.platformAdmin&&!mfaLocked)setTimeout(()=>loadPlatformAdmin('companies').catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)}),0);
-  });
-  adminPage.querySelector('[data-admin-close]')?.addEventListener('click', () => {
-    document.dispatchEvent(new CustomEvent('rotamoto:navigate-settings',{detail:{section:'geral'}}));
-  });
+  document.addEventListener('rotamoto:settings-page',event=>{const section=event.detail?.section;if(section==='platform-admin'&&current?.platformAdmin&&!mfaLocked){loadPlatformAdmin('companies').catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)});return}if(!section?.startsWith('company-admin-')||!current||mfaLocked||!current.permissions?.includes('company.manage'))return;const page=section.slice('company-admin-'.length),id=({team:'team',drivers:'drivers',integrations:'integrations'})[page];if(!id)return;adminPage.showPage?.(id);loadAdmin().catch(error=>showAdminLoadError(error));});
   const applicationRoot = () => document.querySelector('#app, .app');
   let mfaLocked = false;
   const appKind = document.currentScript?.dataset.app || 'restaurante';
@@ -167,7 +138,7 @@
     trigger.setAttribute('aria-label', offlineMode ? 'Dados locais. Abrir opções da conta; sem sessão autenticada' : 'Abrir conta e acesso');
     trigger.title = offlineMode ? 'Modo local: sem sessão autenticada' : 'Abrir conta e acesso';
   }
-  if (appKind !== 'restaurante') { adminTrigger.remove(); adminPage.remove(); }
+  if (appKind !== 'restaurante') adminPage.remove();
   function message(error) { return codeMessages[error?.code] || (error?.network ? codeMessages.NETWORK : 'Não foi possível concluir. Revise os dados e tente novamente.'); }
   async function syncAfterAuthentication() {
     if (mfaLocked) return;
@@ -204,19 +175,6 @@
     const parent = anchor || host;
     if (trigger.parentElement !== parent) parent.append(trigger);
     trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
-    const settingsNav = app?.querySelector('.settings-nav');
-    const settingsSelect = app?.querySelector('[data-settings-select]');
-    if (settingsSelect) {
-      const permittedOptions = [];
-      if (current && appKind === 'restaurante' && !mfaLocked && current.permissions?.includes('company.manage')) permittedOptions.push(['company-admin', 'Empresa e equipe']);
-      if (current && appKind === 'restaurante' && !mfaLocked && current.platformAdmin) permittedOptions.push(['platform-admin', 'Administração da plataforma']);
-      for (const [value, label] of permittedOptions) {
-        if (!settingsSelect.querySelector(`option[value="${value}"]`)) settingsSelect.add(new Option(label, value));
-      }
-      settingsSelect.value = document.querySelector('#companyAdminSettingsMount') ? 'company-admin' : document.querySelector('#platformAdminSettingsMount') ? 'platform-admin' : settingsSelect.value;
-    }
-    if(settingsNav&&appKind==='restaurante'&&current?.platformAdmin&&!mfaLocked){if(platformAdminTrigger.parentElement!==settingsNav)settingsNav.append(platformAdminTrigger);platformAdminTrigger.setAttribute('aria-pressed',String(Boolean(platformMount)))}
-    else if(platformAdminTrigger.parentElement){platformAdminTrigger.remove()}
     const companyMount=app?.querySelector('#companyAdminSettingsMount');
     const platformMount=app?.querySelector('#platformAdminSettingsMount');
     const canManageCompany=Boolean(current&&appKind==='restaurante'&&!mfaLocked&&current.permissions?.includes('company.manage'));
@@ -225,14 +183,6 @@
     else {adminPage.hidden=true;if(adminPage.parentElement!==host)host.append(adminPage)}
     if(platformMount&&canManagePlatform){if(platformAdminPage.parentElement!==platformMount)platformMount.append(platformAdminPage);platformAdminPage.hidden=false}
     else {platformAdminPage.hidden=true;if(platformAdminPage.parentElement!==host)host.append(platformAdminPage)}
-    if (settingsNav && canManageCompany) {
-      if (adminTrigger.parentElement !== settingsNav) settingsNav.append(adminTrigger);
-      if (adminTrigger.className !== 'settings-cat rm-company-admin-trigger') adminTrigger.className = 'settings-cat rm-company-admin-trigger';
-      if (adminTrigger.dataset.adminLabel !== 'settings') { adminTrigger.innerHTML = '<b>Empresa e equipe</b><small>Cadastro, pessoas, motoristas e integrações</small>'; adminTrigger.dataset.adminLabel = 'settings'; }
-      adminTrigger.setAttribute('aria-pressed',String(Boolean(companyMount)));
-    } else {
-      if(adminTrigger.parentElement)adminTrigger.remove();
-    }
   }
   const placementRoot = document.body;
   if (placementRoot && window.MutationObserver) {
@@ -297,8 +247,6 @@
     host.dataset.gated = String(!session && !offlineMode);
     adminPage.hidden = true;
     platformAdminPage.hidden=true;
-    platformAdminTrigger.hidden=mfaLocked||!(session&&appKind==='restaurante'&&session.platformAdmin);
-    adminTrigger.hidden = mfaLocked || !(session && appKind === 'restaurante' && session.permissions?.includes('company.manage'));
     $('[data-close]').hidden = mfaLocked;
     $('[data-accept-existing]').hidden = mfaLocked;
     $('[data-switch]').hidden = mfaLocked;
@@ -504,16 +452,25 @@
     }
   }
 
-  async function loadAdmin({ appendDrivers = false } = {}) {
+  let adminLoadGeneration=0;
+  let adminReady=false;
+  function showAdminLoadError(error){const text=message(error),status=adminPage.querySelector('[data-admin-page-status="'+(adminPage.dataset.activePage||'team')+'"]');const pageError=error?.status===401?'Sua sessão expirou. Entre novamente.':error?.status===403?'Seu perfil não tem acesso a esta informação.':text;if(status)status.textContent=pageError;const errorBox=adminPage.querySelector('[data-admin-error]');if(errorBox)errorBox.textContent=pageError;}
+  function loadAdmin(options={}){const generation=++adminLoadGeneration;adminReady=false;for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.setAttribute('aria-busy','true');const submit=form.querySelector('[type="submit"]');if(submit)submit.disabled=true;}return loadAdminData(options).then(result=>{if(generation===adminLoadGeneration)adminReady=true;return result}).catch(error=>{if(generation===adminLoadGeneration){adminReady=false;showAdminLoadError(error)}throw error}).finally(()=>{if(generation!==adminLoadGeneration)return;for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.removeAttribute('aria-busy');const submit=form.querySelector('[type="submit"]');if(submit)submit.disabled=!adminReady;}});}
+  async function loadAdminData({ appendDrivers = false } = {}) {
+    const generation=adminLoadGeneration;
+    const loadStatus=adminPage.querySelector('[data-admin-page-status="'+(adminPage.dataset.activePage||'team')+'"]');
+    if(loadStatus)loadStatus.textContent='Carregando dados do servidor…';
     const canReadMembers = current.permissions.includes('members.read');
     const canReadDrivers = current.permissions.includes('sync.pull');
     const [company, members, roles, permissionResult, integrations] = await Promise.all([
       request('/admin/company'), canReadMembers ? request('/admin/memberships?limit=100') : Promise.resolve({ members: [] }), request('/admin/roles'), request('/admin/permissions'),
       current.permissions.includes('integrations.manage') ? request('/admin/integrations') : Promise.resolve(null)
     ]);
+    if(generation!==adminLoadGeneration)return;
     const marketplaceOrders = marketplaceOrderCache;
     const driverPage = canReadDrivers ? await request(`/domain/drivers?limit=100${appendDrivers && driverCursor ? `&cursor=${encodeURIComponent(driverCursor)}` : ''}`) : { records: [], nextCursor: null };
     $('[data-admin-error]').textContent='';
+    if(loadStatus)loadStatus.textContent='Dados carregados do servidor.';
     if (!appendDrivers) driverRows = [];
     driverRows.push(...driverPage.records);
     driverCursor = driverPage.nextCursor;
@@ -522,7 +479,8 @@
     $('[data-company-name]').textContent = company.name;
     const companyForm=$('[data-company-setup]');
     if(companyForm&&!companyForm.dataset.dirty){companyForm.elements.name.value=company.name||'';companyForm.elements.supportPhone.value=company.supportPhone||'';companyForm.elements.timeZone.value=company.timeZone||'America/Sao_Paulo';companyForm.elements.address.value=company.operationalLocation?.address||'';companyForm.dataset.loaded='true'}
-    const integrationBox = $('[data-integrations]'); integrationBox.hidden = !integrations;
+    const integrationBox = $('[data-integrations]'); integrationBox.hidden = false;
+    if(!integrations){const list=integrationBox.querySelector('div');if(list)list.textContent='Seu perfil não tem permissão para consultar as integrações desta empresa.';}
     if (integrations) { const list = integrationBox.querySelector('div'); list.replaceChildren(); const providerNav=document.createElement('nav');providerNav.className='rm-provider-nav';providerNav.setAttribute('aria-label','Plataformas e pedidos');const providerPages=document.createElement('div');providerPages.className='rm-provider-pages';let firstProvider=true;const providerPageByCode=new Map(); integrations.integrations.forEach(item => {
       const providerCode=String(item.provider||'').toLowerCase(),providerTitle=item.displayName||({ifood:'iFood','99food':'99Food',keeta:'Keeta'}[providerCode]||'Integração');
       const providerPage=document.createElement('section');providerPage.className='rm-provider-page';providerPage.dataset.providerPage=providerCode;providerPage.hidden=!firstProvider;providerPageByCode.set(providerCode,providerPage);
@@ -700,6 +658,7 @@
       }); roleList.append(card);
     });
     const list = $('[data-members]'); list.replaceChildren();
+    if(!members.members.length){const empty=document.createElement('p');empty.textContent='Nenhuma pessoa vinculada a esta empresa.';list.append(empty);}
     const driverList = $('[data-driver-members]'); if(driverList) driverList.replaceChildren();
     if(driverList){
       const linkedIds=new Set(members.members.map(member=>member.driverId).filter(Boolean));

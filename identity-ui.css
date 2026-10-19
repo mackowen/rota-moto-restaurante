@@ -107,6 +107,10 @@
 #rmCompanyAdminPage > header button,
 #rmPlatformAdminPage > header button { min-height: 44px; padding: 8px 14px; border: 1px solid var(--rm-id-border); border-radius: 10px; background: var(--rm-id-surface); color: var(--rm-id-text); }
 .rm-company-admin-content { padding-block: 16px 32px; }
+.rm-admin-subpage > [data-admin-page-status] { margin:0; color:var(--rm-id-muted); font-size:.92rem; }
+.rm-admin-subpage > [data-admin-page-status]:empty { display:none; }
+.rm-admin-subpage [aria-busy="true"] { opacity:.88; }
+.rm-admin-subpage [aria-busy="true"] button[type="submit"] { cursor:progress; }
 .rm-admin-nav { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; width:min(100%,960px); margin:14px auto 0; }
 .rm-admin-nav button { min-height:54px; padding:9px 12px; text-align:left; border:1px solid var(--rm-id-border); border-radius:11px; background:var(--rm-id-surface); color:var(--rm-id-text); cursor:pointer; }
 .rm-admin-nav button[aria-pressed="true"] { border-color:var(--rm-id-accent); background:var(--rm-id-accent-soft); }
