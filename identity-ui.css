@@ -500,3 +500,9 @@ body[data-mfa-locked="true"] .rm-identity-panel {
 .rm-account-settings-page.rm-mfa-only { width:min(100%,520px); }
 .rm-account-settings-page.rm-mfa-only .rm-account-settings-grid { display:block; }
 @media(max-width:600px) { .rm-account-settings-page > header { align-items:flex-start; flex-direction:column; } .rm-account-settings-grid { grid-template-columns:minmax(0,1fr); } }
+
+/* Marketplace provider choices are responsive cards; only the selected detail page is active. */
+.rm-provider-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;margin-block:12px 20px}
+.rm-provider-tab{min-height:76px;padding:14px;text-align:left;white-space:normal;overflow-wrap:anywhere;border:1px solid var(--border,#d8dee8);border-radius:14px;background:var(--surface,#fff);color:var(--text,#18212f);font:inherit;font-weight:650;cursor:pointer}
+.rm-provider-tab[aria-pressed="true"]{border-color:var(--primary,#2672d8);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary,#2672d8) 20%,transparent)}
+@media(max-width:520px){.rm-provider-nav{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.rm-provider-tab{min-height:68px;padding:10px;font-size:.9rem}}

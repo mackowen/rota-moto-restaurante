@@ -10,6 +10,14 @@ const { createKeetaService } = require('../keeta-service');
 const restaurantUi = fs.readFileSync(require('node:path').join(__dirname, '..', 'app.js'), 'utf8');
 assert.match(restaurantUi, /Situação do iFood atualizada[\s\S]*não testa a conexão externa/u,
   'a local status endpoint is not presented as proof of a live provider connection');
+const labProcess = restaurantUi.match(/async function processProviderLab\([^\n]+/u)?.[0] || '';
+const labTransition = restaurantUi.match(/async function transitionProviderLab\([^\n]+/u)?.[0] || '';
+assert.match(restaurantUi,/const providerLabSessions=new Map\(\)/u,'synthetic provider lab state is session-memory only');
+assert.doesNotMatch(labProcess,/\bput\s*\(|saveSettings|state\.orders|state\.settings/u,'simulated incoming orders never touch operational IndexedDB or settings');
+assert.doesNotMatch(labTransition,/\bput\s*\(|saveSettings|state\.orders|state\.settings/u,'simulated transitions never enter the operational outbox or orders');
+assert.doesNotMatch(restaurantUi,/function renderOrdersIntegrationsSettings\(\)[\s\S]{0,2600}integrationLab\(\)/u,'order origins do not embed a second laboratory');
+assert.match(restaurantUi,/Simulador sintético isolado\. Não configura credenciais/u,'lab UI does not imply that it configures provider credentials');
+assert.match(restaurantUi,/function sanitizeLabPayload\(/u,'lab diagnostic payload is redacted before rendering');
 
 assert.deepEqual(PROVIDERS.map(provider => provider.key), ['ifood', '99food', 'keeta']);
 const catalog = publicCatalog([{ provider: 'ifood', status: 'active', externalAccount: { displayName: 'Conta', linkStatus: 'confirmed', confirmedAt: '2026-01-01' } }]);

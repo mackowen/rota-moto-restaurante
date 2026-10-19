@@ -7,11 +7,7 @@ disponíveis.
 
 ## Integrações externas
 
-iFood, 99Food e Keeta **não estão conectados nem homologados**. Rotas externas
-legadas retornam `503 PROVIDER_BLOCKED_EXTERNAL`. A interface mantém somente a
-identificação local da origem e um laboratório sintético iFood isolado em
-memória; isso não cria pedido comercial, não comprova protocolo e não confirma
-ACK externo. Consulte [README-IFOOD.md](README-IFOOD.md) e
+iFood, 99Food e Keeta têm administração de contas por empresa e adaptadores/runtime em capacidades distintas. A tela informa separadamente autorização registrada e conectividade: nenhuma conta é marcada como conectada sem verificação real. As rotas legadas foram bloqueadas; fluxos habilitados usam endpoints administrativos autenticados e dependem de onboarding externo. O laboratório avançado é sintético e isolado em memória, sem gravação em pedidos ou filas operacionais. Consulte [README-IFOOD.md](README-IFOOD.md) e
 [docs/API-v1.md](docs/API-v1.md).
 
 ## Desenvolvimento local

@@ -45,14 +45,14 @@ async function fire(listener, event = {}) {
   await fire(healthy.listeners.get('install'));
   assert.equal(healthy.stores.size, 1, 'one complete versioned cache is staged');
   const [cacheName] = [...healthy.stores.keys()];
-  assert.match(cacheName, /v71$/u);
-  assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('identity-ui.js?v=0256c.8')),
+  assert.match(cacheName, /v72$/u);
+  assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('identity-ui.js?v=0256d.1')),
     'current shell stages the versioned identity UI');
   assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('analytics-view.js?v=0254.1')), 'report renderer is versioned in the shell');
   assert.equal([...healthy.stores.get(cacheName).keys()].some(url => url.includes('maplibre-gl-worker.js')), false,
     'missing optional cartography worker does not block or enter the shell');
 
-  const failed = await createWorker({ failUrl: 'https://restaurante.test/app.js?v=0256c.8' });
+  const failed = await createWorker({ failUrl: 'https://restaurante.test/app.js?v=0256d.1' });
   failed.stores.set('rotamoto-restaurante-shell-v17', new Map([['sentinel', new Response('old-shell')]]));
   await assert.rejects(fire(failed.listeners.get('install')), /required shell assets unavailable/u);
   assert.deepEqual([...failed.stores.keys()], ['rotamoto-restaurante-shell-v17'], 'failed update removes only its staged cache and retains the active shell');

@@ -46,8 +46,8 @@ assert.doesNotMatch(source, /adminParent = app\?\.querySelector\('\.top-actions'
 assert.match(styles, /#rmCompanyAdminPage,\s*#rmPlatformAdminPage \{\s*position: static/u, 'administrative pages stay in normal Settings document flow');
 assert.match(styles, /\.rm-admin-subpage\[hidden\] \{ display:none !important; \}/u, 'inactive administrative pages respect their hidden state despite grid layout');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0256c\.8/u, 'identity UI URL changes when the account page lifecycle changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v71`[\s\S]*identity-ui\.js\?v=0256c\.8/u, 'service worker cache is invalidated with the current account page lifecycle');
+assert.match(html, /identity-ui\.js\?v=0256d\.1/u, 'identity UI URL changes when the account page lifecycle changes');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v72`[\s\S]*identity-ui\.js\?v=0256d\.1/u, 'service worker cache is invalidated with the current account page lifecycle');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');

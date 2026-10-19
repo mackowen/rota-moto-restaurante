@@ -1,11 +1,15 @@
-# Laboratório local de integração — iFood
+# Integrações e laboratório local
 
-Este módulo é um simulador local. Ele gera dados sintéticos para inspecionar estados locais e não comprova conexão, protocolo, autenticação, payload ou transição oficial do iFood.
+A administração de iFood, 99Food e Keeta fica em Ajustes → Integrações. A API autentica por sessão, tenant, permissão `integrations.manage` e CSRF nas mutações; os segredos ficam no backend e o catálogo administrativo não os retorna.
 
-O backend bloqueia todas as rotas legadas `/api/ifood/*` com `503 PROVIDER_BLOCKED_EXTERNAL`. Não há OAuth, polling, ACK, webhook ou ações externas habilitadas. O gerador local de pedidos não deve ser usado como fixture de contrato do fornecedor nem como pedido canônico de produção.
+O estado diferencia capacidades de adaptador/runtime, conta autorizada e conexão verificada. Uma conta autorizada não prova conectividade, recebimento operacional, sandbox ou homologação comercial. A disponibilidade de OAuth, vínculo e desativação varia por marketplace; não iniciar ações com contas reais sem autorização do proprietário. Rotas legadas genéricas permanecem fail-closed.
 
-As opções de origem em Configurações controlam somente a identificação local dos pedidos. Nenhuma tela pede segredo. A administração autenticada mostra a integração como não conectada enquanto o protocolo e a homologação não estiverem verificados.
+Ajustes → Origens de pedidos controla apenas rótulos e disponibilidade local. Isso não conecta marketplaces nem altera despacho ou propriedade do pedido. O Laboratório avançado é uma única área técnica autorizada; os simuladores são sintéticos, em memória e não escrevem em `orders`, `events` ou `outbox`, nem enviam dados a provedores.
 
-Permissões locais antigas `integrationSettings`, `integrationLab` e `integrationLabOperate` controlam apenas preferências e simulação local; não concedem autoridade de provider no servidor.
+## Capacidades e limites atuais
 
-Para habilitar integração real ainda são necessários material oficial atual, credenciais/conta de parceiro, homologação e um secret manager operacional. Só então será implementado e testado um adapter separado e tenant-scoped.
+- **iFood:** runtime e fluxos administrativos de autorização estão implementados; conexão, sandbox e homologação reais permanecem não verificados.
+- **99Food:** adaptador de protocolo, webhook/runtime local e worker estão implementados; onboarding, whitelist/certificação e aceite comercial são dependências externas. O simulador da UI não representa o protocolo real.
+- **Keeta:** OAuth, assinatura, polling, acknowledgement e lifecycle de pedidos têm testes locais; autorização/conta real e conectividade externa permanecem não verificadas.
+
+Nenhum teste desta campanha usa credenciais comerciais ou envia tráfego para marketplaces.

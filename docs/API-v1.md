@@ -90,9 +90,9 @@ O tenant e o ator vêm da sessão verificada e RLS; nenhum endpoint recebe `comp
 
 ## Providers externos
 
-As rotas legadas `/api/ifood/*`, `/api/99food/*` e `/api/keeta/*` respondem `503 PROVIDER_BLOCKED_EXTERNAL`. Não executam OAuth, polling, ACK, pedido, assinatura presumida ou webhook. Essa fronteira é deliberadamente fail-closed até validação de documentação oficial, credenciais de parceiro e homologação por provider.
+As rotas legadas `/api/ifood/*`, `/api/99food/*` e `/api/keeta/*` respondem `503 PROVIDER_BLOCKED_EXTERNAL`. Os fluxos administrativos suportados são `POST /api/admin/integrations/{ifood|keeta|99food}/authorize`, `/complete` e `/accounts/{accountId}/disable`; exigem sessão, tenant, `integrations.manage`, MFA quando configurado e CSRF nas mutações. OAuth/binding só começa após ação explícita. Leitura de pedidos requer `orders.read`; comandos requerem `orders.manage`.
 
-O catálogo é fornecido pela API administrativa tenant-scoped; leitura requer sessão e `integrations.manage`. O código de laboratório é local e sintético. Seus normalizadores e eventos não comprovam formato externo, autenticidade, lifecycle nem conexão. `GET /api/admin/integrations` é a única representação administrativa de estado disponível e não permite iniciar conexão. Um row persistido ou conta externa cadastrada nunca é exibido como conexão verificada.
+`GET /api/admin/integrations` retorna catálogo de capacidades e estado sanitizado tenant-scoped, sem credenciais. O catálogo separa documentação, implementação, runtime wiring, testes locais/sandbox e autorização de produção. `connectionVerified` só é verdadeiro após prova real de conectividade; autorização de conta sozinha permanece `authorized_unverified`. Os simuladores da UI são memória de sessão e não gravam no domínio operacional nem fazem requests externos.
 
 Arquitetura de implementação prevista: adapter validado por provider → serviço de integração tenant-scoped → caso de uso/importação canônica Order/Delivery → outbox/inbox e sync Local-First. A integração não grava projeções visuais. Um pedido só poderá ser importado quando o evento tiver autenticidade validada, external ID estável, mapping aprovado e idempotência persistente; colisão com edição local resulta em conflito revisável. Até essas condições existirem, nenhum payload externo é enfileirado ou normalizado para domínio.
 
