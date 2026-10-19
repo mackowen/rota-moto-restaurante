@@ -256,7 +256,7 @@
     if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
     mfaLocked = Boolean(session && (session.mfaEnrollmentRequired || (session.mfaRequired && !session.mfaVerified)));
     $('[data-login]').hidden = Boolean(session);
-    if (accountPage) { accountPage.classList.toggle('rm-mfa-only', mfaLocked); if (mfaLocked) { panel.append(accountPage); accountPage.hidden = false; } else if (accountPage.parentElement === panel) { host.append(accountPage); accountPage.hidden = true; } else accountPage.hidden = !session; }
+    if (accountPage) { accountPage.classList.toggle('rm-mfa-only', mfaLocked); if (mfaLocked) { panel.append(accountPage); accountPage.hidden = false; } else if (accountPage.parentElement === panel) { accountPage.remove(); accountPage.hidden = true; } else accountPage.hidden = !(session && accountPage.closest('#main')); }
     if (recoveryDetails) { if (session && !mfaLocked) { accountCards[4].append(recoveryDetails); recoveryDetails.hidden = false; } else { $('.rm-identity-content').append(recoveryDetails); recoveryDetails.hidden = Boolean(session); } }
     const appRoot = applicationRoot();
     if (appRoot) { const authorized = Boolean(session && !mfaLocked); appRoot.hidden = !authorized; appRoot.inert = !authorized; appRoot.setAttribute('aria-hidden', String(!authorized)); }
@@ -368,8 +368,10 @@
   $('[data-mfa-regenerate]').addEventListener('click',async event=>{const button=event.currentTarget;if(working)return;working=true;button.disabled=true;try{const result=await request('/identity/mfa/recovery-codes',{method:'POST',body:'{}'});$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{working=false;button.disabled=false}});
   $('.rm-account-trigger')?.addEventListener('click', () => {});
   document.addEventListener('rotamoto:settings-page', event => {
-    if (event.detail?.section === 'seguranca') { if (!current || mfaLocked) return; const mount=document.querySelector('#rmAccountSettingsMount'); if(mount){ mount.append(accountPage); accountPage.hidden=false; } panel.hidden=true; return; }
-    if (!event.detail?.section) { accountPage.hidden=true; host.append(accountPage); }
+    if (event.detail?.section === 'seguranca') { if (!current || mfaLocked) return; const mount=document.querySelector('#rmAccountSettingsMount'); if(mount && mount.closest('#main')){ mount.append(accountPage); accountPage.hidden=false; } panel.hidden=true; return; }
+    if (mfaLocked) return;
+    accountPage.remove();
+    accountPage.hidden=true;
   });
   $('[data-copy-company-id]').addEventListener('click', async event => { try { await navigator.clipboard.writeText(current?.activeCompanyId || ''); event.currentTarget.textContent='Copiado'; setTimeout(()=>{event.currentTarget.textContent='Copiar'},1600); } catch (_) { $('[data-account-error]').textContent='Não foi possível copiar o identificador neste navegador.'; } });
   $('[data-close]').addEventListener('click', () => { if (current || offlineMode) setOpen(false); });
