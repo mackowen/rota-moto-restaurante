@@ -47,7 +47,7 @@ assert.match(styles, /#rmCompanyAdminPage,\s*#rmPlatformAdminPage \{\s*position:
 assert.match(styles, /\.rm-admin-subpage\[hidden\] \{ display:none !important; \}/u, 'inactive administrative pages respect their hidden state despite grid layout');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
 assert.match(html, /identity-ui\.js\?v=0256d1\.1/u, 'identity UI URL changes when the account page lifecycle changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v73`[\s\S]*identity-ui\.js\?v=0256d1\.1/u, 'service worker cache is invalidated with the current account page lifecycle');
+assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v74`[\s\S]*identity-ui\.js\?v=0256d1\.1/u, 'service worker cache is invalidated with the current account page lifecycle');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
@@ -110,7 +110,10 @@ assert.match(appSource, /error\.status!==401&&sameIdentity/u, 'transient session
 assert.match(appSource, /let modalReturnFocus=null/u, 'operational dialogs remember their invoking control');
 assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog=/u, 'operational dialogs trap keyboard focus and handle Escape');
 assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
-assert.match(appSource, /Escopo dos ajustes[\s\S]{0,500}Preferências visuais e locais ficam neste aparelho[\s\S]{0,200}dados empresariais confirmados pelo servidor/u, 'settings distinguish local preferences from server-confirmed company data');
+assert.match(appSource, /Escopo dos ajustes[\s\S]{0,500}Preferências visuais e locais são salvas automaticamente neste aparelho[\s\S]{0,200}Dados da empresa só são confirmados após resposta válida do servidor/u, 'settings distinguish local autosave from server-confirmed company data');
+assert.match(appSource, /const persisted=await getMeta\('settings'\);[\s\S]{0,180}SETTINGS_SAVE_UNCONFIRMED/u, 'local settings report success only after IndexedDB readback confirms the snapshot');
+assert.match(appSource, /let settingsWriteQueue=Promise\.resolve\(\),localSettingsSavePending=false/u, 'local settings writes serialize and retain failed drafts for retry');
+assert.match(appSource, /beforeunload[\s\S]{0,100}hasUnsavedSettingsDraft/u, 'pending local/company drafts guard page exit');
 assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed');
 assert.match(source, /Última sincronização:|conexão ainda não está ativa/u, 'integration state distinguishes account authorization from an active connection and records sync time');
 assert.match(source, /rotamoto:session-expired/u, 'sync session expiry returns the app to authentication');
