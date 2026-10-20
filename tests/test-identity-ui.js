@@ -8,6 +8,15 @@ const uiPath = path.join(__dirname, '..', 'identity-ui.js');
 const htmlPath = path.join(__dirname, '..', 'index.html');
 const source = fs.readFileSync(uiPath, 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+assert.match(appSource, /Situação do cadastro<select class="select" name="status">/u,
+  'Driver edit presents its administrative status separately from operational availability');
+assert.match(appSource, /Email de contato<input class="input" name="email" type="email"[\s\S]*?não altera identidade, convite ou vínculo/u,
+  'Driver contact email remains operational data and does not imply an identity or membership edit');
+assert.match(appSource, /value="ACTIVE"[^>]*>Ativo/u, 'Driver can be administratively activated');
+assert.match(appSource, /value="DISABLED"[^>]*>Inativo — acesso operacional bloqueado/u,
+  'Driver deactivation is explicit and described as blocking operational access');
+assert.doesNotMatch(appSource, /name="status">\$\{\['DISPONÍVEL','EM ROTA','CHEGOU','OFFLINE'\]/u,
+  'operational presence values are not offered as Driver administrative statuses');
 const html = fs.readFileSync(htmlPath, 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, '..', 'identity-ui.css'), 'utf8');
 const appStyles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
@@ -81,6 +90,10 @@ assert.match(source, /data-permissions/u, 'role permissions retain the server pe
 assert.match(appSource, /Controles locais deste aparelho/u, 'local users and profiles are clearly scoped to this browser');
 assert.match(source, /Reenviar convite/u, 'pending invitations can be resent through the existing identity invitation service');
 assert.match(source, /Revogar convite/u, 'pending invitations can be revoked through audited membership status changes');
+assert.match(source, /normalize\('NFD'\)[\s\S]*?authorizedDriverStatuses\.has\(driverStatus\)/u,
+  'Driver status labels normalize canonical status casing and accent rules before reporting access');
+assert.match(source, /\['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED'[\s\S]*?'OFFLINE','UNAVAILABLE','INDISPONIVEL','BUSY','OCUPADO','PAUSED','PAUSADO'\]/u,
+  'Driver UI authorization status vocabulary stays aligned with the backend access allowlist');
 assert.match(source, /Convite pendente/u, 'membership invitation state is presented in plain language');
 assert.match(source, /Aguardando vínculo operacional/u, 'an activated identity without an operational Driver binding is clearly distinguished');
 assert.match(appSource, /company-admin-team[\s\S]*?company-admin-drivers[\s\S]*?company-admin-integrations/u, 'team, drivers and integrations are first-class Ajustes categories');

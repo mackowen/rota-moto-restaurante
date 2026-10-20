@@ -135,8 +135,11 @@
       version: Math.max(1, Number(driver.version || 0), Number(driver.sync?.version || 0)),
       ...canonicalBaseVersion(driver),
     };
-    for (const key of ['name', 'phone', 'email', 'status']) {
+    for (const key of ['name', 'status']) {
       if (typeof driver[key] === 'string' && driver[key].trim()) record[key] = driver[key].trim();
+    }
+    for (const key of ['phone', 'email']) {
+      if (typeof driver[key] === 'string') record[key] = driver[key].trim();
     }
     if (driver.capacity && driver.capacity.unit === 'deliveries' && Number.isSafeInteger(driver.capacity.limit) &&
         driver.capacity.limit >= 1 && driver.capacity.limit <= 500 && Object.keys(driver.capacity).every(key=>['unit','limit'].includes(key)))

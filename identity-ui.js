@@ -739,7 +739,12 @@
           linkBox.append(resend, revoke);
         }
         if (member.driverId) {
-          feedback.textContent = driver?.record?.status && driver.record.status !== 'active' ? `Cadastro vinculado, mas sem operação ativa (${driver.record.status}). Entregas continuam bloqueadas.` : `Vinculado a ${driver?.record?.name || driver?.record?.displayName || 'motorista ativo'}.`;
+          const driverStatus = String(driver?.record?.status || '').normalize('NFD').replace(/[\u0300-\u036f]/gu, '').trim().toUpperCase();
+          const authorizedDriverStatuses = new Set(['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED',
+            'OFFLINE','UNAVAILABLE','INDISPONIVEL','BUSY','OCUPADO','PAUSED','PAUSADO']);
+          feedback.textContent = driverStatus && !authorizedDriverStatuses.has(driverStatus)
+            ? `Cadastro vinculado, mas inativo (${driver?.record?.status}). O acesso operacional está bloqueado.`
+            : `Vinculado a ${driver?.record?.name || driver?.record?.displayName || 'motorista ativo'}.`;
           const unlink = document.createElement('button'); unlink.type = 'button'; unlink.className = 'rm-secondary'; unlink.textContent = 'Desvincular motorista';
           unlink.addEventListener('click', async () => {
             if (!window.confirm(`Desvincular o motoboy ${member.email}? Ele deixará de receber entregas desta empresa até ser vinculado novamente.`)) return;

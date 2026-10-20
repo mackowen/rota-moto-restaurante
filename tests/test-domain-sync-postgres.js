@@ -224,6 +224,33 @@ async function main() {
       const canonicalCapacityDriver=capacityPush.body.operationResults[0].canonicalId;
       const storedCapacity=await client.query("SELECT payload->'capacity' AS capacity FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Driver'",[companyId,canonicalCapacityDriver]);
       assert.deepEqual(storedCapacity.rows[0].capacity,{unit:'deliveries',limit:4});
+      const editedCapacityDriver={...capacityDriver,id:canonicalCapacityDriver,name:'Motorista atualizado',phone:'+5511999990000',email:'motorista.0260@example.invalid',status:'ACTIVE',
+        version:2,baseVersion:1,updatedAt:new Date().toISOString()};
+      const driverEditPacket={...packet,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...packet.data,orders:[],deliveries:[],drivers:[editedCapacityDriver],routes:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[]}};
+      const driverEdit=await call('/api/sync/push',{method:'POST',body:driverEditPacket});
+      assert.equal(driverEdit.status,200,JSON.stringify(driverEdit.body));
+      assert.equal(driverEdit.body.operationResults[0].status,'accepted','Restaurant can edit the canonical Driver through the contracted sync write path');
+      assert.equal(driverEdit.body.operationResults[0].canonicalVersion,2);
+      const driverReadback=await call(`/api/domain/drivers/${canonicalCapacityDriver}`);
+      assert.equal(driverReadback.status,200);
+      assert.equal(driverReadback.body.record.name,'Motorista atualizado');
+      assert.equal(driverReadback.body.record.phone,'+5511999990000');
+      assert.equal(driverReadback.body.record.email,'motorista.0260@example.invalid');
+      assert.equal(driverReadback.body.record.status,'ACTIVE');
+      assert.deepEqual(driverReadback.body.record.capacity,{unit:'deliveries',limit:4});
+      const staleDriverEdit=await call('/api/sync/push',{method:'POST',body:{...driverEditPacket,packetId:`pkt_${crypto.randomUUID()}`,
+        data:{...driverEditPacket.data,drivers:[{...editedCapacityDriver,name:'Edição obsoleta',version:3,baseVersion:1}]}}});
+      assert.equal(staleDriverEdit.status,200);
+      assert.equal(staleDriverEdit.body.operationResults[0].status,'conflict','stale Driver revisions do not overwrite the canonical record');
+      assert.equal(staleDriverEdit.body.operationResults[0].error.code,'REVISION_CONFLICT');
+      const deniedDriverEdit=await call('/api/sync/push',{method:'POST',cookie:`${COOKIE_NAME}=${tenantBToken}`,csrf:tenantBCsrf,
+        body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,companyId:tenantBId,deviceId:'tenant-b-driver-edit-denied',
+          source:{app:'RotaMoto Restaurante',deviceId:'tenant-b-driver-edit-denied'},
+          data:{...packet.data,orders:[],deliveries:[],drivers:[{id:tenantBDriverId,name:'Tentativa sem sync.push',status:'ACTIVE',version:2,baseVersion:1}],
+            routes:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[]}}});
+      assert.equal(deniedDriverEdit.status,403);
+      assert.equal(deniedDriverEdit.body.error.code,'FORBIDDEN','Driver edits require server sync.push authorization');
       const invalidCapacityPush=await call('/api/sync/push',{method:'POST',body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,
         data:{...packet.data,orders:[],deliveries:[],drivers:[{...capacityDriver,id:'driver-capacity-invalid',capacity:{unit:'kg',limit:20}}],routes:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[]}}});
       assert.equal(invalidCapacityPush.status,200);
@@ -296,6 +323,9 @@ async function main() {
       assert.equal(noLinkCsrf.status,403);assert.equal(noLinkCsrf.body.error.code,'CSRF_INVALID');
       const invalidDriver=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'PUT',body:{driverId:crypto.randomUUID()}});
       assert.equal(invalidDriver.status,404);assert.equal(invalidDriver.body.error.code,'DRIVER_NOT_FOUND');
+      const crossTenantDriver=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'PUT',body:{driverId:tenantBDriverId}});
+      assert.equal(crossTenantDriver.status,404);assert.equal(crossTenantDriver.body.error.code,'DRIVER_NOT_FOUND',
+        'known Driver identifiers from another tenant remain indistinguishable from unknown Drivers');
       await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=NULL WHERE id=$1',[sessionId]);
       const linkWithoutMfa=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'PUT',body:{driverId}});
       assert.equal(linkWithoutMfa.status,403);assert.equal(linkWithoutMfa.body.error.code,'MFA_REQUIRED',

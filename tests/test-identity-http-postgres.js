@@ -295,6 +295,28 @@ async function main() {
       email: secondCompanyEmail, password: secondCompanyPassword, companyId: secondProvision.body.companyId, mfaCode: '654321' } });
     assert.equal(secondOwnerLogin.status, 200);
     const secondOwnerCookie = secondOwnerLogin.headers.get('set-cookie').split(';', 1)[0];
+    const secondTenantRole = await call('/api/admin/roles', { method: 'POST', cookie: secondOwnerCookie, csrf: secondOwnerLogin.body.csrfToken,
+      body: { key: 'qa_existing_user', name: 'Leitura multiempresa', permissions: ['orders.read'] } });
+    assert.equal(secondTenantRole.status, 201);
+    const existingIdentityInvite = await call('/api/admin/invitations', { method: 'POST', cookie: secondOwnerCookie,
+      csrf: secondOwnerLogin.body.csrfToken, body: { email, roleId: secondTenantRole.body.id } });
+    assert.equal(existingIdentityInvite.status, 202, 'another tenant can invite an already existing identity without creating a duplicate User');
+    const existingIdentityToken = delivered.at(-1).token;
+    const missingAcceptCsrf = await call('/api/identity/membership-invitations/accept-authenticated', { method: 'POST',
+      body: { token: existingIdentityToken }, cookie: sessionCookie });
+    assert.equal(missingAcceptCsrf.status, 403, 'accepting an existing identity invitation requires CSRF');
+    const acceptedExistingIdentity = await call('/api/identity/membership-invitations/accept-authenticated', { method: 'POST',
+      body: { token: existingIdentityToken }, cookie: sessionCookie, csrf: session.body.csrfToken });
+    assert.equal(acceptedExistingIdentity.status, 200, 'existing signed-in User can accept a second-company membership');
+    assert.equal(acceptedExistingIdentity.body.companyId, secondProvision.body.companyId);
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [secondProvision.body.companyId]);
+    const existingIdentityMembership = await client.query(`SELECT u.id::text AS user_id,count(m.id)::int AS memberships,
+      min(m.status) AS status FROM rotamoto.users u JOIN rotamoto.memberships m ON m.user_id=u.id
+      WHERE u.email=$1 AND m.company_id=$2 GROUP BY u.id`, [email, secondProvision.body.companyId]);
+    assert.equal(existingIdentityMembership.rowCount, 1);
+    assert.equal(existingIdentityMembership.rows[0].user_id, accepted.body.userId, 'multi-company invite reuses the existing canonical User');
+    assert.equal(existingIdentityMembership.rows[0].memberships, 1);
+    assert.equal(existingIdentityMembership.rows[0].status, 'active');
     const wrongTenantUser = await call('/api/identity/membership-invitations/accept-authenticated', { method: 'POST',
       body: { token: invitedMembershipToken }, cookie: secondOwnerCookie, csrf: secondOwnerLogin.body.csrfToken });
     assert.equal(wrongTenantUser.status, 401, 'a session from another tenant cannot consume a token addressed to a different user');
@@ -344,13 +366,37 @@ async function main() {
     const tenantSelection = await call('/api/identity/tenant', { method: 'POST', cookie: invitedCookie,
       csrf: invitedLogin.body.csrfToken, body: { companyId } });
     assert.equal(tenantSelection.status, 200, 'an active member can select a validated tenant without company.manage');
-    const duplicateActiveInvite = await call('/api/admin/invitations', { method: 'POST', cookie: sessionCookie,
-      csrf: session.body.csrfToken, body: { email: invitedEmail, roleId: createdRole.body.id } });
-    assert.equal(duplicateActiveInvite.status, 409, 'a second active membership is not created for the same tenant and identity');
     const escalation = await call('/api/admin/invitations', { method: 'POST', cookie: invitedCookie,
       csrf: invitedLogin.body.csrfToken, body: { email: `denied-${crypto.randomUUID()}@example.invalid`, roleId: createdRole.body.id } });
     assert.equal(escalation.status, 403, 'ordinary member cannot create invitations');
-
+    const observerRole = await call('/api/admin/roles', { method: 'POST', cookie: sessionCookie, csrf: session.body.csrfToken,
+      body: { key: 'qa_observer', name: 'Observação QA', permissions: [] } });
+    assert.equal(observerRole.status, 201);
+    const memberBeforeEdit = (await call('/api/admin/memberships?limit=100', { cookie: sessionCookie })).body.members
+      .find(member => member.userId === invitationAccepted.body.userId);
+    assert(memberBeforeEdit);
+    const roleChanged = await call(`/api/admin/memberships/${memberBeforeEdit.membershipId}`, { method: 'PATCH', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: { roleId: observerRole.body.id } });
+    assert.equal(roleChanged.status, 200, 'authorized owner can change another member to a permitted company profile');
+    assert.equal(roleChanged.body.roleId, observerRole.body.id);
+    assert.equal((await call('/api/identity/session', { cookie: invitedCookie })).status, 401,
+      'a role change revokes the member’s existing session');
+    const memberAfterEdit = (await call('/api/admin/memberships?limit=100', { cookie: sessionCookie })).body.members
+      .find(member => member.membershipId === memberBeforeEdit.membershipId);
+    assert.equal(memberAfterEdit.roleId, observerRole.body.id, 'membership role change persists in the canonical admin read');
+    const suspended = await call(`/api/admin/memberships/${memberBeforeEdit.membershipId}`, { method: 'PATCH', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: { status: 'suspended' } });
+    assert.equal(suspended.status, 200);
+    assert.equal((await call('/api/identity/login', { method: 'POST', body: { email: invitedEmail, password: invitedPassword, companyId } })).status, 401,
+      'a suspended membership cannot establish a new session');
+    const reactivated = await call(`/api/admin/memberships/${memberBeforeEdit.membershipId}`, { method: 'PATCH', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: { status: 'active' } });
+    assert.equal(reactivated.status, 200, 'authorized owner can reactivate a suspended, verified membership');
+    assert.equal((await call('/api/admin/memberships?limit=100', { cookie: sessionCookie })).body.members
+      .find(member => member.membershipId === memberBeforeEdit.membershipId).status, 'active', 'membership status persists after readback');
+    const duplicateActiveInvite = await call('/api/admin/invitations', { method: 'POST', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: { email: invitedEmail, roleId: createdRole.body.id } });
+    assert.equal(duplicateActiveInvite.status, 409, 'a second active membership is not created for the same tenant and identity');
     const adminRole = await call('/api/admin/roles', { method: 'POST', cookie: sessionCookie, csrf: session.body.csrfToken,
       body: { key: 'qa_manager', name: 'Gerência QA', permissions: ['company.manage', 'orders.read'] } });
     assert.equal(adminRole.status, 201);

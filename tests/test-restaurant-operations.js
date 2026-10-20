@@ -81,6 +81,10 @@ assert.equal(driver.latitude, undefined);
 assert.equal(driver.coords, undefined);
 assert.equal(driver.presence, undefined);
 assert.deepEqual(driver.capacity,{unit:'deliveries',limit:3});
+const driverContactCleared = Operations.canonicalDriver({ id:'driver-contact-clear',createdAt,updatedAt:createdAt,
+  name:'Bia',phone:'  ',email:' ',status:'ACTIVE' },'company_1');
+assert.equal(driverContactCleared.phone,'');
+assert.equal(driverContactCleared.email,'','clearing an optional Driver contact is represented in the canonical sync packet');
 assert.equal(Operations.canonicalDriver({ id: 'driver-canonical', createdAt, updatedAt: createdAt,
   sync: { state: 'local', version: 2, canonicalVersion: 1 } }, 'company_1').baseVersion, 1);
 assert.equal(Contract.validateEntity('Driver', driver).valid, true);
