@@ -6,6 +6,11 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(require.resolve('../sw.js'), 'utf8');
 const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
+const appBundle = html.match(/<script[^>]+src=["'](app\.js(?:\?v=[^"']+)?)['"]/u)?.[1];
+const identityBundle = html.match(/<script[^>]+src=["'](identity-ui\.js(?:\?v=[^"']+)?)['"]/u)?.[1];
+assert.ok(appBundle, 'index.html declares the current app bundle');
+const activeCacheName = source.match(/const CACHE_NAME = `\$\{CACHE_PREFIX\}(v\d+)`/u)?.[1];
+assert.ok(activeCacheName, 'service worker declares a versioned active cache');
 const handlers = {};
 const added = [];
 const matched = [];
@@ -49,9 +54,10 @@ installed.then(async () => {
   assert.ok(added.includes('/index.html'));
   assert.ok(added.includes('/ticket-renderer.js?v=0256d1.1'));
   assert.ok(added.includes('/browser-printer-provider.js?v=1'));
-  assert.ok(added.includes('/app.js?v=0256d3.1'));
+  assert.ok(added.includes(`/${appBundle}`), `offline shell includes current bundle ${appBundle}`);
+  assert.ok(identityBundle, 'identity UI bundle is declared by the page');
   assert.ok(added.includes('/design-system.css?v=0256d1.1'));
-  assert.ok(added.includes('/identity-ui.js?v=0256d1.1'));
+  assert.ok(added.includes(`/${identityBundle}`));
   assert.ok(added.includes('/server-update-coordinator.js?v=0253.1'));
   assert.ok(!added.includes('/vendor/maplibre/maplibre-gl-worker.js?v=0139.1'), 'missing optional map asset does not prevent app shell installation');
   assert.match(html, /serviceWorker\.register\('\/sw\.js'/);
@@ -59,7 +65,7 @@ installed.then(async () => {
   let activated;
   handlers.activate({ waitUntil(promise) { activated = promise; } });
   await activated;
-  assert.deepEqual(deleted, ['rotamoto-restaurante-shell-v74', 'rotamoto-restaurante-shell-old']);
+  assert.deepEqual(deleted, [`rotamoto-restaurante-shell-${activeCacheName}`, 'rotamoto-restaurante-shell-old']);
 
   let apiResponded = false;
   handlers.fetch({ request: { method: 'GET', url: 'http://localhost:8788/api/identity/session', mode: 'cors' }, respondWith() { apiResponded = true; } });

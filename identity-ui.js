@@ -78,6 +78,10 @@
   const $ = (selector, root = host) => root.querySelector(selector) || (root === host ? document.querySelector(selector) : null);
   const panel = $('#rmIdentityPanel');
   const trigger = $('.rm-account-trigger');
+  // Keep references before accountPage is reparented into #main or detached.
+  // MFA cleanup must still clear the enrollment secret when that happens.
+  const mfaQrCanvas = $('[data-mfa-qr]');
+  const mfaSecretInput = $('[data-mfa-secret]');
   if (trigger) trigger.hidden = true;
   const companyAdminSection = $('[data-admin]');
   const authenticatedContent = $('[data-authenticated]');
@@ -339,7 +343,7 @@
   function applyMailAction(){let params;try{params=new URLSearchParams(location.hash.slice(1))}catch(_){return}const action=params.get('action'),token=params.get('token');if(!token||token.length>43)return;if(action==='password_recovery'){$('[data-recovery-consume] [name=token]').value=token;$('[data-recovery]').open=true;setOpen(true)}else if(action==='mfa_recovery'){$('[data-mfa-recovery-confirm] [name=token]').value=token;$('[data-recovery]').open=true;$('[data-recovery] details').open=true;setOpen(true)}else if(['owner_invitation','membership_invitation'].includes(action)){invitationKind=action;$('[data-accept-invitation] [name=token]').value=token;$('[data-invitation]').open=true;setOpen(true)}if(action==='password_recovery'||action==='mfa_recovery'||['owner_invitation','membership_invitation'].includes(action))history.replaceState(null,'',location.pathname+location.search)}
   applyMailAction();
   $('[data-login] [name=companyId]').value = hintedCompany();
-  function clearMfaEnrollment(){const canvas=$('[data-mfa-qr]');canvas?.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);$('[data-mfa-secret]').value=''}
+  function clearMfaEnrollment(){const canvas=mfaQrCanvas;canvas?.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);if(mfaSecretInput)mfaSecretInput.value=''}
   function renderMfaQr(uri){const canvas=$('[data-mfa-qr]'),context=canvas?.getContext('2d'),encoder=window.RotaMotoQRCode;
     if(!canvas||!context||typeof encoder!=='function')throw new Error('QR local indisponível. Use a chave manual.');
     const code=new encoder(0,window.RotaMotoQRErrorCorrectLevel?.M??0);code.addData(uri);code.make();

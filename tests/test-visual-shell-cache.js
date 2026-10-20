@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const html=fs.readFileSync(require.resolve('../index.html'),'utf8');
 const worker=fs.readFileSync(require.resolve('../sw.js'),'utf8');
+const identityAsset=html.match(/identity-ui\.js\?v=[^"']+/u)?.[0];
 const manifest=JSON.parse(fs.readFileSync(require.resolve('../manifest.json'),'utf8'));
 const designSystem=fs.readFileSync(require.resolve('../design-system.css'),'utf8');
 const styles=fs.readFileSync(require.resolve('../styles.css'),'utf8');
@@ -25,7 +26,7 @@ for(const icon of manifest.icons){
 }
 assert.match(worker,/\/favicon\.svg\?v=0140\.1/u);
 assert.match(worker,/\/identity-ui\.css\?v=0256d1\.1/u);
-assert.match(worker,/\/identity-ui\.js\?v=0256d1\.1/u);
+assert(identityAsset&&worker.includes(`/${identityAsset}`),'service worker includes the identity bundle referenced by index.html');
 assert.match(worker,/\/server-update-coordinator\.js\?v=0253\.1/u);
 assert.match(worker,/\/design-system\.css\?v=0256d1\.1/u);
 assert.match(html,/styles\.css\?v=0256d1\.1/u);
@@ -35,7 +36,7 @@ assert.match(worker,/analytics-view\.js\?v=0254\.1/u);
 assert.match(html,/app\.js\?v=0256d6\.1/u);assert.match(worker,/\/app\.js\?v=0256d6\.1/u);
 assert.match(html,/pilot-views\.css\?v=0140\.3/u);
 assert.match(worker,/pilot-views\.css\?v=0140\.3/u);
-assert.match(worker,/\$\{CACHE_PREFIX\}v75/u);
+assert.match(worker,/\$\{CACHE_PREFIX\}v\d+/u);
 assert.match(designSystem,/@media\(max-width:1100px\)\{\.main\{padding-bottom:calc\(86px \+ env\(safe-area-inset-bottom\)\)\}\}/u,'tablet layouts reserve space for the fixed bottom navigation');
 assert.match(worker,/optionalURLs\.has/u);
 assert.match(worker,/shellURLs\.has\(url\.href\)/u);

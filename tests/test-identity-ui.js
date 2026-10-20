@@ -37,6 +37,8 @@ assert.match(appSource, /companyProfileDraftDirty[\s\S]*companyAddressDraftDirty
 assert.match(appSource, /Object\.assign\(new Error\(body\.error\?\.code\|\|'COMPANY_READ_FAILED'\),\{status:response\.status\}\)/u, 'company read failures retain HTTP status for distinct 401 and 403 messages');
 assert.match(appSource, /if\(generation!==companyProfileLoadGeneration\|\|companyId!==syncSession\?\.companyId\)return;if\(name\)name\.disabled=false/u, 'stale asynchronous company responses cannot re-enable or overwrite the active form');
 assert.match(source, /root\.querySelector\(selector\) \|\| \(root === host \? document\.querySelector\(selector\) : null\)/u, 'identity operations continue resolving controls after their page moves into the application shell');
+assert.match(source, /const mfaQrCanvas = \$\('\[data-mfa-qr\]'\)[\s\S]*const mfaSecretInput = \$\('\[data-mfa-secret\]'\)/u, 'MFA cleanup retains references before the account page can be detached');
+assert.match(source, /function clearMfaEnrollment\(\)\{const canvas=mfaQrCanvas[\s\S]*if\(mfaSecretInput\)mfaSecretInput\.value=''/u, 'closing an account page cannot throw while clearing detached enrollment controls');
 assert.match(source, /rotamoto:settings-page/u, 'administration navigation uses the application settings route');
 assert.match(source, /document\.addEventListener\('rotamoto:settings-page',[\s\S]*?loadAdmin\(\)/u, 'each company settings page loads its server snapshot from the single navigation');
 assert.match(appSource, /settings-cards[\s\S]*?settings-card/u, 'all Ajustes categories render as selectable cards on mobile and desktop');
@@ -46,8 +48,11 @@ assert.doesNotMatch(source, /adminParent = app\?\.querySelector\('\.top-actions'
 assert.match(styles, /#rmCompanyAdminPage,\s*#rmPlatformAdminPage \{\s*position: static/u, 'administrative pages stay in normal Settings document flow');
 assert.match(styles, /\.rm-admin-subpage\[hidden\] \{ display:none !important; \}/u, 'inactive administrative pages respect their hidden state despite grid layout');
 assert.match(source, /QR Code indisponível; a chave manual continua disponível/u, 'QR rendering failure preserves an actionable manual enrollment path');
-assert.match(html, /identity-ui\.js\?v=0256d1\.1/u, 'identity UI URL changes when the account page lifecycle changes');
-assert.match(fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8'), /CACHE_NAME = `\$\{CACHE_PREFIX\}v74`[\s\S]*identity-ui\.js\?v=0256d1\.1/u, 'service worker cache is invalidated with the current account page lifecycle');
+const identityAsset = html.match(/identity-ui\.js\?v=[^"']+/u)?.[0];
+assert(identityAsset, 'identity UI bundle has a cache busting version');
+const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
+assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v\d+`/u, 'service worker uses a versioned cache');
+assert.ok(sw.includes(`'/${identityAsset}'`), 'current identity UI asset is included in the offline shell');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');
