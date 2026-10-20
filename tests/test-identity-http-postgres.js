@@ -271,6 +271,14 @@ async function main() {
     assert.equal(JSON.stringify(invited.body).includes(delivered.at(-1).token), false, 'raw invitation token is never returned');
     assert.equal(delivered.at(-1).kind, 'membership_invitation');
     const invitedMembershipToken = delivered.at(-1).token;
+    const resent = await call('/api/admin/invitations', { method: 'POST', cookie: sessionCookie, csrf: session.body.csrfToken,
+      body: { email: invitedEmail, roleId: createdRole.body.id } });
+    assert.equal(resent.status, 202, 'an invited membership can be resent through the authorized invite flow');
+    const resentMembershipToken = delivered.at(-1).token;
+    assert.notEqual(resentMembershipToken, invitedMembershipToken, 'resend rotates the invitation token');
+    const supersededToken = await call('/api/identity/membership-invitations/accept', { method: 'POST',
+      body: { token: invitedMembershipToken, password: 'synthetic-invited-password-991' } });
+    assert.equal(supersededToken.status, 401, 'a resent invitation invalidates the prior token');
     const secondCompanyEmail = `identity-second-owner-${crypto.randomUUID()}@example.invalid`;
     const secondCompanyPassword = 'synthetic-second-owner-password-748';
     const secondProvision = await call('/api/admin/tenants/provision', { method: 'POST',
@@ -303,9 +311,31 @@ async function main() {
       WHERE u.email=$1 AND t.purpose='membership_invitation'`, [deliveryFailureEmail]);
     assert.equal(failedDeliveryState.rows[0].status, 'invited');
     assert.equal(failedDeliveryState.rows[0].token_revoked, true, 'failed email delivery leaves no usable invitation token');
+    const revokeEmail = `identity-revoked-invite-${crypto.randomUUID()}@example.invalid`;
+    const revokeInvite = await call('/api/admin/invitations', { method: 'POST', cookie: sessionCookie, csrf: session.body.csrfToken,
+      body: { email: revokeEmail, roleId: createdRole.body.id } });
+    assert.equal(revokeInvite.status, 202);
+    const revokedToken = delivered.at(-1).token;
+    const revoked = await call(`/api/admin/memberships/${revokeInvite.body.membershipId}`, { method: 'PATCH', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: { status: 'revoked' } });
+    assert.equal(revoked.status, 200, 'authorized manager can revoke an invited membership');
+    const revokedAcceptance = await call('/api/identity/membership-invitations/accept', { method: 'POST',
+      body: { token: revokedToken, password: 'synthetic-invited-password-991' } });
+    assert.equal(revokedAcceptance.status, 401, 'revoked membership invitation cannot be accepted');
+    const expiredEmail = `identity-expired-invite-${crypto.randomUUID()}@example.invalid`;
+    const expiredInvite = await call('/api/admin/invitations', { method: 'POST', cookie: sessionCookie, csrf: session.body.csrfToken,
+      body: { email: expiredEmail, roleId: createdRole.body.id } });
+    assert.equal(expiredInvite.status, 202);
+    const expiredMemberToken = delivered.at(-1).token;
+    await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
+    await client.query(`UPDATE rotamoto.identity_tokens SET created_at=now()-interval '2 days',expires_at=now()-interval '1 second'
+      WHERE token_digest=$1 AND purpose='membership_invitation'`, [crypto.createHash('sha256').update(expiredMemberToken).digest()]);
+    const expiredAcceptance = await call('/api/identity/membership-invitations/accept', { method: 'POST',
+      body: { token: expiredMemberToken, password: 'synthetic-invited-password-991' } });
+    assert.equal(expiredAcceptance.status, 401, 'expired membership invitation cannot be accepted');
     const invitedPassword = 'synthetic-invited-password-991';
     const invitationAccepted = await call('/api/identity/membership-invitations/accept', { method: 'POST',
-      body: { token: invitedMembershipToken, password: invitedPassword } });
+      body: { token: resentMembershipToken, password: invitedPassword } });
     assert.equal(invitationAccepted.status, 200);
     const invitedLogin = await call('/api/identity/login', { method: 'POST', body: { email: invitedEmail,
       password: invitedPassword, companyId } });
@@ -314,6 +344,9 @@ async function main() {
     const tenantSelection = await call('/api/identity/tenant', { method: 'POST', cookie: invitedCookie,
       csrf: invitedLogin.body.csrfToken, body: { companyId } });
     assert.equal(tenantSelection.status, 200, 'an active member can select a validated tenant without company.manage');
+    const duplicateActiveInvite = await call('/api/admin/invitations', { method: 'POST', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: { email: invitedEmail, roleId: createdRole.body.id } });
+    assert.equal(duplicateActiveInvite.status, 409, 'a second active membership is not created for the same tenant and identity');
     const escalation = await call('/api/admin/invitations', { method: 'POST', cookie: invitedCookie,
       csrf: invitedLogin.body.csrfToken, body: { email: `denied-${crypto.randomUUID()}@example.invalid`, roleId: createdRole.body.id } });
     assert.equal(escalation.status, 403, 'ordinary member cannot create invitations');
