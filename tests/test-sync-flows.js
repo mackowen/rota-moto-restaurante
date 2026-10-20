@@ -25,6 +25,7 @@ const tomb=C.tombstone(started,'deliveries','2026-09-30T12:02:00.000Z');
 const packet=C.packet({companyId:'c1',app:'RotaMoto',deliveries:[],tombstones:[tomb]});
 assert.equal(packet.data.tombstones[0].id,'del-1');assert.equal(packet.data.tombstones[0].deleted,true);
 const appSource=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
+assert(appSource.includes('async function resumeServerSync()')&&appSource.includes("document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')resumeServerSync()")&&appSource.includes("window.addEventListener('pageshow',()=>resumeServerSync()"),'Restaurant revalidates the authenticated session and reconciles server state after foreground or page restoration');
 assert(appSource.includes('function openDeliveryProofMedia(deliveryId,proofId)')&&appSource.includes('/proofs/${encodeURIComponent(proofId)}/media'),'Restaurant retrieves proof bytes through the authenticated delivery-scoped endpoint');
 assert(appSource.includes('data-view-proof')&&appSource.includes('Mídia ainda não confirmada no armazenamento remoto.'),'Restaurant distinguishes stored media from metadata-only pending proof');
 assert(appSource.includes("URL.revokeObjectURL(deliveryProofPreviewUrl)"),'proof previews release local object URLs when closed or replaced');
