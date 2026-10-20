@@ -102,6 +102,10 @@ assert.doesNotMatch(source, /data-admin-close|data-platform-close/u, 'administra
 assert.doesNotMatch(source, /data-admin-page="/u, 'company pages do not duplicate category navigation inside the content');
 assert.match(source, /dataset\.providerPage[\s\S]*?dataset\.providerTab/u, 'delivery platform configuration and received orders have separate provider pages');
 assert.match(source, /textContent='Detalhes técnicos'/u, 'protocol capability details stay behind an optional disclosure');
+assert.match(source, /operationLabels=\{CONFIRM:'Confirmação do pedido'/u, 'provider operation states use clear Portuguese labels');
+assert.match(source, /A atualização não foi concluída\. Tente novamente ou peça ajuda ao suporte da empresa\./u, 'provider command errors have a user-facing explanation');
+assert.match(source, /summary\.textContent='Código para suporte'/u, 'technical provider error identifiers stay in an optional disclosure');
+assert.doesNotMatch(source, /\$\{order\.lastErrorCode\?` \(\$\{order\.lastErrorCode\}\)`/u, 'raw provider error codes are not included in ordinary status text');
 assert.match(source, /function appendPermissionOptions\([\s\S]*groupNames[\s\S]*permission\.description/u, 'role permissions are grouped and described in plain language while retaining internal keys');
 assert.match(source, /Atualizar situação no RotaMoto/u, 'provider state refresh is distinct from an external connection test');
 assert.match(source, /window\.confirm\('Desconectar esta loja do RotaMoto/u, 'local provider disconnection requires explicit confirmation and explains portal authorization remains separate');
