@@ -8,17 +8,17 @@
 
   const DATA_DICTIONARY = Object.freeze({
     orders: { name: 'Pedidos', source: 'Order.createdAt/status/type/source', formula: 'contagem de Orders no período de criação e filtros selecionados', unit: 'pedidos', states: 'todos os estados conhecidos; status ausente fica em “desconhecido”', period: 'Order.createdAt (datas civis da Company quando timezone configurado; intervalo UTC quando ausente)', missing: 'data inválida é excluída e contada como incompleta', limits: 'origem é comercial, não provider logístico' },
-    deliveryFees: { name: 'Taxas de entrega', source: 'Order.deliveryFee; legado Order.value', formula: 'soma/média de taxas válidas apenas para Deliveries concluídas', unit: 'BRL', currency: 'BRL', states: 'DELIVERED e taxa válida', period: 'coorte por Order.createdAt', missing: 'taxa ausente/inválida ou moeda desconhecida é excluída do denominador e reduz cobertura', limits: 'BRL legado só é reconhecido para canais locais conhecidos; não é faturamento de produtos nem valor integral do pedido' },
+    deliveryFees: { name: 'Taxas de entrega', source: 'Order.deliveryFee; legado Order.value', formula: 'soma/média de uma taxa por Order cuja entrega principal foi concluída; Delivery RETURN não cria taxa', unit: 'BRL', currency: 'BRL', states: 'Delivery principal DELIVERED e taxa válida', period: 'coorte por Order.createdAt', missing: 'taxa ausente/inválida ou moeda desconhecida é excluída do denominador e reduz cobertura', limits: 'BRL legado só é reconhecido para canais locais conhecidos; não é faturamento de produtos nem valor integral do pedido' },
     orderTicket: { name: 'Ticket médio do pedido', source: 'Order.money.totalMinor + Order.money.currency', formula: 'média do total explicitamente mapeado em minor units, agrupado por moeda', unit: 'valor médio por pedido', currency: 'agrupado por ISO 4217; moedas nunca são somadas', states: 'Orders com total conhecido e moeda explícita no objeto monetário canônico', period: 'coorte por Order.createdAt', missing: 'legado amountMinor/value sem composição comprovada fica fora e reduz cobertura', limits: 'média de totais conhecidos não equivale a faturamento agregado; cobertura depende da origem' },
     orderMoneyComponents: { name: 'Componentes monetários do pedido', source: 'Order.money.components/provenance/completeness', formula: 'agregação de cada componente conhecido separada por ISO currency', unit: 'unidade mínima monetária', states: 'todos os Orders com componente válido', period: 'coorte por Order.createdAt', missing: 'componente ausente é desconhecido, nunca zero', limits: 'não calcula margem nem infere taxas omitidas' },
-    driverPayout: { name: 'Repasse registrado', source: 'Earning.amountMinor/currency', formula: 'soma/média de Earnings BRL válidos associados às Deliveries do recorte', unit: 'BRL', currency: 'BRL', states: 'Earning ligado a Delivery do recorte', period: 'coorte por Order.createdAt; não por data de pagamento', missing: 'Earning ausente não vira zero; cobertura por entregas associadas', limits: 'repasse ao Driver, não custo operacional integral' },
+    driverPayout: { name: 'Repasse registrado', source: 'Earning.amountMinor/currency', formula: 'soma/média de Earnings BRL válidos associados às Deliveries elegíveis; RETURN excluída', unit: 'BRL', currency: 'BRL', states: 'Earning ligado a Delivery do recorte', period: 'coorte por Order.createdAt; não por data de pagamento', missing: 'Earning ausente não vira zero; cobertura por entregas associadas', limits: 'repasse ao Driver, não custo operacional integral' },
     estimatedDistance: { name: 'Distância estimada', source: 'Delivery.estimatedDistanceM; legado Order.km', formula: 'média e soma apenas de valores não negativos válidos', unit: 'km', states: 'Deliveries do recorte', period: 'coorte por Order.createdAt', missing: 'excluído e contado como indisponível', limits: 'Route ou estimativa local não é distância percorrida' },
     actualDistance: { name: 'Distância real', source: 'Delivery.actualDistanceM; legado Order.gpsDistanceKm', formula: 'média e soma apenas de distâncias reais válidas', unit: 'km', states: 'Deliveries do recorte', period: 'coorte por Order.createdAt', missing: 'excluído e contado como indisponível', limits: 'cobertura depende de telemetria/projeção sincronizada' },
     durations: { name: 'Tempos operacionais', source: 'Delivery timestamps; fallback de DeliveryEvent único por tipo', formula: 'fim − início para cada etapa, somente sequência válida e estado compatível', unit: 'minutos', states: 'apenas estados que alcançaram o fim da etapa', period: 'coorte por Order.createdAt', missing: 'par ausente, sequência invertida ou ambígua é excluída', limits: 'não mede preparação nem SLA; timestamps dependem de clocks dos dispositivos' },
-    status: { name: 'Status e conclusão', source: 'Delivery.status; legado Order.status', formula: 'contagens por estado atual; conclusão = DELIVERED / estados reconhecidos no recorte', unit: 'entregas e percentual', states: 'abertas incluem somente estados operacionais ativos; canceladas/falhas/retornadas são terminais', period: 'coorte por Order.createdAt', missing: 'estado desconhecido não é contado como aberto nem entra no denominador de conclusão', limits: 'não é histórico de transições nem SLA/on-time' },
+    status: { name: 'Status e conclusão', source: 'Delivery.status distinto por ID; legado Order.status quando não há Delivery', formula: 'contagens por operação Delivery no conjunto de Orders filtrados; conclusão = Deliveries DELIVERED / estados reconhecidos', unit: 'pedidos e operações de entrega', states: 'uma Order é contada uma vez; RETURN e REDELIVERY contam como Delivery separada; estado desconhecido não entra no denominador', period: 'coorte pela Order.createdAt associada', missing: 'estado desconhecido não é contado como aberto nem entra no denominador de conclusão', limits: 'não é histórico de transições nem SLA/on-time; valores financeiros permanecem por Order/Earning canônico' },
     deliveryType: { name: 'Tipo de entrega', source: 'Order.type local', formula: 'contagem de Orders por tipo registrado', unit: 'pedidos', states: 'todos os estados', period: 'coorte por Order.createdAt', missing: 'tipo ausente não entra em distribuição por tipo', limits: 'valores locais legados podem não ter mapeamento canônico completo' },
     commercialSource: { name: 'Origem comercial', source: 'Order.sourceId/source.origin/source/channel', formula: 'contagem de Orders por chave comercial normalizada', unit: 'pedidos', states: 'todos os estados', period: 'coorte por Order.createdAt', missing: 'origem ausente recebe “Sem origem registrada”', limits: 'não representa a origem logística/provider' },
-    driverPerformance: { name: 'Desempenho por Driver', source: 'Order.bikeId/driverId e status da Delivery', formula: 'contagens por Driver; métricas financeiras/distâncias mantêm seus denominadores próprios', unit: 'pedidos/entregas', states: 'status atual conhecido', period: 'coorte por Order.createdAt', missing: 'Driver ausente fica em “Não atribuído”', limits: 'não avalia qualidade, custo total ou SLA' },
+    driverPerformance: { name: 'Desempenho por Driver', source: 'Delivery.driverId/status com fallback legado do Order', formula: 'conta cada Delivery distinta por Driver; uma RETURN ou REDELIVERY é operação própria, sem duplicar Order ou dinheiro', unit: 'entregas', states: 'status atual conhecido', period: 'coorte pela Order.createdAt associada', missing: 'Driver ausente fica em “Não atribuído”', limits: 'não avalia qualidade, custo total ou SLA' },
     customerRecurrence: { name: 'Recorrência por cliente', source: 'Order.customer local', formula: 'contagem textual de pedidos por nome com espaços colapsados e caixa ignorada', unit: 'pedidos/clientes', states: 'Orders com nome presente', period: 'Order.createdAt', missing: 'nome ausente fica fora da recorrência; não substitui identidade canônica', limits: 'nomes iguais podem ser pessoas diferentes; dado pessoal exibido somente no relatório autorizado' },
     addressRecurrence: { name: 'Recorrência por endereço', source: 'Order.address local', formula: 'contagem textual com espaços colapsados e caixa ignorada', unit: 'pedidos/endereços', states: 'Orders com endereço presente', period: 'Order.createdAt', missing: 'endereço ausente fica fora do agrupamento', limits: 'não é região geográfica nem heatmap; grafias distintas não são conciliadas' },
     hourlyVolume: { name: 'Volume por hora local', source: 'Order.createdAt', formula: 'contagem por hora civil no timezone IANA da Company', unit: 'pedidos', states: 'todos os estados', period: 'coorte por Order.createdAt', missing: 'indisponível sem timezone operacional válido', limits: 'não inferir timezone do aparelho/servidor' },
@@ -92,8 +92,13 @@
     const deliveriesByOrder = new Map();
     const deliveriesById = new Map();
     for (const d of deliveries) {
-      if (d?.id) deliveriesById.set(d.id, d);
-      if (d?.orderId) deliveriesByOrder.set(d.orderId, d);
+      if (!d || typeof d !== 'object') continue;
+      for (const id of [d.id, d.canonicalId, d.sync?.canonicalId].filter(Boolean)) deliveriesById.set(id, d);
+      if (d.orderId) {
+        const rows = deliveriesByOrder.get(d.orderId) || [];
+        rows.push(d);
+        deliveriesByOrder.set(d.orderId, rows);
+      }
     }
     const normalized = [];
     let invalidCreatedAt = 0;
@@ -103,7 +108,8 @@
       const createdLocalParts = tz ? localParts(createdAt, tz) : null;
       const createdLocalDate = createdLocalParts ? localDateKey(createdLocalParts) : null;
       if (localStartDate !== null && createdLocalDate < localStartDate || cutoff !== null && createdAt < cutoff) continue;
-      const delivery = deliveriesById.get(order.deliveryId) || deliveriesByOrder.get(order.id) || null;
+      const relatedDeliveries = deliveriesByOrder.get(order.id) || [];
+      const delivery = deliveriesById.get(order.deliveryId) || relatedDeliveries.find(item => item.extensions?.x_rotamoto_delivery_type !== 'RETURN') || relatedDeliveries[0] || null;
       const status = canonicalStatus(delivery, order);
       const driverId = delivery?.driverId || order.driverId || order.bikeId || '';
       const driverName = order.bike || (input.drivers || []).find(d => d.id === driverId)?.name || (input.bikes || []).find(d => d.id === driverId)?.name || '';
@@ -118,14 +124,42 @@
       const actualM = finiteNonNegative(delivery?.actualDistanceM);
       const estimatedDistanceKm = hasEstimatedM ? (estimatedM === null ? null : estimatedM / 1000) : finiteNonNegative(order.km);
       const actualDistanceKm = hasActualM ? (actualM === null ? null : actualM / 1000) : finiteNonNegative(order.gpsDistanceKm);
-      normalized.push({ order, delivery, createdAt, createdLocalParts, createdLocalDate, status, driverId, driverName, source: source.trim() || 'unknown', deliveryFeeBRL: feeCurrency === 'BRL' ? fee : null, estimatedDistanceKm, actualDistanceKm, money });
+      normalized.push({ order, delivery, relatedDeliveries, createdAt, createdLocalParts, createdLocalDate, status, driverId, driverName, source: source.trim() || 'unknown', deliveryFeeBRL: feeCurrency === 'BRL' ? fee : null, estimatedDistanceKm, actualDistanceKm, money });
     }
-    const filtered = normalized.filter(row => (!options.driver || row.driverName === options.driver || row.driverId === options.driver)
-      && (!options.status || row.status === (ORDER_TO_DELIVERY[String(options.status).toUpperCase()] || String(options.status).toUpperCase()))
-      && (!options.type || row.order.type === options.type)
-      && (!options.source || row.source === options.source));
+    const requestedStatus = options.status ? (ORDER_TO_DELIVERY[String(options.status).toUpperCase()] || String(options.status).toUpperCase()) : null;
+    const driverNameFor = id => (input.drivers || []).find(driver => driver.id === id)?.name || (input.bikes || []).find(driver => driver.id === id)?.name || '';
+    const filtered = normalized.filter(row => {
+      const relatedDrivers = row.relatedDeliveries.map(delivery => ({ id: delivery.driverId || '', name: driverNameFor(delivery.driverId) || (delivery.driverId === row.driverId ? row.driverName : '') }));
+      const matchesDriver = !options.driver || row.driverName === options.driver || row.driverId === options.driver || relatedDrivers.some(driver => driver.id === options.driver || driver.name === options.driver);
+      const deliveryStatuses = row.relatedDeliveries.length ? row.relatedDeliveries.map(delivery => canonicalStatus(delivery, row.order)) : [row.status];
+      return matchesDriver && (!requestedStatus || deliveryStatuses.includes(requestedStatus))
+        && (!options.type || row.order.type === options.type)
+        && (!options.source || row.source === options.source);
+    });
 
-    const completed = filtered.filter(row => COMPLETED.has(row.status));
+    // Delivery is an operational record, not an Order. A return or redelivery
+    // belongs in delivery metrics but must not duplicate order or financial totals.
+    const operationMap = new Map();
+    const operationAliases = new Set();
+    for (const row of filtered) {
+      const related = row.relatedDeliveries.length ? row.relatedDeliveries : [null];
+      for (const delivery of related) {
+        const aliases = [delivery?.sync?.canonicalId, delivery?.canonicalId, delivery?.id].filter(Boolean);
+        const id = aliases[0] || `legacy-order:${row.order.id}`;
+        if (aliases.some(alias => operationAliases.has(alias))) continue;
+        for (const alias of aliases) operationAliases.add(alias);
+        const driverId = delivery?.driverId || row.driverId || '';
+        const driverName = driverNameFor(driverId) || (driverId === row.driverId ? row.driverName : '') || 'Não atribuído';
+        operationMap.set(id, { id, delivery, order: row.order, isPrimary: !delivery || delivery === row.delivery, status: delivery ? canonicalStatus(delivery, row.order) : row.status, driverId, driverName });
+      }
+    }
+    const operations = [...operationMap.values()];
+    const deliveryStatusCounts = Object.create(null);
+    for (const operation of operations) deliveryStatusCounts[operation.status] = (deliveryStatusCounts[operation.status] || 0) + 1;
+
+    const completed = filtered.filter(row => row.relatedDeliveries.length
+      ? row.relatedDeliveries.some(delivery => delivery.extensions?.x_rotamoto_delivery_type !== 'RETURN' && COMPLETED.has(canonicalStatus(delivery, row.order)))
+      : COMPLETED.has(row.status));
     const feeValues = [];
     let feeMissing = 0;
     for (const row of completed) {
@@ -166,9 +200,15 @@
     const earningsByDelivery = new Map();
     const deliveryAliases = new Map();
     for (const row of filtered) {
-      const canonicalId = row.delivery?.id || row.order.deliveryId;
-      if (!canonicalId) continue;
-      for (const id of [row.delivery?.id, row.delivery?.canonicalId, row.delivery?.sync?.canonicalId, row.order.deliveryId].filter(Boolean)) deliveryAliases.set(id, canonicalId);
+      const eligibleDeliveries = row.relatedDeliveries.length
+        ? row.relatedDeliveries.filter(delivery => delivery.extensions?.x_rotamoto_delivery_type !== 'RETURN')
+        : [row.delivery].filter(Boolean);
+      for (const delivery of eligibleDeliveries) {
+        const canonicalId = delivery.id || delivery.canonicalId || delivery.sync?.canonicalId;
+        if (!canonicalId) continue;
+        for (const id of [delivery.id, delivery.canonicalId, delivery.sync?.canonicalId].filter(Boolean)) deliveryAliases.set(id, canonicalId);
+      }
+      if (!row.relatedDeliveries.length && row.order.deliveryId && row.delivery) deliveryAliases.set(row.order.deliveryId, row.delivery.id || row.delivery.canonicalId || row.order.deliveryId);
     }
     for (const earning of input.earnings || []) {
       const deliveryId = deliveryAliases.get(earning.deliveryId);
@@ -179,16 +219,23 @@
     }
     const earningValues = [...earningsByDelivery.values()].map(values => values.reduce((sum, n) => sum + n, 0)).filter(Number.isFinite);
     const earnings = sumAverage(earningValues);
-    const earningScope = new Set(filtered.map(row => row.delivery?.id || row.order.deliveryId).filter(Boolean));
+    const earningScope = new Set(filtered.flatMap(row => row.relatedDeliveries.length
+      ? row.relatedDeliveries.filter(delivery => delivery.extensions?.x_rotamoto_delivery_type !== 'RETURN').map(delivery => delivery.id || delivery.canonicalId || delivery.sync?.canonicalId)
+      : [row.delivery?.id || row.order.deliveryId]).filter(Boolean));
 
     const estimateValues = [];
     const actualValues = [];
     let estimatedMissing = 0;
     let actualMissing = 0;
-    for (const row of filtered) {
-      const estimateKm = row.estimatedDistanceKm;
+    for (const operation of operations) {
+      const delivery = operation.delivery;
+      const hasEstimatedM = delivery?.estimatedDistanceM !== null && delivery?.estimatedDistanceM !== undefined;
+      const hasActualM = delivery?.actualDistanceM !== null && delivery?.actualDistanceM !== undefined;
+      const estimatedM = finiteNonNegative(delivery?.estimatedDistanceM);
+      const actualM = finiteNonNegative(delivery?.actualDistanceM);
+      const estimateKm = hasEstimatedM ? (estimatedM === null ? null : estimatedM / 1000) : operation.isPrimary ? finiteNonNegative(operation.order.km) : null;
       if (estimateKm === null) estimatedMissing++; else estimateValues.push(estimateKm);
-      const actualKm = row.actualDistanceKm;
+      const actualKm = hasActualM ? (actualM === null ? null : actualM / 1000) : operation.isPrimary ? finiteNonNegative(operation.order.gpsDistanceKm) : null;
       if (actualKm === null) actualMissing++; else actualValues.push(actualKm);
     }
     const estimatedDistance = sumAverage(estimateValues);
@@ -206,10 +253,10 @@
       const values = [];
       let missing = 0;
       let eligible = 0;
-      for (const row of filtered) {
-        if (!allowedStatuses.has(row.status)) continue;
+      for (const operation of operations) {
+        if (!allowedStatuses.has(operation.status)) continue;
         eligible++;
-        const d = row.delivery;
+        const d = operation.delivery;
         const start = timestamp(d?.[startField]) ?? eventTimestamp(events, d, startTypes);
         const end = timestamp(d?.[endField]) ?? eventTimestamp(events, d, endTypes);
         if (start === null || end === null || end < start || end > now) { missing++; continue; }
@@ -232,13 +279,6 @@
       const type = String(row.order.type || '').trim();
       if (type) typeCounts[type] = (typeCounts[type] || 0) + 1;
       sourceCounts[row.source] = (sourceCounts[row.source] || 0) + 1;
-      const driverKey = row.driverId || (row.driverName ? `legacy-name:${row.driverName}` : 'unassigned');
-      if (!driverCounts[driverKey]) driverCounts[driverKey] = { id: row.driverId || null, name: row.driverName || 'Não atribuído', total: 0, completed: 0, cancelled: 0, failed: 0 };
-      const driver = driverCounts[driverKey];
-      driver.total++;
-      if (row.status === 'DELIVERED') driver.completed++;
-      if (row.status === 'CANCELLED') driver.cancelled++;
-      if (row.status === 'FAILED') driver.failed++;
       const customer = String(row.order.customer || '').trim();
       const address = String(row.order.address || '').trim();
       const customerKey = customer.replace(/\s+/gu, ' ').trim().toLowerCase();
@@ -262,19 +302,32 @@
     const dailyVolume = tz ? (localStartDate !== null
       ? Array.from({ length: periodDays }, (_, index) => { const date = shiftDateKey(localStartDate, index); return { date, count: daily[date] || 0 }; })
       : Object.entries(daily).sort(([a],[b]) => a.localeCompare(b)).map(([date,count]) => ({ date, count }))) : null;
-    const knownStatusCount = filtered.filter(row => KNOWN_STATUSES.has(row.status)).length;
-    const open = filtered.filter(row => OPEN_STATUSES.has(row.status)).length;
+    for (const operation of operations) {
+      const driverKey = operation.driverId || (operation.driverName !== 'Não atribuído' ? `legacy-name:${operation.driverName}` : 'unassigned');
+      if (!driverCounts[driverKey]) driverCounts[driverKey] = { id: operation.driverId || null, name: operation.driverName, total: 0, completed: 0, cancelled: 0, failed: 0 };
+      const driver = driverCounts[driverKey];
+      driver.total++;
+      if (operation.status === 'DELIVERED') driver.completed++;
+      if (operation.status === 'CANCELLED') driver.cancelled++;
+      if (operation.status === 'FAILED') driver.failed++;
+    }
+    const knownStatusCount = operations.filter(operation => KNOWN_STATUSES.has(operation.status)).length;
+    const completedCount = operations.filter(operation => COMPLETED.has(operation.status)).length;
+    const cancelledCount = operations.filter(operation => operation.status === 'CANCELLED').length;
+    const failedCount = operations.filter(operation => operation.status === 'FAILED').length;
+    const returnedCount = operations.filter(operation => operation.status === 'RETURNED').length;
+    const open = operations.filter(operation => OPEN_STATUSES.has(operation.status)).length;
     return {
-      ...(options.includeExportRows ? { exportRows: filtered.map(row => ({ num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: row.status, type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, moneyCurrency: row.money.currency || '', moneyCompleteness: row.money.kind, itemsSubtotalMinor: row.money.itemsSubtotalMinor ?? null, discountMinor: row.money.discountMinor ?? null, deliveryFeeMinor: row.money.deliveryFeeMinor ?? null, serviceFeeMinor: row.money.serviceFeeMinor ?? null, otherFeeMinor: row.money.otherFeeMinor ?? null, totalMinor: row.money.totalMinor ?? null, estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt })) } : {}),
-      total: filtered.length, invalidCreatedAt,
-      completedCount: completed.length,
-      cancelledCount: filtered.filter(row => row.status === 'CANCELLED').length,
-      failedCount: filtered.filter(row => row.status === 'FAILED').length,
-      returnedCount: filtered.filter(row => row.status === 'RETURNED').length,
+      ...(options.includeExportRows ? { exportRows: filtered.map(row => ({ num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: requestedStatus || row.status, type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, moneyCurrency: row.money.currency || '', moneyCompleteness: row.money.kind, itemsSubtotalMinor: row.money.itemsSubtotalMinor ?? null, discountMinor: row.money.discountMinor ?? null, deliveryFeeMinor: row.money.deliveryFeeMinor ?? null, serviceFeeMinor: row.money.serviceFeeMinor ?? null, otherFeeMinor: row.money.otherFeeMinor ?? null, totalMinor: row.money.totalMinor ?? null, estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt })) } : {}),
+      total: filtered.length, deliveryTotal: operations.length, invalidCreatedAt,
+      completedCount,
+      cancelledCount,
+      failedCount,
+      returnedCount,
       openCount: open,
-      completionRate: knownStatusCount ? completed.length / knownStatusCount : null,
+      completionRate: knownStatusCount ? completedCount / knownStatusCount : null,
       knownStatusCount,
-      statusCounts, typeCounts, sourceCounts, driverCounts,
+      statusCounts, deliveryStatusCounts, typeCounts, sourceCounts, driverCounts,
       customerGroups: [...customerGroups.values()].sort((a, b) => b.count - a.count).slice(0, 5),
       distinctCustomerCount: customerGroups.size,
       addressGroups: [...addressGroups.values()].sort((a, b) => b.count - a.count).map(group => ({ ...group, drivers: [...group.drivers] })),
@@ -282,10 +335,10 @@
       coverage: {
         deliveryFee: { available: fee.count, total: completed.length, missing: feeMissing },
         orderAmount: { available: Object.values(orderTicket).reduce((sum, item) => sum + item.count, 0), total: filtered.length, missing: ticketMissing, complete: completeMoneyCount, kinds: moneyKinds },
-        status: { available: knownStatusCount, total: filtered.length, missing: filtered.length - knownStatusCount },
+        status: { available: knownStatusCount, total: operations.length, missing: operations.length - knownStatusCount },
         earning: { available: earnings.count, total: earningScope.size, missing: Math.max(0, earningScope.size - earnings.count) },
-        estimatedDistance: { available: estimatedDistance.count, total: filtered.length, missing: estimatedMissing },
-        actualDistance: { available: actualDistance.count, total: filtered.length, missing: actualMissing },
+        estimatedDistance: { available: estimatedDistance.count, total: operations.length, missing: estimatedMissing },
+        actualDistance: { available: actualDistance.count, total: operations.length, missing: actualMissing },
       },
       deliveryFees: fee, orderTicket, moneyComponents, driverPayout: earnings,
       estimatedDistance, actualDistance, durations,

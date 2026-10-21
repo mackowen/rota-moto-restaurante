@@ -34,6 +34,7 @@ for (const [key, item] of Object.entries(Analytics.DATA_DICTIONARY)) {
 
 const report = Analytics.aggregate({ orders, deliveries, earnings, bikes: [{ id: 'driver-2', name: 'Bia' }] }, { now, period: '30' });
 assert.equal(report.total, 4);
+assert.equal(report.deliveryTotal, 4);
 assert.equal(report.invalidCreatedAt, 1);
 assert.equal(report.completedCount, 1);
 assert.equal(report.cancelledCount, 1);
@@ -63,10 +64,41 @@ assert.equal(report.sourceCounts.ifood, 2);
 assert.equal(report.driverCounts['driver-1'].completed, 1);
 assert.equal(report.driverCounts['legacy-name:Ana'].total, 1);
 assert.equal(report.driverCounts.unassigned.total, 1);
+assert.equal(report.deliveryStatusCounts.DELIVERED, 1);
 assert.equal(report.distinctCustomerCount, 1);
 assert.equal(report.customerGroups[0].count, 2);
 assert.equal(report.distinctAddressCount, 1);
 assert.equal(report.addressGroups[0].count, 2);
+
+const returnOrder = { id:'order-return',deliveryId:'delivery-original',createdAt:now,status:'CANCELADA',type:'NORMAL',sourceId:'ifood',bikeId:'driver-original',bike:'Entregador original',customer:'=HYPERLINK("https://example.invalid")',deliveryFee:9,deliveryFeeCurrency:'BRL',money:{currency:'BRL',completeness:'complete',provenance:{kind:'manual'},components:{itemsSubtotalMinor:1000,discountMinor:0,deliveryFeeMinor:900,serviceFeeMinor:0,otherFeeMinor:0,totalMinor:1900}} };
+const returnDeliveries = [
+  {id:'delivery-original',orderId:'order-return',driverId:'driver-original',status:'CANCELLED'},
+  {id:'local-return-alias',canonicalId:'delivery-return',orderId:'order-return',driverId:'driver-return',status:'RETURNED',extensions:{x_rotamoto_delivery_type:'RETURN',x_rotamoto_return_of_delivery_id:'delivery-original'}},
+  {id:'delivery-return',orderId:'order-return',driverId:'driver-return',status:'RETURNED',extensions:{x_rotamoto_delivery_type:'RETURN',x_rotamoto_return_of_delivery_id:'delivery-original'}},
+];
+const returnReport = Analytics.aggregate({orders:[returnOrder],deliveries:returnDeliveries,bikes:[{id:'driver-original',name:'Entregador original'},{id:'driver-return',name:'Entregador da devolução'}],earnings:[]},{now,period:'all'});
+assert.equal(returnReport.total,1,'a return remains attached to the single canonical Order');
+assert.equal(returnReport.deliveryTotal,2,'a distinct return Delivery is counted once even if duplicated in a local snapshot');
+assert.equal(returnReport.deliveryStatusCounts.CANCELLED,1);
+assert.equal(returnReport.deliveryStatusCounts.RETURNED,1);
+assert.equal(returnReport.returnedCount,1);
+assert.equal(returnReport.driverCounts['driver-return'].total,1,'the return is attributed to its operational Driver');
+assert.equal(returnReport.coverage.deliveryFee.total,0,'a RETURN does not create a completed-order delivery fee');
+assert.equal(returnReport.driverPayout.count,0,'a RETURN does not create an Earning');
+const filteredReturn = Analytics.aggregate({orders:[returnOrder],deliveries:returnDeliveries,bikes:[{id:'driver-original',name:'Entregador original'},{id:'driver-return',name:'Entregador da devolução'}],earnings:[]},{now,period:'all',driver:'driver-return',status:'RETURNED',type:'NORMAL',source:'ifood',includeExportRows:true});
+assert.equal(filteredReturn.total,1,'combined operation filters retain the associated Order once');
+assert.equal(filteredReturn.deliveryTotal,2,'status/Driver filtering counts distinct operations');
+assert.equal(filteredReturn.exportRows.length,1,'CSV projection does not duplicate the Order for a RETURN');
+assert.equal(filteredReturn.exportRows[0].status,'RETURNED','the CSV reflects the operation status that matched the filter');
+assert.match(Analytics.csvRow([filteredReturn.exportRows[0].customer]),/^"'=HYPERLINK/u,'formula-leading customer values remain neutralized in CSV');
+assert.equal(filteredReturn.driverPayout.count,0,'combined filters do not infer payment for the RETURN');
+const returnHtml = View.render({ report:returnReport, filters:{period:'all',bike:'',status:'',type:'',source:''}, statusLabel:value=>({CANCELLED:'Cancelada',RETURNED:'Devolvida'})[value]||'Em andamento', typeLabel:()=>'Entrega', sources:{ifood:'iFood'}, bikes:[], types:['NORMAL'], freshNote:'fixture sintética' });
+assert.match(returnHtml,/Pedidos no período[\s\S]*>1</u,'the report retains one Order in the financial/commercial cohort');
+assert.match(returnHtml,/Operações de entrega[\s\S]*>2</u,'the report separately counts the original and RETURN deliveries');
+assert.match(returnHtml,/data-status-filter="RETURNED"/u,'RETURN status is available to the status chart filter');
+assert.match(returnHtml,/value="RETURNED"/u,'RETURN status is available in combined report filters');
+assert.match(returnHtml,/Devoluções recebidas/u,'the RETURN state is presented in Portuguese');
+assert.match(returnHtml,/<dt>Entregas<\/dt>/u,'driver performance labels the distinct operational unit');
 
 const badMoney = Analytics.aggregate({ orders: [{ id: 'x', createdAt: now, status: 'FINALIZADA', sourceId: 'manual', value: 8, amountMinor: 1200, currency: 'BRL' }, { id: 'y', createdAt: now, status: 'FINALIZADA', deliveryFee: 'NaN', amountMinor: 200, currency: 'USD' }, { id: 'jpy', createdAt: now, status: 'CANCELADA', amountMinor: 500, currency: 'JPY' }, { id: 'kwd', createdAt: now, status: 'CANCELADA', amountMinor: 1234, currency: 'KWD' }, { id: 'bad-currency', createdAt: now, status: 'CANCELADA', amountMinor: 900, currency: 'ZZZ' }], deliveries: [{ id: 'x', orderId: 'x', status: 'DELIVERED' }, { id: 'y', orderId: 'y', status: 'DELIVERED' }, { id: 'jpy', orderId: 'jpy', status: 'CANCELLED' }, { id: 'kwd', orderId: 'kwd', status: 'CANCELLED' }, { id: 'bad-currency', orderId: 'bad-currency', status: 'CANCELLED' }] }, { now, period: 'all' });
 assert.equal(badMoney.deliveryFees.total, 8); // Legacy value is a delivery fee, not product revenue.
