@@ -49,6 +49,20 @@ assert.match(source, /root\.querySelector\(selector\) \|\| \(root === host \? do
 assert.match(source, /const mfaQrCanvas = \$\('\[data-mfa-qr\]'\)[\s\S]*const mfaSecretInput = \$\('\[data-mfa-secret\]'\)/u, 'MFA cleanup retains references before the account page can be detached');
 assert.match(source, /function clearMfaEnrollment\(\)\{const canvas=mfaQrCanvas[\s\S]*if\(mfaSecretInput\)mfaSecretInput\.value=''/u, 'closing an account page cannot throw while clearing detached enrollment controls');
 assert.match(source, /rotamoto:settings-page/u, 'administration navigation uses the application settings route');
+assert.match(source, /class="rm-account-trigger" data-account-security/u,
+  'the top-bar account trigger carries the marker consumed by the delegated account-opening handler');
+assert.doesNotMatch(source, /\$\('\.rm-account-trigger'\)\?\.addEventListener\('click',\s*\(\)\s*=>\s*\{\}\)/u,
+  'the account trigger has no placeholder click handler that can mask a missing navigation contract');
+assert.match(source, /const accountTrigger = event\.target\?\.closest\?\.\('\[data-account-security\]'\)[\s\S]*?setOpen\(true, accountTrigger\)/u,
+  'an unauthenticated trigger opens the identity panel and retains its focus target');
+assert.match(source, /if \(current && appKind === 'restaurante' && !mfaLocked\) \{\s*document\.dispatchEvent\(new CustomEvent\('rotamoto:open-account-settings'\)\)/u,
+  'an authenticated Restaurante trigger navigates to the dedicated account settings page');
+assert.match(source, /trigger\.setAttribute\('aria-controls', opensAccountPage \? 'rmAccountSettingsPage' : 'rmIdentityPanel'\)/u,
+  'the top-bar trigger identifies the destination it controls');
+assert.match(source, /function setOpen\(open, returnFocusTarget = null\)[\s\S]*?previousFocus = returnFocusTarget\?\.isConnected \? returnFocusTarget : document\.activeElement/u,
+  'touch activation remembers the invoking control even when the browser does not focus it');
+assert.match(appSource, /rotamoto:open-account-settings[\s\S]*?state\.settingsOpen='seguranca'[\s\S]*?requestAnimationFrame\(\(\)=>document\.querySelector\('#rmAccountSettingsPage h2'\)\?\.focus\(\)\)/u,
+  'account navigation opens the dedicated settings page and moves focus to its heading');
 assert.match(source, /document\.addEventListener\('rotamoto:settings-page',[\s\S]*?loadAdmin\(\)/u, 'each company settings page loads its server snapshot from the single navigation');
 assert.match(appSource, /settings-cards[\s\S]*?settings-card/u, 'all Ajustes categories render as selectable cards on mobile and desktop');
 assert.match(appSource, /data-settings-back/u, 'each Ajustes category page has a clear return to the card grid');

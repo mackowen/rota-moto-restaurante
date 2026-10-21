@@ -42,7 +42,7 @@
   };
   const host = document.createElement('div');
   host.id = 'rmIdentityRoot';
-  host.innerHTML = `<button type="button" class="rm-account-trigger" aria-label="Abrir conta e acesso" aria-controls="rmIdentityPanel" aria-expanded="false">Conta</button>
+  host.innerHTML = `<button type="button" class="rm-account-trigger" data-account-security aria-label="Abrir conta e acesso" aria-controls="rmIdentityPanel" aria-expanded="false">Conta</button>
     <section id="rmIdentityPanel" class="rm-identity-panel" role="main" aria-labelledby="rmIdentityTitle" hidden>
       <header><div><strong id="rmIdentityTitle">Conta RotaMoto</strong><small data-identity-status>Verificando sua conta…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
       <div class="rm-identity-content">
@@ -89,7 +89,7 @@
   accountPage.id = 'rmAccountSettingsPage';
   accountPage.className = 'rm-account-settings-page';
   accountPage.hidden = true;
-  accountPage.innerHTML = '<header><div><h2>Conta e segurança</h2><p>Gerencie sua identidade, acesso e empresas vinculadas.</p></div></header><div class="rm-account-settings-grid"><section class="rm-account-settings-card"><h3>Minha conta</h3></section><section class="rm-account-settings-card"><h3>Verificação em duas etapas</h3></section><section class="rm-account-settings-card"><h3>Senha e acesso</h3></section><section class="rm-account-settings-card"><h3>Empresas vinculadas e convites</h3></section><section class="rm-account-settings-card"><h3>Recuperação de acesso</h3></section></div>';
+  accountPage.innerHTML = '<header><div><h2 tabindex="-1">Conta e segurança</h2><p>Gerencie sua identidade, acesso e empresas vinculadas.</p></div></header><div class="rm-account-settings-grid"><section class="rm-account-settings-card"><h3>Minha conta</h3></section><section class="rm-account-settings-card"><h3>Verificação em duas etapas</h3></section><section class="rm-account-settings-card"><h3>Senha e acesso</h3></section><section class="rm-account-settings-card"><h3>Empresas vinculadas e convites</h3></section><section class="rm-account-settings-card"><h3>Recuperação de acesso</h3></section></div>';
   const accountCards = accountPage.querySelectorAll('.rm-account-settings-card');
   const accountSummary = $('[data-account-summary]') || $('.rm-account-summary');
   if (accountSummary) { accountSummary.dataset.accountSummary = ''; accountCards[0].append(accountSummary); }
@@ -156,8 +156,11 @@
   const appKind = document.currentScript?.dataset.app || 'restaurante';
   function updateTriggerLabel() {
     trigger.innerHTML = `<span class="rm-account-trigger-label">${offlineMode ? 'Dados locais' : 'Conta'}</span><svg class="rm-account-trigger-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg>`;
-    trigger.setAttribute('aria-label', offlineMode ? 'Dados locais. Abrir opções da conta; sem sessão autenticada' : 'Abrir conta e acesso');
-    trigger.title = offlineMode ? 'Modo local: sem sessão autenticada' : 'Abrir conta e acesso';
+    const opensAccountPage = Boolean(current && appKind === 'restaurante' && !mfaLocked);
+    const triggerLabel = opensAccountPage ? 'Abrir Conta e segurança' : offlineMode ? 'Dados locais. Abrir opções da conta; sem sessão autenticada' : 'Abrir conta e acesso';
+    trigger.setAttribute('aria-label', triggerLabel);
+    trigger.setAttribute('aria-controls', opensAccountPage ? 'rmAccountSettingsPage' : 'rmIdentityPanel');
+    trigger.title = opensAccountPage ? triggerLabel : offlineMode ? 'Modo local: sem sessão autenticada' : 'Abrir conta e acesso';
   }
   if (appKind !== 'restaurante') adminPage.remove();
   function message(error) { return codeMessages[error?.code] || (error?.network ? codeMessages.NETWORK : 'Não foi possível concluir. Revise os dados e tente novamente.'); }
@@ -217,9 +220,9 @@
     return [...panel.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[href],[tabindex]:not([tabindex="-1"])')]
       .filter(element => !element.closest('[hidden]') && element.getClientRects().length > 0);
   }
-  function setOpen(open) {
+  function setOpen(open, returnFocusTarget = null) {
     if (mfaLocked) open = true;
-    if (open && panel.hidden) previousFocus = document.activeElement;
+    if (open && panel.hidden) previousFocus = returnFocusTarget?.isConnected ? returnFocusTarget : document.activeElement;
     if (!open) clearMfaEnrollment();
     panel.hidden = !open;
     trigger.setAttribute('aria-expanded', String(open));
@@ -232,9 +235,14 @@
   }
   panel.tabIndex = -1;
   document.addEventListener('click', event => {
-    if (!event.target?.closest?.('[data-account-security]')) return;
+    const accountTrigger = event.target?.closest?.('[data-account-security]');
+    if (!accountTrigger) return;
     event.preventDefault();
-    setOpen(true);
+    if (current && appKind === 'restaurante' && !mfaLocked) {
+      document.dispatchEvent(new CustomEvent('rotamoto:open-account-settings'));
+      return;
+    }
+    setOpen(true, accountTrigger);
   });
   panel.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
@@ -379,7 +387,6 @@
   $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});clearMfaEnrollment();$('[data-mfa-confirm]').hidden=true;$('[data-mfa-status]').textContent='Verificação em duas etapas configurada. A chave foi removida desta tela.';$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore()}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
   $('[data-recovery-codes-dismiss]').addEventListener('click',()=>{$('[data-recovery-code-list]').textContent='';$('[data-recovery-codes]').hidden=true});
   $('[data-mfa-regenerate]').addEventListener('click',async event=>{const button=event.currentTarget;if(working)return;working=true;button.disabled=true;try{const result=await request('/identity/mfa/recovery-codes',{method:'POST',body:'{}'});$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{working=false;button.disabled=false}});
-  $('.rm-account-trigger')?.addEventListener('click', () => {});
   document.addEventListener('rotamoto:settings-page', event => {
     if (event.detail?.section === 'seguranca') { if (!current || mfaLocked) return; const mount=document.querySelector('#rmAccountSettingsMount'); if(mount && mount.closest('#main')){ mount.append(accountPage); accountPage.hidden=false; } panel.hidden=true; return; }
     if (mfaLocked) return;
