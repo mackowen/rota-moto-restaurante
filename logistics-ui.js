@@ -217,7 +217,7 @@
           if(form.isConnected&&form.dataset.readbackPending!=='true')buttons.forEach(button=>{if(button.isConnected)button.disabled=false});
         }
       };
-      form.addEventListener('submit',event=>{event.preventDefault();void save(false)});root.querySelector('[data-clear-logistics-cost-model]')?.addEventListener('click',()=>void save(true));
+      form.addEventListener('submit',event=>{event.preventDefault();void save(false)});root.querySelector('[data-clear-logistics-cost-model]')?.addEventListener('click',()=>{if(window.confirm('Limpar somente as estimativas futuras do perfil econômico? O histórico financeiro não será alterado.'))void save(true)});
       return true;
     } catch(error) {
       if (preserveOnError) showReadbackPending(root.querySelector('#logistics-intelligence-settings'), () => loadIntelligenceSettings({ preserveOnError: true }));
@@ -254,29 +254,26 @@
       const apiState = apiStatus(p);
       return `<article class="logistics-provider-card"><div><b>${esc(p.displayName)}</b><small>${p.class === 'internal_fleet' ? 'Frota própria' : p.class === 'marketplace' ? 'Marketplace' : 'Parceiro'} · ${p.enabled ? 'Ativo' : 'Desativado'}</small><small>Modo: ${p.integrationMode === 'api' ? 'API externa' : 'MANUAL'} · capabilities: ${esc((p.capabilities || []).join(', ') || 'nenhuma')}</small><small>${esc(apiState)}${p.testAdapter === true ? '' : ` · credencial: ${p.credentialConfigured ? 'referência habilitada, não verificada' : 'estado não consultável pelo app'} · webhook: ${p.webhookConfigured ? 'configurado' : 'não configurado'}`}</small><small>${esc(p.displayName||p.code)} · teste: ${esc(statusText(p.lastConnectionTestStatus || 'not_configured'))}${p.lastConnectionTestAt ? ` · ${esc(new Date(p.lastConnectionTestAt).toLocaleString())}` : ''}</small></div>${p.class === 'internal_fleet' ? '' : `<div class="actions"><button class="btn small" data-logistics-edit="${esc(p.id)}" data-code="${esc(p.displayName||p.code)}" data-version="${Number(p.version)}" data-name="${esc(p.displayName)}" data-mode="${esc(p.integrationMode || 'manual')}" data-instructions="${esc(p.configuration?.dispatchInstructions || '')}" data-portal="${esc(p.configuration?.portalUrl || '')}">Editar</button><button class="btn small" data-logistics-toggle="${esc(p.id)}" data-version="${Number(p.version)}" data-enabled="${p.enabled}">${p.enabled ? 'Desativar' : 'Ativar'}</button></div>`}</article>`;
      }).join('') || currentContext?.emptyState?.('Nenhuma integração cadastrada','Integrações disponíveis aparecerão aqui após a configuração.','plug','compact') || '<div class="empty">Nenhuma integração cadastrada.</div>';
-    root.querySelectorAll('[data-logistics-toggle]').forEach(button => button.addEventListener('click', async () => {
-      try { await api(`/logistics/providers/${encodeURIComponent(button.dataset.logisticsToggle)}`, 'PATCH', { expectedVersion: Number(button.dataset.version), enabled: button.dataset.enabled !== 'true' }); loadProviders(); }
-      catch (_) { window.RotaMotoApp?.toast?.('Provider alterado por outra sessão ou operação não autorizada.','error'); }
-    }));
+    root.querySelectorAll('[data-logistics-toggle]').forEach(button => button.addEventListener('click', () => toggleProvider(button)));
     root.querySelectorAll('[data-logistics-edit]').forEach(button => button.addEventListener('click', () => editProvider(button)));
   }
   function editProvider(button) {
     window.RotaMotoApp?.modal?.(`<h2>Editar provider</h2><form id="logistics-edit-form" class="formgrid"><label>Nome<input class="input" name="displayName" maxlength="120" required value="${esc(button.dataset.name)}"></label><label>Modo<select class="select" name="integrationMode"><option value="manual" ${button.dataset.mode !== 'api' ? 'selected' : ''}>MANUAL</option><option value="api" ${button.dataset.mode === 'api' ? 'selected' : ''} ${button.dataset.logisticsEdit && button.dataset.code !== 'ifood' ? 'disabled' : ''}>API</option></select></label><label>Portal HTTPS<input class="input" name="portalUrl" type="url" maxlength="512" value="${esc(button.dataset.portal)}"></label><label class="full">Instruções de despacho manual<textarea class="input" name="dispatchInstructions" maxlength="500">${esc(button.dataset.instructions)}</textarea></label><p class="full">Credenciais não são recebidas nem exibidas nesta tela. Modo API permanece desativado até a configuração segura e validação operacional.</p><div class="actions full"><button class="btn" type="button" data-logistics-close>Cancelar</button><button class="btn primary">Salvar</button></div></form>`);
     const form = document.querySelector('#logistics-edit-form');
     if (!form) return;
-    form.onsubmit = async event => { event.preventDefault(); const fields = new FormData(form); try {
-      await api(`/logistics/providers/${encodeURIComponent(button.dataset.logisticsEdit)}`, 'PATCH', {
+    form.onsubmit = async event => { event.preventDefault(); const fields = new FormData(form); const submit=form.querySelector('[type="submit"]');if(submit?.disabled)return;if(submit)submit.disabled=true;try {
+      const saved=await api(`/logistics/providers/${encodeURIComponent(button.dataset.logisticsEdit)}`, 'PATCH', {
         expectedVersion: Number(button.dataset.version), displayName: fields.get('displayName'), integrationMode: fields.get('integrationMode'),
         configuration: { dispatchInstructions: fields.get('dispatchInstructions'), portalUrl: fields.get('portalUrl') }
-      }); window.RotaMotoApp?.closeModal?.(); loadProviders();
-    } catch (_) { window.RotaMotoApp?.toast?.('Não foi possível salvar. Verifique a revisão e a URL HTTPS.','error'); } };
+      });const data=await loadProviders(),confirmed=data?.providers?.find(provider=>provider.id===button.dataset.logisticsEdit);if(!confirmed||confirmed.version!==saved.provider?.version||confirmed.displayName!==fields.get('displayName')||confirmed.integrationMode!==fields.get('integrationMode')||confirmed.configuration?.dispatchInstructions!==fields.get('dispatchInstructions')||confirmed.configuration?.portalUrl!==fields.get('portalUrl'))throw new Error('READBACK_MISMATCH');window.RotaMotoApp?.closeModal?.();window.RotaMotoApp?.toast?.('Configuração do provider confirmada pelo servidor.','success');
+    } catch (error) { window.RotaMotoApp?.toast?.(error.message==='REVISION_CONFLICT'?'O provider mudou em outra sessão. Atualize os dados antes de salvar.':error.name==='TypeError'?'Sem conexão. As alterações foram mantidas no formulário.':'Não foi possível confirmar o salvamento. As alterações continuam no formulário. Verifique a revisão e a URL HTTPS.','error');if(submit?.isConnected)submit.disabled=false; } };
     document.querySelector('[data-logistics-close]')?.addEventListener('click', () => window.RotaMotoApp?.closeModal?.());
   }
   async function loadProviders() {
     const root = document.querySelector('#logistics-provider-list'); if (!root) return;
     root.textContent = 'Carregando…';
-    try { await api('/logistics/internal-provider', 'POST', {}); providerList(root, await api('/logistics/providers')); }
-    catch (error) { root.textContent = friendlyError(error, 'Não foi possível carregar os providers. Verifique a sessão, a permissão administrativa e a conexão.'); }
+    try { await api('/logistics/internal-provider', 'POST', {});const data=await api('/logistics/providers');providerList(root,data);return data; }
+    catch (error) { root.textContent = friendlyError(error, 'Não foi possível carregar os providers. Verifique a sessão, a permissão administrativa e a conexão.');return null; }
   }
   function newProvider() {
     window.RotaMotoApp?.modal?.('<h2>Novo provider logístico</h2><form id="logistics-provider-form" class="formgrid"><label>Nome<input class="input" name="displayName" maxlength="120" required></label><label>Código estável<input class="input" name="code" pattern="[a-z][a-z0-9_-]{1,63}" required></label><label>Classe<select class="select" name="class"><option value="partner">Parceiro</option><option value="marketplace">Marketplace</option></select></label><label>Estado<select class="select" name="enabled"><option value="true">Ativo para operação manual</option><option value="false">Desativado</option></select></label><p class="full">Providers novos começam em modo manual. iFood tem adapter documentado para quote, despacho, cancelamento e tracking, mas a API permanece bloqueada até credenciais, vínculo comercial e homologação. 99Food e Keeta permanecem manuais enquanto não houver capacidade logística documentada.</p><div class="actions full"><button class="btn" type="button" data-logistics-close>Cancelar</button><button class="btn primary">Cadastrar</button></div></form>');
@@ -289,8 +286,10 @@
     document.querySelector('[data-logistics-close]')?.addEventListener('click', () => window.RotaMotoApp?.closeModal?.());
   }
   async function toggleProvider(button) {
-    try { await api(`/logistics/providers/${encodeURIComponent(button.dataset.logisticsToggle)}`, 'PATCH', { expectedVersion: Number(button.dataset.version), enabled: button.dataset.enabled !== 'true' }); await loadProviders(); }
-    catch (_) { window.RotaMotoApp?.toast?.('Provider alterado por outra sessão ou operação não autorizada.','error'); }
+    if(!button||button.disabled)return;
+    button.disabled=true;
+    try { const saved=await api(`/logistics/providers/${encodeURIComponent(button.dataset.logisticsToggle)}`, 'PATCH', { expectedVersion: Number(button.dataset.version), enabled: button.dataset.enabled !== 'true' });const data=await loadProviders(),confirmed=data?.providers?.find(provider=>provider.id===button.dataset.logisticsToggle);if(!confirmed||confirmed.version!==saved.provider?.version||confirmed.enabled!==saved.provider?.enabled)throw new Error('READBACK_MISMATCH');window.RotaMotoApp?.toast?.('Estado do provider confirmado pelo servidor.','success'); }
+    catch (error) { window.RotaMotoApp?.toast?.(error.message==='REVISION_CONFLICT'?'O provider mudou em outra sessão. Atualize e tente novamente.':error.name==='TypeError'?'Sem conexão. O estado será confirmado antes de uma nova alteração.':'Não foi possível confirmar o estado do provider. Atualize a lista e confira a conexão.','error');if(button.isConnected)button.disabled=false; }
   }
   function decisionQualityMarkup(report) {
     const metrics=report.metrics||{}, approval=metrics.recommendationApproval||{}, divergence=metrics.humanDivergence||{};

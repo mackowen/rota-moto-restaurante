@@ -12,7 +12,13 @@ assert.match(app,/latestDriverLocation=new Map\(\)/u,'fleet markers use the late
 assert.match(app,/row\.sync\?\.canonicalId===point\.deliveryId/u,'LocationPoint delivery aliases resolve back to the canonical assigned Driver');
 assert.match(app,/routeLayer=L\.layerGroup\(\)\.addTo\(map\)/u,'route geometry is an independent operational overlay');
 assert.match(app,/L\.polyline\(points,/u,'route overlays render provider-supplied road geometry');
+assert.match(app,/dataset\.routeGeometryRetry=''/u,'an unavailable route geometry can be requested again explicitly');
+assert.match(app,/routeStopIcon=position/u,'route stops use positions returned by the canonical geometry endpoint');
+assert.match(app,/Origem e retorno configurados/u,'the route origin marker reflects the configured return behavior');
 assert.match(app,/\/logistics\/routes\/\$\{encodeURIComponent\(id\)\}\/geometry/u,'planned geometry is loaded through the authenticated server boundary');
+assert.match(app,/window\.__rotaMapRefreshRouteGeometry=null/u,'destroying the map clears its stale geometry callback');
+assert.match(app,/window\.__rotaMapRefreshRouteGeometry=loadRouteGeometries/u,'map geometry loader is exposed to the session restoration lifecycle');
+assert.match(app,/window\.__rotaMapRefreshRouteGeometry\?\.\(\)/u,'restored authenticated session refreshes route geometry');
 assert.doesNotMatch(app,/segmentos diretos|não representam ruas/u,'straight segments are never presented as planned routes');
 assert.match(logisticsUI,/decisionHeadline=decision\.status==='proposed'&&!recommendation\?'Análise gerada · nenhuma alternativa elegível; decisão manual necessária'/u,
   'Decision UX must not label an abstention as a recommendation');

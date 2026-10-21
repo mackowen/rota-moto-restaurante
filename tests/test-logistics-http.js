@@ -1,10 +1,19 @@
 'use strict';
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const http = require('node:http');
+const path = require('node:path');
 const { createLogisticsHttpHandler } = require('../backend/logistics/http');
 const { COOKIE_NAME } = require('../backend/identity/http');
 
 async function main() {
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'logistics-ui.js'), 'utf8');
+  assert.match(ui, /root\.querySelectorAll\('\[data-logistics-toggle\]'\)\.forEach\(button => button\.addEventListener\('click', \(\) => toggleProvider\(button\)\)\)/u,
+    'provider activation uses the shared confirmed readback flow');
+  assert.match(ui, /async function toggleProvider\(button\)[\s\S]*if\(!button\|\|button\.disabled\)return;[\s\S]*button\.disabled=true/u,
+    'provider activation ignores repeated clicks while its write is pending');
+  assert.match(ui, /confirmed\.enabled!==saved\.provider\?\.enabled[\s\S]*Estado do provider confirmado pelo servidor\./u,
+    'provider activation reports success only after server readback matches its acknowledgement');
   const calls = [], principal = { company_id: 'tenant-test', user_id: 'user-test', session_id: 'session-test' };
   const service = {
     listProviders: async () => ({ providers: [] }),
