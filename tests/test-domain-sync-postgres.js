@@ -452,6 +452,14 @@ async function main() {
       assert.equal(locationPull.status,200,JSON.stringify(locationPull.body));
       assert.equal(locationPull.body.companySettings.revision,2,'Company location increments the shared revision');
       assert.deepEqual(locationPull.body.companySettings.operationalLocation,{address:'Rua Sintética 120, São Paulo',latitude:-23.5505,longitude:-46.6333,provenance:'operator_confirmed',version:1},'Motoboy receives the authorized Company location read-only through sync/pull');
+      const addressOnlyUpdate=await call('/api/admin/company/location',{method:'PUT',body:{expectedVersion:1,address:'Rua Sintética 121, São Paulo',latitude:null,longitude:null}});
+      assert.equal(addressOnlyUpdate.status,200,JSON.stringify(addressOnlyUpdate.body));
+      const addressOnlyCompany=await call('/api/admin/company');
+      assert.deepEqual(addressOnlyCompany.body.operationalLocation,{address:'Rua Sintética 121, São Paulo',latitude:null,longitude:null,provenance:null,version:2},'a saved address remains canonical while old coordinates are cleared');
+      const addressOnlyPull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device');
+      assert.equal(addressOnlyPull.status,200,JSON.stringify(addressOnlyPull.body));
+      assert.equal(addressOnlyPull.body.companySettings.revision,3,'address-only Company changes advance the shared revision');
+      assert.deepEqual(addressOnlyPull.body.companySettings.operationalLocation,{address:'Rua Sintética 121, São Paulo',latitude:null,longitude:null,provenance:null,version:2},'Motoboy receives the address with explicitly unknown coordinates');
       const scopedList=await call('/api/domain/deliveries?limit=100');
       assert.equal(scopedList.status,200);assert(scopedList.body.records.some(row=>row.id===deliveryId));
       assert(scopedList.body.records.some(row=>row.id===otherDeliveryId),'company administrator keeps tenant-wide read authority');

@@ -937,9 +937,11 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         companySettings = { companyId: row.company_id, authority: 'restaurant', revision: Number(row.company_settings_version),
           name: row.name, supportPhone: row.support_phone || null, timeZone: row.time_zone || null,
           routeGroupingPolicy: row.route_grouping_policy,
-          operationalLocation: row.operational_latitude == null ? null : { address: row.operational_address,
-            latitude: Number(row.operational_latitude), longitude: Number(row.operational_longitude),
-            provenance: row.operational_location_provenance, version: Number(row.operational_location_version) } };
+          operationalLocation: row.operational_address == null && row.operational_latitude == null && row.operational_longitude == null
+            ? null : { address: row.operational_address,
+              latitude: row.operational_latitude == null ? null : Number(row.operational_latitude),
+              longitude: row.operational_longitude == null ? null : Number(row.operational_longitude),
+              provenance: row.operational_location_provenance, version: Number(row.operational_location_version) } };
       }
     }
     return { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1,
