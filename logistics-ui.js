@@ -154,10 +154,36 @@
   }
   let currentState = null;
   let currentContext = null;
+  function showReadbackPending(form, retry) {
+    if (!form?.isConnected) return;
+    form.dataset.readbackPending = 'true';
+    form.querySelectorAll('[type="submit"], [data-clear-logistics-cost-model]').forEach(button => { button.disabled = true; });
+    let status = form.querySelector('[data-logistics-readback-status]');
+    if (!status) {
+      status = document.createElement('div');
+      status.className = 'setting-note';
+      status.dataset.logisticsReadbackStatus = '';
+      status.setAttribute('role', 'alert');
+      form.prepend(status);
+    }
+    status.replaceChildren();
+    const message = document.createElement('span');
+    message.textContent = 'O servidor recebeu a alteração, mas não foi possível confirmar a leitura. Os valores foram mantidos; confirme a gravação antes de tentar salvar novamente.';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn';
+    button.textContent = 'Tentar confirmar';
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      if (await retry()) window.RotaMotoApp?.toast?.('Configuração confirmada pelo servidor.', 'success');
+      else if (button.isConnected) button.disabled = false;
+    });
+    status.append(message, button);
+  }
   function settingsPanel() {
     return card('<div class="setting-heading"><h2>Logística e frota</h2><p>Configure origem e retorno das Routes internas, perfil econômico e providers logísticos. Route é exclusiva da frota controlada pelo RotaMoto.</p></div><section id="logistics-route-settings-root" aria-live="polite"><span class="muted">Carregando origem e política da rota…</span></section><section id="logistics-intelligence-settings-root" aria-live="polite"><span class="muted">Carregando perfil econômico…</span></section><div class="setting-heading"><h3>Providers logísticos</h3><p>Integrações externas permanecem desligadas até credencial, vínculo comercial e homologação serem validados.</p></div><div class="actions"><button class="btn primary" type="button" data-logistics-add>Cadastrar parceiro</button><button class="btn" type="button" data-logistics-refresh>Atualizar</button></div><div id="logistics-provider-list"><span class="muted">Carregando…</span></div>');
   }
-  async function loadIntelligenceSettings() {
+  async function loadIntelligenceSettings({ preserveOnError = false } = {}) {
     const root=document.querySelector('#logistics-intelligence-settings-root');if(!root)return;
     try {
       const data=await api('/logistics/intelligence/analytics'),settings=data.settings||{},model=settings.costModel||null;
@@ -166,11 +192,40 @@
       const policies=[['lowest_cost','Menor valor conhecido'],['prefer_internal','Preferir frota própria'],['earliest_eta','Menor ETA conhecido']].map(([v,label])=>`<option value="${v}" ${settings.defaultPolicy===v?'selected':''}>${label}</option>`).join('');
       root.innerHTML=`<form id="logistics-intelligence-settings" class="formgrid"><h3 class="full">Inteligência e custo estimado da frota</h3><p class="full">Valores de operação configurados pelo Restaurante; são estimativas e não alteram Order.value, Earning nem custo reconciliado. Campos ausentes não são tratados como zero.</p><label>Fixo por entrega (${esc(model?.currency||'BRL')})<input class="input" name="fixedCost" type="number" min="0" step="any" value="${esc(decimal(model?.fixedCostPerDeliveryMinor))}"></label><label>Variável por km (${esc(model?.currency||'BRL')})<input class="input" name="variableCostPerKm" type="number" min="0" step="any" value="${esc(decimal(model?.variableCostPerKmMinor))}"></label><label>Moeda ISO 4217<input class="input" name="currency" minlength="3" maxlength="3" value="${esc(model?.currency||'BRL')}" required></label><label>Política assistida<select class="select" name="policy">${policies}</select></label><small class="full">${model?`Perfil v${settings.version} · ${esc(model.currency)}.`:'Perfil sem valores configurados; comparação econômica própria ficará indisponível.'} Configuração do Restaurante; o Motoboy apenas consome os dados operacionais necessários.</small><div class="actions full"><button class="btn primary">Salvar estimativa e política</button>${model?'<button class="btn" type="button" data-clear-logistics-cost-model>Limpar perfil</button>':''}</div></form>`;
       const form=root.querySelector('#logistics-intelligence-settings');
-      const save=async clear=>{const fields=new FormData(form),currency=String(fields.get('currency')||'').toUpperCase();let fractionDigits;try{fractionDigits=new Intl.NumberFormat('en',{style:'currency',currency}).resolvedOptions().maximumFractionDigits}catch(_){window.RotaMotoApp?.toast?.('Moeda ISO 4217 inválida.','error');return}const toMinor=value=>{const raw=String(value||'').trim();if(!/^\d+(?:\.\d+)?$/u.test(raw))throw new Error('Informe valor não negativo usando ponto decimal.');const [whole,decimalPart='']=raw.split('.');if(decimalPart.length>fractionDigits)throw new Error('Precisão decimal acima do permitido para esta moeda.');const amount=BigInt(whole)*BigInt(10**fractionDigits)+BigInt((decimalPart+'0'.repeat(fractionDigits)).slice(0,fractionDigits)||'0');if(amount>9000000000000000n)throw new Error('Valor fora do intervalo permitido.');return Number(amount)};const body={expectedVersion:Number(settings.version||0),defaultPolicy:fields.get('policy'),...(clear?{fixedCostPerDeliveryMinor:null,variableCostPerKmMinor:null,currency:null}:{fixedCostPerDeliveryMinor:toMinor(fields.get('fixedCost')),variableCostPerKmMinor:toMinor(fields.get('variableCostPerKm')),currency})};try{await api('/logistics/intelligence/settings','PUT',body);await loadIntelligenceSettings();window.RotaMotoApp?.toast?.('Perfil econômico atualizado.','success')}catch(error){window.RotaMotoApp?.toast?.(error.message==='REVISION_CONFLICT'?'O perfil mudou em outra sessão; recarregue as configurações.':'Não foi possível salvar o perfil econômico. Revise moeda, valores e permissão.','error')}};
+      const save=async clear=>{
+        if(form.dataset.saving==='true'||form.dataset.readbackPending==='true')return;
+        form.dataset.saving='true';
+        const buttons=[...form.querySelectorAll('button')];buttons.forEach(button=>{button.disabled=true});
+        try {
+          const fields=new FormData(form),currency=String(fields.get('currency')||'').toUpperCase();
+          const fractionDigits=new Intl.NumberFormat('en',{style:'currency',currency}).resolvedOptions().maximumFractionDigits;
+          const toMinor=value=>{const raw=String(value??'').trim();if(!/^\d+(?:\.\d+)?$/u.test(raw))throw new Error('Informe valor não negativo usando ponto decimal.');const [whole,decimalPart='']=raw.split('.');if(decimalPart.length>fractionDigits)throw new Error('Precisão decimal acima do permitido para esta moeda.');const amount=BigInt(whole)*BigInt(10**fractionDigits)+BigInt((decimalPart+'0'.repeat(fractionDigits)).slice(0,fractionDigits)||'0');if(amount>9000000000000000n)throw new Error('Valor fora do intervalo permitido.');return Number(amount)};
+          const body={expectedVersion:Number(settings.version||0),defaultPolicy:fields.get('policy'),...(clear?{fixedCostPerDeliveryMinor:null,variableCostPerKmMinor:null,currency:null}:{fixedCostPerDeliveryMinor:toMinor(fields.get('fixedCost')),variableCostPerKmMinor:toMinor(fields.get('variableCostPerKm')),currency})};
+          await api('/logistics/intelligence/settings','PUT',body);
+          if(!await loadIntelligenceSettings({preserveOnError:true}))return;
+          window.RotaMotoApp?.toast?.('Perfil econômico atualizado.','success');
+        } catch(error) {
+          const message=error.message==='REVISION_CONFLICT'?'O perfil mudou em outra sessão; os valores digitados foram mantidos. Atualize as configurações antes de salvar novamente.':
+            error.message==='INVALID_INPUT'?'Confira valores, precisão decimal e moeda. Nenhuma alteração foi salva.':
+            error.message==='FORBIDDEN'?'Sua conta não tem permissão para alterar o perfil econômico.':
+            error.message==='UNAUTHENTICATED'?'Sua sessão expirou. Entre novamente para salvar.':
+            error.name==='TypeError'?'Sem conexão. Os valores digitados foram mantidos; tente novamente quando a rede voltar.':
+            'Não foi possível salvar o perfil econômico. Os valores digitados foram mantidos.';
+          window.RotaMotoApp?.toast?.(message,'error');
+        } finally {
+          form.dataset.saving='false';
+          if(form.isConnected&&form.dataset.readbackPending!=='true')buttons.forEach(button=>{if(button.isConnected)button.disabled=false});
+        }
+      };
       form.addEventListener('submit',event=>{event.preventDefault();void save(false)});root.querySelector('[data-clear-logistics-cost-model]')?.addEventListener('click',()=>void save(true));
-    } catch(error) { root.textContent=error.message==='FORBIDDEN'?'Perfil econômico disponível somente para administração autorizada.':'Perfil econômico indisponível; nenhuma configuração foi alterada.'; }
+      return true;
+    } catch(error) {
+      if (preserveOnError) showReadbackPending(root.querySelector('#logistics-intelligence-settings'), () => loadIntelligenceSettings({ preserveOnError: true }));
+      else root.textContent=error.message==='FORBIDDEN'?'Perfil econômico disponível somente para administração autorizada.':'Perfil econômico indisponível; nenhuma configuração foi alterada.';
+      return false;
+    }
   }
-  async function loadRouteSettings() {
+  async function loadRouteSettings({ preserveOnError = false } = {}) {
     const root=document.querySelector('#logistics-route-settings-root');if(!root)return;
     try {
       const [{settings:routeSettings},company] = await Promise.all([api('/logistics/route-settings'),api('/admin/company')]);
@@ -179,11 +234,20 @@
       root.innerHTML=routeFormMarkup;
       const routeForm=root.querySelector('#logistics-route-settings');
       routeForm.querySelector('[name="originMode"]').addEventListener('change',event=>{for(const name of ['latitude','longitude'])routeForm.querySelector(`[name="${name}"]`).disabled=event.target.value!=='custom'});
-      routeForm.addEventListener('submit',async event=>{event.preventDefault();const fields=new FormData(routeForm),mode=fields.get('originMode'),latitude=String(fields.get('latitude')||'').trim(),longitude=String(fields.get('longitude')||'').trim();
-        const body={expectedVersion:routeSettings.version||0,originMode:mode,latitude:mode==='custom'&&latitude!==''?Number(latitude):null,longitude:mode==='custom'&&longitude!==''?Number(longitude):null,returnToOrigin:fields.has('returnToOrigin')};
-        try{await api('/logistics/route-settings','PUT',body);await loadRouteSettings();window.RotaMotoApp?.toast?.('Política de origem e retorno salva.','success')}
-        catch(error){window.RotaMotoApp?.toast?.(error.message==='REVISION_CONFLICT'?'A configuração mudou em outra sessão; atualize o painel.':'Não foi possível salvar a política da Route. Confira as coordenadas e a permissão.','error')}});
-    } catch(error) { root.textContent=error.message==='FORBIDDEN'?'A configuração exige permissão administrativa verificada.':'Origem e política da Route indisponíveis; o cálculo permanece abstido.'; }
+      routeForm.addEventListener('submit',async event=>{event.preventDefault();if(routeForm.dataset.saving==='true'||routeForm.dataset.readbackPending==='true')return;routeForm.dataset.saving='true';const buttons=[...routeForm.querySelectorAll('button')];buttons.forEach(button=>{button.disabled=true});
+        try{const fields=new FormData(routeForm),mode=fields.get('originMode'),latitude=String(fields.get('latitude')||'').trim(),longitude=String(fields.get('longitude')||'').trim();
+          const body={expectedVersion:routeSettings.version||0,originMode:mode,latitude:mode==='custom'&&latitude!==''?Number(latitude):null,longitude:mode==='custom'&&longitude!==''?Number(longitude):null,returnToOrigin:fields.has('returnToOrigin')};
+          await api('/logistics/route-settings','PUT',body);
+          if(!await loadRouteSettings({preserveOnError:true}))return;
+          window.RotaMotoApp?.toast?.('Política de origem e retorno salva.','success');
+        }catch(error){window.RotaMotoApp?.toast?.(error.message==='REVISION_CONFLICT'?'A configuração mudou em outra sessão; os valores digitados foram mantidos. Atualize os valores atuais antes de salvar novamente.':error.message==='INVALID_INPUT'?'Confira o par de coordenadas e seus limites. Nenhuma alteração foi salva.':'Não foi possível salvar a política da Route. Os valores digitados foram mantidos. Confira a conexão e a permissão.','error')}
+        finally{routeForm.dataset.saving='false';if(routeForm.isConnected&&routeForm.dataset.readbackPending!=='true')buttons.forEach(button=>{if(button.isConnected)button.disabled=false})}});
+      return true;
+    } catch(error) {
+      if (preserveOnError) showReadbackPending(root.querySelector('#logistics-route-settings'), () => loadRouteSettings({ preserveOnError: true }));
+      else root.textContent=error.message==='FORBIDDEN'?'A configuração exige permissão administrativa verificada.':'Origem e política da Route indisponíveis; o cálculo permanece abstido.';
+      return false;
+    }
   }
   function providerList(root, data) {
     root.innerHTML = (data.providers || []).map(p => {
