@@ -49,6 +49,8 @@ async function main() {
   }
   assert.equal(decodeURIComponent(new URL(process.env.DATABASE_URL).username), 'rotamoto_app');
   assert.equal(decodeURIComponent(new URL(process.env.MIGRATOR_DATABASE_URL).username), 'rotamoto_migrator');
+  assert.equal(decodeURIComponent(new URL(process.env.DATABASE_URL).pathname.slice(1)), 'rotamoto_e2e', 'this synthetic fixture is restricted to rotamoto_e2e');
+  assert.equal(decodeURIComponent(new URL(process.env.MIGRATOR_DATABASE_URL).pathname.slice(1)), 'rotamoto_e2e', 'the migrator connection is also restricted to rotamoto_e2e');
   const migrator = createClient({ connectionString: process.env.MIGRATOR_DATABASE_URL });
   const client = createClient({ connectionString: process.env.DATABASE_URL });
   await migrator.connect();
@@ -439,6 +441,17 @@ async function main() {
       const revisedCompanyPull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device');
       assert.equal(revisedCompanyPull.body.companySettings.revision,1,'Company policy publication advances the monotonic snapshot revision');
       assert.equal(revisedCompanyPull.body.companySettings.routeGroupingPolicy,'nearest_origin_round_robin','Motoboy receives the Restaurant-owned policy through canonical sync');
+      const locationUpdate=await call('/api/admin/company/location',{method:'PUT',body:{expectedVersion:0,address:'Rua Sintética 120, São Paulo',latitude:-23.5505,longitude:-46.6333}});
+      assert.equal(locationUpdate.status,200,JSON.stringify(locationUpdate.body));
+      assert.equal(locationUpdate.body.operationalLocation.provenance,'operator_confirmed');
+      assert.equal(locationUpdate.body.operationalLocationVersion,1);
+      const canonicalLocation=await call('/api/admin/company');
+      assert.equal(canonicalLocation.status,200,JSON.stringify(canonicalLocation.body));
+      assert.deepEqual(canonicalLocation.body.operationalLocation,{address:'Rua Sintética 120, São Paulo',latitude:-23.5505,longitude:-46.6333,provenance:'operator_confirmed',version:1});
+      const locationPull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device');
+      assert.equal(locationPull.status,200,JSON.stringify(locationPull.body));
+      assert.equal(locationPull.body.companySettings.revision,2,'Company location increments the shared revision');
+      assert.deepEqual(locationPull.body.companySettings.operationalLocation,{address:'Rua Sintética 120, São Paulo',latitude:-23.5505,longitude:-46.6333,provenance:'operator_confirmed',version:1},'Motoboy receives the authorized Company location read-only through sync/pull');
       const scopedList=await call('/api/domain/deliveries?limit=100');
       assert.equal(scopedList.status,200);assert(scopedList.body.records.some(row=>row.id===deliveryId));
       assert(scopedList.body.records.some(row=>row.id===otherDeliveryId),'company administrator keeps tenant-wide read authority');
@@ -987,9 +1000,16 @@ async function main() {
     await client.query('ROLLBACK');
     await migrator.query('BEGIN');
     await migrator.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
-    const leftovers = await migrator.query("SELECT count(*)::int AS count FROM rotamoto.companies WHERE id=$1", [companyId]);
+    const leftovers = await migrator.query(`SELECT
+      (SELECT count(*)::int FROM rotamoto.companies WHERE id=$1) AS companies,
+      (SELECT count(*)::int FROM rotamoto.domain_records WHERE company_id=$1) AS domain_records,
+      (SELECT count(*)::int FROM rotamoto.memberships WHERE company_id=$1) AS memberships,
+      (SELECT count(*)::int FROM rotamoto.sync_outbox WHERE company_id=$1) AS sync_outbox`, [companyId]);
     await migrator.query('ROLLBACK');
-    assert.equal(leftovers.rows[0].count, 0, 'synthetic tenant and domain rows were rolled back');
+    assert.deepEqual(leftovers.rows[0], { companies: 0, domain_records: 0, memberships: 0, sync_outbox: 0 },
+      'all campaign tenant rows are absent after transactional rollback');
+    console.log(JSON.stringify({ fixture: 'domain-sync-company-location-0279', companyId, database: 'rotamoto_e2e', databaseCommitted: false,
+      cleanup: 'COMPLETED', residuals: leftovers.rows[0] }));
     console.log('PostgreSQL canonical domain and sync API tests: OK');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
