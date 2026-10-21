@@ -40,7 +40,17 @@ assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'p
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e'}),/Use E2E_RUNTIME_DATABASE_URL/u);
 const localRoad=loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',
   ROUTEMOTO_ROUTE_DISTANCE_URL:'http://127.0.0.1:5000',ROUTEMOTO_ROUTE_DISTANCE_VERSION:'local-map-1'});
-assert.deepEqual(localRoad.routeDistance,{enabled:true,baseUrl:'http://127.0.0.1:5000',version:'local-map-1',timeoutMs:2500});
+assert.deepEqual(localRoad.routeDistance,{enabled:true,provider:'osrm',baseUrl:'http://127.0.0.1:5000',version:'local-map-1',profile:'driving-car',credentialConfigured:false,timeoutMs:2500,requestsPerMinute:null});
+const orsRoute=loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_PROVIDER:'ors',
+  ROUTEMOTO_ROUTE_DISTANCE_URL:'https://api.heigit.org/openrouteservice',ROUTEMOTO_ROUTE_DISTANCE_API_KEY:'synthetic-config-key'});
+assert.equal(orsRoute.routeDistance.provider,'ors');assert.equal(orsRoute.routeDistance.baseUrl,'https://api.heigit.org/openrouteservice');
+assert.equal(orsRoute.routeDistance.credentialConfigured,true);
+assert.equal(Object.hasOwn(orsRoute.routeDistance,'apiKey'),false,'runtime config does not copy the secret into the route configuration object');
+assert.equal(orsRoute.routeDistance.requestsPerMinute,40);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_PROVIDER:'ors',ROUTEMOTO_ROUTE_DISTANCE_URL:'https://api.heigit.org/unexpected/path'}),/base HTTP/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e',
+  ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_PROVIDER:'ors',ROUTEMOTO_ROUTE_DISTANCE_URL:'https://api.heigit.org/openrouteservice'}),/API_KEY somente no backend/u);
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_PROVIDER:'unknown'}),/deve ser osrm ou ors/u);
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true'}),/exige ROUTEMOTO_ROUTE_DISTANCE_URL/u);
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_URL:'http://example.org'}),/HTTPS/u);
 assert.throws(()=>loadRuntimeConfig({NODE_ENV:'development',ROUTEMOTO_ROUTE_DISTANCE_ENABLED:'true',ROUTEMOTO_ROUTE_DISTANCE_URL:'http://127.0.0.1:5000?token=x'}),/base HTTP/u);

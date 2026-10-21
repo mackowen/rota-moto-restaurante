@@ -23,7 +23,7 @@ const {createDomainQueryHttpHandler}=require('./backend/domain/query-http');
 const {createDeliveryQrService}=require('./backend/domain/delivery-qr');
 const {createDeliveryQrHttpHandler}=require('./backend/domain/delivery-qr-http');
 const {createLogisticsService}=require('./backend/logistics/service');
-const {createOsrmRouteDistanceProvider}=require('./backend/logistics/osrm-route-distance');
+const {createRouteDistanceProvider}=require('./backend/logistics/route-distance-provider');
 const {createLogisticsHttpHandler}=require('./backend/logistics/http');
 const {createDriverAvailabilityService}=require('./backend/logistics/driver-availability');
 const {createDriverAvailabilityHttpHandler}=require('./backend/logistics/driver-availability-http');
@@ -195,8 +195,7 @@ const deliveryQrService=CONFIG.deliveryQrKeyRef&&secretProvider?createDeliveryQr
   keyRef:CONFIG.deliveryQrKeyRef,kid:CONFIG.deliveryQrKeyId
 }):null;
 const deliveryQrHttp=createDeliveryQrHttpHandler({identityService,queryService:domainQueryService,qrService:deliveryQrService,logger:()=>{}});
-const routeDistanceProvider=CONFIG.routeDistance.enabled?createOsrmRouteDistanceProvider({baseUrl:CONFIG.routeDistance.baseUrl,
-  version:CONFIG.routeDistance.version,timeoutMs:CONFIG.routeDistance.timeoutMs}):null;
+const routeDistanceProvider=createRouteDistanceProvider(CONFIG.routeDistance,{apiKey:process.env.ROUTEMOTO_ROUTE_DISTANCE_API_KEY});
 const logisticsService=createLogisticsService({assignDeliveryToRoute:syncService.assignDeliveryToRoute,routeDistanceProvider,driverAvailability:driverAvailabilityService});
 const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const territorialAnalyticsHttp=createTerritorialAnalyticsHttpHandler({identityService,service:createTerritorialAnalyticsService(),logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});

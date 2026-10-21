@@ -135,13 +135,19 @@ function loadRuntimeConfig(env = process.env, { context = 'http' } = {}) {
     throw new Error('Paths de storage e backup devem ser absolutos.');
 
   const routeDistanceEnabled = env.ROUTEMOTO_ROUTE_DISTANCE_ENABLED === 'true';
+  const routeDistanceProvider = env.ROUTEMOTO_ROUTE_DISTANCE_PROVIDER || 'osrm';
+  if (!['osrm','ors'].includes(routeDistanceProvider)) throw new Error('ROUTEMOTO_ROUTE_DISTANCE_PROVIDER deve ser osrm ou ors.');
   let routeDistanceBaseUrl = null;
   if (env.ROUTEMOTO_ROUTE_DISTANCE_URL) {
     let routeUrl;
     try { routeUrl = new URL(env.ROUTEMOTO_ROUTE_DISTANCE_URL); } catch (_) { throw new Error('ROUTEMOTO_ROUTE_DISTANCE_URL inválida.'); }
     const local = LOOPBACK_HOSTS.has(routeUrl.hostname.toLowerCase());
+    const allowedRoutePath = routeDistanceProvider === 'ors'
+      ? ['/','/openrouteservice','/ors'].includes(routeUrl.pathname.replace(/\/$/u,'')||'/')
+      : routeUrl.pathname === '/';
     if (!['http:', 'https:'].includes(routeUrl.protocol) || routeUrl.username || routeUrl.password || routeUrl.search || routeUrl.hash ||
-        routeUrl.pathname !== '/' || production && routeUrl.protocol !== 'https:' || routeUrl.protocol === 'http:' && !local)
+        !allowedRoutePath || production && routeUrl.protocol !== 'https:' || routeUrl.protocol === 'http:' && !local ||
+        routeDistanceProvider === 'ors' && routeUrl.protocol !== 'https:')
       throw new Error('ROUTEMOTO_ROUTE_DISTANCE_URL deve ser base HTTP(S) confiável, sem credenciais; HTTP somente em loopback e produção exige HTTPS.');
     routeDistanceBaseUrl = routeUrl.toString().replace(/\/$/u, '');
   }
@@ -151,9 +157,23 @@ function loadRuntimeConfig(env = process.env, { context = 'http' } = {}) {
   const routeDistanceVersion = env.ROUTEMOTO_ROUTE_DISTANCE_VERSION || null;
   if (routeDistanceVersion && !/^[A-Za-z0-9._-]{1,40}$/u.test(routeDistanceVersion))
     throw new Error('ROUTEMOTO_ROUTE_DISTANCE_VERSION inválida.');
+  const routeDistanceProfile = env.ROUTEMOTO_ROUTE_DISTANCE_PROFILE || 'driving-car';
+  if (!['driving-car','driving-hgv','cycling-regular','cycling-road','cycling-mountain','cycling-electric','foot-walking','foot-hiking','wheelchair'].includes(routeDistanceProfile))
+    throw new Error('ROUTEMOTO_ROUTE_DISTANCE_PROFILE inválido.');
+  const routeDistanceApiKey = env.ROUTEMOTO_ROUTE_DISTANCE_API_KEY || null;
+  if (routeDistanceApiKey && (routeDistanceApiKey.length > 512 || /[\r\n\u0000]/u.test(routeDistanceApiKey)))
+    throw new Error('ROUTEMOTO_ROUTE_DISTANCE_API_KEY inválida.');
   if (routeDistanceEnabled && !routeDistanceBaseUrl) throw new Error('Motor viário habilitado exige ROUTEMOTO_ROUTE_DISTANCE_URL.');
-  const routeDistance = Object.freeze({ enabled: routeDistanceEnabled, baseUrl: routeDistanceEnabled ? routeDistanceBaseUrl : null,
-    version: routeDistanceVersion, timeoutMs: routeDistanceTimeoutMs });
+  if (routeDistanceEnabled && routeDistanceProvider === 'ors' && !routeDistanceApiKey)
+    throw new Error('ORS habilitado exige ROUTEMOTO_ROUTE_DISTANCE_API_KEY somente no backend.');
+  if (routeDistanceProvider === 'osrm' && routeDistanceApiKey) throw new Error('ROUTEMOTO_ROUTE_DISTANCE_API_KEY só pode ser usada com o provedor ORS.');
+  const routeDistanceRequestsPerMinute = Number(env.ROUTEMOTO_ROUTE_DISTANCE_REQUESTS_PER_MINUTE || 40);
+  if (!Number.isInteger(routeDistanceRequestsPerMinute) || routeDistanceRequestsPerMinute < 1 || routeDistanceRequestsPerMinute > 120)
+    throw new Error('ROUTEMOTO_ROUTE_DISTANCE_REQUESTS_PER_MINUTE deve estar entre 1 e 120.');
+  const routeDistance = Object.freeze({ enabled: routeDistanceEnabled, provider: routeDistanceEnabled ? routeDistanceProvider : null,
+    baseUrl: routeDistanceEnabled ? routeDistanceBaseUrl : null, version: routeDistanceVersion, profile: routeDistanceProfile,
+    credentialConfigured: routeDistanceEnabled && routeDistanceProvider === 'ors' && Boolean(routeDistanceApiKey), timeoutMs: routeDistanceTimeoutMs,
+    requestsPerMinute: routeDistanceProvider === 'ors' ? routeDistanceRequestsPerMinute : null });
 
   return Object.freeze({ nodeEnv, production, host, port, databaseUrl,
     databaseName: decodeURIComponent(databaseIdentity.pathname.slice(1)),
