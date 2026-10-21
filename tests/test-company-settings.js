@@ -7,6 +7,18 @@ const {Readable}=require('node:stream');
 const {createAdminHttpHandler}=require('../backend/admin/http');
 const {createAdminService}=require('../backend/admin/service');
 
+const application=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
+const generalSettings=application.slice(application.indexOf('async function saveGeneralSettings(){'),application.indexOf('\nasync function refreshEvents(){'));
+const publishAddress=application.slice(application.indexOf('async function publishCompanyAddress(address){'),application.indexOf('\nasync function publishOperationalLocation(coords){'));
+assert(generalSettings.length>0,'general settings save handler is present');
+assert.doesNotMatch(generalSettings,/nominatim\.openstreetmap\.org/u,
+  'saving an address must not call an external geocoder');
+assert.match(generalSettings,/restaurantCoords:hasCoordinates\?\[Number\(location\.latitude\),Number\(location\.longitude\)\]:null/u,
+  'an address update without confirmed coordinates clears the old local coordinates');
+assert.match(generalSettings,/manual-required/u,'the interface tells the operator to confirm coordinates manually');
+assert.match(publishAddress,/latitude:null,longitude:null/u,
+  'an unconfirmed address is published with unknown coordinates');
+
 const migration=fs.readFileSync(path.join(__dirname,'../backend/postgres/migrations/0033_company_operational_location.up.sql'),'utf8');
 const addressOnly=operationalLocationFromRow({operational_address:'Rua de teste, 10',operational_latitude:null,operational_longitude:null,operational_location_provenance:null,operational_location_version:'4'});
 assert.deepEqual(addressOnly,{address:'Rua de teste, 10',latitude:null,longitude:null,provenance:null,version:4},'a saved address must remain readable before geocoding is confirmed');
