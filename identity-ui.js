@@ -164,13 +164,14 @@
   }
   if (appKind !== 'restaurante') adminPage.remove();
   function message(error) { return codeMessages[error?.code] || (error?.network ? codeMessages.NETWORK : 'Não foi possível concluir. Revise os dados e tente novamente.'); }
-  async function syncAfterAuthentication() {
+  async function syncAfterAuthentication({ onAppReady } = {}) {
     if (mfaLocked) return;
     try {
       if (appKind === 'restaurante' && !window.RotaMotoAppReady) {
-        const ready = await new Promise(resolve => document.addEventListener('rotamoto:app-ready', event => resolve(event.detail?.ok === true), { once: true }));
+        const ready = await new Promise(resolve => window.addEventListener('rotamoto:app-ready', event => resolve(event.detail?.ok === true), { once: true }));
         if (!ready) return;
       }
+      if (appKind === 'restaurante') onAppReady?.();
       await window.RotaMotoSync?.restoreSession?.({ apiBase: API });
       await window.RotaMotoSync?.syncNow?.({ apiBase: API });
     } catch (_) { /* a falha de rede mantém a sessão e os dados locais utilizáveis */ }
@@ -406,7 +407,7 @@
       csrf = result.csrfToken; window.RotaMotoSessionGuard?.setCsrfToken(csrf); form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true;
       const session = await restore();
       if (!session) throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
-      if(session.mfaEnrollmentRequired){setOpen(true);$('[data-mfa-start]').focus()}else{await syncAfterAuthentication();setOpen(false)}
+      if(session.mfaEnrollmentRequired){setOpen(true);$('[data-mfa-start]').focus()}else{await syncAfterAuthentication({onAppReady:()=>setOpen(false)})}
     } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } $('[data-login-error]').textContent = message(error); setStatus('Não foi possível autenticar'); }
     finally { working = false; setBusy(form, false); }
   });

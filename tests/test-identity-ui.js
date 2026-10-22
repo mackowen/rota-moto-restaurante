@@ -63,6 +63,18 @@ assert.match(source, /function setOpen\(open, returnFocusTarget = null\)[\s\S]*?
   'touch activation remembers the invoking control even when the browser does not focus it');
 assert.match(appSource, /rotamoto:open-account-settings[\s\S]*?state\.settingsOpen='seguranca'[\s\S]*?requestAnimationFrame\(\(\)=>document\.querySelector\('#rmAccountSettingsPage h2'\)\?\.focus\(\)\)/u,
   'account navigation opens the dedicated settings page and moves focus to its heading');
+const accountNavigation = appSource.match(/document\.addEventListener\('rotamoto:open-account-settings',([\s\S]*?)\);document\.addEventListener\('rotamoto:navigate-settings'/u)?.[1] || '';
+assert.equal((accountNavigation.match(/history\.pushState/g) || []).length, 2, 'closing Conta returns to the route that was active before opening it, without an intermediate settings-grid history entry');
+assert.match(source, /async function syncAfterAuthentication\(\{ onAppReady \} = \{\}\)[\s\S]*?if \(appKind === 'restaurante'\)[\s\S]*?onAppReady\?\.\(\)[\s\S]*?syncNow/u,
+  'Restaurant login can leave the identity panel as soon as the authenticated app is ready, before remote sync finishes');
+assert.match(source, /window\.addEventListener\('rotamoto:app-ready'/u,
+  'identity waits on the same window event target used by authenticated app bootstrap');
+assert.match(appSource, /window\.dispatchEvent\(new CustomEvent\('rotamoto:app-ready'/u,
+  'authenticated app bootstrap publishes readiness on window');
+assert.match(source, /if\(session\.mfaEnrollmentRequired\)[\s\S]*?await syncAfterAuthentication\(\{onAppReady:\(\)=>setOpen\(false\)\}\)/u,
+  'a valid login closes Conta only after app bootstrap and does not wait for sync completion');
+assert.doesNotMatch(source, /await syncAfterAuthentication\(\);setOpen\(false\)/u,
+  'closing the login panel is not coupled to completion of the entire synchronization');
 assert.match(source, /document\.addEventListener\('rotamoto:settings-page',[\s\S]*?loadAdmin\(\)/u, 'each company settings page loads its server snapshot from the single navigation');
 assert.match(appSource, /settings-cards[\s\S]*?settings-card/u, 'all Ajustes categories render as selectable cards on mobile and desktop');
 assert.match(appSource, /data-settings-back/u, 'each Ajustes category page has a clear return to the card grid');
