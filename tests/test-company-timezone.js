@@ -14,9 +14,16 @@ assert.match(migration, /GRANT SELECT \(time_zone\).*rotamoto_app/s);
 assert.match(migration, /GRANT UPDATE \(time_zone, updated_at\).*rotamoto_app/s);
 assert.doesNotMatch(migration, /GRANT .* ON ALL TABLES|BYPASSRLS|FORCE ROW LEVEL SECURITY/);
 const saveHandler = client.slice(client.indexOf('async function saveCompanyTimeZone(){'), client.indexOf('\nasync function saveGeneralSettings(){'));
+const profileHandler = client.slice(client.indexOf('async function publishCompanyProfile(){'), client.indexOf('\nasync function publishCompanyRouteGroupingPolicy('));
 assert.match(saveHandler, /updateAndReadback/u, 'timezone save requires canonical acknowledgement and readback');
 assert.match(saveHandler, /expectedRevision:knownRevision/u, 'timezone save is guarded by the loaded Company revision');
 assert.match(saveHandler, /canonical\.settingsVersion>knownRevision/u, 'a lost write acknowledgement is reconciled from canonical state before retry');
+assert.match(saveHandler, /render\(\);const currentStatus=document\.querySelector\('#companyTimeZoneStatus'\);if\(currentStatus\)currentStatus\.textContent=confirmation;toast\('Fuso horário da empresa confirmado pelo servidor\.'/u,
+  'successful render must restore the confirmation status and toast after replacing the settings DOM');
+assert.match(saveHandler, /Fuso horário confirmado após reconciliação.*render\(\);const currentStatus=document\.querySelector\('#companyTimeZoneStatus'\);if\(currentStatus\)currentStatus\.textContent=confirmation;toast\('Fuso horário da empresa confirmado após reconciliação\.'/u,
+  'ACK-loss reconciliation must keep visible confirmation after render');
+assert.match(profileHandler, /await saveSettings\('Dados empresariais confirmados localmente\.',\{feedback:false\}\).*toast\(`Nome e contato da empresa confirmados · revisão \$\{canonical\.settingsVersion\}\.`,\s*'success'\)/u,
+  'company profile success toast must follow canonical acknowledgement and confirmed local persistence');
 
 async function call(handler, timeZone, { csrf = true, expectedVersion = 4 } = {}) {
   const req = Readable.from([Buffer.from(JSON.stringify({ expectedVersion, timeZone }))]);

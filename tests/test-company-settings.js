@@ -10,6 +10,7 @@ const {createAdminService}=require('../backend/admin/service');
 const application=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
 const generalSettings=application.slice(application.indexOf('async function saveGeneralSettings(){'),application.indexOf('\nasync function refreshEvents(){'));
 const publishAddress=application.slice(application.indexOf('async function publishCompanyAddress(address){'),application.indexOf('\nasync function publishOperationalLocation(coords){'));
+const logisticsUi=fs.readFileSync(path.join(__dirname,'../logistics-ui.js'),'utf8');
 assert(generalSettings.length>0,'general settings save handler is present');
 assert.doesNotMatch(generalSettings,/nominatim\.openstreetmap\.org/u,
   'saving an address must not call an external geocoder');
@@ -18,6 +19,12 @@ assert.match(generalSettings,/restaurantCoords:hasCoordinates\?\[Number\(locatio
 assert.match(generalSettings,/manual-required/u,'the interface tells the operator to confirm coordinates manually');
 assert.match(publishAddress,/latitude:null,longitude:null/u,
   'an unconfirmed address is published with unknown coordinates');
+assert.match(logisticsUi,/const locationCoordinates=location&&location\.latitude!==null&&location\.longitude!==null[\s\S]*?location\.provenance==='operator_confirmed'/u,
+  'Logistics only formats coordinates when the canonical Company location has a confirmed pair');
+assert.match(logisticsUi,/Endereço cadastral · coordenadas não confirmadas/u,
+  'Logistics renders the saved Company address when coordinates are unknown');
+assert.doesNotMatch(logisticsUi,/location\.latitude\.toFixed\(6\)/u,
+  'Logistics must not call toFixed on nullable Company coordinates');
 
 const migration=fs.readFileSync(path.join(__dirname,'../backend/postgres/migrations/0033_company_operational_location.up.sql'),'utf8');
 const addressOnly=operationalLocationFromRow({operational_address:'Rua de teste, 10',operational_latitude:null,operational_longitude:null,operational_location_provenance:null,operational_location_version:'4'});
