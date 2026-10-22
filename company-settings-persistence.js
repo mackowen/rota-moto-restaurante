@@ -31,5 +31,32 @@
     return canonical;
   }
 
-  return Object.freeze({ updateAndReadback });
+  function reconcileAddressDraft(savedMap, canonicalLocation) {
+    const map = savedMap && typeof savedMap === 'object' ? savedMap : {};
+    const location = canonicalLocation && typeof canonicalLocation === 'object' ? canonicalLocation : {};
+    const canonicalAddress = String(location.address || '').trim();
+    const savedAddress = String(map.restaurantAddress || '').trim();
+    const hasCoordinates = location.latitude != null && location.longitude != null &&
+      Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
+    const pending = map.restaurantPublishStatus === 'pending';
+
+    if (pending && savedAddress !== canonicalAddress) {
+      return Object.freeze({
+        preserveDraft: true,
+        reconciled: false,
+        map: { ...map, restaurantAddress: savedAddress, restaurantPublishStatus: 'pending' }
+      });
+    }
+
+    return Object.freeze({
+      preserveDraft: false,
+      reconciled: pending,
+      map: { ...map, restaurantAddress: canonicalAddress, restaurantConfirmedAddress: canonicalAddress,
+        restaurantCoords: hasCoordinates ? [Number(location.latitude), Number(location.longitude)] : null,
+        restaurantPendingCoords: null, restaurantLocationStale: false,
+        restaurantPublishStatus: hasCoordinates ? 'published' : 'not-sent' }
+    });
+  }
+
+  return Object.freeze({ updateAndReadback, reconcileAddressDraft });
 });
