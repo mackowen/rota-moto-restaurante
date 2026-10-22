@@ -155,6 +155,20 @@ assert.match(appSource,/const reason=await requestRequiredReason\(\{title:`Cance
   'delivery cancellation collects a required reason in an accessible app modal');
 assert.doesNotMatch(appSource.slice(appSource.indexOf('async function cancelRestaurantDelivery'),appSource.indexOf('function decideRestaurantCustody')),/window\.prompt/u,
   'delivery cancellation no longer relies on native prompt');
+assert.match(appSource,/function canonicalOrderSaveConfirmed\(order\)[\s\S]*?hasCurrentCanonicalAck[\s\S]*?payload\.companyId!==activeRestaurantCompanyId\(\)[\s\S]*?\['customer','phone','address'\]/u,
+  'order edits show server confirmation only after current ACK, tenant match, and matching canonical readback');
+assert.match(appSource,/Cliente e contato[\s\S]*?Endereço e localização[\s\S]*?Dados comerciais[\s\S]*?Entrega e responsável[\s\S]*?Observações[\s\S]*?Histórico resumido[\s\S]*?Gestão avançada/u,
+  'order editor separates normal operating fields from the advanced management section');
+assert.match(appSource,/data-detail-print[\s\S]*?addEventListener\('click',\(\)=>openPrintPreview\(o\.id\)\)/u,
+  'the print action in the open order dialog is bound to its canonical print flow');
+assert.match(appSource,/companyId:activeRestaurantCompanyId\(\)\|\|state\.settings\.global\.companyId/u,
+  'new manual orders prefer the authenticated company over stale local company settings');
+assert.match(appSource,/async function ensureSyncDeviceId\(\)[\s\S]*?store\.get\('syncDeviceId'\)[\s\S]*?store\.put\(\{key:'syncDeviceId',value:candidate\}\)/u,
+  'sync installation identity is stored atomically in IndexedDB and reused across reloads');
+assert.match(appSource,/async function buildRestaurantSyncPacket\(\)[\s\S]*?const deviceId=await ensureSyncDeviceId\(\)/u,
+  'sync packets use the durable installation identity');
+assert.match(appSource,/Endereço textual; não há coordenadas confirmadas/u,
+  'the order detail does not manufacture coordinates from a textual address');
 const routeEditor = appSource.slice(appSource.indexOf('function openRouteEditor'), appSource.indexOf('function revenueChart'));
 assert.match(routeEditor, /addEventListener\('submit',async submitEvent=>/);
 assert.match(routeEditor, /event\('success',current\?/);
