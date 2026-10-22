@@ -148,7 +148,7 @@ assert.match(appSource, /document\.addEventListener\('keydown',e=>\{const dialog
 assert.match(appSource, /Buscar pedidos e entregas/u, 'delivery search has an accessible name');
 assert.match(appSource, /Escopo dos ajustes[\s\S]{0,500}Preferências visuais e locais são salvas automaticamente neste aparelho[\s\S]{0,200}Dados da empresa só são confirmados após resposta válida do servidor/u, 'settings distinguish local autosave from server-confirmed company data');
 assert.match(appSource, /const persisted=await getMeta\('settings'\);[\s\S]{0,180}SETTINGS_SAVE_UNCONFIRMED/u, 'local settings report success only after IndexedDB readback confirms the snapshot');
-assert.match(appSource, /let settingsWriteQueue=Promise\.resolve\(\),localSettingsSavePending=false/u, 'local settings writes serialize and retain failed drafts for retry');
+assert.match(appSource, /const enqueueSettingsWrite=RotaMotoCompanySettingsPersistence\.createSerialQueue\(\)[\s\S]{0,100}localSettingsSavePending=false/u, 'local settings writes serialize and retain failed drafts for retry');
 assert.match(appSource, /beforeunload[\s\S]{0,100}hasUnsavedSettingsDraft/u, 'pending local/company drafts guard page exit');
 assert.match(source, /MFA_REQUIRED/u, 'MFA errors remain visible and fail closed');
 assert.match(source, /Última sincronização:|conexão ainda não está ativa/u, 'integration state distinguishes account authorization from an active connection and records sync time');

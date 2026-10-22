@@ -34,7 +34,7 @@ assert.match(worker,/styles\.css\?v=0256d1\.1/u);
 assert.match(html,/analytics-view\.js\?v=0254\.1/u);
 assert.match(worker,/analytics-view\.js\?v=0254\.1/u);
 const appBundle=html.match(/app\.js\?v=[^"']+/u)?.[0];assert(appBundle,'index declares a versioned application bundle');assert(worker.includes(`/${appBundle}`),'offline shell includes the current application bundle');
-assert.match(html,/company-settings-persistence\.js\?v=0279\.1/u);assert.match(worker,/\/company-settings-persistence\.js\?v=0279\.1/u);
+assert.match(html,/company-settings-persistence\.js\?v=0286\.1/u);assert.match(worker,/\/company-settings-persistence\.js\?v=0286\.1/u);
 assert.match(html,/pilot-views\.css\?v=0140\.3/u);
 assert.match(worker,/pilot-views\.css\?v=0140\.3/u);
 assert.match(worker,/\$\{CACHE_PREFIX\}v\d+/u);

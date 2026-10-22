@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { updateAndReadback, reconcileAddressDraft } = require('../company-settings-persistence');
+const { createSerialQueue, updateAndReadback, reconcileAddressDraft } = require('../company-settings-persistence');
 
 const app = fs.readFileSync(require.resolve('../app.js'), 'utf8');
 const profileFlow = app.slice(app.indexOf('async function publishCompanyProfile(){'), app.indexOf('async function publishCompanyRouteGroupingPolicy('));
@@ -19,8 +19,26 @@ assert.match(app, /reconcileAddressDraft\(state\.settings\.map,location\)/u,
   'canonical reload reconciles the durable address draft instead of blindly replacing it');
 assert.match(app, /restaurantCoords:hasCoordinates\?\[Number\(location\.latitude\),Number\(location\.longitude\)\]:null/u,
   'the UI derives displayed Company coordinates from the canonical readback and keeps unknown coordinates null');
+assert.match(app, /async function updateSyncStatus\(patch\)[\s\S]*?enqueueSettingsWrite/u,
+  'background sync status writes share the durable settings queue');
 
 async function run() {
+  const enqueue = createSerialQueue();
+  const order = [];
+  let releaseReadback;
+  const readbackGate = new Promise(resolve => { releaseReadback = resolve; });
+  const userSave = enqueue(async () => {
+    order.push('user-write');
+    await readbackGate;
+    order.push('user-readback');
+  });
+  const backgroundWrite = enqueue(async () => { order.push('background-write'); });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(order, ['user-write'], 'a concurrent sync write cannot race the settings readback');
+  releaseReadback();
+  await Promise.all([userSave, backgroundWrite]);
+  assert.deepEqual(order, ['user-write', 'user-readback', 'background-write']);
+
   let reads = 0;
   const canonical = { settingsVersion: 8, name: 'Casa Nova', supportPhone: null };
   const result = await updateAndReadback({

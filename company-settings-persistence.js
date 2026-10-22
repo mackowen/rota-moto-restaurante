@@ -3,6 +3,16 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.RotaMotoCompanySettingsPersistence = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window, () => {
+  function createSerialQueue() {
+    let tail = Promise.resolve();
+    return function enqueue(task) {
+      if (typeof task !== 'function') return Promise.reject(new TypeError('SETTINGS_WRITE_INVALID'));
+      const operation = tail.catch(() => {}).then(task);
+      tail = operation;
+      return operation;
+    };
+  }
+
   async function updateAndReadback({ read, write, expectedRevision, revisionOf, matches }) {
     if (typeof read !== 'function' || typeof write !== 'function' ||
         typeof revisionOf !== 'function' || typeof matches !== 'function') {
@@ -58,5 +68,5 @@
     });
   }
 
-  return Object.freeze({ updateAndReadback, reconcileAddressDraft });
+  return Object.freeze({ createSerialQueue, updateAndReadback, reconcileAddressDraft });
 });
