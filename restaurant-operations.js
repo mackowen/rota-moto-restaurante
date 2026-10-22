@@ -232,6 +232,20 @@
     return delivery?.id || order?.deliveryId;
   }
 
+  function findDeliveryForOrder(order, deliveries) {
+    if (!order) return null;
+    const orderIds = new Set([order.id, order.canonicalId, order.sync?.canonicalId].filter(Boolean).map(String));
+    const deliveryIds = new Set([
+      order.deliveryId, order.canonicalDeliveryId, order.deliverySync?.canonicalId,
+      order.delivery?.id, order.delivery?.canonicalId, order.delivery?.sync?.canonicalId,
+    ].filter(Boolean).map(String));
+    const rows = deliveries || [];
+    return rows.find(row => [row.id, row.canonicalId, row.remoteId, row.sync?.canonicalId]
+      .some(id => id && deliveryIds.has(String(id)))) ||
+      rows.find(row => [row.orderId, row.canonicalOrderId]
+        .some(id => id && orderIds.has(String(id)))) || null;
+  }
+
   function findOrderForDeliveryId(id, orders, deliveries) {
     const delivery = (deliveries || []).find(row => row.id === id || row.canonicalId === id || row.sync?.canonicalId === id);
     const deliveryIds = new Set([id, delivery?.id, delivery?.canonicalId, delivery?.sync?.canonicalId].filter(Boolean));
@@ -285,5 +299,5 @@
   }
 
   return Object.freeze({ isExternalOrder, shouldGenerateDeliveryForOrder, canonicalOrder, mergeCanonicalOrder, canonicalDriver, canonicalDelivery, plannedDeliveryStatus, shouldIncludeDeliveryForSync, canonicalRoute,
-    validateRouteMembership, localIdForDelivery, findOrderForDeliveryId, minorUnitsFromDecimal, driverPayoutSnapshot, canonicalEarningFromCompletedOrder });
+    validateRouteMembership, localIdForDelivery, findDeliveryForOrder, findOrderForDeliveryId, minorUnitsFromDecimal, driverPayoutSnapshot, canonicalEarningFromCompletedOrder });
 });

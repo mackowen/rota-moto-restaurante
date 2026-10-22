@@ -129,6 +129,13 @@ const linkedReturnOrder = { id: 'order_local', num: 'RETURN-42', sync: { canonic
 assert.equal(Operations.findOrderForDeliveryId('return_local', [linkedReturnOrder], [
   { ...returnDelivery, orderId: 'order_canonical', sync: { canonicalId: 'return_canonical' } },
 ]), linkedReturnOrder, 'RETURN projections resolve their commercial Order through canonical order identity');
+const crossIdOrder={id:'order-local-1',deliveryId:'delivery-local-1',sync:{canonicalId:'order-canonical-1'},deliverySync:{canonicalId:'delivery-canonical-1'}};
+const canonicalLinkedDelivery={id:'delivery-canonical-1',companyId:'company_1',orderId:'order-canonical-1',sync:{canonicalId:'delivery-canonical-1'}};
+assert.equal(Operations.findDeliveryForOrder(crossIdOrder,[canonicalLinkedDelivery]),canonicalLinkedDelivery,
+  'printing and QR resolve a Delivery linked by canonical Order/Delivery identity after local IDs differ');
+const canonicalOrderLinkedDelivery={id:'delivery-canonical-2',orderId:'order-canonical-2'};
+assert.equal(Operations.findDeliveryForOrder({id:'order-local-2',sync:{canonicalId:'order-canonical-2'}},[canonicalOrderLinkedDelivery]),canonicalOrderLinkedDelivery,
+  'canonical Order identity resolves a delivery even when no local deliveryId remains');
 assert.equal(Operations.validateRouteMembership(null, ['return_local'], [returnDelivery], [], 'company_1'), true,
   'an unreceived return remains eligible for manual route positioning');
 assert.throws(() => Operations.validateRouteMembership(null, ['return_local'], [{ ...returnDelivery, status: 'RETURNED',
@@ -136,6 +143,18 @@ assert.throws(() => Operations.validateRouteMembership(null, ['return_local'], [
 assert.equal(Operations.validateRouteMembership({ id: 'route_current', deliveryIds: ['d_local'] }, ['d_local'], [{ ...base, status: 'DELIVERED' }], [], 'company_1'), true);
 assert.throws(() => Operations.validateRouteMembership(null, ['d_local'], deliveries, [{ id: 'route_old', deliveryIds: ['d_canonical'] }], 'company_1'), /outra rota ativa/);
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+assert.match(appSource,/function deliveryForOrder\(order\)\{return RotaMotoRestaurantOperations\.findDeliveryForOrder\(order,state\.deliveries\)\}/u,
+  'Order detail, print and QR share canonical local/remote Delivery matching');
+assert.match(appSource,/async function printQrForOrder\(order\)\{const delivery=canonicalDeliveryProjection\(deliveryForOrder\(order\)\)/u,
+  'print QR resolves canonical Delivery IDs rather than only the visible/local Order ID');
+assert.match(appSource,/async function openQrPreview\(id\)[\s\S]*?QR disponível após atribuição e sincronização/u,
+  'QR UI explains the contract status prerequisite instead of reporting a generic unavailable error');
+assert.match(appSource,/async function openPrintPreview\(orderId\)[\s\S]*?currentCompany=activeRestaurantCompanyId\(\),orderCompany=canonicalOrderCompany\(order\)/u,
+  'print authorization compares canonical Order tenant to the authenticated session tenant');
+assert.match(appSource,/const reason=await requestRequiredReason\(\{title:`Cancelar entrega/u,
+  'delivery cancellation collects a required reason in an accessible app modal');
+assert.doesNotMatch(appSource.slice(appSource.indexOf('async function cancelRestaurantDelivery'),appSource.indexOf('function decideRestaurantCustody')),/window\.prompt/u,
+  'delivery cancellation no longer relies on native prompt');
 const routeEditor = appSource.slice(appSource.indexOf('function openRouteEditor'), appSource.indexOf('function revenueChart'));
 assert.match(routeEditor, /addEventListener\('submit',async submitEvent=>/);
 assert.match(routeEditor, /event\('success',current\?/);
