@@ -21,5 +21,5 @@ assert.match(app,/class="bike-races-dialog"[\s\S]*?for="bikeRaceStatus"[\s\S]*?T
 assert.match(css,/\.bike-races-dialog \.race-filters\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/u,'race filters use an explicit two-column desktop layout');
 assert.match(css,/@media\(max-width:640px\)\{\.bike-races-dialog[\s\S]*?grid-template-columns:minmax\(0,1fr\)/u,'race modal stacks filters and controls on narrow screens');
 assert.match(html,/styles\.css\?v=0289\.1/u,'the edited stylesheet is cache-busted');
-assert.match(sw,/CACHE_PREFIX\}v80/u);
+assert.match(sw,/CACHE_PREFIX\}v81/u);
 console.log('dispatch assignment UI regression tests passed');

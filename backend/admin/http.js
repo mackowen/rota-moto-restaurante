@@ -102,10 +102,11 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
           case 'memberships': return adminService.memberships(client, principal, query);
           case 'company': return adminService.company(client, principal);
           case 'updateCompanyTimeZone': {
-            exact(body, ['timeZone']);
+            exact(body, ['expectedVersion', 'timeZone']);
+            if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 0) throw error('INVALID_INPUT');
             const value = body.timeZone;
             if (value !== null && (typeof value !== 'string' || !value.trim() || value.length > 128 || /^[+-]\d{2}:?\d{2}$/u.test(value) || !isIanaTimeZone(value))) throw error('INVALID_INPUT');
-            return adminService.updateCompanyTimeZone(client, principal, value);
+            return adminService.updateCompanyTimeZone(client, principal, { expectedVersion: body.expectedVersion, timeZone: value });
           }
           case 'updateCompanyLocation': {
             exact(body, ['expectedVersion', 'address', 'latitude', 'longitude']);

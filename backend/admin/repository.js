@@ -233,15 +233,17 @@ function createAdminRepository() {
       operationalLocationVersion: Number(row.operational_location_version), settingsVersion: Number(row.company_settings_version),
       routeGroupingPolicy: row.route_grouping_policy, createdAt: row.created_at, updatedAt: row.updated_at };
   }
-  async function updateCompanyTimeZone(client, principal, timeZone) {
-    const current = await client.query(`SELECT time_zone FROM rotamoto.companies WHERE id=$1 FOR UPDATE`, [principal.company_id]);
+  async function updateCompanyTimeZone(client, principal, input) {
+    const current = await client.query(`SELECT time_zone,company_settings_version FROM rotamoto.companies WHERE id=$1 FOR UPDATE`, [principal.company_id]);
     if (!current.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
+    const currentVersion = Number(current.rows[0].company_settings_version);
+    if (currentVersion !== input.expectedVersion) { const error = new Error('A configuração da empresa mudou.'); error.code = 'REVISION_CONFLICT'; throw error; }
     const previous = current.rows[0].time_zone;
     const updated = await client.query(`UPDATE rotamoto.companies SET time_zone=$2,company_settings_version=company_settings_version+1,updated_at=now()
-      WHERE id=$1 RETURNING time_zone,updated_at`, [principal.company_id, timeZone]);
+      WHERE id=$1 RETURNING time_zone,updated_at,company_settings_version`, [principal.company_id, input.timeZone]);
     await writeAudit(client, principal, 'company.time_zone.changed', 'company', principal.company_id,
       { previousTimeZone: previous, timeZone: updated.rows[0].time_zone });
-    return { timeZone: updated.rows[0].time_zone, updatedAt: updated.rows[0].updated_at };
+    return { timeZone: updated.rows[0].time_zone, settingsVersion: Number(updated.rows[0].company_settings_version), updatedAt: updated.rows[0].updated_at };
   }
   async function updateCompanyLocation(client, principal, input) {
     if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0 ||

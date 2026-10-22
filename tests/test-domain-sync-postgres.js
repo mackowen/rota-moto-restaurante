@@ -441,6 +441,18 @@ async function main() {
       const revisedCompanyPull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device');
       assert.equal(revisedCompanyPull.body.companySettings.revision,1,'Company policy publication advances the monotonic snapshot revision');
       assert.equal(revisedCompanyPull.body.companySettings.routeGroupingPolicy,'nearest_origin_round_robin','Motoboy receives the Restaurant-owned policy through canonical sync');
+      const timeZoneUpdate=await call('/api/admin/company',{method:'PUT',body:{expectedVersion:1,timeZone:'America/Sao_Paulo'}});
+      assert.equal(timeZoneUpdate.status,200,JSON.stringify(timeZoneUpdate.body));
+      assert.equal(timeZoneUpdate.body.timeZone,'America/Sao_Paulo');
+      assert.equal(timeZoneUpdate.body.settingsVersion,2,'timezone ACK advances the shared Company revision');
+      const staleTimeZoneUpdate=await call('/api/admin/company',{method:'PUT',body:{expectedVersion:1,timeZone:'America/Manaus'}});
+      assert.equal(staleTimeZoneUpdate.status,409,'a stale timezone draft cannot overwrite a newer Company setting');
+      const timeZoneReadback=await call('/api/admin/company');
+      assert.equal(timeZoneReadback.body.timeZone,'America/Sao_Paulo');
+      assert.equal(timeZoneReadback.body.settingsVersion,2);
+      const timeZonePull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device');
+      assert.equal(timeZonePull.body.companySettings.revision,2,'Motoboy receives the revised Company snapshot');
+      assert.equal(timeZonePull.body.companySettings.timeZone,'America/Sao_Paulo');
       const locationUpdate=await call('/api/admin/company/location',{method:'PUT',body:{expectedVersion:0,address:'Rua Sintética 120, São Paulo',latitude:-23.5505,longitude:-46.6333}});
       assert.equal(locationUpdate.status,200,JSON.stringify(locationUpdate.body));
       assert.equal(locationUpdate.body.operationalLocation.provenance,'operator_confirmed');
@@ -450,7 +462,7 @@ async function main() {
       assert.deepEqual(canonicalLocation.body.operationalLocation,{address:'Rua Sintética 120, São Paulo',latitude:-23.5505,longitude:-46.6333,provenance:'operator_confirmed',version:1});
       const locationPull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device');
       assert.equal(locationPull.status,200,JSON.stringify(locationPull.body));
-      assert.equal(locationPull.body.companySettings.revision,2,'Company location increments the shared revision');
+      assert.equal(locationPull.body.companySettings.revision,3,'Company location increments the shared revision');
       assert.deepEqual(locationPull.body.companySettings.operationalLocation,{address:'Rua Sintética 120, São Paulo',latitude:-23.5505,longitude:-46.6333,provenance:'operator_confirmed',version:1},'Motoboy receives the authorized Company location read-only through sync/pull');
       const addressOnlyUpdate=await call('/api/admin/company/location',{method:'PUT',body:{expectedVersion:1,address:'Rua Sintética 121, São Paulo',latitude:null,longitude:null}});
       assert.equal(addressOnlyUpdate.status,200,JSON.stringify(addressOnlyUpdate.body));
@@ -458,7 +470,7 @@ async function main() {
       assert.deepEqual(addressOnlyCompany.body.operationalLocation,{address:'Rua Sintética 121, São Paulo',latitude:null,longitude:null,provenance:null,version:2},'a saved address remains canonical while old coordinates are cleared');
       const addressOnlyPull=await call('/api/sync/pull?limit=100&deviceId=moto-proof-test-device');
       assert.equal(addressOnlyPull.status,200,JSON.stringify(addressOnlyPull.body));
-      assert.equal(addressOnlyPull.body.companySettings.revision,3,'address-only Company changes advance the shared revision');
+      assert.equal(addressOnlyPull.body.companySettings.revision,4,'address-only Company changes advance the shared revision');
       assert.deepEqual(addressOnlyPull.body.companySettings.operationalLocation,{address:'Rua Sintética 121, São Paulo',latitude:null,longitude:null,provenance:null,version:2},'Motoboy receives the address with explicitly unknown coordinates');
       const scopedList=await call('/api/domain/deliveries?limit=100');
       assert.equal(scopedList.status,200);assert(scopedList.body.records.some(row=>row.id===deliveryId));
