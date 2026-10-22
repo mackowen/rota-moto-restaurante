@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
+const stylesheetAsset = html.match(/styles\.css\?v=[^"']+/u)?.[0];
+assert(stylesheetAsset, 'index declares a versioned stylesheet');
 
 async function createWorker(options = {}) {
   const listeners = new Map();
@@ -64,10 +66,10 @@ async function fire(listener, event = {}) {
 
   const fetchEvent = { request: new Request('https://restaurante.test/styles.css?v=0140.99'), respondWith() { throw new Error('unmanifested URL was intercepted'); } };
   await fire(healthy.listeners.get('fetch'), fetchEvent);
-  const exactEvent = { request: new Request('https://restaurante.test/styles.css?v=0256d1.1'), response: null, respondWith(promise) { exactEvent.response = promise; } };
+  const exactEvent = { request: new Request(`https://restaurante.test/${stylesheetAsset}`), response: null, respondWith(promise) { exactEvent.response = promise; } };
   await fire(healthy.listeners.get('fetch'), exactEvent);
   assert.ok(exactEvent.response, 'full manifest URL is handled');
-  assert.equal(await (await exactEvent.response).text(), 'asset:/styles.css?v=0256d1.1', 'exact asset is served from the staged cache');
+  assert.equal(await (await exactEvent.response).text(), `asset:/${stylesheetAsset}`, 'exact asset is served from the staged cache');
   const apiEvent = { request: new Request('https://restaurante.test/api/sync/push'), respondWith() { throw new Error('API must bypass shell cache'); } };
   await fire(healthy.listeners.get('fetch'), apiEvent);
   console.log('Restaurant service worker atomic installation and exact URL matching: PASS');

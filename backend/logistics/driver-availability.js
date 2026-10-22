@@ -39,12 +39,18 @@ function createDriverAvailabilityService({ clock = () => new Date(), uuid = rand
     return project(result.rows[0],driverStatus,clock().getTime());
   }
   async function get(client, principal) {
-    if (principal.driver_id) {
+    let canReadFleet = Boolean(principal.company_manage || principal.permissions?.some(permission => ['orders.read','orders.manage','company.manage'].includes(permission)));
+    if (!canReadFleet && principal.role_id) {
+      const access = await client.query(`SELECT coalesce(bool_or(permission_key=ANY($3::text[])),false) AS allowed
+        FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2 AND catalog_version=1`,
+      [principal.company_id,principal.role_id,['orders.read','orders.manage','company.manage']]);
+      canReadFleet = Boolean(access.rows[0]?.allowed);
+    }
+    if (principal.driver_id && !canReadFleet) {
       const {driverId,driverStatus}=await assertSelf(client,principal);
       return { availability: await read(client,principal.company_id,driverId,driverStatus) };
     }
-    if (!principal.permissions?.some(permission => ['orders.read','orders.manage','company.manage'].includes(permission)))
-      fail('FORBIDDEN','Apenas usuários autorizados da operação podem consultar a frota.');
+    if (!canReadFleet) fail('FORBIDDEN','Apenas usuários autorizados da operação podem consultar a frota.');
     const rows = await client.query(`SELECT d.record_id::text AS driver_id,d.payload->>'status' AS driver_status,
         a.status,a.revision,a.lease_expires_at,a.updated_at
       FROM rotamoto.domain_records d LEFT JOIN rotamoto.driver_availability a
