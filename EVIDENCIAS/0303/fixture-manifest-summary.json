@@ -1,0 +1,24 @@
+{
+  "runId": "9eaf6445-3244-44ce-816c-b630e73488b6",
+  "campaign": "0303",
+  "environment": "rotamoto_e2e",
+  "status": "COMPLETED",
+  "databaseCommitted": false,
+  "tenantDatabaseCounts": [
+    {
+      "tenantId": "01a16aba-ee2a-7fc5-90c9-a7c0cd5b534c",
+      "counts": {
+        "companies": 0,
+        "users": 0,
+        "auth_records": 0,
+        "memberships": 0,
+        "sessions": 0,
+        "domain_records": 0,
+        "sync_inbox": 0,
+        "sync_outbox": 0,
+        "audit_log": 0
+      }
+    }
+  ],
+  "manifestPath": "~/.local/state/rotamoto/e2e-fixtures/9eaf6445-3244-44ce-816c-b630e73488b6.json"
+}

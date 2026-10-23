@@ -44,7 +44,7 @@ body{font-family:var(--font-ui);background:var(--canvas);color:var(--text-primar
 #main[data-module="orders"] .order-quick-filter small{font-variant-numeric:tabular-nums;color:var(--text-muted)}
 #main[data-module="orders"] .order-quick-filter.active{border-color:var(--accent);background:var(--accent-soft);color:var(--text-primary)}
 #main[data-module="orders"] .order-quick-filter:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 48%,transparent);outline-offset:2px}
-#main[data-module="orders"] .orders-advanced-filters{border-top:1px solid var(--border-subtle);padding-top:10px}
+#main[data-module="orders"] .orders-advanced-filters{border:0;padding:0;margin:0;background:transparent}
 #main[data-module="orders"] .orders-advanced-filters>summary{width:max-content;max-width:100%;min-height:40px;display:flex;align-items:center;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer}
 #main[data-module="orders"] .orders-advanced-filters .filterbar{padding-top:12px}
 @media(max-width:600px){#main[data-module="orders"] .orders-search-row{grid-template-columns:minmax(0,1fr);gap:6px}#main[data-module="orders"] .orders-search-row>div{grid-template-columns:minmax(0,1fr) auto}#main[data-module="orders"] .order-quick-filter{min-width:88px;padding-inline:9px}#main[data-module="orders"] .orders-advanced-filters .filterbar{grid-template-columns:minmax(0,1fr)}}

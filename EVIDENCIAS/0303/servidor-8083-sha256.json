@@ -1,0 +1,49 @@
+{
+  "readOnlyGet": true,
+  "processRestarted": false,
+  "assets": [
+    {
+      "file": "index.html",
+      "status": 200,
+      "sha256": "7669dbe1e07581013a69c953ab65d0a0cfd2b19a7134901e7a0a968d9a3585a2",
+      "workspaceSha256": "7669dbe1e07581013a69c953ab65d0a0cfd2b19a7134901e7a0a968d9a3585a2"
+    },
+    {
+      "file": "app.js",
+      "status": 200,
+      "sha256": "5484f2e2e254ad017a7f88244bec80d45cd2cc3a0fa796780c0900697fb21828",
+      "workspaceSha256": "5484f2e2e254ad017a7f88244bec80d45cd2cc3a0fa796780c0900697fb21828"
+    },
+    {
+      "file": "dashboard-v2.js",
+      "status": 200,
+      "sha256": "cc7db6243a9b7e127a9e26101e11e4c0d3631f60d399718a64c22f38162bc3fb",
+      "workspaceSha256": "cc7db6243a9b7e127a9e26101e11e4c0d3631f60d399718a64c22f38162bc3fb"
+    },
+    {
+      "file": "dashboard-v2.css",
+      "status": 200,
+      "sha256": "bc1a215651b6c6eaa4ccd95fa8d7d8744b8e17e89121862b16e0fecf80d1213a",
+      "workspaceSha256": "bc1a215651b6c6eaa4ccd95fa8d7d8744b8e17e89121862b16e0fecf80d1213a"
+    },
+    {
+      "file": "orders-v2.css",
+      "status": 200,
+      "sha256": "8846b8e032dc34485c36d1443f55aca0c1a56d81c4b9822baa04da4a0ffdf747",
+      "workspaceSha256": "8846b8e032dc34485c36d1443f55aca0c1a56d81c4b9822baa04da4a0ffdf747"
+    },
+    {
+      "file": "design-system.css",
+      "status": 200,
+      "sha256": "880fc1893cac613c1ac470e06260805f8b0deda4fe03e0c4f4e65812d30955ea",
+      "workspaceSha256": "880fc1893cac613c1ac470e06260805f8b0deda4fe03e0c4f4e65812d30955ea"
+    },
+    {
+      "file": "sw.js",
+      "status": 200,
+      "sha256": "1a0fce00be1330a97084f5d00f226b7ef86623477e3fb69d7ca3fb751b518df5",
+      "workspaceSha256": "1a0fce00be1330a97084f5d00f226b7ef86623477e3fb69d7ca3fb751b518df5"
+    }
+  ],
+  "allMatch": true
+}

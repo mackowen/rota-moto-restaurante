@@ -629,3 +629,12 @@ html[data-resolved-theme="light"] .dashboard-v2{
   .dashboard-v2-shell .bottom-nav{
     display:none}
   }
+
+/* One sticky header contract shared by the dashboard and operational pages. */
+.rm-global-header{position:sticky;top:0;z-index:1500;box-sizing:border-box;padding-top:env(safe-area-inset-top);background:var(--canvas);backdrop-filter:none}
+.dashboard-v2 .rm-global-header{min-height:calc(56px + env(safe-area-inset-top));height:auto;background:var(--dv-canvas)}
+.dashboard-v2 .rm-header-brand{display:flex}
+@media(min-width:600px){.dashboard-v2 .rm-header-brand{display:none}}
+@media(max-width:599px){.dashboard-v2 .rm-global-header{margin-top:-8px;padding-inline:0}}
+.topbar.rm-page-header.rm-global-header{box-sizing:border-box;padding-top:calc(10px + env(safe-area-inset-top))}
+@media(max-width:900px){.topbar.rm-page-header.rm-global-header{padding-top:calc(6px + env(safe-area-inset-top))}}

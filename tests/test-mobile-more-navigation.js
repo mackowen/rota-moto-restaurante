@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
+const dashboard = fs.readFileSync(path.join(root, 'dashboard-v2.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'styles.css'), 'utf8');
 const designSystem = fs.readFileSync(path.join(root, 'design-system.css'), 'utf8');
 const identity = fs.readFileSync(path.join(root, 'identity-ui.js'), 'utf8');
@@ -53,7 +54,7 @@ assert.match(designSystem, /#202c3a/u, 'the approved dark card token is defined'
 assert.match(designSystem, /--success:#16a36a/u, 'the approved green token is defined');
 assert.match(designSystem, /--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px/u,
   'the shared spacing scale is available to every module');
-assert.match(app, /<h1 aria-label="\$\{esc\(title\)\}">/u,
+assert.match(dashboard, /<h1 aria-label="\$\{escapeHtml\(title\)\}">/u,
   'compact page titles retain their complete accessible name');
 assert.match(designSystem, /grid-template-columns:auto minmax\(0,1fr\) auto;grid-template-areas:none/u,
   'the 430px header uses one horizontal row');

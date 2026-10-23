@@ -1,0 +1,47 @@
+{
+  "reproduction": "Browser autenticado antes da correção; valores observados durante a campanha.",
+  "homeHeader": {
+    "position": "static",
+    "topInitial": 8,
+    "topAfterScroll": -433,
+    "scrollY": 441
+  },
+  "searchLayout": {
+    "viewport": "390x844",
+    "searchInput": {
+      "x": 12,
+      "y": 186.08,
+      "width": 366,
+      "height": 46,
+      "position": "static"
+    },
+    "clearButton": {
+      "x": 267.13,
+      "y": 184.58,
+      "width": 58.88,
+      "height": 40,
+      "position": "absolute"
+    },
+    "filterTrigger": {
+      "x": 334,
+      "y": 192.58,
+      "width": 44,
+      "height": 44,
+      "position": "static"
+    },
+    "detailsTopBorder": "1px solid",
+    "outsideTapClosed": false,
+    "documentWidth": 390,
+    "clientWidth": 390
+  },
+  "screenshots": [
+    "capturas/before-home-390x844-dark.png",
+    "capturas/before-orders-390x844-dark.png"
+  ],
+  "qr": {
+    "eligibleEndpointStatus": 404,
+    "uiMessage": "A assinatura segura de QR não está configurada nesta instalação.",
+    "fakeQrGenerated": false
+  },
+  "evidence": "Diagnostic output recorded before changing application files."
+}
