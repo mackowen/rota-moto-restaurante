@@ -69,6 +69,18 @@
 .pilot-coverage span, .pilot-coverage small, .pilot-footnote { color: var(--pc-muted); font-size: 11px; line-height: 1.45; }
 .pilot-coverage b { font-size: 16px; }
 .pilot-footnote { margin: 0; }
+
+/* Responsive work queue used by the global Design System shell. */
+.pilot-queue-row{grid-template-columns:minmax(125px,.8fr) minmax(0,1.35fr) minmax(220px,1.2fr) minmax(170px,.9fr);align-items:start;gap:14px;padding:16px 4px}
+.pilot-order-ref{align-content:start;gap:6px}.pilot-order-ref .pilot-order-status{white-space:normal}
+.pilot-order-customer b{font-size:14px;line-height:1.35}.pilot-order-customer small{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.pilot-order-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px;min-width:0}
+.pilot-order-meta>span{display:grid;gap:3px;min-width:0}.pilot-order-meta small{color:var(--pc-muted);font-size:10px;line-height:1.3}.pilot-order-meta b{font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+.pilot-priority .pilot-row-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:7px}
+.pilot-priority .pilot-row-actions .btn{min-width:0;min-height:44px;padding:8px;white-space:normal;font-size:12px}
+.pilot-priority .pilot-row-actions .btn.primary{grid-column:1/-1}
+@media(max-width:1023px){.pilot-queue-row{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:10px 14px}.pilot-order-meta,.pilot-row-actions{grid-column:1/-1}.pilot-priority .pilot-row-actions{grid-template-columns:repeat(3,minmax(0,1fr))}.pilot-priority .pilot-row-actions .btn.primary{grid-column:auto}}
+@media(max-width:599px){.pilot-priority{padding:14px}.pilot-queue-row{grid-template-columns:minmax(0,1fr);gap:10px;padding:14px 2px}.pilot-order-ref{grid-template-columns:minmax(0,1fr) auto;align-items:start}.pilot-order-ref>b,.pilot-order-ref>small{grid-column:1}.pilot-order-ref>.pilot-order-status{grid-column:2;grid-row:1/3;justify-self:end}.pilot-order-customer,.pilot-order-meta,.pilot-row-actions{grid-column:1}.pilot-order-meta{grid-template-columns:repeat(2,minmax(0,1fr));padding:10px;border-radius:12px;background:var(--pc-soft)}.pilot-priority .pilot-row-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.pilot-priority .pilot-row-actions .btn.primary{grid-column:1/-1}.pilot-queue-head{align-items:flex-start;flex-direction:column}.pilot-queue-head>.btn{width:100%;white-space:normal}}
 @media (min-width: 701px) and (max-width: 900px) {
   .pilot-insights { grid-template-columns: minmax(0, 1.15fr) minmax(230px, .85fr); }
   .pilot-priority { padding: 16px; }

@@ -15,20 +15,33 @@ const destinations = ['dashboard', 'orders', 'bikes', 'routes', 'reports', 'even
 for (const destination of destinations) {
   assert.match(app, new RegExp(`\\['${destination}'`, 'u'), `module ${destination} remains registered`);
 }
-assert.match(app, /const destinations=orderedDestinations\(allowed\)[\s\S]*<nav class="bottom-nav"[^>]*>\$\{destinations\.map\(navButton\)/u,
-  'every permitted destination is rendered directly in the mobile navigation');
-assert.match(app, /<nav class="side-nav" aria-label="Navegação principal">\$\{orderedDestinations\(allowed\)\.map\(navButton\)/u,
-  'desktop navigation keeps the same direct destination list');
-assert.doesNotMatch(app, /nav-more|Mais destinos|closeMoreMenu|bindMoreMenu|rotaMotoMoreMenu/u,
-  'the grouped More disclosure and its history handlers are removed');
-assert.match(app, /active&&nav\)[\s\S]*nav\.scrollLeft=right-nav\.clientWidth/u,
-  'the active destination remains visible after navigation');
-assert.match(css, /\.bottom-nav\{[^}]*overflow-x:auto;[^}]*touch-action:pan-x/u,
-  'the mobile bar supports horizontal touch scrolling');
-assert.match(css, /\.bottom-nav>\.nav-item\{flex:1 0 82px;min-width:82px;max-width:none/u,
-  'navigation items grow evenly when they fit and keep equal minimum widths when they do not');
-assert.match(designSystem, /\.bottom-nav>\.nav-item\{flex:1 0 82px;min-width:82px;max-width:none/u,
-  'the responsive design system preserves the same distribution rule');
+assert.match(app, /primaryIds=\['dashboard','orders','routes','bikes'\]/u,
+  'the mobile primary destinations follow the approved operation order');
+assert.match(app, /id="navMoreMenu"[\s\S]*data-nav-more[\s\S]*aria-expanded="false"/u,
+  'all non-primary permitted destinations have an accessible More menu');
+assert.match(app, /<nav id="navMoreMenu"[^>]*aria-label="Mais áreas"/u,
+  'the More panel is a navigation landmark for assistive technology');
+assert.match(app, /function navigationGroups\(items\)[\s\S]*Operação[\s\S]*Gestão[\s\S]*Administração/u,
+  'the desktop navigation uses clear operational and management groups');
+assert.match(app, /data-sidebar-toggle[\s\S]*sidebar-expanded/u,
+  'tablet navigation can collapse and expand without changing destinations');
+assert.match(app, /function goTab\(tab\)[\s\S]*pushState[\s\S]*state\.tab=tab/u,
+  'navigation preserves the existing history/deep-link state flow');
+assert.match(designSystem, /@media\(min-width:600px\) and \(max-width:1023px\)[\s\S]*\.sidebar\{display:flex/u,
+  'the tablet sidebar remains visible after narrow phone rules');
+assert.match(designSystem, /@media\(min-width:600px\) and \(max-width:1023px\)[\s\S]*\.sidebar-toggle\{display:grid/u,
+  'tablet uses a compact, expandable sidebar');
+assert.match(designSystem, /@media\(max-width:599px\)[\s\S]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/u,
+  'phone navigation fits four primary destinations and More without horizontal scrolling');
+assert.match(designSystem, /\.bottom-nav \.nav-label-full\{display:none\}\.bottom-nav \.nav-label-short\{display:block\}/u,
+  'mobile navigation displays one concise label variant for each destination');
+assert.match(designSystem, /\.nav-more-menu:not\(\[hidden\]\)[\s\S]*position:fixed/u,
+  'More is a bounded, keyboard dismissible menu above the mobile navigation');
+assert.match(designSystem, /#121a25/u, 'the approved dark canvas token is defined');
+assert.match(designSystem, /#202c3a/u, 'the approved dark card token is defined');
+assert.match(designSystem, /--success:#16a36a/u, 'the approved green token is defined');
+assert.match(designSystem, /--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px/u,
+  'the shared spacing scale is available to every module');
 assert.match(app, /<h1 aria-label="\$\{esc\(title\)\}">/u,
   'compact page titles retain their complete accessible name');
 assert.match(designSystem, /grid-template-columns:auto minmax\(0,1fr\) auto;grid-template-areas:none/u,
@@ -50,4 +63,4 @@ assert.match(identity, /const triggerLabel = opensAccountPage \? 'Abrir Conta e 
 
 assert.match(identityCss, /#app \.rm-page-header \.top-actions \.rm-account-trigger:active[\s\S]*background: var\(--rm-id-accent-soft\)/u, 'pressed account action receives a theme-aware surface');
 assert.match(identityCss, /#app \.rm-page-header \.top-actions \.rm-account-trigger:disabled[\s\S]*opacity: \.6/u, 'disabled account action is visibly subdued and unavailable');
-console.log('Restaurant direct navigation, single-row header and compact accessible actions: PASS');
+console.log('Restaurant grouped desktop navigation, phone More menu, tablet sidebar and shared theme tokens: PASS');

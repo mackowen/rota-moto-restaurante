@@ -25,8 +25,8 @@ assert.match(source,/data-label="Pedido"/u,'delivery rows expose semantic labels
 assert.match(styles,/\.table thead\{display:none\}/u,'responsive tables hide desktop headings when rows become cards');
 assert.doesNotMatch(styles,/\.table thead\{display:table-header-group\}/u,'no later mobile rule restores squeezed desktop table headings');
 assert.match(source,/function orderedDestinations\(items\)\{const configured=new Set\(state\.settings\.navigation\?\.shortcuts/u,'one preference-driven ordering function serves desktop and mobile destinations');
-assert.match(source,/function layout\(\)[\s\S]*?const destinations=orderedDestinations\(allowed\)/u,'mobile navigation uses the persisted preference ordering for every destination');
-assert.match(source,/orderedDestinations\(allowed\)\.map\(navButton\)/u,'configured shortcuts reorder the complete desktop navigation without duplicate links');
+assert.match(source,/function layout\(\)[\s\S]*?const destinations=orderedDestinations\(allowed\),primaryIds=\['dashboard','orders','routes','bikes'\]/u,'mobile operation shortcuts stay fixed while remaining areas are grouped under More');
+assert.match(source,/function navGroupMarkup\(group,context=''\)[\s\S]*orderedDestinations\(group\.items\)/u,'configured shortcuts reorder destinations within their semantic navigation group');
 assert.match(dashboard,/header\('Início'/u,'Home uses the same header component as the other tabs');
 assert.match(source,/class="brandmark brand-symbol" src="favicon\.svg"/u,'desktop brand uses the same simple route symbol as the mobile header');
 assert.match(fs.readFileSync('identity-ui.js','utf8'),/new MutationObserver\(\(\) => placeTrigger\(\)\)\.observe\(placementRoot, \{ childList: true, subtree: true \}\)/u,'account action is re-anchored after app render replaces the header');
@@ -47,7 +47,9 @@ assert.doesNotMatch(source,/shortcutButtons\(|class="shortcutbar"/u,'the duplica
 assert.doesNotMatch(styles,/\.shortcutbar/u,'obsolete duplicate shortcut strip styling is removed');
 assert.doesNotMatch(styles,/overflow-x:\s*clip/u,'horizontal overflow is not concealed at the document boundary');
 assert.match(source,/await saveSettings\('Atalhos de navegação atualizados\.'\)/u,'shortcut edits use the existing Company settings persistence authority');
-assert.match(source,/function layout\(\)[\s\S]*?destinations\.map\(navButton\)/u,'mobile navigation contains one direct entry per permitted destination');
+assert.match(source,/function layout\(\)[\s\S]*?primary\.map\(item=>navButton\(item,'nav-primary-item'\)\)/u,'mobile navigation exposes the four primary operation destinations in the approved order');
+assert.match(source,/data-qr-open=.*?QR seguro/u,'the home queue exposes secure QR only for eligible canonical deliveries');
+assert.match(source,/pilot-order-meta[\s\S]*?Motoboy[\s\S]*?Taxa[\s\S]*?Distância/u,'review cards summarize driver, known fee and known distance without fabricating values');
 console.log('Command Center canonical analytics and metric semantics: PASS');
 
 assert.match(fs.readFileSync('logistics-ui.js','utf8'),/class="table territorial-table"/u,'territorial analytics reuses the responsive table component');
