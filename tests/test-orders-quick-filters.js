@@ -26,10 +26,12 @@ const quickButtons=['all','waiting','assigned','route','completed','cancelled'].
 const captured={};
 const context={
   ordersQuickFilter:'all',
+  ordersSelectedId:null,
   ORDER_QUICK_STATUS:null,
   ordersWithCanonicalDeliveryStatus:()=>orders,
-  document:{getElementById:id=>controls[id]||null,querySelectorAll:selector=>selector==='[data-orders-quick-filter]'?quickButtons:[]},
-  tablePage(rows,key){captured.rows=rows;captured.key=key;return rows.map(row=>row.id).join(',')},
+  document:{getElementById:id=>controls[id]||null,querySelectorAll:selector=>selector==='[data-orders-quick-filter]'?quickButtons:[],querySelector:()=>null},
+  ordersV2TablePage(rows){captured.rows=rows;captured.key='orders';return rows.map(row=>row.id).join(',')},
+  bindOrdersV2Actions(){},
   bindPagination(){},renderOrderQRCodes(){},
   openDetail:id=>captured.open=id,openPrintPreview:id=>captured.print=id,openQrPreview:id=>captured.qr=id,
   state:{pagination:{orders:1}},String,Number,Set,Math

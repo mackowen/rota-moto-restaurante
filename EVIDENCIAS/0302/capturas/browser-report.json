@@ -1,0 +1,925 @@
+{
+  "campaign": "0302-orders-v2",
+  "database": "rotamoto_e2e",
+  "mfaVerified": true,
+  "companyId": "01a16a78-0e93-72a2-9a05-531590ad4fe1",
+  "fixture": {
+    "orderId": "01a16a78-7496-7301-a5b8-85978e220fba",
+    "deliveryId": "01a16a78-74a6-7424-8f77-3cc468de9972",
+    "databaseCommitted": false,
+    "cleanup": "COMPLETED",
+    "tenantScopedResiduals": {
+      "companies": 0,
+      "users": 0,
+      "auth_records": 0,
+      "memberships": 0,
+      "sessions": 0,
+      "domain_records": 0,
+      "sync_inbox": 0,
+      "sync_outbox": 0,
+      "audit_log": 0
+    },
+    "runId": "330a51d8-c3bb-4745-9abb-aa06f5b5b3d0",
+    "manifestStatus": "COMPLETED"
+  },
+  "uiCreated": {
+    "number": "E2E0302-1792787647547",
+    "localId": "ord_mvlfh6cj_t8tqlz",
+    "canonicalId": "01a16a78-8ef6-73f6-bdd1-d71b73239e2d",
+    "canonicalStatus": 200,
+    "canonicalCompanyId": "01a16a78-0e93-72a2-9a05-531590ad4fe1"
+  },
+  "filterResults": {
+    "waiting": "true",
+    "searchCount": 1,
+    "found": true,
+    "searchLabel": "Buscar pedidos e entregas"
+  },
+  "printPreview": "PRÉVIA DA COMANDA\nPedido #E2E0302-1792787647547\n\nRevise os dados antes de abrir a impressão do navegador.\n\nRotaMoto\nComanda #E2E0302-1792787647547\n\nmanual · 2026-10-23 20:34 UTC (f",
+  "detailOpened": true,
+  "editedCanonicalCustomer": "Cliente sintético campanha 0302 editado",
+  "qrResult": {
+    "eligibleButton": true,
+    "opened": true,
+    "usable": false,
+    "message": "A assinatura segura de QR não está configurada nesta instalação.",
+    "status": "BLOCKED_BY_CAPABILITY"
+  },
+  "reloadPreserved": true,
+  "tabletPanel": "block",
+  "captures": [
+    {
+      "viewport": "320x720",
+      "theme": "dark",
+      "file": "orders-320x720-dark.png",
+      "width": 320,
+      "clientWidth": 320,
+      "visualWidth": 320,
+      "scale": 1,
+      "height": 720,
+      "documentWidth": 320,
+      "bodyWidth": 320,
+      "mainWidth": 320,
+      "ordersWidth": 296,
+      "sidebar": "none",
+      "bottom": "grid",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "320x720",
+      "theme": "light",
+      "file": "orders-320x720-light.png",
+      "width": 320,
+      "clientWidth": 320,
+      "visualWidth": 320,
+      "scale": 1,
+      "height": 720,
+      "documentWidth": 320,
+      "bodyWidth": 320,
+      "mainWidth": 320,
+      "ordersWidth": 296,
+      "sidebar": "none",
+      "bottom": "grid",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "360x800",
+      "theme": "dark",
+      "file": "orders-360x800-dark.png",
+      "width": 360,
+      "clientWidth": 360,
+      "visualWidth": 360,
+      "scale": 1,
+      "height": 800,
+      "documentWidth": 360,
+      "bodyWidth": 360,
+      "mainWidth": 360,
+      "ordersWidth": 336,
+      "sidebar": "none",
+      "bottom": "grid",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "360x800",
+      "theme": "light",
+      "file": "orders-360x800-light.png",
+      "width": 360,
+      "clientWidth": 360,
+      "visualWidth": 360,
+      "scale": 1,
+      "height": 800,
+      "documentWidth": 360,
+      "bodyWidth": 360,
+      "mainWidth": 360,
+      "ordersWidth": 336,
+      "sidebar": "none",
+      "bottom": "grid",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "390x844",
+      "theme": "dark",
+      "file": "orders-390x844-dark.png",
+      "width": 390,
+      "clientWidth": 390,
+      "visualWidth": 390,
+      "scale": 1,
+      "height": 844,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "mainWidth": 390,
+      "ordersWidth": 366,
+      "sidebar": "none",
+      "bottom": "grid",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "390x844",
+      "theme": "light",
+      "file": "orders-390x844-light.png",
+      "width": 390,
+      "clientWidth": 390,
+      "visualWidth": 390,
+      "scale": 1,
+      "height": 844,
+      "documentWidth": 390,
+      "bodyWidth": 390,
+      "mainWidth": 390,
+      "ordersWidth": 366,
+      "sidebar": "none",
+      "bottom": "grid",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "430x932",
+      "theme": "dark",
+      "file": "orders-430x932-dark.png",
+      "width": 430,
+      "clientWidth": 430,
+      "visualWidth": 430,
+      "scale": 1,
+      "height": 932,
+      "documentWidth": 430,
+      "bodyWidth": 430,
+      "mainWidth": 430,
+      "ordersWidth": 406,
+      "sidebar": "none",
+      "bottom": "grid",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "430x932",
+      "theme": "light",
+      "file": "orders-430x932-light.png",
+      "width": 430,
+      "clientWidth": 430,
+      "visualWidth": 430,
+      "scale": 1,
+      "height": 932,
+      "documentWidth": 430,
+      "bodyWidth": 430,
+      "mainWidth": 430,
+      "ordersWidth": 406,
+      "sidebar": "none",
+      "bottom": "grid",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "600x960",
+      "theme": "dark",
+      "file": "orders-600x960-dark.png",
+      "width": 600,
+      "clientWidth": 600,
+      "visualWidth": 600,
+      "scale": 1,
+      "height": 960,
+      "documentWidth": 600,
+      "bodyWidth": 600,
+      "mainWidth": 524,
+      "ordersWidth": 488,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "600x960",
+      "theme": "light",
+      "file": "orders-600x960-light.png",
+      "width": 600,
+      "clientWidth": 600,
+      "visualWidth": 600,
+      "scale": 1,
+      "height": 960,
+      "documentWidth": 600,
+      "bodyWidth": 600,
+      "mainWidth": 524,
+      "ordersWidth": 488,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregasPedidos e entregas"
+    },
+    {
+      "viewport": "768x1024",
+      "theme": "dark",
+      "file": "orders-768x1024-dark.png",
+      "width": 768,
+      "clientWidth": 768,
+      "visualWidth": 768,
+      "scale": 1,
+      "height": 1024,
+      "documentWidth": 768,
+      "bodyWidth": 768,
+      "mainWidth": 692,
+      "ordersWidth": 646,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "768x1024",
+      "theme": "light",
+      "file": "orders-768x1024-light.png",
+      "width": 768,
+      "clientWidth": 768,
+      "visualWidth": 768,
+      "scale": 1,
+      "height": 1024,
+      "documentWidth": 768,
+      "bodyWidth": 768,
+      "mainWidth": 692,
+      "ordersWidth": 646,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 44
+        },
+        {
+          "label": "Abrir",
+          "box": 44
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 44
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "1024x768",
+      "theme": "dark",
+      "file": "orders-1024x768-dark.png",
+      "width": 1024,
+      "clientWidth": 1024,
+      "visualWidth": 1024,
+      "scale": 1,
+      "height": 768,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "mainWidth": 768,
+      "ordersWidth": 707,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 49
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "Abrir",
+          "box": 42
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 42
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "1024x768",
+      "theme": "light",
+      "file": "orders-1024x768-light.png",
+      "width": 1024,
+      "clientWidth": 1024,
+      "visualWidth": 1024,
+      "scale": 1,
+      "height": 768,
+      "documentWidth": 1024,
+      "bodyWidth": 1024,
+      "mainWidth": 768,
+      "ordersWidth": 707,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 49
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "Abrir",
+          "box": 42
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 42
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "1280x800",
+      "theme": "dark",
+      "file": "orders-1280x800-dark.png",
+      "width": 1280,
+      "clientWidth": 1280,
+      "visualWidth": 1280,
+      "scale": 1,
+      "height": 800,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "mainWidth": 1024,
+      "ordersWidth": 947,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 49
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "Abrir",
+          "box": 42
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 42
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "1280x800",
+      "theme": "light",
+      "file": "orders-1280x800-light.png",
+      "width": 1280,
+      "clientWidth": 1280,
+      "visualWidth": 1280,
+      "scale": 1,
+      "height": 800,
+      "documentWidth": 1280,
+      "bodyWidth": 1280,
+      "mainWidth": 1024,
+      "ordersWidth": 947,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 49
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "Abrir",
+          "box": 42
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 42
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "1440x900",
+      "theme": "dark",
+      "file": "orders-1440x900-dark.png",
+      "width": 1440,
+      "clientWidth": 1440,
+      "visualWidth": 1440,
+      "scale": 1,
+      "height": 900,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "mainWidth": 1184,
+      "ordersWidth": 1098,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 49
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "Abrir",
+          "box": 42
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 42
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "1440x900",
+      "theme": "light",
+      "file": "orders-1440x900-light.png",
+      "width": 1440,
+      "clientWidth": 1440,
+      "visualWidth": 1440,
+      "scale": 1,
+      "height": 900,
+      "documentWidth": 1440,
+      "bodyWidth": 1440,
+      "mainWidth": 1184,
+      "ordersWidth": 1098,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 49
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "Abrir",
+          "box": 42
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 42
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "1920x1080",
+      "theme": "dark",
+      "file": "orders-1920x1080-dark.png",
+      "width": 1920,
+      "clientWidth": 1920,
+      "visualWidth": 1920,
+      "scale": 1,
+      "height": 1080,
+      "documentWidth": 1920,
+      "bodyWidth": 1920,
+      "mainWidth": 1600,
+      "ordersWidth": 1504,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 49
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "Abrir",
+          "box": 42
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 42
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    },
+    {
+      "viewport": "1920x1080",
+      "theme": "light",
+      "file": "orders-1920x1080-light.png",
+      "width": 1920,
+      "clientWidth": 1920,
+      "visualWidth": 1920,
+      "scale": 1,
+      "height": 1080,
+      "documentWidth": 1920,
+      "bodyWidth": 1920,
+      "mainWidth": 1600,
+      "ordersWidth": 1504,
+      "sidebar": "flex",
+      "bottom": "none",
+      "cards": 2,
+      "actions": [
+        {
+          "label": "Abrir",
+          "box": 49
+        },
+        {
+          "label": "Imprimir pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "QR seguro do pedido #5274c4d8-92d8-4ddd-9e9e-8c767a11f340",
+          "box": 42
+        },
+        {
+          "label": "Abrir",
+          "box": 42
+        },
+        {
+          "label": "Imprimir pedido #E2E0302-1792787647547",
+          "box": 42
+        }
+      ],
+      "heading": "Pedidos e entregas"
+    }
+  ],
+  "servedAssets": [
+    {
+      "asset": "/styles.css?v=0302.1",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/design-system.css?v=0301.2",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/orders-v2.css?v=0302.3",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/app.js?v=0302.3",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/styles.css?v=0302.1",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/design-system.css?v=0301.2",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/orders-v2.css?v=0302.3",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/app.js?v=0302.3",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/styles.css?v=0302.1",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/design-system.css?v=0301.2",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/orders-v2.css?v=0302.3",
+      "status": 200,
+      "fromDiskCache": false
+    },
+    {
+      "asset": "/app.js?v=0302.3",
+      "status": 200,
+      "fromDiskCache": false
+    }
+  ],
+  "httpErrors": [
+    {
+      "path": "/api/identity/session",
+      "status": 401
+    },
+    {
+      "path": "/api/delivery-qr/deliveries/01a16a78-74a6-7424-8f77-3cc468de9972",
+      "status": 404
+    }
+  ],
+  "jsErrors": []
+}

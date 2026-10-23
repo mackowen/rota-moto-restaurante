@@ -75,7 +75,11 @@ assert.match(app,/data-nav-more-close/u,'More sheet has an accessible close cont
 assert.match(app,/function orderQuickFilterMarkup\(\)[\s\S]*aria-pressed=/u,'orders quick filters expose their selected state accessibly');
 assert.match(app,/data-orders-clear/u,'orders search provides a working clear action');
 assert.match(app,/const quick=ORDER_QUICK_STATUS\[ordersQuickFilter\]/u,'orders filtering applies the selected canonical status group');
-assert.match(app,/bindOrderRowActions\(el\)/u,'filtered rows rebind open, print and eligible QR actions after replacing the list');
+assert.match(app,/bindOrdersV2Actions\(el\)/u,'filtered rows rebind open, print and eligible QR actions after replacing the list');
+assert.match(app,/function ordersV2Table\(rows\)[\s\S]*data-orders-select[\s\S]*data-orders-print[\s\S]*data-orders-qr/u,'Orders V2 renders order rows with selection, printing and eligible QR actions');
+assert.match(app,/function ordersV2DetailPanel\(order\)[\s\S]*data-orders-open/u,'tablet details delegate to the existing order detail flow');
+assert.match(app,/function ordersV2QrEligible\(order\)[\s\S]*ASSIGNED[\s\S]*OUT_FOR_DELIVERY[\s\S]*delivery\.deleted/u,'secure QR action is shown only for a non-deleted delivery in an eligible canonical status');
+assert.match(app,/function orders\(\)[\s\S]*ordersV2TablePage[\s\S]*ordersV2Metrics/u,'Orders V2 uses canonical order data for its list and metrics');
 assert.match(app,/main\.dataset\.module=state\.tab/u,'shared module styling receives the active route without changing module behavior');
 assert.match(ds,/#main\[data-module="orders"\] \.order-quick-filters/u,'orders controls use scoped responsive Design System primitives');
 assert.match(ds,/order-card-actions>\.order-open-btn\{grid-column:1\/-1\}/u,'mobile delivery cards prioritize Open and pair secondary print and QR actions');
@@ -90,8 +94,8 @@ assert.match(ds,/nav-more-groups[\s\S]*overflow:auto/u,'More destinations scroll
 assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection state distinguishes active synchronization');
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
 assert.match(index,/dashboard-v2\.js\?v=0300\.2/u,'official component bundle is versioned for 0300');
-assert.match(sw,/CACHE_PREFIX\}v91/u,'service worker shell cache is advanced for the integrated release');
-assert.match(index,/app\.js\?v=0301\.2/u,'official app script uses a fresh cache key');
+assert.match(sw,/CACHE_PREFIX\}v95/u,'service worker shell cache is advanced for the integrated release');
+assert.match(index,/app\.js\?v=0302\.3/u,'official app script uses a fresh cache key');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
 
 assert.match(app,/const session=await restoreSyncSession\(\);if\(session\)\{const editing=[\s\S]*?if\(!editing\)render\(\);scheduleServerSync\(0\)\}/u,'authenticated startup reprojects local state after restoring the tenant without replacing an in-progress form');

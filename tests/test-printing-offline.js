@@ -58,7 +58,7 @@ installed.then(async () => {
   assert.ok(identityBundle, 'identity UI bundle is declared by the page');
   assert.ok(added.includes('/design-system.css?v=0301.2'));
   assert.ok(added.includes('/pilot-views.css?v=0299.1'));
-  assert.ok(added.includes('/app.js?v=0301.2'));
+  assert.ok(added.includes('/app.js?v=0302.3'));
   assert.ok(added.includes('/dashboard-v2.js?v=0300.2'));
   assert.ok(added.includes('/dashboard-v2.css?v=0300.3'));
   assert.ok(added.includes(`/${identityBundle}`));
