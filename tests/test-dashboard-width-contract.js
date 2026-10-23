@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const css=fs.readFileSync('dashboard-v2.css','utf8');
 const renderer=fs.readFileSync('dashboard-v2.js','utf8');
+const ds=fs.readFileSync('design-system.css','utf8');
 assert.match(renderer,/rm-global-header topbar rm-page-header dv2-header/u,'dashboard reuses the operational page header contract');
 assert.match(css,/@media\(max-width:1199px\)\{[\s\S]*?\.dashboard-v2\{\s*padding:0 0 22px/u,'tablet and mobile dashboard wrapper does not add a second horizontal gutter');
 assert.match(css,/@media\(max-width:767px\)\{[\s\S]*?\.dashboard-v2\{\s*padding:0 0 18px/u,'mobile dashboard retains vertical spacing without duplicating main gutters');
@@ -10,6 +11,9 @@ assert.doesNotMatch(css,/\.dashboard-v2\{\s*padding-inline:9px/u,'320px screens 
 assert.match(css,/@media\(min-width:600px\)\{\.dashboard-v2 \.rm-header-brand\{display:none\}\}/u,'tablet and larger keep the existing sidebar brand composition');
 assert.doesNotMatch(css,/\.dashboard-v2 \.rm-global-header\{[^}]*margin-top:-/u,'dashboard header does not compensate with a negative offset');
 assert.match(css,/@media\(max-width:599px\)\{[\s\S]*?\.dashboard-v2 \.dv2-header-actions\{\s*grid-column:3;\s*gap:4px\}/u,'home actions occupy the shared operational header trailing grid track with the same gap');
-assert.match(css,/@media\(max-width:599px\)\{[\s\S]*?\.dashboard-v2 \.dv2-header-actions \.dv2-icon-button\{\s*width:40px;\s*min-width:40px;\s*height:40px;\s*min-height:40px/u,'home notifications button matches the operational icon button dimensions');
+assert.match(ds,/\.rm-page-header \.top-actions \.rm-notifications-action\{box-sizing:border-box;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;padding:0;gap:0;color:var\(--text-primary\);background:var\(--surface-raised\);border-color:var\(--border-strong\)\}/u,'shared notifications action has an exact 44 by 44 box and theme foreground');
+assert.match(ds,/\.rm-page-header \.top-actions \.rm-notifications-action svg\{display:block;width:19px;height:19px;flex:0 0 19px;stroke:currentColor;stroke-width:2\.2\}/u,'notifications glyph uses the high contrast foreground with a legible stroke');
+assert.match(ds,/\.rm-page-header \.top-actions \.rm-notifications-action \.dv2-icon\{position:static;display:grid;place-items:center;width:19px;height:19px;margin:0;overflow:visible;clip:auto;white-space:normal;border:0\}/u,'notifications glyph wrapper stays visible instead of inheriting the hidden text clip');
+assert.doesNotMatch(css,/\.dashboard-v2 \.dv2-header-actions \.dv2-icon-button\{\s*width:40px/u,'Home does not resize other buttons to compensate for notifications');
 assert.doesNotMatch(css,/transform:\s*translateX/u,'dashboard alignment does not use horizontal transforms');
 console.log('Dashboard shared header and responsive width contract: PASS');

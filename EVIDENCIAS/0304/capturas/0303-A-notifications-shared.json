@@ -1,0 +1,1686 @@
+{
+  "generatedAt": "2026-10-23T22:57:29.528Z",
+  "note": "Rendered component fixture using production Home renderer, operational header renderer, shared notifications helper and production CSS. Authenticated application browser route unavailable due login 403.",
+  "rows": [
+    {
+      "viewport": 320,
+      "tab": "dashboard",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 168,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 212,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 216,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 260,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 264,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 308,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "tab": "orders",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 168,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 212,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 216,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 260,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 264,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 308,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "tab": "routes",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 168,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 212,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 216,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 260,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 264,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 308,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "tab": "bikes",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 168,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 212,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 216,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 260,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 264,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 308,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "tab": "dashboard",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 168,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 212,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 216,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 260,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 264,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 308,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "tab": "orders",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 168,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 212,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 216,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 260,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 264,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 308,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "tab": "routes",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 168,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 212,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 216,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 260,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 264,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 308,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 320,
+      "tab": "bikes",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 168,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 212,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 216,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 260,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 264,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 308,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 360,
+      "tab": "dashboard",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 208,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 252,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 256,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 300,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 304,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 348,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 360,
+      "tab": "orders",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 208,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 252,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 256,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 300,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 304,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 348,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 360,
+      "tab": "routes",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 208,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 252,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 256,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 300,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 304,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 348,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 360,
+      "tab": "bikes",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 208,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 252,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 256,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 300,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 304,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 348,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 360,
+      "tab": "dashboard",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 208,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 252,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 256,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 300,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 304,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 348,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 360,
+      "tab": "orders",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 208,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 252,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 256,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 300,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 304,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 348,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 360,
+      "tab": "routes",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 208,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 252,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 256,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 300,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 304,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 348,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 360,
+      "tab": "bikes",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 208,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 252,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 256,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 300,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 304,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 348,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "tab": "dashboard",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 238,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 282,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 286,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 330,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "tab": "dashboard",
+      "theme": "light",
+      "sticky": [
+        {
+          "scrollY": 0,
+          "headerTop": 0
+        },
+        {
+          "scrollY": 1,
+          "headerTop": 0
+        },
+        {
+          "scrollY": 5,
+          "headerTop": 0
+        },
+        {
+          "scrollY": 10,
+          "headerTop": 0
+        },
+        {
+          "scrollY": 20,
+          "headerTop": 0
+        },
+        {
+          "scrollY": 50,
+          "headerTop": 0
+        },
+        {
+          "scrollY": 100,
+          "headerTop": 0
+        },
+        {
+          "scrollY": 300,
+          "headerTop": 0
+        }
+      ]
+    },
+    {
+      "viewport": 390,
+      "tab": "dashboard",
+      "theme": "light",
+      "functionalClick": {
+        "destination": "events",
+        "buttonFound": true
+      }
+    },
+    {
+      "viewport": 390,
+      "tab": "orders",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 238,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 282,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 286,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 330,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "tab": "routes",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 238,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 282,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 286,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 330,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "tab": "bikes",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 238,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 282,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 286,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 330,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "tab": "dashboard",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 238,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 282,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 286,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 330,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "tab": "orders",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 238,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 282,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 286,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 330,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "tab": "routes",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 238,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 282,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 286,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 330,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 390,
+      "tab": "bikes",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 238,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 282,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 286,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 330,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "tab": "dashboard",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 278,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 322,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 326,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 370,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 374,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 418,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "tab": "orders",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 278,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 322,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 326,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 370,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 374,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 418,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "tab": "routes",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 278,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 322,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 326,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 370,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 374,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 418,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "tab": "bikes",
+      "theme": "light",
+      "buttons": [
+        {
+          "x": 278,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 322,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 326,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 370,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 374,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 418,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(23, 32, 51)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(23, 32, 51)",
+        "background": "rgb(255, 255, 255)",
+        "border": "rgb(189, 201, 216)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "tab": "dashboard",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 278,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 322,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 326,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 370,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 374,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 418,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "tab": "orders",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 278,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 322,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 326,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 370,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 374,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 418,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "tab": "routes",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 278,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 322,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 326,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 370,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 374,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 418,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    },
+    {
+      "viewport": 430,
+      "tab": "bikes",
+      "theme": "dark",
+      "buttons": [
+        {
+          "x": 278,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 322,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 326,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 370,
+          "bottom": 50,
+          "centerY": 28
+        },
+        {
+          "x": 374,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 418,
+          "bottom": 50,
+          "centerY": 28
+        }
+      ],
+      "gaps": [
+        4,
+        4
+      ],
+      "rightGap": 12,
+      "notifClass": "btn rm-notifications-action",
+      "icon": {
+        "html": "<span class=\"dv2-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\"><path d=\"M6 17h12l-1.5-2V10a4.5 4.5 0 0 0-9 0v5L6 17Z\"></path><path d=\"M10 20h4\"></path></svg></span>",
+        "stroke": "rgb(244, 247, 251)",
+        "strokeWidth": "2.2px",
+        "color": "rgb(244, 247, 251)",
+        "background": "rgb(38, 52, 67)",
+        "border": "rgb(83, 101, 121)",
+        "display": "block",
+        "opacity": "1"
+      },
+      "overflow": false
+    }
+  ]
+}

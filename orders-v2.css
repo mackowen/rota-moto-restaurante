@@ -80,5 +80,3 @@
 @media(min-width:1341px) and (max-width:1600px){#main[data-module="orders"] .orders-v2-workspace{grid-template-columns:minmax(0,1fr)}#main[data-module="orders"] .orders-v2-side{display:none}#main[data-module="orders"] .orders-v2-table{min-width:940px}}
 
 #main[data-module="orders"] .orders-v2-row.is-selected{background:color-mix(in srgb,var(--accent) 8%,var(--surface));outline:1px solid var(--accent);outline-offset:-1px}
-#main[data-module="orders"] .orders-v2-notifications{min-width:44px;min-height:44px;padding:8px}
-#main[data-module="orders"] .orders-v2-notifications svg{width:19px;height:19px}

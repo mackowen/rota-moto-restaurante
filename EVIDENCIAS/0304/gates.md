@@ -5,9 +5,9 @@
 | G0 — Referências | PASS | Três referências abertas, medidas, identificadas e SHA-256 registrados. |
 | G1 — Auditoria | PARTIAL | Contratos e serviços centrais inventariados; testes operacionais e conflitos não executados. |
 | G2 — Design System | PARTIAL | Tokens/regras V2 reaproveitados; fidelidade visual comparativa Rotas pendente. |
-| G3 — Celular | PARTIAL | Layout mapa-primeiro implementado; Browser autêntico pós-change bloqueado. |
-| G4 — Tablet | PARTIAL | Grid dedicado 600–1023px; referência verificada, render final não comparado. |
-| G5 — PC | PARTIAL | Lista/mapa/detalhe em painéis; render final não comparado. |
+| G3 — Celular | PARTIAL | Renderer production fixture capturado em 320/360/390/430, claro/escuro; 5 filtros visíveis e mapa antes das listas. Sessão real/tiles/rotas autenticadas pendentes. |
+| G4 — Tablet | PARTIAL | Capturas 600/768 retrato e 1024 paisagem claro/escuro; retrato vertical e paisagem em painéis; validação autenticada e comparação final pendentes. |
+| G5 — PC | PARTIAL | Capturas 1280/1440/1920 claro/escuro; lista/mapa/detalhes mantidos sem dados. Barra operacional e conteúdo populado ainda divergem da referência. |
 | G6 — Mapa/cartografia | PARTIAL | Leaflet e serviços existentes preservados; geocode tácito removido; falha/resize/tiles E2E pendentes. |
 | G7 — Planejamento | PARTIAL | UI reutiliza regras/persistência existentes; sequência e save Browser não testados. |
 | G8 — Persistência | BLOCKED | Login 403 impediu confirmação em UI/reload. |
@@ -16,7 +16,42 @@
 | G11 — Segurança/RBAC | PARTIAL | Validadores atuais preservados; tenant adversarial/RBAC de rotas não testados. |
 | G12 — Offline/resiliência | PARTIAL | Não foi demonstrada confirmação remota falsa; falhas/reconexão ainda não testadas nesta UI. |
 | G13 — E2E | FAIL | Suite Browser tentada, mas não concluiu por falha de harness/autenticação; testes unitários não substituem E2E. |
-| G14 — Fidelidade visual | TECHNICAL_PASS / PENDING_USER_APPROVAL (parcial) | Layouts estruturais implementados; comparação pós-change completa não disponível; aprovação pertence ao proprietário. |
+| G14 — Fidelidade visual | FAIL | Reprovação explícita do proprietário. Intervenção estrutural e comparações fixture registradas; diferenças desktop/toolbar e validação com aplicação autenticada/dados reais permanecem. Aprovação exclusiva do proprietário pendente. |
 | G15 — Sem regressões | PARTIAL | Testes direcionados de mapas/logística/contrato passaram; regression Browser Início/Pedidos/Motoboys autenticado bloqueado. |
 
+## Intervenção do proprietário — reprovação visual (checkpoint)
+
+Estado atualizado em 2026-10-23: **G-VIS-01–G-VIS-10 em avaliação; G14 FAIL por decisão do proprietário.** A campanha permanece aberta, sem aprovação visual ou PASS global.
+
+As referências originais da pasta Download continuam preservadas e foram reabertas para esta intervenção:
+
+| Arquivo de trabalho | Dimensões | SHA-256 | Composição observada |
+|---|---:|---|---|
+| `REFERENCIAS/rotas-celular.png` | 1536×1024 | `3a7ce349bd189acbbcd80204c934abcae7a4ce25c0061a342147348ebae1e257` | Composição de celular escura e clara lado a lado. |
+| `REFERENCIAS/rotas-tablet.png` | 1536×1024 | `3f1c6ec3cfdde2b4d00aad1a242c2130551d232fde6927422be2eda01c567e8e` | Composição tablet escura/clara. |
+| `REFERENCIAS/rotas-pc.png` | 1536×1024 | `4b6cdb21b8890f1e5b18fca0805ecaa898af18366a7e5fd89e27cd2a3f4f8f88` | Composição PC escura/clara. |
+
+Diferenças estruturais confirmadas pelo proprietário: resumo em três cartões antes do mapa; excesso de superfícies/cartões e estados vazios; barra de filtros parcialmente cortada; proporções e distribuição de mapa, painéis, planejamentos e entregas distintas da referência. A implementação atual permanece preservada para comparação antes/depois; as referências não serão substituídas por screenshots do produto.
+
+Checkpoint de trabalho neste momento: branch Restaurante `codex/campaign-0304-rotas-v2`, último commit `f4d3dcb564fa37ad645350135ff70da4072f775c`, com alterações locais em curso do complemento 0303-A de notificações e arquivos de capturas sticky regravados pela execução CDP. Nenhuma alteração será descartada. Reorganização visual de Rotas ainda pendente. Autenticação de Browser QA previamente retornou HTTP 403, portanto persistência/RBAC/sync e nova comparação autenticada seguem com bloqueio conhecido.
+
 Não há PASS global. A tela de login e render isolado do renderer não são aceites como comparação final de aplicação.
+
+## Intervenção visual — checkpoint pós-correção estrutural
+
+Em 2026-10-23, os controles cortados foram substituídos por grade responsiva, o mapa passou a preceder os conteúdos secundários no celular, KPIs foram removidos do topo e os estados vazios foram condensados. Em 600–850px retrato, a tela usa uma coluna com mapa largo; tablet paisagem e PC mantêm painel de rotas, mapa e detalhes conforme a largura. Nos layouts largos, os painéis laterais continuam visíveis sem dados, sem criar conteúdo sintético.
+
+O renderer `routes()` de produção foi capturado por CDP em 10 viewports, dois temas. Não é a aplicação autenticada e não carrega dados de rota nem tiles reais. Medidas e matriz: `matriz-fidelidade-visual.md`; capturas/JSON: `capturas/0304-rotas-*`. Os 5 controles ficaram integralmente na viewport e a largura documental não excedeu o viewport nas linhas atuais. Esta evidência não reverte a reprovação do proprietário.
+
+| Gate visual | Estado no checkpoint | Limite |
+|---|---|---|
+| G-VIS-01 | PASS | Referências reabertas, identificadas, medidas e hashes preservados. |
+| G-VIS-02 | PARTIAL | Hierarquia celular corrigida; hierarquia PC/toolbar ainda diverge. |
+| G-VIS-03 | PARTIAL | Canvas domina celular e centro do tablet/PC; tiles/markers reais não validados. |
+| G-VIS-04 | PASS (fixture) | 5/5 filtros visíveis em 10 viewports; ação Ajustar ligada ao mapa. |
+| G-VIS-05 | PARTIAL | Painéis presentes conforme larguras; conteúdo real e sequência de paradas não comparados. |
+| G-VIS-06 | PARTIAL | Celular escuro capturado no fixture; aplicação autenticada pendente. |
+| G-VIS-07 | PARTIAL | Celular claro capturado no fixture; aplicação autenticada pendente. |
+| G-VIS-08 | PARTIAL | Tablet retrato/paisagem capturados; validação funcional final pendente. |
+| G-VIS-09 | PARTIAL | PC capturado; toolbar e conteúdo de referência ainda diferem. |
+| G-VIS-10 | PARTIAL | Regressões direcionadas passaram; E2E autenticado bloqueado por 403. |

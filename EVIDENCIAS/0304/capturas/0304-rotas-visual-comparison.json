@@ -1,0 +1,2663 @@
+{
+  "createdAt": "2026-10-23T23:07:06.974Z",
+  "mode": "isolated production routes() renderer with empty domain state; no fabricated delivery, coordinate, route, or ETA data",
+  "baseline": "HEAD before visual intervention",
+  "rows": [
+    {
+      "width": 320,
+      "height": 720,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 320,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 316,
+        "height": 57,
+        "right": 318,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 296,
+        "height": 81,
+        "right": 308,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 296,
+        "height": 324,
+        "right": 308,
+        "bottom": 481
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 296,
+        "height": 372,
+        "right": 308,
+        "bottom": 529
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 654,
+        "width": 320,
+        "height": 66,
+        "right": 320,
+        "bottom": 720
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 70.3,
+          "height": 38,
+          "right": 82.3
+        },
+        {
+          "label": "Entregas",
+          "x": 87.3,
+          "y": 67,
+          "width": 70.3,
+          "height": 38,
+          "right": 157.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 162.5,
+          "y": 67,
+          "width": 70.3,
+          "height": 38,
+          "right": 232.8
+        },
+        {
+          "label": "Rotas",
+          "x": 237.8,
+          "y": 67,
+          "width": 70.3,
+          "height": 38,
+          "right": 308
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 320,
+      "height": 720,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 320,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 316,
+        "height": 57,
+        "right": 318,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 296,
+        "height": 81,
+        "right": 308,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 296,
+        "height": 324,
+        "right": 308,
+        "bottom": 481
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 296,
+        "height": 372,
+        "right": 308,
+        "bottom": 529
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 654,
+        "width": 320,
+        "height": 66,
+        "right": 320,
+        "bottom": 720
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 70.3,
+          "height": 38,
+          "right": 82.3
+        },
+        {
+          "label": "Entregas",
+          "x": 87.3,
+          "y": 67,
+          "width": 70.3,
+          "height": 38,
+          "right": 157.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 162.5,
+          "y": 67,
+          "width": 70.3,
+          "height": 38,
+          "right": 232.8
+        },
+        {
+          "label": "Rotas",
+          "x": 237.8,
+          "y": 67,
+          "width": 70.3,
+          "height": 38,
+          "right": 308
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 336,
+        "height": 81,
+        "right": 348,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 336,
+        "height": 360,
+        "right": 348,
+        "bottom": 517
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 336,
+        "height": 394,
+        "right": 348,
+        "bottom": 551
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 734,
+        "width": 360,
+        "height": 66,
+        "right": 360,
+        "bottom": 800
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 80.3,
+          "height": 38,
+          "right": 92.3
+        },
+        {
+          "label": "Entregas",
+          "x": 97.3,
+          "y": 67,
+          "width": 80.3,
+          "height": 38,
+          "right": 177.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 182.5,
+          "y": 67,
+          "width": 80.3,
+          "height": 38,
+          "right": 262.8
+        },
+        {
+          "label": "Rotas",
+          "x": 267.8,
+          "y": 67,
+          "width": 80.3,
+          "height": 38,
+          "right": 348
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 336,
+        "height": 81,
+        "right": 348,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 336,
+        "height": 360,
+        "right": 348,
+        "bottom": 517
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 336,
+        "height": 394,
+        "right": 348,
+        "bottom": 551
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 734,
+        "width": 360,
+        "height": 66,
+        "right": 360,
+        "bottom": 800
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 80.3,
+          "height": 38,
+          "right": 92.3
+        },
+        {
+          "label": "Entregas",
+          "x": 97.3,
+          "y": 67,
+          "width": 80.3,
+          "height": 38,
+          "right": 177.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 182.5,
+          "y": 67,
+          "width": 80.3,
+          "height": 38,
+          "right": 262.8
+        },
+        {
+          "label": "Rotas",
+          "x": 267.8,
+          "y": 67,
+          "width": 80.3,
+          "height": 38,
+          "right": 348
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "phase": "before",
+      "docWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388,
+        "bottom": 57
+      },
+      "filterbar": null,
+      "map": {
+        "x": 23,
+        "y": 248.9,
+        "width": 344,
+        "height": 489.5,
+        "right": 367,
+        "bottom": 738.4
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 150.9,
+        "width": 366,
+        "height": 687.8,
+        "right": 378,
+        "bottom": 838.7
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 366,
+        "height": 73.9,
+        "right": 378,
+        "bottom": 140.9
+      },
+      "viewSwitch": null,
+      "plans": {
+        "x": 12,
+        "y": 848.7,
+        "width": 366,
+        "height": 243.3,
+        "right": 378,
+        "bottom": 1092
+      },
+      "selected": {
+        "x": 12,
+        "y": 1102,
+        "width": 366,
+        "height": 22,
+        "right": 378,
+        "bottom": 1124
+      },
+      "deliveries": {
+        "x": 12,
+        "y": 1134,
+        "width": 366,
+        "height": 199.3,
+        "right": 378,
+        "bottom": 1333.2
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 778,
+        "width": 390,
+        "height": 66,
+        "right": 390,
+        "bottom": 844
+      },
+      "filters": [],
+      "visibleFilterCount": 0,
+      "emptyCount": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 366,
+        "height": 81,
+        "right": 378,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 366,
+        "height": 379.8,
+        "right": 378,
+        "bottom": 536.8
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 366,
+        "height": 413.8,
+        "right": 378,
+        "bottom": 570.8
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 778,
+        "width": 390,
+        "height": 66,
+        "right": 390,
+        "bottom": 844
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 99.8
+        },
+        {
+          "label": "Entregas",
+          "x": 104.8,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 192.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 197.5,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 285.3
+        },
+        {
+          "label": "Rotas",
+          "x": 290.3,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 378
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "phase": "before",
+      "docWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388,
+        "bottom": 57
+      },
+      "filterbar": null,
+      "map": {
+        "x": 23,
+        "y": 248.9,
+        "width": 344,
+        "height": 489.5,
+        "right": 367,
+        "bottom": 738.4
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 150.9,
+        "width": 366,
+        "height": 687.8,
+        "right": 378,
+        "bottom": 838.7
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 366,
+        "height": 73.9,
+        "right": 378,
+        "bottom": 140.9
+      },
+      "viewSwitch": null,
+      "plans": {
+        "x": 12,
+        "y": 848.7,
+        "width": 366,
+        "height": 243.3,
+        "right": 378,
+        "bottom": 1092
+      },
+      "selected": {
+        "x": 12,
+        "y": 1102,
+        "width": 366,
+        "height": 22,
+        "right": 378,
+        "bottom": 1124
+      },
+      "deliveries": {
+        "x": 12,
+        "y": 1134,
+        "width": 366,
+        "height": 199.3,
+        "right": 378,
+        "bottom": 1333.2
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 778,
+        "width": 390,
+        "height": 66,
+        "right": 390,
+        "bottom": 844
+      },
+      "filters": [],
+      "visibleFilterCount": 0,
+      "emptyCount": 0
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 366,
+        "height": 81,
+        "right": 378,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 366,
+        "height": 379.8,
+        "right": 378,
+        "bottom": 536.8
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 366,
+        "height": 413.8,
+        "right": 378,
+        "bottom": 570.8
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 778,
+        "width": 390,
+        "height": 66,
+        "right": 390,
+        "bottom": 844
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 99.8
+        },
+        {
+          "label": "Entregas",
+          "x": 104.8,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 192.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 197.5,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 285.3
+        },
+        {
+          "label": "Rotas",
+          "x": 290.3,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 378
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 430,
+      "height": 932,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 430,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 426,
+        "height": 57,
+        "right": 428,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 406,
+        "height": 81,
+        "right": 418,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 406,
+        "height": 419.4,
+        "right": 418,
+        "bottom": 576.4
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 406,
+        "height": 453.4,
+        "right": 418,
+        "bottom": 610.4
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 866,
+        "width": 430,
+        "height": 66,
+        "right": 430,
+        "bottom": 932
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 97.8,
+          "height": 38,
+          "right": 109.8
+        },
+        {
+          "label": "Entregas",
+          "x": 114.8,
+          "y": 67,
+          "width": 97.8,
+          "height": 38,
+          "right": 212.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 217.5,
+          "y": 67,
+          "width": 97.8,
+          "height": 38,
+          "right": 315.3
+        },
+        {
+          "label": "Rotas",
+          "x": 320.3,
+          "y": 67,
+          "width": 97.8,
+          "height": 38,
+          "right": 418
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 430,
+      "height": 932,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 430,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 426,
+        "height": 57,
+        "right": 428,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 406,
+        "height": 81,
+        "right": 418,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 406,
+        "height": 419.4,
+        "right": 418,
+        "bottom": 576.4
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 406,
+        "height": 453.4,
+        "right": 418,
+        "bottom": 610.4
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 866,
+        "width": 430,
+        "height": 66,
+        "right": 430,
+        "bottom": 932
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 97.8,
+          "height": 38,
+          "right": 109.8
+        },
+        {
+          "label": "Entregas",
+          "x": 114.8,
+          "y": 67,
+          "width": 97.8,
+          "height": 38,
+          "right": 212.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 217.5,
+          "y": 67,
+          "width": 97.8,
+          "height": 38,
+          "right": 315.3
+        },
+        {
+          "label": "Rotas",
+          "x": 320.3,
+          "y": 67,
+          "width": 97.8,
+          "height": 38,
+          "right": 418
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 600,
+      "height": 960,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 600,
+      "header": {
+        "x": 82,
+        "y": 12,
+        "width": 504,
+        "height": 81.4,
+        "right": 586,
+        "bottom": 93.4
+      },
+      "filterbar": {
+        "x": 82,
+        "y": 111.4,
+        "width": 504,
+        "height": 85,
+        "right": 586,
+        "bottom": 196.4
+      },
+      "map": {
+        "x": 82,
+        "y": 208.4,
+        "width": 504,
+        "height": 499.2,
+        "right": 586,
+        "bottom": 707.6
+      },
+      "mapPanel": {
+        "x": 82,
+        "y": 208.4,
+        "width": 504,
+        "height": 533.2,
+        "right": 586,
+        "bottom": 741.6
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 82,
+          "y": 111.4,
+          "width": 122.3,
+          "height": 40,
+          "right": 204.3
+        },
+        {
+          "label": "Entregas",
+          "x": 209.3,
+          "y": 111.4,
+          "width": 122.3,
+          "height": 40,
+          "right": 331.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 336.5,
+          "y": 111.4,
+          "width": 122.3,
+          "height": 40,
+          "right": 458.8
+        },
+        {
+          "label": "Rotas",
+          "x": 463.8,
+          "y": 111.4,
+          "width": 122.3,
+          "height": 40,
+          "right": 586
+        },
+        {
+          "label": "Ajustar",
+          "x": 82,
+          "y": 156.4,
+          "width": 71.7,
+          "height": 40,
+          "right": 153.7
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 600,
+      "height": 960,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 600,
+      "header": {
+        "x": 82,
+        "y": 12,
+        "width": 504,
+        "height": 81.4,
+        "right": 586,
+        "bottom": 93.4
+      },
+      "filterbar": {
+        "x": 82,
+        "y": 111.4,
+        "width": 504,
+        "height": 85,
+        "right": 586,
+        "bottom": 196.4
+      },
+      "map": {
+        "x": 82,
+        "y": 208.4,
+        "width": 504,
+        "height": 499.2,
+        "right": 586,
+        "bottom": 707.6
+      },
+      "mapPanel": {
+        "x": 82,
+        "y": 208.4,
+        "width": 504,
+        "height": 533.2,
+        "right": 586,
+        "bottom": 741.6
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 82,
+          "y": 111.4,
+          "width": 122.3,
+          "height": 40,
+          "right": 204.3
+        },
+        {
+          "label": "Entregas",
+          "x": 209.3,
+          "y": 111.4,
+          "width": 122.3,
+          "height": 40,
+          "right": 331.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 336.5,
+          "y": 111.4,
+          "width": 122.3,
+          "height": 40,
+          "right": 458.8
+        },
+        {
+          "label": "Rotas",
+          "x": 463.8,
+          "y": 111.4,
+          "width": 122.3,
+          "height": 40,
+          "right": 586
+        },
+        {
+          "label": "Ajustar",
+          "x": 82,
+          "y": 156.4,
+          "width": 71.7,
+          "height": 40,
+          "right": 153.7
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "phase": "before",
+      "docWidth": 768,
+      "header": {
+        "x": 99,
+        "y": 22,
+        "width": 645.9,
+        "height": 81.4,
+        "right": 745,
+        "bottom": 103.4
+      },
+      "filterbar": null,
+      "map": {
+        "x": 378,
+        "y": 350,
+        "width": 356,
+        "height": 437.8,
+        "right": 734,
+        "bottom": 787.8
+      },
+      "mapPanel": {
+        "x": 367,
+        "y": 209,
+        "width": 378,
+        "height": 663.1,
+        "right": 745,
+        "bottom": 872.1
+      },
+      "summary": {
+        "x": 99,
+        "y": 121.4,
+        "width": 645.9,
+        "height": 71.6,
+        "right": 745,
+        "bottom": 193
+      },
+      "viewSwitch": null,
+      "plans": {
+        "x": 99,
+        "y": 209,
+        "width": 252,
+        "height": 663.1,
+        "right": 351,
+        "bottom": 872.1
+      },
+      "selected": {
+        "x": 99,
+        "y": 888.1,
+        "width": 645.9,
+        "height": 30,
+        "right": 745,
+        "bottom": 918.1
+      },
+      "deliveries": {
+        "x": 99,
+        "y": 934.1,
+        "width": 645.9,
+        "height": 207.3,
+        "right": 745,
+        "bottom": 1141.4
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [],
+      "visibleFilterCount": 0,
+      "emptyCount": 0
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 768,
+      "header": {
+        "x": 103.8,
+        "y": 12,
+        "width": 628.5,
+        "height": 81.4,
+        "right": 732.2,
+        "bottom": 93.4
+      },
+      "filterbar": {
+        "x": 103.8,
+        "y": 111.4,
+        "width": 628.5,
+        "height": 40,
+        "right": 732.2,
+        "bottom": 151.4
+      },
+      "map": {
+        "x": 103.8,
+        "y": 163.4,
+        "width": 628.5,
+        "height": 532.5,
+        "right": 732.2,
+        "bottom": 695.9
+      },
+      "mapPanel": {
+        "x": 103.8,
+        "y": 163.4,
+        "width": 628.5,
+        "height": 552.5,
+        "right": 732.2,
+        "bottom": 715.9
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 103.8,
+          "y": 111.4,
+          "width": 128.6,
+          "height": 40,
+          "right": 232.4
+        },
+        {
+          "label": "Entregas",
+          "x": 238.4,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 367.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 373.1,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 501.7
+        },
+        {
+          "label": "Rotas",
+          "x": 507.7,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 636.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 642.4,
+          "y": 111.4,
+          "width": 89.8,
+          "height": 40,
+          "right": 732.2
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "phase": "before",
+      "docWidth": 768,
+      "header": {
+        "x": 99,
+        "y": 22,
+        "width": 645.9,
+        "height": 81.4,
+        "right": 745,
+        "bottom": 103.4
+      },
+      "filterbar": null,
+      "map": {
+        "x": 378,
+        "y": 350,
+        "width": 356,
+        "height": 437.8,
+        "right": 734,
+        "bottom": 787.8
+      },
+      "mapPanel": {
+        "x": 367,
+        "y": 209,
+        "width": 378,
+        "height": 663.1,
+        "right": 745,
+        "bottom": 872.1
+      },
+      "summary": {
+        "x": 99,
+        "y": 121.4,
+        "width": 645.9,
+        "height": 71.6,
+        "right": 745,
+        "bottom": 193
+      },
+      "viewSwitch": null,
+      "plans": {
+        "x": 99,
+        "y": 209,
+        "width": 252,
+        "height": 663.1,
+        "right": 351,
+        "bottom": 872.1
+      },
+      "selected": {
+        "x": 99,
+        "y": 888.1,
+        "width": 645.9,
+        "height": 30,
+        "right": 745,
+        "bottom": 918.1
+      },
+      "deliveries": {
+        "x": 99,
+        "y": 934.1,
+        "width": 645.9,
+        "height": 207.3,
+        "right": 745,
+        "bottom": 1141.4
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [],
+      "visibleFilterCount": 0,
+      "emptyCount": 0
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 768,
+      "header": {
+        "x": 103.8,
+        "y": 12,
+        "width": 628.5,
+        "height": 81.4,
+        "right": 732.2,
+        "bottom": 93.4
+      },
+      "filterbar": {
+        "x": 103.8,
+        "y": 111.4,
+        "width": 628.5,
+        "height": 40,
+        "right": 732.2,
+        "bottom": 151.4
+      },
+      "map": {
+        "x": 103.8,
+        "y": 163.4,
+        "width": 628.5,
+        "height": 532.5,
+        "right": 732.2,
+        "bottom": 695.9
+      },
+      "mapPanel": {
+        "x": 103.8,
+        "y": 163.4,
+        "width": 628.5,
+        "height": 552.5,
+        "right": 732.2,
+        "bottom": 715.9
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 103.8,
+          "y": 111.4,
+          "width": 128.6,
+          "height": 40,
+          "right": 232.4
+        },
+        {
+          "label": "Entregas",
+          "x": 238.4,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 367.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 373.1,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 501.7
+        },
+        {
+          "label": "Rotas",
+          "x": 507.7,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 636.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 642.4,
+          "y": 111.4,
+          "width": 89.8,
+          "height": 40,
+          "right": 732.2
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 1009,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 691.6,
+        "height": 93.8,
+        "right": 978.3,
+        "bottom": 121.8
+      },
+      "filterbar": {
+        "x": 286.7,
+        "y": 135.8,
+        "width": 691.6,
+        "height": 40,
+        "right": 978.3,
+        "bottom": 175.8
+      },
+      "map": {
+        "x": 520.9,
+        "y": 189.8,
+        "width": 457.4,
+        "height": 445.4,
+        "right": 978.3,
+        "bottom": 635.3
+      },
+      "mapPanel": {
+        "x": 520.9,
+        "y": 189.8,
+        "width": 457.4,
+        "height": 479.4,
+        "right": 978.3,
+        "bottom": 669.3
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 286.7,
+        "y": 189.8,
+        "width": 220.2,
+        "height": 479.4,
+        "right": 506.9,
+        "bottom": 669.3
+      },
+      "selected": {
+        "x": 286.7,
+        "y": 683.3,
+        "width": 691.6,
+        "height": 84,
+        "right": 978.3,
+        "bottom": 767.3
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 286.7,
+          "y": 135.8,
+          "width": 144.4,
+          "height": 40,
+          "right": 431.1
+        },
+        {
+          "label": "Entregas",
+          "x": 437.1,
+          "y": 135.8,
+          "width": 144.4,
+          "height": 40,
+          "right": 581.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 587.6,
+          "y": 135.8,
+          "width": 144.4,
+          "height": 40,
+          "right": 732
+        },
+        {
+          "label": "Rotas",
+          "x": 738,
+          "y": 135.8,
+          "width": 144.4,
+          "height": 40,
+          "right": 882.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 888.4,
+          "y": 135.8,
+          "width": 89.8,
+          "height": 40,
+          "right": 978.3
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 1009,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 691.6,
+        "height": 93.8,
+        "right": 978.3,
+        "bottom": 121.8
+      },
+      "filterbar": {
+        "x": 286.7,
+        "y": 135.8,
+        "width": 691.6,
+        "height": 40,
+        "right": 978.3,
+        "bottom": 175.8
+      },
+      "map": {
+        "x": 520.9,
+        "y": 189.8,
+        "width": 457.4,
+        "height": 445.4,
+        "right": 978.3,
+        "bottom": 635.3
+      },
+      "mapPanel": {
+        "x": 520.9,
+        "y": 189.8,
+        "width": 457.4,
+        "height": 479.4,
+        "right": 978.3,
+        "bottom": 669.3
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 286.7,
+        "y": 189.8,
+        "width": 220.2,
+        "height": 479.4,
+        "right": 506.9,
+        "bottom": 669.3
+      },
+      "selected": {
+        "x": 286.7,
+        "y": 683.3,
+        "width": 691.6,
+        "height": 84,
+        "right": 978.3,
+        "bottom": 767.3
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 286.7,
+          "y": 135.8,
+          "width": 144.4,
+          "height": 40,
+          "right": 431.1
+        },
+        {
+          "label": "Entregas",
+          "x": 437.1,
+          "y": 135.8,
+          "width": 144.4,
+          "height": 40,
+          "right": 581.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 587.6,
+          "y": 135.8,
+          "width": 144.4,
+          "height": 40,
+          "right": 732
+        },
+        {
+          "label": "Rotas",
+          "x": 738,
+          "y": 135.8,
+          "width": 144.4,
+          "height": 40,
+          "right": 882.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 888.4,
+          "y": 135.8,
+          "width": 89.8,
+          "height": 40,
+          "right": 978.3
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 1280,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 947.2,
+        "height": 98.8,
+        "right": 1241.6,
+        "bottom": 126.8
+      },
+      "filterbar": {
+        "x": 294.4,
+        "y": 140.8,
+        "width": 947.2,
+        "height": 40,
+        "right": 1241.6,
+        "bottom": 180.8
+      },
+      "map": {
+        "x": 568,
+        "y": 194.8,
+        "width": 360,
+        "height": 512,
+        "right": 928,
+        "bottom": 706.8
+      },
+      "mapPanel": {
+        "x": 568,
+        "y": 194.8,
+        "width": 360,
+        "height": 546,
+        "right": 928,
+        "bottom": 740.8
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 294.4,
+        "y": 194.8,
+        "width": 259.6,
+        "height": 86.4,
+        "right": 554,
+        "bottom": 281.2
+      },
+      "selected": {
+        "x": 942,
+        "y": 194.8,
+        "width": 299.6,
+        "height": 84,
+        "right": 1241.6,
+        "bottom": 278.8
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 294.4,
+          "y": 140.8,
+          "width": 208.3,
+          "height": 40,
+          "right": 502.7
+        },
+        {
+          "label": "Entregas",
+          "x": 508.7,
+          "y": 140.8,
+          "width": 208.3,
+          "height": 40,
+          "right": 717.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 723.1,
+          "y": 140.8,
+          "width": 208.3,
+          "height": 40,
+          "right": 931.4
+        },
+        {
+          "label": "Rotas",
+          "x": 937.4,
+          "y": 140.8,
+          "width": 208.3,
+          "height": 40,
+          "right": 1145.8
+        },
+        {
+          "label": "Ajustar",
+          "x": 1151.8,
+          "y": 140.8,
+          "width": 89.8,
+          "height": 40,
+          "right": 1241.6
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 1280,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 947.2,
+        "height": 98.8,
+        "right": 1241.6,
+        "bottom": 126.8
+      },
+      "filterbar": {
+        "x": 294.4,
+        "y": 140.8,
+        "width": 947.2,
+        "height": 40,
+        "right": 1241.6,
+        "bottom": 180.8
+      },
+      "map": {
+        "x": 568,
+        "y": 194.8,
+        "width": 360,
+        "height": 512,
+        "right": 928,
+        "bottom": 706.8
+      },
+      "mapPanel": {
+        "x": 568,
+        "y": 194.8,
+        "width": 360,
+        "height": 546,
+        "right": 928,
+        "bottom": 740.8
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 294.4,
+        "y": 194.8,
+        "width": 259.6,
+        "height": 86.4,
+        "right": 554,
+        "bottom": 281.2
+      },
+      "selected": {
+        "x": 942,
+        "y": 194.8,
+        "width": 299.6,
+        "height": 84,
+        "right": 1241.6,
+        "bottom": 278.8
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 294.4,
+          "y": 140.8,
+          "width": 208.3,
+          "height": 40,
+          "right": 502.7
+        },
+        {
+          "label": "Entregas",
+          "x": 508.7,
+          "y": 140.8,
+          "width": 208.3,
+          "height": 40,
+          "right": 717.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 723.1,
+          "y": 140.8,
+          "width": 208.3,
+          "height": 40,
+          "right": 931.4
+        },
+        {
+          "label": "Rotas",
+          "x": 937.4,
+          "y": 140.8,
+          "width": 208.3,
+          "height": 40,
+          "right": 1145.8
+        },
+        {
+          "label": "Ajustar",
+          "x": 1151.8,
+          "y": 140.8,
+          "width": 89.8,
+          "height": 40,
+          "right": 1241.6
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "phase": "before",
+      "docWidth": 1425,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1082.6,
+        "height": 102.7,
+        "right": 1381.8,
+        "bottom": 130.7
+      },
+      "filterbar": null,
+      "map": {
+        "x": 626.2,
+        "y": 373.3,
+        "width": 378.6,
+        "height": 558,
+        "right": 1004.8,
+        "bottom": 931.3
+      },
+      "mapPanel": {
+        "x": 615.2,
+        "y": 232.3,
+        "width": 400.6,
+        "height": 783.4,
+        "right": 1015.8,
+        "bottom": 1015.7
+      },
+      "summary": {
+        "x": 299.2,
+        "y": 144.7,
+        "width": 1082.6,
+        "height": 71.6,
+        "right": 1381.8,
+        "bottom": 216.3
+      },
+      "viewSwitch": null,
+      "plans": {
+        "x": 299.2,
+        "y": 232.3,
+        "width": 300,
+        "height": 225.3,
+        "right": 599.2,
+        "bottom": 457.5
+      },
+      "selected": {
+        "x": 1031.8,
+        "y": 232.3,
+        "width": 350,
+        "height": 30,
+        "right": 1381.8,
+        "bottom": 262.3
+      },
+      "deliveries": {
+        "x": 299.2,
+        "y": 1031.7,
+        "width": 1082.6,
+        "height": 207.3,
+        "right": 1381.8,
+        "bottom": 1238.9
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [],
+      "visibleFilterCount": 0,
+      "emptyCount": 0
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 1440,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1097.6,
+        "height": 102.7,
+        "right": 1396.8,
+        "bottom": 130.7
+      },
+      "filterbar": {
+        "x": 299.2,
+        "y": 144.7,
+        "width": 1097.6,
+        "height": 40,
+        "right": 1396.8,
+        "bottom": 184.7
+      },
+      "map": {
+        "x": 583.2,
+        "y": 198.7,
+        "width": 469.6,
+        "height": 576,
+        "right": 1052.8,
+        "bottom": 774.7
+      },
+      "mapPanel": {
+        "x": 583.2,
+        "y": 198.7,
+        "width": 469.6,
+        "height": 610,
+        "right": 1052.8,
+        "bottom": 808.7
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 299.2,
+        "y": 198.7,
+        "width": 270,
+        "height": 86.4,
+        "right": 569.2,
+        "bottom": 285.2
+      },
+      "selected": {
+        "x": 1066.8,
+        "y": 198.7,
+        "width": 330,
+        "height": 84,
+        "right": 1396.8,
+        "bottom": 282.7
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 299.2,
+          "y": 144.7,
+          "width": 245.9,
+          "height": 40,
+          "right": 545.1
+        },
+        {
+          "label": "Entregas",
+          "x": 551.1,
+          "y": 144.7,
+          "width": 246,
+          "height": 40,
+          "right": 797.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 803.1,
+          "y": 144.7,
+          "width": 245.9,
+          "height": 40,
+          "right": 1049
+        },
+        {
+          "label": "Rotas",
+          "x": 1055,
+          "y": 144.7,
+          "width": 246,
+          "height": 40,
+          "right": 1301
+        },
+        {
+          "label": "Ajustar",
+          "x": 1307,
+          "y": 144.7,
+          "width": 89.8,
+          "height": 40,
+          "right": 1396.8
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "phase": "before",
+      "docWidth": 1425,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1082.6,
+        "height": 102.7,
+        "right": 1381.8,
+        "bottom": 130.7
+      },
+      "filterbar": null,
+      "map": {
+        "x": 626.2,
+        "y": 373.3,
+        "width": 378.6,
+        "height": 558,
+        "right": 1004.8,
+        "bottom": 931.3
+      },
+      "mapPanel": {
+        "x": 615.2,
+        "y": 232.3,
+        "width": 400.6,
+        "height": 783.4,
+        "right": 1015.8,
+        "bottom": 1015.7
+      },
+      "summary": {
+        "x": 299.2,
+        "y": 144.7,
+        "width": 1082.6,
+        "height": 71.6,
+        "right": 1381.8,
+        "bottom": 216.3
+      },
+      "viewSwitch": null,
+      "plans": {
+        "x": 299.2,
+        "y": 232.3,
+        "width": 300,
+        "height": 225.3,
+        "right": 599.2,
+        "bottom": 457.5
+      },
+      "selected": {
+        "x": 1031.8,
+        "y": 232.3,
+        "width": 350,
+        "height": 30,
+        "right": 1381.8,
+        "bottom": 262.3
+      },
+      "deliveries": {
+        "x": 299.2,
+        "y": 1031.7,
+        "width": 1082.6,
+        "height": 207.3,
+        "right": 1381.8,
+        "bottom": 1238.9
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [],
+      "visibleFilterCount": 0,
+      "emptyCount": 0
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 1440,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1097.6,
+        "height": 102.7,
+        "right": 1396.8,
+        "bottom": 130.7
+      },
+      "filterbar": {
+        "x": 299.2,
+        "y": 144.7,
+        "width": 1097.6,
+        "height": 40,
+        "right": 1396.8,
+        "bottom": 184.7
+      },
+      "map": {
+        "x": 583.2,
+        "y": 198.7,
+        "width": 469.6,
+        "height": 576,
+        "right": 1052.8,
+        "bottom": 774.7
+      },
+      "mapPanel": {
+        "x": 583.2,
+        "y": 198.7,
+        "width": 469.6,
+        "height": 610,
+        "right": 1052.8,
+        "bottom": 808.7
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 299.2,
+        "y": 198.7,
+        "width": 270,
+        "height": 86.4,
+        "right": 569.2,
+        "bottom": 285.2
+      },
+      "selected": {
+        "x": 1066.8,
+        "y": 198.7,
+        "width": 330,
+        "height": 84,
+        "right": 1396.8,
+        "bottom": 282.7
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 299.2,
+          "y": 144.7,
+          "width": 245.9,
+          "height": 40,
+          "right": 545.1
+        },
+        {
+          "label": "Entregas",
+          "x": 551.1,
+          "y": 144.7,
+          "width": 246,
+          "height": 40,
+          "right": 797.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 803.1,
+          "y": 144.7,
+          "width": 245.9,
+          "height": 40,
+          "right": 1049
+        },
+        {
+          "label": "Rotas",
+          "x": 1055,
+          "y": 144.7,
+          "width": 246,
+          "height": 40,
+          "right": 1301
+        },
+        {
+          "label": "Ajustar",
+          "x": 1307,
+          "y": 144.7,
+          "width": 89.8,
+          "height": 40,
+          "right": 1396.8
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 1920,
+      "header": {
+        "x": 336,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1840,
+        "bottom": 133.3
+      },
+      "filterbar": {
+        "x": 336,
+        "y": 147.3,
+        "width": 1504,
+        "height": 40,
+        "right": 1840,
+        "bottom": 187.3
+      },
+      "map": {
+        "x": 620,
+        "y": 201.3,
+        "width": 876,
+        "height": 650,
+        "right": 1496,
+        "bottom": 851.3
+      },
+      "mapPanel": {
+        "x": 620,
+        "y": 201.3,
+        "width": 876,
+        "height": 670,
+        "right": 1496,
+        "bottom": 871.3
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 336,
+        "y": 201.3,
+        "width": 270,
+        "height": 86.4,
+        "right": 606,
+        "bottom": 287.8
+      },
+      "selected": {
+        "x": 1510,
+        "y": 201.3,
+        "width": 330,
+        "height": 84,
+        "right": 1840,
+        "bottom": 285.3
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 336,
+          "y": 147.3,
+          "width": 347.5,
+          "height": 40,
+          "right": 683.5
+        },
+        {
+          "label": "Entregas",
+          "x": 689.5,
+          "y": 147.3,
+          "width": 347.5,
+          "height": 40,
+          "right": 1037.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 1043.1,
+          "y": 147.3,
+          "width": 347.5,
+          "height": 40,
+          "right": 1390.6
+        },
+        {
+          "label": "Rotas",
+          "x": 1396.6,
+          "y": 147.3,
+          "width": 347.5,
+          "height": 40,
+          "right": 1744.2
+        },
+        {
+          "label": "Ajustar",
+          "x": 1750.2,
+          "y": 147.3,
+          "width": 89.8,
+          "height": 40,
+          "right": 1840
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 1920,
+      "header": {
+        "x": 336,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1840,
+        "bottom": 133.3
+      },
+      "filterbar": {
+        "x": 336,
+        "y": 147.3,
+        "width": 1504,
+        "height": 40,
+        "right": 1840,
+        "bottom": 187.3
+      },
+      "map": {
+        "x": 620,
+        "y": 201.3,
+        "width": 876,
+        "height": 650,
+        "right": 1496,
+        "bottom": 851.3
+      },
+      "mapPanel": {
+        "x": 620,
+        "y": 201.3,
+        "width": 876,
+        "height": 670,
+        "right": 1496,
+        "bottom": 871.3
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 336,
+        "y": 201.3,
+        "width": 270,
+        "height": 86.4,
+        "right": 606,
+        "bottom": 287.8
+      },
+      "selected": {
+        "x": 1510,
+        "y": 201.3,
+        "width": 330,
+        "height": 84,
+        "right": 1840,
+        "bottom": 285.3
+      },
+      "deliveries": null,
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 336,
+          "y": 147.3,
+          "width": 347.5,
+          "height": 40,
+          "right": 683.5
+        },
+        {
+          "label": "Entregas",
+          "x": 689.5,
+          "y": 147.3,
+          "width": 347.5,
+          "height": 40,
+          "right": 1037.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 1043.1,
+          "y": 147.3,
+          "width": 347.5,
+          "height": 40,
+          "right": 1390.6
+        },
+        {
+          "label": "Rotas",
+          "x": 1396.6,
+          "y": 147.3,
+          "width": 347.5,
+          "height": 40,
+          "right": 1744.2
+        },
+        {
+          "label": "Ajustar",
+          "x": 1750.2,
+          "y": 147.3,
+          "width": 89.8,
+          "height": 40,
+          "right": 1840
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2
+    }
+  ]
+}

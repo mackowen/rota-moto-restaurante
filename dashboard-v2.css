@@ -560,11 +560,6 @@ html[data-resolved-theme="light"] .dashboard-v2{
   .dashboard-v2 .dv2-header-actions{
     grid-column:3;
     gap:4px}
-  .dashboard-v2 .dv2-header-actions .dv2-icon-button{
-    width:40px;
-    min-width:40px;
-    height:40px;
-    min-height:40px}
 }
 
 @media(max-width:350px){
