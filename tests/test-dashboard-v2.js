@@ -72,6 +72,14 @@ assert.match(app,/main\.innerHTML=views\[state\.tab\]\?views\[state\.tab\]\(\)/u
 assert.doesNotMatch(app,/searchParams\.get\('preview'\)===?'dashboard-v2'/u,'official dashboard no longer depends on preview mode');
 assert.match(app,/state\.tab==='dashboard'&&canModule\('dashboard'\)&&window\.RotaMotoDashboardV2/u,'dashboard-specific tablet presentation still respects RBAC');
 assert.match(app,/data-nav-more-close/u,'More sheet has an accessible close control');
+assert.match(app,/function orderQuickFilterMarkup\(\)[\s\S]*aria-pressed=/u,'orders quick filters expose their selected state accessibly');
+assert.match(app,/data-orders-clear/u,'orders search provides a working clear action');
+assert.match(app,/const quick=ORDER_QUICK_STATUS\[ordersQuickFilter\]/u,'orders filtering applies the selected canonical status group');
+assert.match(app,/bindOrderRowActions\(el\)/u,'filtered rows rebind open, print and eligible QR actions after replacing the list');
+assert.match(app,/main\.dataset\.module=state\.tab/u,'shared module styling receives the active route without changing module behavior');
+assert.match(ds,/#main\[data-module="orders"\] \.order-quick-filters/u,'orders controls use scoped responsive Design System primitives');
+assert.match(ds,/order-card-actions>\.order-open-btn\{grid-column:1\/-1\}/u,'mobile delivery cards prioritize Open and pair secondary print and QR actions');
+assert.match(ds,/order-card-actions>\.order-qr-wrap\{width:100%;min-width:0;max-width:none;min-height:44px/u,'eligible QR action uses the same accessible mobile touch target as print');
 assert.match(app,/aria-modal="true" aria-labelledby="navMoreTitle"/u,'More sheet is exposed as a labelled modal dialog');
 assert.match(app,/function openMoreMenu\(\)[\s\S]*aria-expanded','true'[\s\S]*data-nav-more-close/u,'opening More announces state and moves focus inside');
 assert.match(app,/event\.key==='Escape'[\s\S]*closeMoreMenu\(\)/u,'Escape closes More and restores focus');
@@ -82,8 +90,8 @@ assert.match(ds,/nav-more-groups[\s\S]*overflow:auto/u,'More destinations scroll
 assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection state distinguishes active synchronization');
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
 assert.match(index,/dashboard-v2\.js\?v=0300\.2/u,'official component bundle is versioned for 0300');
-assert.match(sw,/CACHE_PREFIX\}v89/u,'service worker shell cache is advanced for the integrated release');
-assert.match(index,/app\.js\?v=0300\.4/u,'official app script uses a fresh cache key');
+assert.match(sw,/CACHE_PREFIX\}v91/u,'service worker shell cache is advanced for the integrated release');
+assert.match(index,/app\.js\?v=0301\.2/u,'official app script uses a fresh cache key');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
 
 assert.match(app,/const session=await restoreSyncSession\(\);if\(session\)\{const editing=[\s\S]*?if\(!editing\)render\(\);scheduleServerSync\(0\)\}/u,'authenticated startup reprojects local state after restoring the tenant without replacing an in-progress form');

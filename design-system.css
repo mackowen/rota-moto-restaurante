@@ -35,6 +35,23 @@ body{font-family:var(--font-ui);background:var(--canvas);color:var(--text-primar
 .analysis-line{min-width:0;min-height:43px;padding:10px 0;border-color:var(--border-subtle);gap:14px;align-items:flex-start}.analysis-line span,.analysis-line b{min-width:0;white-space:normal;overflow-wrap:anywhere;overflow:visible;text-overflow:clip}.analysis-line span{color:var(--text-secondary);font-size:12px}.analysis-line b{font-size:13px;text-align:right;flex:0 1 auto}
 .command-foot,.events-summary{color:var(--text-muted);font-size:12px;line-height:1.5;padding:12px 14px;border-radius:12px;background:var(--surface-soft)}
 .filterbar{display:grid;grid-template-columns:minmax(220px,1.5fr) repeat(3,minmax(150px,1fr));gap:10px;align-items:end}
+#main[data-module="orders"] .orders-filter-panel{display:grid;gap:14px;min-width:0}
+#main[data-module="orders"] .orders-search-row{display:grid;grid-template-columns:minmax(130px,.32fr) minmax(0,1fr);align-items:end;gap:12px}
+#main[data-module="orders"] .orders-search-row>label{font-size:12px;font-weight:700;color:var(--text-secondary)}
+#main[data-module="orders"] .orders-search-row>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-width:0}
+#main[data-module="orders"] .order-quick-filters{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:thin}
+#main[data-module="orders"] .order-quick-filter{min-width:94px;min-height:44px;padding:7px 11px;display:inline-flex;align-items:center;justify-content:space-between;gap:9px;border:1px solid var(--border-subtle);border-radius:11px;background:var(--surface-soft);color:var(--text-secondary);font:inherit;font-size:12px;font-weight:650;white-space:nowrap;cursor:pointer}
+#main[data-module="orders"] .order-quick-filter small{font-variant-numeric:tabular-nums;color:var(--text-muted)}
+#main[data-module="orders"] .order-quick-filter.active{border-color:var(--accent);background:var(--accent-soft);color:var(--text-primary)}
+#main[data-module="orders"] .order-quick-filter:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 48%,transparent);outline-offset:2px}
+#main[data-module="orders"] .orders-advanced-filters{border-top:1px solid var(--border-subtle);padding-top:10px}
+#main[data-module="orders"] .orders-advanced-filters>summary{width:max-content;max-width:100%;min-height:40px;display:flex;align-items:center;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer}
+#main[data-module="orders"] .orders-advanced-filters .filterbar{padding-top:12px}
+@media(max-width:600px){#main[data-module="orders"] .orders-search-row{grid-template-columns:minmax(0,1fr);gap:6px}#main[data-module="orders"] .orders-search-row>div{grid-template-columns:minmax(0,1fr) auto}#main[data-module="orders"] .order-quick-filter{min-width:88px;padding-inline:9px}#main[data-module="orders"] .orders-advanced-filters .filterbar{grid-template-columns:minmax(0,1fr)}}
+#main[data-module="orders"] .table tbody .order-actions-cell{min-width:0}
+#main[data-module="orders"] .order-card-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+#main[data-module="orders"] .order-card-actions>.btn{min-height:44px}
+@media(max-width:600px){#main[data-module="orders"] .table tbody td:last-child .order-card-actions{width:100%;max-width:none;justify-self:stretch;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#main[data-module="orders"] .order-card-actions>.order-open-btn{grid-column:1/-1}#main[data-module="orders"] .order-card-actions>.order-print-btn,#main[data-module="orders"] .order-card-actions>.order-qr-wrap{width:100%;min-width:0;max-width:none;min-height:44px;height:auto;grid-column:auto;justify-self:stretch;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 10px;border-radius:10px}#main[data-module="orders"] .order-card-actions>.order-qr-wrap span{font-size:16px;line-height:1}#main[data-module="orders"] .order-card-actions>.order-qr-wrap small{font-size:12px}}
 .eventfilters{grid-template-columns:minmax(220px,1.3fr) repeat(4,minmax(150px,1fr))}
 .input,.select,.textarea{width:100%;min-width:0;padding:10px 12px;background:var(--surface-raised);border:1px solid var(--border-strong);color:var(--text-primary);font-size:14px;line-height:1.35}
 .filterbar label{font-size:12px;color:var(--text-secondary);font-weight:650;display:grid;gap:6px}

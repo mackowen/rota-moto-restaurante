@@ -1,0 +1,303 @@
+{
+  "campaign": "0301",
+  "scope": "Home V2 regression plus targeted Orders UI in backend-issued authenticated MFA session",
+  "database": "rotamoto_e2e",
+  "session": {
+    "mfaVerified": true,
+    "tenantScoped": true
+  },
+  "fixture": {
+    "databaseCommitted": false,
+    "cleanup": "COMPLETED",
+    "tenantScopedResiduals": 0
+  },
+  "ordersUi": {
+    "section": "Pedidos e entregas",
+    "viewport": "390x844 dark",
+    "checks": {
+      "quickWaitingFilter": "PASS",
+      "fixtureOrderVisible": "PASS",
+      "printActionEnabledAfterFilter": "PASS",
+      "printPreviewMatchesFixture": "PASS",
+      "clearActionExecuted": "PASS"
+    },
+    "screenshot": "capturas/orders-filtered-390x844-dark.png"
+  },
+  "homeRegression": {
+    "captures": [
+      {
+        "viewport": "320x720",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 5
+      },
+      {
+        "viewport": "320x720",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 5
+      },
+      {
+        "viewport": "360x800",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "360x800",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "390x844",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "390x844",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "430x932",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "430x932",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "600x960",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "600x960",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "768x1024",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 14
+      },
+      {
+        "viewport": "768x1024",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 14
+      },
+      {
+        "viewport": "1024x768",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 0
+      },
+      {
+        "viewport": "1024x768",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 0
+      },
+      {
+        "viewport": "1280x800",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "1280x800",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 1
+      },
+      {
+        "viewport": "1440x900",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 0
+      },
+      {
+        "viewport": "1440x900",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 0
+      },
+      {
+        "viewport": "1920x1080",
+        "theme": "dark",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 0
+      },
+      {
+        "viewport": "1920x1080",
+        "theme": "light",
+        "pageOverflow": false,
+        "innerHorizontalScrollerCount": 0
+      }
+    ],
+    "javascriptErrors": 0,
+    "servedAssets": [
+      {
+        "path": "/styles.css?v=0301.3",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/design-system.css?v=0301.2",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/dashboard-v2.css?v=0300.3",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/dashboard-v2.js?v=0300.2",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/app.js?v=0301.2",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/styles.css?v=0301.3",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/design-system.css?v=0301.2",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/dashboard-v2.css?v=0300.3",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/dashboard-v2.js?v=0300.2",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/app.js?v=0301.2",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/styles.css?v=0301.3",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/design-system.css?v=0301.2",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/dashboard-v2.css?v=0300.3",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/dashboard-v2.js?v=0300.2",
+        "status": 200,
+        "fromDiskCache": false
+      },
+      {
+        "path": "/app.js?v=0301.2",
+        "status": 200,
+        "fromDiskCache": false
+      }
+    ],
+    "navigation": [
+      {
+        "tab": "orders",
+        "state": "RENDERED",
+        "title": "Pedidos e entregasPedidos e entregas"
+      },
+      {
+        "tab": "routes",
+        "state": "RENDERED",
+        "title": "RotasRotas"
+      },
+      {
+        "tab": "bikes",
+        "state": "RENDERED",
+        "title": "MotoboysMotoboys"
+      },
+      {
+        "tab": "reports",
+        "state": "RENDERED",
+        "title": "RelatóriosRelatórios"
+      },
+      {
+        "tab": "events",
+        "state": "RENDERED",
+        "title": "EventosEventos"
+      },
+      {
+        "tab": "settings",
+        "state": "RENDERED",
+        "title": "AjustesAjustes"
+      },
+      {
+        "tab": "help",
+        "state": "RENDERED",
+        "title": "AjudaAjuda"
+      },
+      {
+        "tab": "admin",
+        "state": "RENDERED",
+        "title": "AjustesAjustes"
+      },
+      {
+        "tab": "integrationLab",
+        "state": "RENDERED",
+        "title": "AjustesAjustes"
+      }
+    ],
+    "moreEscapeAndFocusRestoration": true
+  },
+  "knownHarness404": [
+    "/api/restaurant-driver-queue",
+    "/api/logistics/analytics",
+    "/api/logistics/intelligence/analytics",
+    "/api/logistics/intelligence/decision-quality",
+    "/api/logistics/route-settings",
+    "/api/analytics/territorial",
+    "/api/analytics/territorial/deliveries/01a169b7-bd19-7c5a-b723-d4dc67e6f883/destination"
+  ],
+  "notes": [
+    "An initial unauthenticated harness probe returned 401 before backend-issued session installation; session subsequently confirmed MFA.",
+    "404s are known fixture capability gaps from 0300; affected modules remain unverified.",
+    "Chromium viewport emulation only; no physical Android validation."
+  ],
+  "workspaceOriginReadOnlyCheck": {
+    "origin": "http://127.0.0.1:8083",
+    "checkedAt": "2026-10-23",
+    "paths": {
+      "/": "200 SHA-256 workspace match",
+      "/index.html": "200 SHA-256 workspace match",
+      "/app.js?v=0301.2": "200 SHA-256 workspace match",
+      "/styles.css?v=0301.3": "200 SHA-256 workspace match",
+      "/design-system.css?v=0301.2": "200 SHA-256 workspace match",
+      "/sw.js": "200 SHA-256 workspace match"
+    },
+    "serviceRestarted": false
+  }
+}
