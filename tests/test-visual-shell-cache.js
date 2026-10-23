@@ -35,7 +35,7 @@ assert.match(worker,/\/orders-v2\.css\?v=0303\.1/u);
 assert.match(worker,/\/pilot-views\.css\?v=0299\.1/u);
 assert.match(worker,/\/app\.js\?v=0304\.1/u);
 assert.match(worker,/\/dashboard-v2\.js\?v=0304\.2/u);
-assert.match(worker,/\/dashboard-v2\.css\?v=0304\.3/u);
+assert.match(worker,/\/dashboard-v2\.css\?v=0304\.4/u);
 assert.match(worker,/\/routes-v2\.css\?v=0304\.1/u);
 const stylesheetAsset=html.match(/styles\.css\?v=[^"']+/u)?.[0];assert(stylesheetAsset,'index declares a versioned stylesheet');
 assert(worker.includes(`/${stylesheetAsset}`),'service worker caches the exact stylesheet declared by index.html');

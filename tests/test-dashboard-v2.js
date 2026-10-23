@@ -106,8 +106,8 @@ assert.match(ds,/nav-more-groups[\s\S]*overflow:auto/u,'More destinations scroll
 assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection state distinguishes active synchronization');
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
 assert.match(index,/dashboard-v2\.js\?v=0304\.2/u,'shared header component bundle uses the current campaign cache key');
-assert.match(index,/dashboard-v2\.css\?v=0304\.3/u,'dashboard width/header CSS uses the current campaign cache key');
-assert.match(sw,/CACHE_PREFIX\}v98/u,'service worker shell cache is advanced for the current campaign');
+assert.match(index,/dashboard-v2\.css\?v=0304\.4/u,'dashboard width/header CSS uses the current campaign cache key');
+assert.match(sw,/CACHE_PREFIX\}v99/u,'service worker shell cache is advanced for the current campaign');
 assert.match(index,/app\.js\?v=0304\.1/u,'official app script uses the current campaign cache key');
 assert.match(index,/orders-v2\.css\?v=0303\.1/u,'Orders V2 layout uses a fresh cache key');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');

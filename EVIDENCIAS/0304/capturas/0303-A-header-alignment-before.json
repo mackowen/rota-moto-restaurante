@@ -1,0 +1,277 @@
+{
+  "mode": "Home before-state geometry reconstructed with pre-change grid placement and 42x44 notification control; shared account trigger component classes; unauthenticated isolated renderer",
+  "rows": [
+    {
+      "width": 320,
+      "theme": "light",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 164,
+          "y": 6,
+          "right": 206,
+          "width": 42,
+          "height": 44,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 210,
+          "y": 6,
+          "right": 254,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 258,
+          "y": 6,
+          "right": 302,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 18
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 164,
+          "y": 6,
+          "right": 206,
+          "width": 42,
+          "height": 44,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 210,
+          "y": 6,
+          "right": 254,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 258,
+          "y": 6,
+          "right": 302,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 18
+    },
+    {
+      "width": 360,
+      "theme": "light",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 204,
+          "y": 6,
+          "right": 246,
+          "width": 42,
+          "height": 44,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 250,
+          "y": 6,
+          "right": 294,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 298,
+          "y": 6,
+          "right": 342,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 18
+    },
+    {
+      "width": 360,
+      "theme": "dark",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 204,
+          "y": 6,
+          "right": 246,
+          "width": 42,
+          "height": 44,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 250,
+          "y": 6,
+          "right": 294,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 298,
+          "y": 6,
+          "right": 342,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 18
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 234,
+          "y": 6,
+          "right": 276,
+          "width": 42,
+          "height": 44,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 280,
+          "y": 6,
+          "right": 324,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 328,
+          "y": 6,
+          "right": 372,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 18
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 234,
+          "y": 6,
+          "right": 276,
+          "width": 42,
+          "height": 44,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 280,
+          "y": 6,
+          "right": 324,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 328,
+          "y": 6,
+          "right": 372,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 18
+    },
+    {
+      "width": 430,
+      "theme": "light",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 274,
+          "y": 6,
+          "right": 316,
+          "width": 42,
+          "height": 44,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 320,
+          "y": 6,
+          "right": 364,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 368,
+          "y": 6,
+          "right": 412,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 18
+    },
+    {
+      "width": 430,
+      "theme": "dark",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 274,
+          "y": 6,
+          "right": 316,
+          "width": 42,
+          "height": 44,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 320,
+          "y": 6,
+          "right": 364,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 368,
+          "y": 6,
+          "right": 412,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 18
+    }
+  ]
+}

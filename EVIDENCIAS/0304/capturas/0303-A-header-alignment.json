@@ -1,0 +1,1511 @@
+{
+  "campaign": "0303-A header action alignment",
+  "mode": "isolated component render; tabs are unauthenticated because login API returned 403",
+  "sizes": [
+    {
+      "tab": "Início",
+      "viewport": 320,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 318,
+        "width": 316,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 174.594px 0px"
+      },
+      "actions": {
+        "x": 212,
+        "right": 302,
+        "width": 90,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 212,
+          "right": 254,
+          "width": 42,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 258,
+          "right": 302,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 18,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Pedidos",
+      "viewport": 320,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 318,
+        "width": 316,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 86.5938px 88px"
+      },
+      "actions": {
+        "x": 220,
+        "right": 308,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 220,
+          "right": 260,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 264,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Rotas",
+      "viewport": 320,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 318,
+        "width": 316,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 86.5938px 88px"
+      },
+      "actions": {
+        "x": 220,
+        "right": 308,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 220,
+          "right": 260,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 264,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Motoboys",
+      "viewport": 320,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 318,
+        "width": 316,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 86.5938px 88px"
+      },
+      "actions": {
+        "x": 220,
+        "right": 308,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 220,
+          "right": 260,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 264,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Início",
+      "viewport": 320,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 318,
+        "width": 316,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 174.594px 0px"
+      },
+      "actions": {
+        "x": 212,
+        "right": 302,
+        "width": 90,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 212,
+          "right": 254,
+          "width": 42,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 258,
+          "right": 302,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 18,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Pedidos",
+      "viewport": 320,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 318,
+        "width": 316,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 86.5938px 88px"
+      },
+      "actions": {
+        "x": 220,
+        "right": 308,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 220,
+          "right": 260,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 264,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Rotas",
+      "viewport": 320,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 318,
+        "width": 316,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 86.5938px 88px"
+      },
+      "actions": {
+        "x": 220,
+        "right": 308,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 220,
+          "right": 260,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 264,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Motoboys",
+      "viewport": 320,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 318,
+        "width": 316,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 86.5938px 88px"
+      },
+      "actions": {
+        "x": 220,
+        "right": 308,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 220,
+          "right": 260,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 264,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Início",
+      "viewport": 360,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 358,
+        "width": 356,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 214.594px 0px"
+      },
+      "actions": {
+        "x": 252,
+        "right": 342,
+        "width": 90,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 252,
+          "right": 294,
+          "width": 42,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 298,
+          "right": 342,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 18,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Pedidos",
+      "viewport": 360,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 358,
+        "width": 356,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 126.594px 88px"
+      },
+      "actions": {
+        "x": 260,
+        "right": 348,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 260,
+          "right": 300,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 304,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Rotas",
+      "viewport": 360,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 358,
+        "width": 356,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 126.594px 88px"
+      },
+      "actions": {
+        "x": 260,
+        "right": 348,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 260,
+          "right": 300,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 304,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Motoboys",
+      "viewport": 360,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 358,
+        "width": 356,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 126.594px 88px"
+      },
+      "actions": {
+        "x": 260,
+        "right": 348,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 260,
+          "right": 300,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 304,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Início",
+      "viewport": 360,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 358,
+        "width": 356,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 214.594px 0px"
+      },
+      "actions": {
+        "x": 252,
+        "right": 342,
+        "width": 90,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 252,
+          "right": 294,
+          "width": 42,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 298,
+          "right": 342,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 18,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Pedidos",
+      "viewport": 360,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 358,
+        "width": 356,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 126.594px 88px"
+      },
+      "actions": {
+        "x": 260,
+        "right": 348,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 260,
+          "right": 300,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 304,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Rotas",
+      "viewport": 360,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 358,
+        "width": 356,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 126.594px 88px"
+      },
+      "actions": {
+        "x": 260,
+        "right": 348,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 260,
+          "right": 300,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 304,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Motoboys",
+      "viewport": 360,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 358,
+        "width": 356,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 126.594px 88px"
+      },
+      "actions": {
+        "x": 260,
+        "right": 348,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 260,
+          "right": 300,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 304,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Início",
+      "viewport": 390,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 388,
+        "width": 386,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 244.594px 0px"
+      },
+      "actions": {
+        "x": 282,
+        "right": 372,
+        "width": 90,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 282,
+          "right": 324,
+          "width": 42,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 328,
+          "right": 372,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 18,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Pedidos",
+      "viewport": 390,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 388,
+        "width": 386,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 156.594px 88px"
+      },
+      "actions": {
+        "x": 290,
+        "right": 378,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 290,
+          "right": 330,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 334,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Rotas",
+      "viewport": 390,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 388,
+        "width": 386,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 156.594px 88px"
+      },
+      "actions": {
+        "x": 290,
+        "right": 378,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 290,
+          "right": 330,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 334,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Motoboys",
+      "viewport": 390,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 388,
+        "width": 386,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 156.594px 88px"
+      },
+      "actions": {
+        "x": 290,
+        "right": 378,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 290,
+          "right": 330,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 334,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Início",
+      "viewport": 390,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 388,
+        "width": 386,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 244.594px 0px"
+      },
+      "actions": {
+        "x": 282,
+        "right": 372,
+        "width": 90,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 282,
+          "right": 324,
+          "width": 42,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 328,
+          "right": 372,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 18,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Pedidos",
+      "viewport": 390,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 388,
+        "width": 386,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 156.594px 88px"
+      },
+      "actions": {
+        "x": 290,
+        "right": 378,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 290,
+          "right": 330,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 334,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Rotas",
+      "viewport": 390,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 388,
+        "width": 386,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 156.594px 88px"
+      },
+      "actions": {
+        "x": 290,
+        "right": 378,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 290,
+          "right": 330,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 334,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Motoboys",
+      "viewport": 390,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 388,
+        "width": 386,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 156.594px 88px"
+      },
+      "actions": {
+        "x": 290,
+        "right": 378,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 290,
+          "right": 330,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 334,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Início",
+      "viewport": 430,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 428,
+        "width": 426,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 284.594px 0px"
+      },
+      "actions": {
+        "x": 322,
+        "right": 412,
+        "width": 90,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 322,
+          "right": 364,
+          "width": 42,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 368,
+          "right": 412,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 18,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Pedidos",
+      "viewport": 430,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 428,
+        "width": 426,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 196.594px 88px"
+      },
+      "actions": {
+        "x": 330,
+        "right": 418,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 330,
+          "right": 370,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 374,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Rotas",
+      "viewport": 430,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 428,
+        "width": 426,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 196.594px 88px"
+      },
+      "actions": {
+        "x": 330,
+        "right": 418,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 330,
+          "right": 370,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 374,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Motoboys",
+      "viewport": 430,
+      "theme": "light",
+      "header": {
+        "x": 2,
+        "right": 428,
+        "width": 426,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 196.594px 88px"
+      },
+      "actions": {
+        "x": 330,
+        "right": 418,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 330,
+          "right": 370,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 374,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Início",
+      "viewport": 430,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 428,
+        "width": 426,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 284.594px 0px"
+      },
+      "actions": {
+        "x": 322,
+        "right": 412,
+        "width": 90,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 322,
+          "right": 364,
+          "width": 42,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 368,
+          "right": 412,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 18,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Pedidos",
+      "viewport": 430,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 428,
+        "width": 426,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 196.594px 88px"
+      },
+      "actions": {
+        "x": 330,
+        "right": 418,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 330,
+          "right": 370,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 374,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Rotas",
+      "viewport": 430,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 428,
+        "width": 426,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 196.594px 88px"
+      },
+      "actions": {
+        "x": 330,
+        "right": 418,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 330,
+          "right": 370,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 374,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    },
+    {
+      "tab": "Motoboys",
+      "viewport": 430,
+      "theme": "dark",
+      "header": {
+        "x": 2,
+        "right": 428,
+        "width": 426,
+        "paddingRight": "10px",
+        "gridTemplateColumns": "109.406px 196.594px 88px"
+      },
+      "actions": {
+        "x": 330,
+        "right": 418,
+        "width": 88,
+        "gap": "4px",
+        "marginRight": "0px",
+        "justifyContent": "flex-end"
+      },
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 330,
+          "right": 370,
+          "width": 40,
+          "height": 40,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "grid"
+        },
+        {
+          "name": "Nova corrida",
+          "x": 374,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "marginRight": "0px",
+          "paddingRight": "0px",
+          "display": "flex"
+        }
+      ],
+      "gaps": [
+        4
+      ],
+      "lastButtonToViewport": 12,
+      "scrollHeaderTop": 0
+    }
+  ],
+  "limits": []
+}

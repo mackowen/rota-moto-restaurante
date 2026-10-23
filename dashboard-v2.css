@@ -555,6 +555,18 @@ html[data-resolved-theme="light"] .dashboard-v2{
     padding:14px}
   }
 
+@media(max-width:599px){
+  /* Keep Home actions in the same trailing grid track as operational headers. */
+  .dashboard-v2 .dv2-header-actions{
+    grid-column:3;
+    gap:4px}
+  .dashboard-v2 .dv2-header-actions .dv2-icon-button{
+    width:40px;
+    min-width:40px;
+    height:40px;
+    min-height:40px}
+}
+
 @media(max-width:350px){
   .dv2-all{gap:3px;padding-inline:4px;font-size:10px}
   .dv2-all .dv2-icon svg{width:14px;height:14px}

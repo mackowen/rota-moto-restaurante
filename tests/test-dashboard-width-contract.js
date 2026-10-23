@@ -9,5 +9,7 @@ assert.match(css,/@media\(max-width:767px\)\{[\s\S]*?\.dashboard-v2\{\s*padding:
 assert.doesNotMatch(css,/\.dashboard-v2\{\s*padding-inline:9px/u,'320px screens do not reintroduce a third gutter');
 assert.match(css,/@media\(min-width:600px\)\{\.dashboard-v2 \.rm-header-brand\{display:none\}\}/u,'tablet and larger keep the existing sidebar brand composition');
 assert.doesNotMatch(css,/\.dashboard-v2 \.rm-global-header\{[^}]*margin-top:-/u,'dashboard header does not compensate with a negative offset');
+assert.match(css,/@media\(max-width:599px\)\{[\s\S]*?\.dashboard-v2 \.dv2-header-actions\{\s*grid-column:3;\s*gap:4px\}/u,'home actions occupy the shared operational header trailing grid track with the same gap');
+assert.match(css,/@media\(max-width:599px\)\{[\s\S]*?\.dashboard-v2 \.dv2-header-actions \.dv2-icon-button\{\s*width:40px;\s*min-width:40px;\s*height:40px;\s*min-height:40px/u,'home notifications button matches the operational icon button dimensions');
 assert.doesNotMatch(css,/transform:\s*translateX/u,'dashboard alignment does not use horizontal transforms');
 console.log('Dashboard shared header and responsive width contract: PASS');

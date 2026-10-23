@@ -1,0 +1,1221 @@
+{
+  "mode": "isolated UI components; simulated shared identity button, not authenticated application",
+  "rows": [
+    {
+      "tab": "Início",
+      "width": 320,
+      "theme": "light",
+      "headerRight": 318,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 172,
+          "y": 8,
+          "right": 212,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 216,
+          "y": 6,
+          "right": 260,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 264,
+          "y": 6,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 38.5938px 136px"
+    },
+    {
+      "tab": "Pedidos",
+      "width": 320,
+      "theme": "light",
+      "headerRight": 318,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 172,
+          "y": 8,
+          "right": 212,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 216,
+          "y": 6,
+          "right": 260,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 264,
+          "y": 6,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 38.5938px 136px"
+    },
+    {
+      "tab": "Rotas",
+      "width": 320,
+      "theme": "light",
+      "headerRight": 318,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 172,
+          "y": 8,
+          "right": 212,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 216,
+          "y": 6,
+          "right": 260,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 264,
+          "y": 6,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 38.5938px 136px"
+    },
+    {
+      "tab": "Motoboys",
+      "width": 320,
+      "theme": "light",
+      "headerRight": 318,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 172,
+          "y": 8,
+          "right": 212,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 216,
+          "y": 6,
+          "right": 260,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 264,
+          "y": 6,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 38.5938px 136px"
+    },
+    {
+      "tab": "Início",
+      "width": 320,
+      "theme": "dark",
+      "headerRight": 318,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 172,
+          "y": 8,
+          "right": 212,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 216,
+          "y": 6,
+          "right": 260,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 264,
+          "y": 6,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 38.5938px 136px"
+    },
+    {
+      "tab": "Pedidos",
+      "width": 320,
+      "theme": "dark",
+      "headerRight": 318,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 172,
+          "y": 8,
+          "right": 212,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 216,
+          "y": 6,
+          "right": 260,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 264,
+          "y": 6,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 38.5938px 136px"
+    },
+    {
+      "tab": "Rotas",
+      "width": 320,
+      "theme": "dark",
+      "headerRight": 318,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 172,
+          "y": 8,
+          "right": 212,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 216,
+          "y": 6,
+          "right": 260,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 264,
+          "y": 6,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 38.5938px 136px"
+    },
+    {
+      "tab": "Motoboys",
+      "width": 320,
+      "theme": "dark",
+      "headerRight": 318,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 172,
+          "y": 8,
+          "right": 212,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 216,
+          "y": 6,
+          "right": 260,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 264,
+          "y": 6,
+          "right": 308,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 38.5938px 136px"
+    },
+    {
+      "tab": "Início",
+      "width": 360,
+      "theme": "light",
+      "headerRight": 358,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 212,
+          "y": 8,
+          "right": 252,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 256,
+          "y": 6,
+          "right": 300,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 304,
+          "y": 6,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 78.5938px 136px"
+    },
+    {
+      "tab": "Pedidos",
+      "width": 360,
+      "theme": "light",
+      "headerRight": 358,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 212,
+          "y": 8,
+          "right": 252,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 256,
+          "y": 6,
+          "right": 300,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 304,
+          "y": 6,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 78.5938px 136px"
+    },
+    {
+      "tab": "Rotas",
+      "width": 360,
+      "theme": "light",
+      "headerRight": 358,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 212,
+          "y": 8,
+          "right": 252,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 256,
+          "y": 6,
+          "right": 300,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 304,
+          "y": 6,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 78.5938px 136px"
+    },
+    {
+      "tab": "Motoboys",
+      "width": 360,
+      "theme": "light",
+      "headerRight": 358,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 212,
+          "y": 8,
+          "right": 252,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 256,
+          "y": 6,
+          "right": 300,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 304,
+          "y": 6,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 78.5938px 136px"
+    },
+    {
+      "tab": "Início",
+      "width": 360,
+      "theme": "dark",
+      "headerRight": 358,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 212,
+          "y": 8,
+          "right": 252,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 256,
+          "y": 6,
+          "right": 300,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 304,
+          "y": 6,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 78.5938px 136px"
+    },
+    {
+      "tab": "Pedidos",
+      "width": 360,
+      "theme": "dark",
+      "headerRight": 358,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 212,
+          "y": 8,
+          "right": 252,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 256,
+          "y": 6,
+          "right": 300,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 304,
+          "y": 6,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 78.5938px 136px"
+    },
+    {
+      "tab": "Rotas",
+      "width": 360,
+      "theme": "dark",
+      "headerRight": 358,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 212,
+          "y": 8,
+          "right": 252,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 256,
+          "y": 6,
+          "right": 300,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 304,
+          "y": 6,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 78.5938px 136px"
+    },
+    {
+      "tab": "Motoboys",
+      "width": 360,
+      "theme": "dark",
+      "headerRight": 358,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 212,
+          "y": 8,
+          "right": 252,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 256,
+          "y": 6,
+          "right": 300,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 304,
+          "y": 6,
+          "right": 348,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 78.5938px 136px"
+    },
+    {
+      "tab": "Início",
+      "width": 390,
+      "theme": "light",
+      "headerRight": 388,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 242,
+          "y": 8,
+          "right": 282,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 286,
+          "y": 6,
+          "right": 330,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 334,
+          "y": 6,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 108.594px 136px"
+    },
+    {
+      "tab": "Pedidos",
+      "width": 390,
+      "theme": "light",
+      "headerRight": 388,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 242,
+          "y": 8,
+          "right": 282,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 286,
+          "y": 6,
+          "right": 330,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 334,
+          "y": 6,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 108.594px 136px"
+    },
+    {
+      "tab": "Rotas",
+      "width": 390,
+      "theme": "light",
+      "headerRight": 388,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 242,
+          "y": 8,
+          "right": 282,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 286,
+          "y": 6,
+          "right": 330,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 334,
+          "y": 6,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 108.594px 136px"
+    },
+    {
+      "tab": "Motoboys",
+      "width": 390,
+      "theme": "light",
+      "headerRight": 388,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 242,
+          "y": 8,
+          "right": 282,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 286,
+          "y": 6,
+          "right": 330,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 334,
+          "y": 6,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 108.594px 136px"
+    },
+    {
+      "tab": "Início",
+      "width": 390,
+      "theme": "dark",
+      "headerRight": 388,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 242,
+          "y": 8,
+          "right": 282,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 286,
+          "y": 6,
+          "right": 330,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 334,
+          "y": 6,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 108.594px 136px"
+    },
+    {
+      "tab": "Pedidos",
+      "width": 390,
+      "theme": "dark",
+      "headerRight": 388,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 242,
+          "y": 8,
+          "right": 282,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 286,
+          "y": 6,
+          "right": 330,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 334,
+          "y": 6,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 108.594px 136px"
+    },
+    {
+      "tab": "Rotas",
+      "width": 390,
+      "theme": "dark",
+      "headerRight": 388,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 242,
+          "y": 8,
+          "right": 282,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 286,
+          "y": 6,
+          "right": 330,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 334,
+          "y": 6,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 108.594px 136px"
+    },
+    {
+      "tab": "Motoboys",
+      "width": 390,
+      "theme": "dark",
+      "headerRight": 388,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 242,
+          "y": 8,
+          "right": 282,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 286,
+          "y": 6,
+          "right": 330,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 334,
+          "y": 6,
+          "right": 378,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 108.594px 136px"
+    },
+    {
+      "tab": "Início",
+      "width": 430,
+      "theme": "light",
+      "headerRight": 428,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 282,
+          "y": 8,
+          "right": 322,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 326,
+          "y": 6,
+          "right": 370,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 374,
+          "y": 6,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 148.594px 136px"
+    },
+    {
+      "tab": "Pedidos",
+      "width": 430,
+      "theme": "light",
+      "headerRight": 428,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 282,
+          "y": 8,
+          "right": 322,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 326,
+          "y": 6,
+          "right": 370,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 374,
+          "y": 6,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 148.594px 136px"
+    },
+    {
+      "tab": "Rotas",
+      "width": 430,
+      "theme": "light",
+      "headerRight": 428,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 282,
+          "y": 8,
+          "right": 322,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 326,
+          "y": 6,
+          "right": 370,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 374,
+          "y": 6,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 148.594px 136px"
+    },
+    {
+      "tab": "Motoboys",
+      "width": 430,
+      "theme": "light",
+      "headerRight": 428,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 282,
+          "y": 8,
+          "right": 322,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 326,
+          "y": 6,
+          "right": 370,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 374,
+          "y": 6,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 148.594px 136px"
+    },
+    {
+      "tab": "Início",
+      "width": 430,
+      "theme": "dark",
+      "headerRight": 428,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "x": 282,
+          "y": 8,
+          "right": 322,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 326,
+          "y": 6,
+          "right": 370,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 374,
+          "y": 6,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 148.594px 136px"
+    },
+    {
+      "tab": "Pedidos",
+      "width": 430,
+      "theme": "dark",
+      "headerRight": 428,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 282,
+          "y": 8,
+          "right": 322,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 326,
+          "y": 6,
+          "right": 370,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 374,
+          "y": 6,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 148.594px 136px"
+    },
+    {
+      "tab": "Rotas",
+      "width": 430,
+      "theme": "dark",
+      "headerRight": 428,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 282,
+          "y": 8,
+          "right": 322,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 326,
+          "y": 6,
+          "right": 370,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 374,
+          "y": 6,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 148.594px 136px"
+    },
+    {
+      "tab": "Motoboys",
+      "width": 430,
+      "theme": "dark",
+      "headerRight": 428,
+      "gap": "4px",
+      "buttons": [
+        {
+          "name": "Notificações",
+          "x": 282,
+          "y": 8,
+          "right": 322,
+          "width": 40,
+          "height": 40,
+          "gapBefore": null
+        },
+        {
+          "name": "Nova corrida",
+          "x": 326,
+          "y": 6,
+          "right": 370,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "x": 374,
+          "y": 6,
+          "right": 418,
+          "width": 44,
+          "height": 44,
+          "gapBefore": 4
+        }
+      ],
+      "lastToViewport": 12,
+      "grid": "109.406px 148.594px 136px"
+    }
+  ]
+}

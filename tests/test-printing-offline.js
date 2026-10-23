@@ -60,7 +60,7 @@ installed.then(async () => {
   assert.ok(added.includes('/pilot-views.css?v=0299.1'));
   assert.ok(added.includes('/app.js?v=0304.1'));
   assert.ok(added.includes('/dashboard-v2.js?v=0304.2'));
-  assert.ok(added.includes('/dashboard-v2.css?v=0304.3'));
+  assert.ok(added.includes('/dashboard-v2.css?v=0304.4'));
   assert.ok(added.includes(`/${identityBundle}`));
   assert.ok(added.includes('/server-update-coordinator.js?v=0253.1'));
   assert.ok(!added.includes('/vendor/maplibre/maplibre-gl-worker.js?v=0139.1'), 'missing optional map asset does not prevent app shell installation');

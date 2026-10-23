@@ -18,6 +18,8 @@
 - `git diff --check`
 - `npm test` (suíte completa encadeada pelo package script; concluída com saída zero)
 - Browser/CDP: medição objetiva do cabeçalho Home nos offsets 0/1/5/10/20/50/100/300 px em 320×720, 360×800, 390×844 e 430×932, temas claro/escuro; posição top 0 em todos. Evidência em [`0303-A-sticky-diagnostico.md`](capturas/0303-A-sticky-diagnostico.md) e JSON/screen captures adjacentes.
+- Browser/CDP: comparação dos cabeçalhos componentizados Início/Pedidos/Rotas/Motoboys em 320/360/390/430 px, claro/escuro, 32 combinações; diferenças pós correção de X/larguras/alturas/gaps/distância direita foram 0 px. O renderer operacional autenticado não foi carregado devido ao HTTP 403, conforme limite documentado no adendo.
+- Evidência antes/depois do alinhamento está em [`0303-A-alinhamento-horizontal.md`](capturas/0303-A-alinhamento-horizontal.md), com JSON e capturas claro/escuro de 390×844.
 
 Os dois testes de semântica/integração inicialmente falharam porque aguardavam texto/classe antigos de Rotas e nome de asset/cache antigos; expectativas foram atualizadas para a composição V2 atual. Não houve remoção de cobertura.
 

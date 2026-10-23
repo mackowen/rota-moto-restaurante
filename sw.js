@@ -1,9 +1,9 @@
 'use strict';
 
 const CACHE_PREFIX = 'rotamoto-restaurante-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v98`;
+const CACHE_NAME = `${CACHE_PREFIX}v99`;
 const APP_SHELL = Object.freeze([
-  '/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/styles.css?v=0302.1', '/identity-ui.css?v=0256d1.1', '/design-system.css?v=0303.1', '/pilot-views.css?v=0299.1', '/favicon.svg?v=0140.1', '/dashboard-v2.css?v=0304.3', '/orders-v2.css?v=0303.1', '/routes-v2.css?v=0304.1', '/dashboard-v2.js?v=0304.2',
+  '/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/styles.css?v=0302.1', '/identity-ui.css?v=0256d1.1', '/design-system.css?v=0303.1', '/pilot-views.css?v=0299.1', '/favicon.svg?v=0140.1', '/dashboard-v2.css?v=0304.4', '/orders-v2.css?v=0303.1', '/routes-v2.css?v=0304.1', '/dashboard-v2.js?v=0304.2',
   '/qr-local.js', '/ifood-integration.js', '/keeta-integration.js', '/99food-integration.js',
   '/contract.js', '/backup-format.js?v=1', '/backup-center.css?v=0231.1', '/backup-destinations-ui.js?v=0231.1', '/sync-reconciliation.js?v=2',
   '/indexeddb-schema.js?v=2', '/order-money.js?v=1', '/ticket-renderer.js?v=0256d1.1',
