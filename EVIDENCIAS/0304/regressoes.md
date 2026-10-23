@@ -16,6 +16,8 @@
 - `node tests/test-sync-contract.js`
 - `node tests/test-cross-app-contract-parity.js`
 - `git diff --check`
+- `npm test` (suíte completa encadeada pelo package script; concluída com saída zero)
+- Browser/CDP: medição objetiva do cabeçalho Home nos offsets 0/1/5/10/20/50/100/300 px em 320×720, 360×800, 390×844 e 430×932, temas claro/escuro; posição top 0 em todos. Evidência em [`0303-A-sticky-diagnostico.md`](capturas/0303-A-sticky-diagnostico.md) e JSON/screen captures adjacentes.
 
 Os dois testes de semântica/integração inicialmente falharam porque aguardavam texto/classe antigos de Rotas e nome de asset/cache antigos; expectativas foram atualizadas para a composição V2 atual. Não houve remoção de cobertura.
 
@@ -25,5 +27,5 @@ Os dois testes de semântica/integração inicialmente falharam porque aguardava
 - Criação/edição/reordenação/readback após reload de rota: não executado no Browser.
 - Testes pós-change de notificações, Conta, Nova corrida, pedidos/impressão, filtros Pedidos, navegação More, mapa e Motoboys: bloqueados pelo login.
 - Comparação visual completa pós-correção: bloqueada pela ausência de tela autenticada. O renderer Home isolado só confirma geometria, não regressão global.
-- `npm test` completo: não executado neste checkpoint.
+- Browser autenticado: os fluxos de rotas e as regressões interativas permanecem bloqueados apesar da suíte unitária completa passar.
 - Chrome Android físico: proprietário deve avaliar.
