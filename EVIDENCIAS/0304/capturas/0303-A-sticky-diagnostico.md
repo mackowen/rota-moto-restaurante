@@ -34,7 +34,7 @@ Pedidos e Rotas usam o mesmo contrato de classe do cabeçalho e o mesmo `top: 0`
 
 - G1 — causa identificada: PASS (estrutura CSS e DOM identificados; confirmação física Android pendente).
 - G2 — espaçamento superior artificial removido: PASS na fixture; comparar versão Android real pendente.
-- G3 — estabilidade desde 0 px: PASS técnico na fixture móvel, 8 offsets × 4 viewports × 2 temas.
+- G3 — estabilidade desde 0 px: PARTIAL (PASS técnico na fixture móvel, 8 offsets × 4 viewports × 2 temas; proprietário ainda reporta comportamento em Chrome Android e falta validar no dispositivo físico antes de fechar o gate).
 - G4 — responsividade: PARTIAL (medições e capturas celulares; tablet/desktop sem comparação autenticada completa).
 - G5 — sem regressões: PARTIAL (testes do código; fluxo autenticado não acessível pelo 403).
-- G6 — evidências: PASS para captura/medição automatizada; validação física Android pendente.
+- G6 — evidências: PARTIAL (captura/medição automatizada concluída; validação física Android e reprodução do relato original pendentes).
