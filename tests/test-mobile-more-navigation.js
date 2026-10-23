@@ -17,10 +17,14 @@ for (const destination of destinations) {
 }
 assert.match(app, /primaryIds=\['dashboard','orders','routes','bikes'\]/u,
   'the mobile primary destinations follow the approved operation order');
-assert.match(app, /id="navMoreMenu"[\s\S]*data-nav-more[\s\S]*aria-expanded="false"/u,
-  'all non-primary permitted destinations have an accessible More menu');
-assert.match(app, /<nav id="navMoreMenu"[^>]*aria-label="Mais áreas"/u,
-  'the More panel is a navigation landmark for assistive technology');
+assert.match(app, /id="navMoreMenu"[\s\S]*role="dialog"[\s\S]*data-nav-more-close/u,
+  'all non-primary permitted destinations have a labelled, dismissible More dialog');
+assert.match(app, /id="navMoreOverlay"[^>]*hidden[\s\S]*id="navMoreMenu"[^>]*aria-modal="true"/u,
+  'the More panel is an accessible modal bottom sheet');
+assert.match(app, /function navigationGroups\(items\)[\s\S]*Administração[\s\S]*Suporte/u,
+  'More groups all authorized destinations by Administration and Support');
+assert.match(app, /const menuIcon=\(\)=>'[^']*M4 6h16M4 12h16M4 18h16/u,
+  'the Mais item uses a bundled three-line SVG icon, not a font glyph or emoji');
 assert.match(app, /function navigationGroups\(items\)[\s\S]*Operação[\s\S]*Gestão[\s\S]*Administração/u,
   'the desktop navigation uses clear operational and management groups');
 assert.match(app, /data-sidebar-toggle[\s\S]*sidebar-expanded/u,
@@ -35,8 +39,15 @@ assert.match(designSystem, /@media\(max-width:599px\)[\s\S]*grid-template-column
   'phone navigation fits four primary destinations and More without horizontal scrolling');
 assert.match(designSystem, /\.bottom-nav \.nav-label-full\{display:none\}\.bottom-nav \.nav-label-short\{display:block\}/u,
   'mobile navigation displays one concise label variant for each destination');
-assert.match(designSystem, /\.nav-more-menu:not\(\[hidden\]\)[\s\S]*position:fixed/u,
-  'More is a bounded, keyboard dismissible menu above the mobile navigation');
+assert.match(designSystem, /\.nav-more-overlay:not\(\[hidden\]\)[\s\S]*position:fixed/u,
+  'More opens a viewport-bounded overlay above the mobile navigation');
+assert.match(designSystem, /border-radius:20px 20px 0 0/u,
+  'phone More uses the approved rounded bottom sheet surface');
+assert.match(app, /panel\?\.addEventListener\('keydown',[\s\S]*event\.key==='Escape'[\s\S]*last\.focus\(\)/u,
+  'the dialog supports Escape and keeps keyboard focus inside while open');
+assert.match(app, /event\.target===overlay\)closeMoreMenu\(\)/u,
+  'tapping outside the sheet closes it and returns focus to the trigger');
+assert.match(app,/const modules=MODULES\.filter\(x=>canModule\(x\[0\]\)\),allowed=modules,destinations=orderedDestinations\(allowed\)/u,'all permitted modules remain available in the desktop sidebar');
 assert.match(designSystem, /#121a25/u, 'the approved dark canvas token is defined');
 assert.match(designSystem, /#202c3a/u, 'the approved dark card token is defined');
 assert.match(designSystem, /--success:#16a36a/u, 'the approved green token is defined');
@@ -63,4 +74,4 @@ assert.match(identity, /const triggerLabel = opensAccountPage \? 'Abrir Conta e 
 
 assert.match(identityCss, /#app \.rm-page-header \.top-actions \.rm-account-trigger:active[\s\S]*background: var\(--rm-id-accent-soft\)/u, 'pressed account action receives a theme-aware surface');
 assert.match(identityCss, /#app \.rm-page-header \.top-actions \.rm-account-trigger:disabled[\s\S]*opacity: \.6/u, 'disabled account action is visibly subdued and unavailable');
-console.log('Restaurant grouped desktop navigation, phone More menu, tablet sidebar and shared theme tokens: PASS');
+console.log('Restaurant grouped navigation, accessible phone More sheet, tablet sidebar and shared theme tokens: PASS');

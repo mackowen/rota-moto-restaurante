@@ -4,35 +4,86 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const app = fs.readFileSync('app.js', 'utf8');
-const preview = fs.readFileSync('dashboard-v2.js', 'utf8');
+const view = fs.readFileSync('dashboard-v2.js', 'utf8');
 const css = fs.readFileSync('dashboard-v2.css', 'utf8');
+const ds = fs.readFileSync('design-system.css', 'utf8');
 const index = fs.readFileSync('index.html', 'utf8');
+const sw = fs.readFileSync('sw.js', 'utf8');
 
-const context = {window:{}};
-vm.runInNewContext(`${preview}\nthis.render=window.RotaMotoDashboardV2.render;`, context);
-const safeHtml = context.render({
-  restaurantName: '<Empresa>', connected: null, canCreate: true,
-  kpis: [{label:'Em rota', value:2, detail:'entregas', icon:'route', tone:'info'}],
-  orders: [{id:'e2e-order-1',number:'E2E-1',customer:'Cliente sintético <um>',address:'Rua Exemplo, 10',driver:'Motoboy E2E',fee:'Não informada',status:'Aguardando',statusTone:'',createdAt:0}],
-  dailyVolume: [], sources: [], analyticsAvailable: false
+const renderContext = {window:{}};
+vm.runInNewContext(`${view}\nthis.render=window.RotaMotoDashboardV2.render;`, renderContext);
+const html = renderContext.render({
+  restaurantName:'<Empresa>', canCreate:true, canOrders:true, canEvents:true, canReports:true,
+  kpis:[{label:'Em rota',value:2,detail:'entregas',icon:'route',tone:'info'}],
+  orders:[{id:'order-a',number:'A-1',customer:'Cliente <um>',address:'Rua Exemplo, 10',source:'iFood',driver:'Motoboy A',fee:'Não informada',distance:'Não informada',status:'Aguardando',statusTone:'',createdAt:0,canOpen:true,canPrint:true,qrEligible:true,canQr:true}],
+  dailyVolume:[],sources:[],analyticsAvailable:false
 });
-assert.match(safeHtml, /Cliente sintético &lt;um&gt;/, 'presentation escapes domain text');
-assert.match(safeHtml, /aria-label="Impressão disponível no fluxo atual, fora da prévia"/, 'print stays unavailable in read-only preview');
-assert.match(safeHtml, /QR seguro disponível no fluxo atual, fora da prévia/, 'secure QR is not triggered from preview');
-assert.match(safeHtml, /Data indisponível/, 'missing timestamps never render Invalid Date');
-assert.match(safeHtml, /data-detail="e2e-order-1"/, 'opening a delivery links to existing operational flow');
-assert.match(safeHtml, /data-new/, 'create action delegates to existing create flow');
-assert.match(context.render({orders:[]}), /Nenhuma entrega para revisar/, 'empty state is explicit');
-assert.match(app, /state\.tab==='dashboard'&&new URLSearchParams\(location\.search\)\.get\('preview'\)==='dashboard-v2'&&canModule\('dashboard'\)/, 'preview requires dashboard module permission and explicit preview query');
-assert.match(app, /const tenantOrders=companyId\?\(state\.orders\|\|\[\]\)\.filter\(order=>canonicalOrderCompany\(order\)===companyId\):\[\]/, 'preview fails closed without an active tenant and filters orders by Company');
-assert.match(app, /aggregate\(\{orders:tenantOrders,deliveries,deliveryEvents,earnings,bikes:\[\]\}/, 'analytics receives only tenant-scoped delivery data and no unrelated fleet records');
-assert.match(app, /classList\.toggle\('dashboard-v2-shell',Boolean\(previewV2\)\)/, 'tablet navigation override is scoped to the active preview');
-assert.match(app, /main\.innerHTML=previewV2\?dashboardV2Preview\(\):views\[state\.tab\]/, 'default Inicio renderer is preserved unless preview is explicitly selected');
-assert.match(app, /data-dv2-exit[\s\S]*?searchParams\.delete\('preview'\)/, 'preview has a direct exit back to current Inicio');
-assert.match(index, /dashboard-v2\.js\?v=0299\.1/, 'isolated dashboard module is loaded');
-assert.match(css, /@media\(max-width:767px\)/, 'phone layout uses a dedicated responsive breakpoint');
-assert.match(css, /@media\(max-width:1023px\)/, 'tablet layout collapses the insights workspace');
-assert.match(css, /@media \(min-width:600px\) and \(max-width:800px\)[\s\S]*dashboard-v2-shell \.sidebar\{\s*display:flex/, 'tablet preview restores a compact sidebar only in the preview');
-assert.match(css, /min-height:44px/, 'interactive controls target a 44px minimum hit area');
-assert.match(css, /overflow-wrap:anywhere/, 'long names and addresses wrap instead of becoming vertical');
-console.log('Dashboard v2 preview isolation and presentation tests passed.');
+assert.match(html,/Cliente &lt;um&gt;/u,'presentation escapes tenant domain text');
+assert.match(html,/Data indisponível/u,'missing timestamps never render Invalid Date');
+assert.match(html,/data-detail="order-a"/u,'open uses the existing delivery details handler');
+assert.match(html,/data-print-order="order-a"/u,'print calls the existing print preview handler');
+assert.match(html,/data-qr-open="order-a"/u,'eligible secure QR calls the existing signed QR handler');
+assert.match(html,/data-new/u,'new race delegates to the existing create flow');
+assert.match(html,/data-tab="orders"/u,'view all uses the existing orders navigation');
+assert.match(html,/data-tab="reports"/u,'reports action uses the existing reports destination');
+assert.match(html,/data-tab="events"/u,'notification action uses the existing events and notifications destination');
+assert.match(html,/Origem[\s\S]*Motoboy[\s\S]*Taxa[\s\S]*Distância estimada/u,'cards show commercial origin, assigned driver, known fee and known distance');
+assert.match(html,/id="syncStatusPanel"[\s\S]*data-sync-label[\s\S]*data-sync-detail[\s\S]*data-sync-now/u,'dashboard status reuses the canonical live synchronization feedback and retry handler');
+const denied = renderContext.render({canOrders:false,canEvents:false,canReports:false,orders:[{id:'x',number:'x',canOpen:false,canPrint:false,printUnavailable:'Sem permissão',qrEligible:true,canQr:false}]});
+assert.match(denied,/disabled[^>]*title="Seu perfil não tem acesso a pedidos"/u,'restricted actions explain the RBAC denial');
+assert.doesNotMatch(denied,/data-print-order="x"/u,'print is not exposed when orders permission is absent');
+assert.match(renderContext.render({orders:[]}),/Nenhuma entrega para revisar/u,'empty state is explicit');
+
+const model = app.match(/function dashboardV2Model\(\)\{[\s\S]*?\n\}/u)?.[0];
+assert(model,'production dashboard exposes one adapter over existing domain state');
+const captured={};
+const companyA='company-a',companyB='company-b';
+const orderA={id:'order-a',companyId:companyA,num:'A-1',status:'AGUARDANDO',createdAt:100,deliveryId:'delivery-a',sourceId:'manual',km:null};
+const orderB={id:'order-b',companyId:companyB,num:'B-1',status:'AGUARDANDO',createdAt:100,deliveryId:'delivery-b',sourceId:'manual'};
+const deliveryA={id:'delivery-a',companyId:companyA,orderId:'order-a',status:'ASSIGNED',driverId:'driver-a',estimatedDistanceM:null};
+const deliveryB={id:'delivery-b',companyId:companyB,orderId:'order-b',status:'ASSIGNED',driverId:'driver-b'};
+const analytics={total:1,deliveryStatusCounts:{ASSIGNED:1},completedCount:0,cancelledCount:0,sourceCounts:{manual:1},dailyVolume:[],actualDistance:{average:null},driverPayout:{count:0,total:null},coverage:{actualDistance:{available:0,total:1},earning:{available:0,total:1}}};
+const context={
+  syncSession:{companyId:companyA,timeZone:'America/Sao_Paulo'},
+  state:{orders:[orderA,orderB],deliveries:[deliveryA,deliveryB],deliveryEvents:[],earnings:[],bikes:[{id:'driver-a',companyId:companyA,name:'Motoboy A'},{id:'driver-b',companyId:companyB,name:'Motoboy B'}],syncState:[],settings:{global:{companyId:companyA,companyName:'Empresa A'},company:{name:'Empresa A'},orders:{sources:[{id:'manual',name:'Manual'}]},printing:{enabled:true}}},
+  activeRestaurantCompanyId:()=>companyA,
+  canonicalOrderCompany:order=>order.companyId,
+  ordersWithCanonicalDeliveryStatus:orders=>orders,
+  canAssignOwnDelivery:()=>true,
+  window:{RotaMotoAnalytics:{aggregate:input=>{Object.assign(captured,input);return analytics}}},
+  can:()=>true,canModule:module=>module==='orders'||module==='events'||module==='reports',
+  canonicalDeliveryProjection:delivery=>delivery,deliveryForOrder:order=>order.id==='order-a'?deliveryA:deliveryB,
+  knownDeliveryFeeBRL:()=>null,money:value=>`BRL ${value}`,channelLabel:value=>value,orderSourceLabel:()=> 'Manual',statusLabel:value=>value,
+  Date,Intl,Number,String,Boolean,Math
+};
+vm.runInNewContext(`${model}\nthis.model=dashboardV2Model;`,context);
+const data=context.model();
+assert.equal(captured.orders.length,1,'analytics sees orders in the authenticated tenant only');
+assert.equal(captured.deliveries.length,1,'analytics sees only deliveries linked to the active tenant');
+assert.equal(captured.bikes.length,1,'analytics receives fleet data scoped to the active tenant');
+assert.deepEqual(Array.from(data.orders,order=>order.id),['order-a'],'home queue and the authenticated company share the same scoped order source');
+assert.equal(data.orders[0].distance,null,'unknown distance remains unknown instead of becoming zero');
+assert.equal(data.kpis[1].value,1,'assigned deliveries remain in the waiting/acceptance KPI from canonical analytics status counts');
+assert.equal(data.restaurantName,'Empresa A','dashboard uses the active company name');
+
+assert.match(app,/function dashboard\(\)\{return dashboardV2Official\(\)\}/u,'DashboardV2 is the official Início renderer');
+assert.match(app,/function dashboardLegacyReference\(\)/u,'old composition is retained only as a rollback reference');
+assert.match(app,/main\.innerHTML=views\[state\.tab\]\?views\[state\.tab\]\(\)/u,'normal app routing renders the official dashboard view without a preview query');
+assert.doesNotMatch(app,/searchParams\.get\('preview'\)===?'dashboard-v2'/u,'official dashboard no longer depends on preview mode');
+assert.match(app,/state\.tab==='dashboard'&&canModule\('dashboard'\)&&window\.RotaMotoDashboardV2/u,'dashboard-specific tablet presentation still respects RBAC');
+assert.match(app,/data-nav-more-close/u,'More sheet has an accessible close control');
+assert.match(app,/aria-modal="true" aria-labelledby="navMoreTitle"/u,'More sheet is exposed as a labelled modal dialog');
+assert.match(app,/function openMoreMenu\(\)[\s\S]*aria-expanded','true'[\s\S]*data-nav-more-close/u,'opening More announces state and moves focus inside');
+assert.match(app,/event\.key==='Escape'[\s\S]*closeMoreMenu\(\)/u,'Escape closes More and restores focus');
+assert.match(app,/if\(event\.target===overlay\)closeMoreMenu\(\)/u,'outside tap closes More');
+assert.match(app,/const menuIcon=\(\)=>'[^']*M4 6h16M4 12h16M4 18h16/u,'More uses a local three-line SVG icon independent of icon fonts');
+assert.match(ds,/nav-more-menu:not\(\[hidden\]\)[\s\S]*border-radius:20px 20px 0 0/u,'mobile More is a rounded bottom sheet');
+assert.match(ds,/nav-more-groups[\s\S]*overflow:auto/u,'More destinations scroll inside the available viewport');
+assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection state distinguishes active synchronization');
+assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
+assert.match(index,/dashboard-v2\.js\?v=0300\.2/u,'official component bundle is versioned for 0300');
+assert.match(sw,/CACHE_PREFIX\}v89/u,'service worker shell cache is advanced for the integrated release');
+assert.match(index,/app\.js\?v=0300\.4/u,'official app script uses a fresh cache key');
+console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
+
+assert.match(app,/const session=await restoreSyncSession\(\);if\(session\)\{const editing=[\s\S]*?if\(!editing\)render\(\);scheduleServerSync\(0\)\}/u,'authenticated startup reprojects local state after restoring the tenant without replacing an in-progress form');

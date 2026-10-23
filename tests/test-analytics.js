@@ -225,8 +225,8 @@ assert.doesNotMatch(html, /\bBRL\b/u, 'relatório apresenta nomes de moeda, não
 assert.match(html, /Tipos de entrega/);
 assert.match(html, /Endereços mais recorrentes/);
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
-assert.match(appSource, /function dashboard\(\)[\s\S]*?RotaMotoAnalytics\.aggregate/u, 'Command Center reuses canonical analytics aggregation');
-assert.match(appSource, /function dashboard\(\)[\s\S]*?report\.driverPayout/u, 'Command Center reports canonical payout coverage');
+assert.match(appSource, /function dashboardV2Model\(\)[\s\S]*?RotaMotoAnalytics\.aggregate/u, 'Command Center reuses canonical analytics aggregation');
+assert.match(appSource, /function dashboardV2Model\(\)[\s\S]*?analytics\.driverPayout/u, 'Command Center reports canonical payout coverage');
 assert.doesNotMatch(appSource, /kpi\('Faturamento hoje'/);
 assert.match(appSource, /Taxa de entrega conhecida \(BRL\)/, 'CSV names the known fee semantics explicitly');
 assert.match(appSource, /function exportCSV\(\)\{[\s\S]*?RotaMotoAnalytics\.csvRow[\s\S]*?catch\(_\)[\s\S]*?Não foi possível exportar o relatório/u, 'CSV export reports a sanitized user-facing failure and still uses the safe canonical serializer');

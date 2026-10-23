@@ -7,7 +7,8 @@ assert.equal(context.project({money:{currency:'BRL',completeness:'partial',prove
 assert.equal(context.project({money:{currency:'USD',completeness:'partial',provenance:{kind:'external'},components:{deliveryFeeMinor:500}}}),null,'foreign currency is not summed into BRL');
 assert.equal(context.project({sourceId:'ifood',value:45}),null,'external total is not mistaken for a delivery fee');
 assert.equal(context.project({sourceId:'manual',value:4.5}),4.5,'known legacy local delivery-fee semantics remain supported');
-const dashboard=source.match(/function dashboard\(\)\{[\s\S]*?\n\}/u)?.[0]||'';
+const dashboard=source.match(/function dashboardLegacyReference\(\)\{[\s\S]*?\n\}/u)?.[0]||'';
+assert.match(source,/function dashboard\(\)\{return dashboardV2Official\(\)\}/u,'official home delegates to the integrated component renderer');
 assert.match(dashboard,/RotaMotoAnalytics\.aggregate/u,'Command Center reuses the canonical analytics projection');
 assert.match(dashboard,/report\.dailyVolume/u,'daily trend uses the canonical cohort series');
 assert.match(dashboard,/report\.total===0\?/u,'no-order state is distinguished from invalid time-zone diagnostics');
@@ -25,7 +26,7 @@ assert.match(source,/data-label="Pedido"/u,'delivery rows expose semantic labels
 assert.match(styles,/\.table thead\{display:none\}/u,'responsive tables hide desktop headings when rows become cards');
 assert.doesNotMatch(styles,/\.table thead\{display:table-header-group\}/u,'no later mobile rule restores squeezed desktop table headings');
 assert.match(source,/function orderedDestinations\(items\)\{const configured=new Set\(state\.settings\.navigation\?\.shortcuts/u,'one preference-driven ordering function serves desktop and mobile destinations');
-assert.match(source,/function layout\(\)[\s\S]*?const destinations=orderedDestinations\(allowed\),primaryIds=\['dashboard','orders','routes','bikes'\]/u,'mobile operation shortcuts stay fixed while remaining areas are grouped under More');
+assert.match(source,/function layout\(\)[\s\S]*?const modules=MODULES\.filter\(x=>canModule\(x\[0\]\)\),allowed=modules/u,'navigation keeps every permitted RBAC module available in the sidebar and More panel');
 assert.match(source,/function navGroupMarkup\(group,context=''\)[\s\S]*orderedDestinations\(group\.items\)/u,'configured shortcuts reorder destinations within their semantic navigation group');
 assert.match(dashboard,/header\('Início'/u,'Home uses the same header component as the other tabs');
 assert.match(source,/class="brandmark brand-symbol" src="favicon\.svg"/u,'desktop brand uses the same simple route symbol as the mobile header');
@@ -47,9 +48,9 @@ assert.doesNotMatch(source,/shortcutButtons\(|class="shortcutbar"/u,'the duplica
 assert.doesNotMatch(styles,/\.shortcutbar/u,'obsolete duplicate shortcut strip styling is removed');
 assert.doesNotMatch(styles,/overflow-x:\s*clip/u,'horizontal overflow is not concealed at the document boundary');
 assert.match(source,/await saveSettings\('Atalhos de navegação atualizados\.'\)/u,'shortcut edits use the existing Company settings persistence authority');
-assert.match(source,/function layout\(\)[\s\S]*?primary\.map\(item=>navButton\(item,'nav-primary-item'\)\)/u,'mobile navigation exposes the four primary operation destinations in the approved order');
+assert.match(source,/primaryIds=\['dashboard','orders','routes','bikes'\][\s\S]*primary\.map\(item=>navButton\(item,'nav-primary-item'\)\)/u,'mobile navigation exposes the four primary operation destinations in the approved order');
 assert.match(source,/data-qr-open=.*?QR seguro/u,'the home queue exposes secure QR only for eligible canonical deliveries');
-assert.match(source,/pilot-order-meta[\s\S]*?Motoboy[\s\S]*?Taxa[\s\S]*?Distância/u,'review cards summarize driver, known fee and known distance without fabricating values');
+assert.match(fs.readFileSync('dashboard-v2.js','utf8'),/dv2-delivery-meta[\s\S]*Origem[\s\S]*Motoboy[\s\S]*Taxa[\s\S]*Distância estimada/u,'official review cards summarize origin, driver, known fee and known distance');
 console.log('Command Center canonical analytics and metric semantics: PASS');
 
 assert.match(fs.readFileSync('logistics-ui.js','utf8'),/class="table territorial-table"/u,'territorial analytics reuses the responsive table component');
