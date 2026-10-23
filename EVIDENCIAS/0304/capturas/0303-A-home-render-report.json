@@ -1,0 +1,1248 @@
+{
+  "campaign": "0303-A",
+  "mode": "isolated renderer fixture; no operational data, server login, or authorization claims",
+  "rows": [
+    {
+      "size": [
+        320,
+        720
+      ],
+      "theme": "light",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": {
+        "left": 0,
+        "right": 320,
+        "top": 0,
+        "width": 320,
+        "height": 1154.6,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "12px",
+        "paddingRight": "12px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 2,
+        "right": 318,
+        "top": 0,
+        "width": 316,
+        "height": 56,
+        "marginLeft": "-10px",
+        "marginRight": "-10px",
+        "paddingLeft": "10px",
+        "paddingRight": "10px",
+        "position": "sticky",
+        "background": "color(srgb 1 1 1 / 0.96)"
+      },
+      "dashboard": {
+        "left": 12,
+        "right": 308,
+        "top": 0,
+        "width": 296,
+        "height": 1060.6,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 0,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        320,
+        720
+      ],
+      "theme": "dark",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": {
+        "left": 0,
+        "right": 320,
+        "top": 0,
+        "width": 320,
+        "height": 1154.6,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "12px",
+        "paddingRight": "12px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 2,
+        "right": 318,
+        "top": 0,
+        "width": 316,
+        "height": 56,
+        "marginLeft": "-10px",
+        "marginRight": "-10px",
+        "paddingLeft": "10px",
+        "paddingRight": "10px",
+        "position": "sticky",
+        "background": "color(srgb 0.12549 0.172549 0.227451 / 0.96)"
+      },
+      "dashboard": {
+        "left": 12,
+        "right": 308,
+        "top": 0,
+        "width": 296,
+        "height": 1060.6,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 0,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        360,
+        800
+      ],
+      "theme": "light",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": {
+        "left": 0,
+        "right": 360,
+        "top": 0,
+        "width": 360,
+        "height": 1086.5,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "12px",
+        "paddingRight": "12px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 2,
+        "right": 358,
+        "top": 0,
+        "width": 356,
+        "height": 56,
+        "marginLeft": "-10px",
+        "marginRight": "-10px",
+        "paddingLeft": "10px",
+        "paddingRight": "10px",
+        "position": "sticky",
+        "background": "color(srgb 1 1 1 / 0.96)"
+      },
+      "dashboard": {
+        "left": 12,
+        "right": 348,
+        "top": 0,
+        "width": 336,
+        "height": 992.5,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 0,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        360,
+        800
+      ],
+      "theme": "dark",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": {
+        "left": 0,
+        "right": 360,
+        "top": 0,
+        "width": 360,
+        "height": 1086.5,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "12px",
+        "paddingRight": "12px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 2,
+        "right": 358,
+        "top": 0,
+        "width": 356,
+        "height": 56,
+        "marginLeft": "-10px",
+        "marginRight": "-10px",
+        "paddingLeft": "10px",
+        "paddingRight": "10px",
+        "position": "sticky",
+        "background": "color(srgb 0.12549 0.172549 0.227451 / 0.96)"
+      },
+      "dashboard": {
+        "left": 12,
+        "right": 348,
+        "top": 0,
+        "width": 336,
+        "height": 992.5,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 0,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        390,
+        844
+      ],
+      "theme": "light",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": {
+        "left": 0,
+        "right": 390,
+        "top": 0,
+        "width": 390,
+        "height": 1088.2,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "12px",
+        "paddingRight": "12px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 2,
+        "right": 388,
+        "top": 0,
+        "width": 386,
+        "height": 56,
+        "marginLeft": "-10px",
+        "marginRight": "-10px",
+        "paddingLeft": "10px",
+        "paddingRight": "10px",
+        "position": "sticky",
+        "background": "color(srgb 1 1 1 / 0.96)"
+      },
+      "dashboard": {
+        "left": 12,
+        "right": 378,
+        "top": 0,
+        "width": 366,
+        "height": 994.2,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 0,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        390,
+        844
+      ],
+      "theme": "dark",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": {
+        "left": 0,
+        "right": 390,
+        "top": 0,
+        "width": 390,
+        "height": 1088.2,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "12px",
+        "paddingRight": "12px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 2,
+        "right": 388,
+        "top": 0,
+        "width": 386,
+        "height": 56,
+        "marginLeft": "-10px",
+        "marginRight": "-10px",
+        "paddingLeft": "10px",
+        "paddingRight": "10px",
+        "position": "sticky",
+        "background": "color(srgb 0.12549 0.172549 0.227451 / 0.96)"
+      },
+      "dashboard": {
+        "left": 12,
+        "right": 378,
+        "top": 0,
+        "width": 366,
+        "height": 994.2,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 0,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        430,
+        932
+      ],
+      "theme": "light",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": {
+        "left": 0,
+        "right": 430,
+        "top": 0,
+        "width": 430,
+        "height": 1074.4,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "12px",
+        "paddingRight": "12px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 2,
+        "right": 428,
+        "top": 0,
+        "width": 426,
+        "height": 56,
+        "marginLeft": "-10px",
+        "marginRight": "-10px",
+        "paddingLeft": "10px",
+        "paddingRight": "10px",
+        "position": "sticky",
+        "background": "color(srgb 1 1 1 / 0.96)"
+      },
+      "dashboard": {
+        "left": 12,
+        "right": 418,
+        "top": 0,
+        "width": 406,
+        "height": 980.4,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 0,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        430,
+        932
+      ],
+      "theme": "dark",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": {
+        "left": 0,
+        "right": 430,
+        "top": 0,
+        "width": 430,
+        "height": 1074.4,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "12px",
+        "paddingRight": "12px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 2,
+        "right": 428,
+        "top": 0,
+        "width": 426,
+        "height": 56,
+        "marginLeft": "-10px",
+        "marginRight": "-10px",
+        "paddingLeft": "10px",
+        "paddingRight": "10px",
+        "position": "sticky",
+        "background": "color(srgb 0.12549 0.172549 0.227451 / 0.96)"
+      },
+      "dashboard": {
+        "left": 12,
+        "right": 418,
+        "top": 0,
+        "width": 406,
+        "height": 980.4,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 0,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        600,
+        960
+      ],
+      "theme": "light",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": {
+        "left": 86.8,
+        "right": 589.2,
+        "top": 0,
+        "width": 502.4,
+        "height": 1046.2,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "18px",
+        "paddingRight": "18px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 104.8,
+        "right": 571.2,
+        "top": 22,
+        "width": 466.4,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "sticky",
+        "background": "color(srgb 1 1 1 / 0.96)"
+      },
+      "dashboard": {
+        "left": 104.8,
+        "right": 571.2,
+        "top": 22,
+        "width": 466.4,
+        "height": 988.2,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 22,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        600,
+        960
+      ],
+      "theme": "dark",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": {
+        "left": 86.8,
+        "right": 589.2,
+        "top": 0,
+        "width": 502.4,
+        "height": 1046.2,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "18px",
+        "paddingRight": "18px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 104.8,
+        "right": 571.2,
+        "top": 22,
+        "width": 466.4,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "sticky",
+        "background": "color(srgb 0.12549 0.172549 0.227451 / 0.96)"
+      },
+      "dashboard": {
+        "left": 104.8,
+        "right": 571.2,
+        "top": 22,
+        "width": 466.4,
+        "height": 988.2,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 22,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        768,
+        1024
+      ],
+      "theme": "light",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": {
+        "left": 76,
+        "right": 768,
+        "top": 0,
+        "width": 692,
+        "height": 1024,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "23.04px",
+        "paddingRight": "23.04px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 99,
+        "right": 745,
+        "top": 22,
+        "width": 645.9,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "sticky",
+        "background": "color(srgb 1 1 1 / 0.96)"
+      },
+      "dashboard": {
+        "left": 99,
+        "right": 745,
+        "top": 22,
+        "width": 645.9,
+        "height": 966,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 22,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        768,
+        1024
+      ],
+      "theme": "dark",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": {
+        "left": 76,
+        "right": 768,
+        "top": 0,
+        "width": 692,
+        "height": 1024,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "23.04px",
+        "paddingRight": "23.04px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 99,
+        "right": 745,
+        "top": 22,
+        "width": 645.9,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "sticky",
+        "background": "color(srgb 0.12549 0.172549 0.227451 / 0.96)"
+      },
+      "dashboard": {
+        "left": 99,
+        "right": 745,
+        "top": 22,
+        "width": 645.9,
+        "height": 966,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 22,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        1024,
+        768
+      ],
+      "theme": "light",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1009,
+      "main": {
+        "left": 256,
+        "right": 1009,
+        "top": 0,
+        "width": 753,
+        "height": 889.5,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "30.72px",
+        "paddingRight": "30.72px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 286.7,
+        "right": 978.3,
+        "top": 28,
+        "width": 691.6,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "20.48px",
+        "paddingRight": "20.48px",
+        "position": "sticky",
+        "background": "color(srgb 1 1 1 / 0.96)"
+      },
+      "dashboard": {
+        "left": 286.7,
+        "right": 978.3,
+        "top": 28,
+        "width": 691.6,
+        "height": 813.5,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 28,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        1024,
+        768
+      ],
+      "theme": "dark",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1009,
+      "main": {
+        "left": 256,
+        "right": 1009,
+        "top": 0,
+        "width": 753,
+        "height": 889.5,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "30.72px",
+        "paddingRight": "30.72px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 286.7,
+        "right": 978.3,
+        "top": 28,
+        "width": 691.6,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "20.48px",
+        "paddingRight": "20.48px",
+        "position": "sticky",
+        "background": "color(srgb 0.12549 0.172549 0.227451 / 0.96)"
+      },
+      "dashboard": {
+        "left": 286.7,
+        "right": 978.3,
+        "top": 28,
+        "width": 691.6,
+        "height": 813.5,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "0px",
+        "paddingRight": "0px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 28,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        1280,
+        800
+      ],
+      "theme": "light",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1265,
+      "main": {
+        "left": 256,
+        "right": 1265,
+        "top": 0,
+        "width": 1009,
+        "height": 837.9,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "38.4px",
+        "paddingRight": "38.4px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 312.4,
+        "right": 1208.6,
+        "top": 40,
+        "width": 896.2,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "25.6px",
+        "paddingRight": "25.6px",
+        "position": "sticky",
+        "background": "color(srgb 0.956863 0.968627 0.984314 / 0.94)"
+      },
+      "dashboard": {
+        "left": 294.4,
+        "right": 1226.6,
+        "top": 28,
+        "width": 932.2,
+        "height": 761.9,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "18px",
+        "paddingRight": "18px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 40,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        1280,
+        800
+      ],
+      "theme": "dark",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1265,
+      "main": {
+        "left": 256,
+        "right": 1265,
+        "top": 0,
+        "width": 1009,
+        "height": 837.9,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "38.4px",
+        "paddingRight": "38.4px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 312.4,
+        "right": 1208.6,
+        "top": 40,
+        "width": 896.2,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "25.6px",
+        "paddingRight": "25.6px",
+        "position": "sticky",
+        "background": "color(srgb 0.0705882 0.101961 0.145098 / 0.94)"
+      },
+      "dashboard": {
+        "left": 294.4,
+        "right": 1226.6,
+        "top": 28,
+        "width": 932.2,
+        "height": 761.9,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "18px",
+        "paddingRight": "18px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 40,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        1440,
+        900
+      ],
+      "theme": "light",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": {
+        "left": 256,
+        "right": 1440,
+        "top": 0,
+        "width": 1184,
+        "height": 900,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "43.2px",
+        "paddingRight": "43.2px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 317.2,
+        "right": 1378.8,
+        "top": 40,
+        "width": 1061.6,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "28px",
+        "paddingRight": "28px",
+        "position": "sticky",
+        "background": "color(srgb 0.956863 0.968627 0.984314 / 0.94)"
+      },
+      "dashboard": {
+        "left": 299.2,
+        "right": 1396.8,
+        "top": 28,
+        "width": 1097.6,
+        "height": 824,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "18px",
+        "paddingRight": "18px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 40,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        1440,
+        900
+      ],
+      "theme": "dark",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": {
+        "left": 256,
+        "right": 1440,
+        "top": 0,
+        "width": 1184,
+        "height": 900,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "43.2px",
+        "paddingRight": "43.2px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 317.2,
+        "right": 1378.8,
+        "top": 40,
+        "width": 1061.6,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "28px",
+        "paddingRight": "28px",
+        "position": "sticky",
+        "background": "color(srgb 0.0705882 0.101961 0.145098 / 0.94)"
+      },
+      "dashboard": {
+        "left": 299.2,
+        "right": 1396.8,
+        "top": 28,
+        "width": 1097.6,
+        "height": 824,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "18px",
+        "paddingRight": "18px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 40,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        1920,
+        1080
+      ],
+      "theme": "light",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": {
+        "left": 288,
+        "right": 1888,
+        "top": 0,
+        "width": 1600,
+        "height": 1080,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "48px",
+        "paddingRight": "48px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 354,
+        "right": 1822,
+        "top": 40,
+        "width": 1468,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "28px",
+        "paddingRight": "28px",
+        "position": "sticky",
+        "background": "color(srgb 0.956863 0.968627 0.984314 / 0.94)"
+      },
+      "dashboard": {
+        "left": 336,
+        "right": 1840,
+        "top": 28,
+        "width": 1504,
+        "height": 1004,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "18px",
+        "paddingRight": "18px",
+        "position": "static",
+        "background": "rgb(244, 247, 251)"
+      },
+      "stickyTop": 40,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    },
+    {
+      "size": [
+        1920,
+        1080
+      ],
+      "theme": "dark",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": {
+        "left": 288,
+        "right": 1888,
+        "top": 0,
+        "width": 1600,
+        "height": 1080,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "48px",
+        "paddingRight": "48px",
+        "position": "static",
+        "background": "rgba(0, 0, 0, 0)"
+      },
+      "header": {
+        "left": 354,
+        "right": 1822,
+        "top": 40,
+        "width": 1468,
+        "height": 56,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "28px",
+        "paddingRight": "28px",
+        "position": "sticky",
+        "background": "color(srgb 0.0705882 0.101961 0.145098 / 0.94)"
+      },
+      "dashboard": {
+        "left": 336,
+        "right": 1840,
+        "top": 28,
+        "width": 1504,
+        "height": 1004,
+        "marginLeft": "0px",
+        "marginRight": "0px",
+        "paddingLeft": "18px",
+        "paddingRight": "18px",
+        "position": "static",
+        "background": "rgb(18, 26, 37)"
+      },
+      "stickyTop": 40,
+      "account": {
+        "text": "Conta",
+        "className": "rm-account-trigger",
+        "parent": "",
+        "headerMatches": false,
+        "iconDisplay": "none",
+        "labelPosition": "static",
+        "labelClip": "auto"
+      }
+    }
+  ],
+  "screenshots": [
+    "0303-A-home-after-320x720-light.png",
+    "0303-A-home-after-320x720-dark.png",
+    "0303-A-home-after-360x800-light.png",
+    "0303-A-home-after-360x800-dark.png",
+    "0303-A-home-after-390x844-light.png",
+    "0303-A-home-after-390x844-dark.png",
+    "0303-A-home-after-430x932-light.png",
+    "0303-A-home-after-430x932-dark.png",
+    "0303-A-home-after-600x960-light.png",
+    "0303-A-home-after-600x960-dark.png",
+    "0303-A-home-after-768x1024-light.png",
+    "0303-A-home-after-768x1024-dark.png",
+    "0303-A-home-after-1024x768-light.png",
+    "0303-A-home-after-1024x768-dark.png",
+    "0303-A-home-after-1280x800-light.png",
+    "0303-A-home-after-1280x800-dark.png",
+    "0303-A-home-after-1440x900-light.png",
+    "0303-A-home-after-1440x900-dark.png",
+    "0303-A-home-after-1920x1080-light.png",
+    "0303-A-home-after-1920x1080-dark.png"
+  ]
+}

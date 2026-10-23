@@ -6,6 +6,7 @@ const vm = require('node:vm');
 const app = fs.readFileSync('app.js', 'utf8');
 const view = fs.readFileSync('dashboard-v2.js', 'utf8');
 const css = fs.readFileSync('dashboard-v2.css', 'utf8');
+const baseCss = fs.readFileSync('styles.css', 'utf8');
 const ds = fs.readFileSync('design-system.css', 'utf8');
 const index = fs.readFileSync('index.html', 'utf8');
 const sw = fs.readFileSync('sw.js', 'utf8');
@@ -29,7 +30,7 @@ assert.match(html,/data-tab="reports"/u,'reports action uses the existing report
 assert.match(html,/data-tab="events"/u,'notification action uses the existing events and notifications destination');
 assert.match(html,/Origem[\s\S]*Motoboy[\s\S]*Taxa[\s\S]*Distância estimada/u,'cards show commercial origin, assigned driver, known fee and known distance');
 assert.match(html,/id="syncStatusPanel"[\s\S]*data-sync-label[\s\S]*data-sync-detail[\s\S]*data-sync-now/u,'dashboard status reuses the canonical live synchronization feedback and retry handler');
-assert.match(html,/rm-global-header dv2-header/u,'dashboard renders the shared operational header');
+assert.match(html,/rm-global-header topbar rm-page-header dv2-header/u,'dashboard renders the shared operational page-header contract');
 assert.match(renderContext.renderHeader({title:'Pedidos',eyebrow:'Restaurante',subtitle:'Resumo',actions:'<button>Nova</button>'}),/rm-global-header topbar rm-page-header[\s\S]*RotaMoto[\s\S]*Pedidos[\s\S]*Nova/u,'other operational tabs use the same shared header renderer');
 const denied = renderContext.render({canOrders:false,canEvents:false,canReports:false,orders:[{id:'x',number:'x',canOpen:false,canPrint:false,printUnavailable:'Sem permissão',qrEligible:true,canQr:false}]});
 assert.match(denied,/disabled[^>]*title="Seu perfil não tem acesso a pedidos"/u,'restricted actions explain the RBAC denial');
@@ -92,7 +93,7 @@ assert.match(app,/function closeOrdersAdvancedFilters[\s\S]*event=>\{const detai
 assert.match(app,/event.key==='Escape'[\s\S]*closeOrdersAdvancedFilters\(true\)/u,'Escape closes filters and restores focus to the trigger');
 assert.match(app,/closeOrdersAdvancedFilters\(false\);closeMoreMenu/u,'navigation closes the advanced filter panel');
 assert.doesNotMatch(ds,/orders-advanced-filters\{border-top:1px solid/u,'the stray inherited top separator is removed at its source');
-assert.match(css,/\.rm-global-header\{position:sticky/u,'dashboard shared header stays sticky');
+assert.match(baseCss,/\.topbar\{position:sticky/u,'shared operational page header stays sticky');
 assert.match(ds,/order-card-actions>\.order-open-btn\{grid-column:1\/-1\}/u,'mobile delivery cards prioritize Open and pair secondary print and QR actions');
 assert.match(ds,/order-card-actions>\.order-qr-wrap\{width:100%;min-width:0;max-width:none;min-height:44px/u,'eligible QR action uses the same accessible mobile touch target as print');
 assert.match(app,/aria-modal="true" aria-labelledby="navMoreTitle"/u,'More sheet is exposed as a labelled modal dialog');
@@ -104,9 +105,10 @@ assert.match(ds,/nav-more-menu:not\(\[hidden\]\)[\s\S]*border-radius:20px 20px 0
 assert.match(ds,/nav-more-groups[\s\S]*overflow:auto/u,'More destinations scroll inside the available viewport');
 assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection state distinguishes active synchronization');
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
-assert.match(index,/dashboard-v2\.js\?v=0303\.1/u,'shared header component bundle is versioned for 0303');
-assert.match(sw,/CACHE_PREFIX\}v96/u,'service worker shell cache is advanced for the integrated release');
-assert.match(index,/app\.js\?v=0303\.1/u,'official app script uses a fresh cache key');
+assert.match(index,/dashboard-v2\.js\?v=0304\.2/u,'shared header component bundle uses the current campaign cache key');
+assert.match(index,/dashboard-v2\.css\?v=0304\.3/u,'dashboard width/header CSS uses the current campaign cache key');
+assert.match(sw,/CACHE_PREFIX\}v98/u,'service worker shell cache is advanced for the current campaign');
+assert.match(index,/app\.js\?v=0304\.1/u,'official app script uses the current campaign cache key');
 assert.match(index,/orders-v2\.css\?v=0303\.1/u,'Orders V2 layout uses a fresh cache key');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
 

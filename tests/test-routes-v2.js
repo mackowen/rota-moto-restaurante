@@ -1,0 +1,31 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+
+const app=fs.readFileSync(require.resolve('../app.js'),'utf8');
+const styles=fs.readFileSync(require.resolve('../routes-v2.css'),'utf8');
+const html=fs.readFileSync(require.resolve('../index.html'),'utf8');
+const mapStart=app.indexOf('async function initRouteMap(){');
+const mapEnd=app.indexOf('\nfunction orderPlanningStatus',mapStart);
+const routeMap=app.slice(mapStart,mapEnd);
+const routesStart=app.indexOf('function routes(){');
+const routesEnd=app.indexOf('\nfunction openRouteEditor',routesStart);
+const routesView=app.slice(routesStart,routesEnd);
+
+assert.notEqual(mapStart,-1,'route map implementation exists');
+assert.notEqual(routesStart,-1,'routes view exists');
+assert.match(app,/function validGeoPoint\(latitude,longitude\)/,'map coordinates have a shared validator');
+assert.match(app,/function orderCoords\(o\).*validGeoPoint/,'delivery markers require validated stored coordinates');
+assert.match(routeMap,/validGeoPoint\(point\.latitude,point\.longitude\)/,'location points are range checked');
+assert.doesNotMatch(routeMap,/nominatim|geocode\(/i,'opening the route map must not send addresses to a geocoder');
+assert.doesNotMatch(routeMap,/-23\.5505|-46\.6333/,'map startup must not imply an unconfigured restaurant location');
+assert.match(routesView,/id="routeMap"[\s\S]*routes-v2-plans/,'map is rendered before route lists for the mobile map first layout');
+assert.match(routesView,/routesV2SelectedId/,'selected route details follow the selected canonical plan');
+assert.match(routesView,/activeDeliveries\.length/,'eligible delivery summary uses live domain data');
+assert.doesNotMatch(routesView,/Number\(order\.km\|\|0\)/,'missing distance is never rendered as zero');
+assert.match(styles,/@media\(min-width:600px\)/,'tablet layout breakpoint exists');
+assert.match(styles,/@media\(min-width:1100px\)/,'desktop planning workspace breakpoint exists');
+assert.match(styles,/@media\(max-width:599px\)/,'mobile map first layout breakpoint exists');
+assert.match(html,/routes-v2\.css\?v=0304\.1/,'route styles are loaded with a campaign cache key');
+assert.match(fs.readFileSync('sw.js','utf8'),/routes-v2\.css\?v=0304\.1/,'route styles are included in the local-first application shell');
+console.log('Routes V2 layout, coordinate validation and no implicit geocoding: PASS');

@@ -1,0 +1,1210 @@
+{
+  "campaign": "0303-A",
+  "access": "unauthenticated identity login gate; POST /api/identity/login returned HTTP 403 in earlier attempt.",
+  "results": [
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        320,
+        720
+      ],
+      "documentWidth": 320,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        360,
+        800
+      ],
+      "documentWidth": 360,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        390,
+        844
+      ],
+      "documentWidth": 390,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        430,
+        932
+      ],
+      "documentWidth": 430,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        600,
+        960
+      ],
+      "documentWidth": 600,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        768,
+        1024
+      ],
+      "documentWidth": 768,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1024,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1024,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1024,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1024,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1024,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1024,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1024,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        1024,
+        768
+      ],
+      "documentWidth": 1024,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1280,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1280,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1280,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1280,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1280,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1280,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1280,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        1280,
+        800
+      ],
+      "documentWidth": 1280,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        1440,
+        900
+      ],
+      "documentWidth": 1440,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "light",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "dashboard",
+      "theme": "dark",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "light",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "orders",
+      "theme": "dark",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "light",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "routes",
+      "theme": "dark",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "light",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    },
+    {
+      "tab": "bikes",
+      "theme": "dark",
+      "viewport": [
+        1920,
+        1080
+      ],
+      "documentWidth": 1920,
+      "main": null,
+      "header": null,
+      "home": null,
+      "orders": null,
+      "routes": null,
+      "map": null
+    }
+  ],
+  "screenshots": [
+    "0303-A-dashboard-390x844-light.png"
+  ],
+  "note": "The kept screenshot is an identity login-gate capture, not a target-tab visual comparison. All 80 viewport/theme attempts reached a hidden/unrendered #app; no Home/Orders/Routes/Motoboys visual measurements were obtained in this run. The attempt is evidence of the authentication blocker only."
+}

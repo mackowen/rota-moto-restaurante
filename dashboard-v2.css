@@ -397,7 +397,8 @@ html[data-resolved-theme="light"] .dashboard-v2{
   .dv2-coverage{
     grid-column:1/-1}
   .dashboard-v2{
-    padding:12px 14px 22px}
+    padding:0 0 22px}
+  .dv2-greeting{padding-top:32px}
   }
 
 @media(min-width:600px){
@@ -407,8 +408,9 @@ html[data-resolved-theme="light"] .dashboard-v2{
 
 @media(max-width:767px){
   .dashboard-v2{
-    padding:8px 12px 18px;
+    padding:0 0 18px;
     border-radius:0}
+  .dv2-greeting{padding-top:23px}
   .dv2-header{
     height:56px}
   .dv2-brand img{
@@ -554,8 +556,6 @@ html[data-resolved-theme="light"] .dashboard-v2{
   }
 
 @media(max-width:350px){
-  .dashboard-v2{
-    padding-inline:9px}
   .dv2-all{gap:3px;padding-inline:4px;font-size:10px}
   .dv2-all .dv2-icon svg{width:14px;height:14px}
   .dv2-section-heading h2{min-width:0}
@@ -630,11 +630,7 @@ html[data-resolved-theme="light"] .dashboard-v2{
     display:none}
   }
 
-/* One sticky header contract shared by the dashboard and operational pages. */
-.rm-global-header{position:sticky;top:0;z-index:1500;box-sizing:border-box;padding-top:env(safe-area-inset-top);background:var(--canvas);backdrop-filter:none}
-.dashboard-v2 .rm-global-header{min-height:calc(56px + env(safe-area-inset-top));height:auto;background:var(--dv-canvas)}
-.dashboard-v2 .rm-header-brand{display:flex}
+/* The dashboard uses the same sticky page-header contract as operational tabs. */
 @media(min-width:600px){.dashboard-v2 .rm-header-brand{display:none}}
-@media(max-width:599px){.dashboard-v2 .rm-global-header{margin-top:-8px;padding-inline:0}}
 .topbar.rm-page-header.rm-global-header{box-sizing:border-box;padding-top:calc(10px + env(safe-area-inset-top))}
 @media(max-width:900px){.topbar.rm-page-header.rm-global-header{padding-top:calc(6px + env(safe-area-inset-top))}}

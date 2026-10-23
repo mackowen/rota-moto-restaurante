@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const css=fs.readFileSync('dashboard-v2.css','utf8');
+const renderer=fs.readFileSync('dashboard-v2.js','utf8');
+assert.match(renderer,/rm-global-header topbar rm-page-header dv2-header/u,'dashboard reuses the operational page header contract');
+assert.match(css,/@media\(max-width:1199px\)\{[\s\S]*?\.dashboard-v2\{\s*padding:0 0 22px/u,'tablet and mobile dashboard wrapper does not add a second horizontal gutter');
+assert.match(css,/@media\(max-width:767px\)\{[\s\S]*?\.dashboard-v2\{\s*padding:0 0 18px/u,'mobile dashboard retains vertical spacing without duplicating main gutters');
+assert.doesNotMatch(css,/\.dashboard-v2\{\s*padding-inline:9px/u,'320px screens do not reintroduce a third gutter');
+assert.match(css,/@media\(min-width:600px\)\{\.dashboard-v2 \.rm-header-brand\{display:none\}\}/u,'tablet and larger keep the existing sidebar brand composition');
+assert.doesNotMatch(css,/\.dashboard-v2 \.rm-global-header\{[^}]*margin-top:-/u,'dashboard header does not compensate with a negative offset');
+assert.doesNotMatch(css,/transform:\s*translateX/u,'dashboard alignment does not use horizontal transforms');
+console.log('Dashboard shared header and responsive width contract: PASS');

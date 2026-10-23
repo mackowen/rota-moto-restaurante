@@ -1,0 +1,71 @@
+/* Rotas V2: responsive planning workspace using the shared semantic tokens. */
+.routes-v2{display:grid;gap:14px;min-width:0}
+.routes-v2-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.routes-v2-summary>div{display:grid;gap:4px;min-width:0;padding:12px 14px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+.routes-v2-summary span{color:var(--muted);font-size:12px}
+.routes-v2-summary strong{font-size:22px;line-height:1.1;color:var(--text)}
+.routes-v2-map-panel,.routes-v2-plans,.routes-v2-selected,.routes-v2-deliveries{min-width:0;padding:14px;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 3px 14px rgba(16,24,40,.045)}
+.routes-v2-map-panel{padding:10px}
+.routes-v2 .map-ready{border:0;background:transparent;box-shadow:none;padding:0}
+.routes-v2 .map-toolbar{align-items:center}
+.routes-v2 .real-map{height:clamp(360px,52vw,620px);min-height:320px;border-radius:13px}
+.routes-v2 .map-legend{margin-top:10px}
+.routes-v2-map-note{margin:8px 2px 0;color:var(--muted);font-size:11px;line-height:1.45}
+.routes-v2-plans>.section-head,.routes-v2-deliveries>.section-head{margin-bottom:12px}
+.routes-v2 .route-plan-list{display:grid;gap:10px}
+.routes-v2 .route-plan-card{min-width:0;padding:12px;border:1px solid var(--border);border-radius:13px;background:var(--surface2)}
+.routes-v2 .route-plan-select{display:flex;width:100%;align-items:flex-start;justify-content:space-between;gap:8px;padding:0;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer}
+.routes-v2 .route-plan-select>span:first-child{display:grid;gap:4px;min-width:0}
+.routes-v2 .route-plan-select strong{font-size:15px}
+.routes-v2 .route-plan-select small{overflow-wrap:anywhere;color:var(--muted);font-size:11px}
+.routes-v2 .route-plan-select[aria-pressed="true"]{color:var(--accent)}
+.routes-v2 .route-plan-card:has(.route-plan-select[aria-pressed="true"]){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.routes-v2 .route-plan-stops{display:none}
+.routes-v2 .route-plan-card .actions{margin-top:10px}
+.routes-v2-detail h2{margin:2px 0;font-size:18px}
+.routes-v2-stop-list{display:grid;gap:0;margin:14px 0 0;padding:0;list-style:none}
+.routes-v2-stop-list li{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:9px;padding:11px 0;border-top:1px solid var(--border)}
+.routes-v2-stop-list li>span:nth-child(2){display:grid;gap:4px;min-width:0}
+.routes-v2-stop-list strong,.routes-v2-stop-list small{overflow-wrap:anywhere}
+.routes-v2-stop-list strong{font-size:12px}
+.routes-v2-stop-list small{color:var(--muted);font-size:11px}
+.routes-v2-stop-number{display:grid;width:28px;height:28px;place-items:center;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-weight:800}
+.routes-v2-order-status{color:var(--muted);font-size:11px}
+.routes-v2-deliveries .route-list{display:grid;gap:8px}
+.routes-v2-deliveries .route-row{margin:0}
+@media(min-width:600px){
+ .routes-v2{gap:16px}
+ .routes-v2-summary{grid-column:1/-1}
+ .routes-v2{grid-template-columns:minmax(220px,.8fr) minmax(0,1.2fr)}
+ .routes-v2-map-panel{grid-column:2;grid-row:2}
+ .routes-v2-plans{grid-column:1;grid-row:2}
+ .routes-v2-selected{grid-column:1/-1}
+ .routes-v2-deliveries{grid-column:1/-1}
+ .routes-v2 .real-map{height:clamp(420px,57vw,650px)}
+}
+@media(min-width:1100px){
+ .routes-v2{grid-template-columns:minmax(255px,300px) minmax(380px,1fr) minmax(300px,350px);align-items:start}
+ .routes-v2-summary{grid-column:1/-1;grid-row:1}
+ .routes-v2-plans{grid-column:1;grid-row:2;max-height:690px;overflow:auto}
+ .routes-v2-map-panel{grid-column:2;grid-row:2;position:sticky;top:12px}
+ .routes-v2-selected{grid-column:3;grid-row:2;max-height:690px;overflow:auto}
+ .routes-v2-deliveries{grid-column:1/-1;grid-row:3}
+ .routes-v2 .real-map{height:min(62vh,650px);min-height:460px}
+}
+@media(max-width:599px){
+ .routes-v2{gap:10px}
+ .routes-v2-summary{gap:6px}
+ .routes-v2-summary>div{padding:9px 10px;border-radius:12px}
+ .routes-v2-summary span{font-size:10px}
+ .routes-v2-summary strong{font-size:19px}
+ .routes-v2-map-panel,.routes-v2-plans,.routes-v2-selected,.routes-v2-deliveries{padding:10px;border-radius:14px}
+ .routes-v2 .real-map{height:clamp(340px,58dvh,510px);min-height:300px}
+ .routes-v2 .map-actions{flex-wrap:nowrap;overflow-x:auto;max-width:100%;padding-bottom:3px}
+ .routes-v2 .map-actions .btn{min-height:38px}
+ .routes-v2-deliveries .route-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}
+ .routes-v2-deliveries .route-row>div{grid-column:1/-1;grid-row:2}
+ .routes-v2-deliveries .route-row>b{grid-column:1}
+ .routes-v2-deliveries .route-row>.routes-v2-order-status{grid-column:2;grid-row:1}
+ .routes-v2-deliveries .route-row>.btn{grid-column:1/-1;grid-row:3;width:100%}
+}
+@media(max-width:360px){.routes-v2-summary span{font-size:9px}.routes-v2-summary strong{font-size:17px}.routes-v2 .map-actions .btn{font-size:10px;padding-inline:7px}}
