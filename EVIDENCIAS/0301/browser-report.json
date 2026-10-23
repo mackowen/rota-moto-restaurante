@@ -280,7 +280,7 @@
     "/api/logistics/intelligence/decision-quality",
     "/api/logistics/route-settings",
     "/api/analytics/territorial",
-    "/api/analytics/territorial/deliveries/01a169b7-bd19-7c5a-b723-d4dc67e6f883/destination"
+    "/api/analytics/territorial/deliveries/:id/destination"
   ],
   "notes": [
     "An initial unauthenticated harness probe returned 401 before backend-issued session installation; session subsequently confirmed MFA.",
