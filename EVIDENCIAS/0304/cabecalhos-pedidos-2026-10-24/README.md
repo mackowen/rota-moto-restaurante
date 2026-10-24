@@ -23,3 +23,7 @@ O arquivo `served-assets-sha256.json` preserva o status HTTP e os SHA-256 source
 ## Controlled header screenshot comparison
 
 `header-controlled-before-1280-pedidos.png` and `header-controlled-after-1280-pedidos.png` use the same production `renderHeader()` markup and static shell fixture at 1280×800. Only the Design System stylesheet changes: committed baseline `6c5eeb3` versus the current stylesheet. Insets and button positions are recorded in `header-controlled-geometries.json`. This is a header-focused CDP fixture, not a complete authenticated application screenshot or owner approval.
+
+## Artefatos exploratórios preservados
+
+Os arquivos gerados antes da montagem correta do wrapper `#app` ou antes de estabilizar a pintura permanecem preservados, mas não sustentam os resultados desta intervenção: `header-measurements-before.json` (sem viewport meta, portanto linhas mobile inválidas), `header-measurements-after.json` e `header-before/after-pedidos-*` (fixtures anteriores sem contexto completo de identidade), e as capturas `orders-after-*`, `orders-final-*`, `orders-final-ui-*` e `orders-reviewed-*` (gerações exploratórias substituídas). Os resultados válidos desta rodada estão limitados aos nomes citados acima: `header-four-edge-before-after.json`, `header-controlled-*.png`, `header-controlled-geometries.json`, `orders-card-measurements.json`, `orders-verified-*.png` e `served-assets-sha256.json`. Não houve exclusão de evidência.
