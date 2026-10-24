@@ -1,0 +1,6054 @@
+{
+  "createdAt": "2026-10-24T00:59:29.707Z",
+  "method": "CDP isolated shell fixture using production dashboard header renderer, production route/order styles, and production navButton function; synthetic order text only; no auth, IndexedDB, network domain calls, or database writes",
+  "rows": [
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 1178.9,
+        "right": 360
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 208,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 252
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 256,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 300
+          },
+          "icon": {
+            "x": 268.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 287.5
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 304,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 348
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 430.4,
+        "right": 360
+      },
+      "workspace": {
+        "x": 12,
+        "y": 239,
+        "width": 336,
+        "height": 97.4,
+        "right": 348
+      },
+      "sidePanel": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "detailsDisplay": "none",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 208,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 252
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 256,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 300
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 304,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 348
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 839.3,
+        "right": 360
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 12,
+        "y": 134.1,
+        "width": 336,
+        "height": 81,
+        "right": 348
+      },
+      "map": {
+        "x": 12,
+        "y": 224.1,
+        "width": 336,
+        "height": 280,
+        "right": 348
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 208,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 252
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 256,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 300
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 304,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 348
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 1178.9,
+        "right": 360
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 208,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 252
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 256,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 300
+          },
+          "icon": {
+            "x": 268.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 287.5
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 304,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 348
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 430.4,
+        "right": 360
+      },
+      "workspace": {
+        "x": 12,
+        "y": 239,
+        "width": 336,
+        "height": 97.4,
+        "right": 348
+      },
+      "sidePanel": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "detailsDisplay": "none",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 208,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 252
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 256,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 300
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 304,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 348
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 360,
+        "height": 839.3,
+        "right": 360
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 12,
+        "y": 134.1,
+        "width": 336,
+        "height": 81,
+        "right": 348
+      },
+      "map": {
+        "x": 12,
+        "y": 224.1,
+        "width": 336,
+        "height": 280,
+        "right": 348
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 208,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 252
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 256,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 300
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 304,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 348
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 1180.7,
+        "right": 390
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 238,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 282
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330
+          },
+          "icon": {
+            "x": 298.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 317.5
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 334,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 378
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 430.4,
+        "right": 390
+      },
+      "workspace": {
+        "x": 12,
+        "y": 239,
+        "width": 366,
+        "height": 97.4,
+        "right": 378
+      },
+      "sidePanel": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "detailsDisplay": "none",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 238,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 282
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 334,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 378
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 828,
+        "right": 390
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 12,
+        "y": 122.8,
+        "width": 366,
+        "height": 81,
+        "right": 378
+      },
+      "map": {
+        "x": 12,
+        "y": 212.8,
+        "width": 366,
+        "height": 280,
+        "right": 378
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 238,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 282
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 334,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 378
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 1180.7,
+        "right": 390
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 238,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 282
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330
+          },
+          "icon": {
+            "x": 298.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 317.5
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 334,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 378
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 430.4,
+        "right": 390
+      },
+      "workspace": {
+        "x": 12,
+        "y": 239,
+        "width": 366,
+        "height": 97.4,
+        "right": 378
+      },
+      "sidePanel": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "detailsDisplay": "none",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 238,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 282
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 334,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 378
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 828,
+        "right": 390
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 12,
+        "y": 122.8,
+        "width": 366,
+        "height": 81,
+        "right": 378
+      },
+      "map": {
+        "x": 12,
+        "y": 212.8,
+        "width": 366,
+        "height": 280,
+        "right": 378
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 238,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 282
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 334,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 378
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 753,
+      "header": {
+        "x": 271,
+        "y": 22,
+        "width": 458.9,
+        "height": 99.8,
+        "right": 730
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 248,
+        "height": 1024,
+        "right": 248
+      },
+      "main": {
+        "x": 248,
+        "y": 0,
+        "width": 505,
+        "height": 1112.6,
+        "right": 753
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 476.1,
+            "y": 46.4,
+            "width": 44,
+            "height": 44,
+            "right": 520.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 525.1,
+            "y": 46.4,
+            "width": 134.6,
+            "height": 44,
+            "right": 659.7
+          },
+          "icon": {
+            "x": 534.1,
+            "y": 59.9,
+            "width": 17,
+            "height": 17,
+            "right": 551.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 664.7,
+            "y": 48.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 730
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 768,
+      "header": {
+        "x": 106.3,
+        "y": 22,
+        "width": 631.4,
+        "height": 80.9,
+        "right": 737.7
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1024,
+        "right": 76
+      },
+      "main": {
+        "x": 83.3,
+        "y": 0,
+        "width": 677.4,
+        "height": 1024,
+        "right": 760.7
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 483.8,
+            "y": 36.9,
+            "width": 44,
+            "height": 44,
+            "right": 527.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 532.8,
+            "y": 36.9,
+            "width": 134.6,
+            "height": 44,
+            "right": 667.4
+          },
+          "icon": {
+            "x": 541.8,
+            "y": 50.4,
+            "width": 17,
+            "height": 17,
+            "right": 558.8
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 672.4,
+            "y": 38.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 737.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 768,
+      "header": {
+        "x": 271,
+        "y": 22,
+        "width": 473.9,
+        "height": 127.9,
+        "right": 745
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 248,
+        "height": 1024,
+        "right": 248
+      },
+      "main": {
+        "x": 248,
+        "y": 0,
+        "width": 520,
+        "height": 1024,
+        "right": 768
+      },
+      "workspace": {
+        "x": 271,
+        "y": 345.9,
+        "width": 473.9,
+        "height": 101.5,
+        "right": 745
+      },
+      "sidePanel": {
+        "x": 475,
+        "y": 345.9,
+        "width": 270,
+        "height": 101.5,
+        "right": 745
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 498.7,
+            "y": 60.5,
+            "width": 44,
+            "height": 44,
+            "right": 542.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 547.7,
+            "y": 60.5,
+            "width": 127,
+            "height": 44,
+            "right": 674.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 679.7,
+            "y": 62.5,
+            "width": 65.3,
+            "height": 40,
+            "right": 745
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 768,
+      "header": {
+        "x": 121.5,
+        "y": 22,
+        "width": 600.9,
+        "height": 81.4,
+        "right": 722.5
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1024,
+        "right": 76
+      },
+      "main": {
+        "x": 98.5,
+        "y": 0,
+        "width": 647,
+        "height": 1024,
+        "right": 745.5
+      },
+      "workspace": {
+        "x": 121.5,
+        "y": 299.4,
+        "width": 600.9,
+        "height": 101.5,
+        "right": 722.5
+      },
+      "sidePanel": {
+        "x": 452.5,
+        "y": 299.4,
+        "width": 270,
+        "height": 101.5,
+        "right": 722.5
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 476.2,
+            "y": 37.2,
+            "width": 44,
+            "height": 44,
+            "right": 520.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 525.2,
+            "y": 37.2,
+            "width": 127,
+            "height": 44,
+            "right": 652.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 657.2,
+            "y": 39.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 722.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 768,
+      "header": {
+        "x": 107.5,
+        "y": 12,
+        "width": 621.1,
+        "height": 81.4,
+        "right": 728.5
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 68,
+        "height": 1024,
+        "right": 68
+      },
+      "main": {
+        "x": 93.5,
+        "y": 0,
+        "width": 649.1,
+        "height": 1024,
+        "right": 742.5
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 107.5,
+        "y": 174.6,
+        "width": 621.1,
+        "height": 40,
+        "right": 728.5
+      },
+      "map": {
+        "x": 107.5,
+        "y": 226.6,
+        "width": 621.1,
+        "height": 310,
+        "right": 728.5
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 482.2,
+            "y": 27.2,
+            "width": 44,
+            "height": 44,
+            "right": 526.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 531.2,
+            "y": 27.2,
+            "width": 127,
+            "height": 44,
+            "right": 658.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 663.2,
+            "y": 29.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 728.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 768,
+      "header": {
+        "x": 107.5,
+        "y": 12,
+        "width": 621.1,
+        "height": 81.4,
+        "right": 728.5
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 68,
+        "height": 1024,
+        "right": 68
+      },
+      "main": {
+        "x": 93.5,
+        "y": 0,
+        "width": 649.1,
+        "height": 1024,
+        "right": 742.5
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 107.5,
+        "y": 174.6,
+        "width": 621.1,
+        "height": 40,
+        "right": 728.5
+      },
+      "map": {
+        "x": 107.5,
+        "y": 226.6,
+        "width": 621.1,
+        "height": 310,
+        "right": 728.5
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 482.2,
+            "y": 27.2,
+            "width": 44,
+            "height": 44,
+            "right": 526.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 531.2,
+            "y": 27.2,
+            "width": 127,
+            "height": 44,
+            "right": 658.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 663.2,
+            "y": 29.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 728.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 753,
+      "header": {
+        "x": 271,
+        "y": 22,
+        "width": 458.9,
+        "height": 99.8,
+        "right": 730
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 248,
+        "height": 1024,
+        "right": 248
+      },
+      "main": {
+        "x": 248,
+        "y": 0,
+        "width": 505,
+        "height": 1112.6,
+        "right": 753
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 476.1,
+            "y": 46.4,
+            "width": 44,
+            "height": 44,
+            "right": 520.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 525.1,
+            "y": 46.4,
+            "width": 134.6,
+            "height": 44,
+            "right": 659.7
+          },
+          "icon": {
+            "x": 534.1,
+            "y": 59.9,
+            "width": 17,
+            "height": 17,
+            "right": 551.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 664.7,
+            "y": 48.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 730
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 768,
+      "header": {
+        "x": 106.3,
+        "y": 22,
+        "width": 631.4,
+        "height": 80.9,
+        "right": 737.7
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1024,
+        "right": 76
+      },
+      "main": {
+        "x": 83.3,
+        "y": 0,
+        "width": 677.4,
+        "height": 1024,
+        "right": 760.7
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 483.8,
+            "y": 36.9,
+            "width": 44,
+            "height": 44,
+            "right": 527.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 532.8,
+            "y": 36.9,
+            "width": 134.6,
+            "height": 44,
+            "right": 667.4
+          },
+          "icon": {
+            "x": 541.8,
+            "y": 50.4,
+            "width": 17,
+            "height": 17,
+            "right": 558.8
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 672.4,
+            "y": 38.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 737.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 768,
+      "header": {
+        "x": 271,
+        "y": 22,
+        "width": 473.9,
+        "height": 127.9,
+        "right": 745
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 248,
+        "height": 1024,
+        "right": 248
+      },
+      "main": {
+        "x": 248,
+        "y": 0,
+        "width": 520,
+        "height": 1024,
+        "right": 768
+      },
+      "workspace": {
+        "x": 271,
+        "y": 345.9,
+        "width": 473.9,
+        "height": 101.5,
+        "right": 745
+      },
+      "sidePanel": {
+        "x": 475,
+        "y": 345.9,
+        "width": 270,
+        "height": 101.5,
+        "right": 745
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 498.7,
+            "y": 60.5,
+            "width": 44,
+            "height": 44,
+            "right": 542.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 547.7,
+            "y": 60.5,
+            "width": 127,
+            "height": 44,
+            "right": 674.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 679.7,
+            "y": 62.5,
+            "width": 65.3,
+            "height": 40,
+            "right": 745
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 768,
+      "header": {
+        "x": 121.5,
+        "y": 22,
+        "width": 600.9,
+        "height": 81.4,
+        "right": 722.5
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1024,
+        "right": 76
+      },
+      "main": {
+        "x": 98.5,
+        "y": 0,
+        "width": 647,
+        "height": 1024,
+        "right": 745.5
+      },
+      "workspace": {
+        "x": 121.5,
+        "y": 299.4,
+        "width": 600.9,
+        "height": 101.5,
+        "right": 722.5
+      },
+      "sidePanel": {
+        "x": 452.5,
+        "y": 299.4,
+        "width": 270,
+        "height": 101.5,
+        "right": 722.5
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 476.2,
+            "y": 37.2,
+            "width": 44,
+            "height": 44,
+            "right": 520.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 525.2,
+            "y": 37.2,
+            "width": 127,
+            "height": 44,
+            "right": 652.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 657.2,
+            "y": 39.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 722.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 768,
+      "header": {
+        "x": 107.5,
+        "y": 12,
+        "width": 621.1,
+        "height": 81.4,
+        "right": 728.5
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 68,
+        "height": 1024,
+        "right": 68
+      },
+      "main": {
+        "x": 93.5,
+        "y": 0,
+        "width": 649.1,
+        "height": 1024,
+        "right": 742.5
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 107.5,
+        "y": 174.6,
+        "width": 621.1,
+        "height": 40,
+        "right": 728.5
+      },
+      "map": {
+        "x": 107.5,
+        "y": 226.6,
+        "width": 621.1,
+        "height": 310,
+        "right": 728.5
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 482.2,
+            "y": 27.2,
+            "width": 44,
+            "height": 44,
+            "right": 526.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 531.2,
+            "y": 27.2,
+            "width": 127,
+            "height": 44,
+            "right": 658.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 663.2,
+            "y": 29.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 728.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 768,
+      "header": {
+        "x": 107.5,
+        "y": 12,
+        "width": 621.1,
+        "height": 81.4,
+        "right": 728.5
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 68,
+        "height": 1024,
+        "right": 68
+      },
+      "main": {
+        "x": 93.5,
+        "y": 0,
+        "width": 649.1,
+        "height": 1024,
+        "right": 742.5
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 107.5,
+        "y": 174.6,
+        "width": 621.1,
+        "height": 40,
+        "right": 728.5
+      },
+      "map": {
+        "x": 107.5,
+        "y": 226.6,
+        "width": 621.1,
+        "height": 310,
+        "right": 728.5
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 482.2,
+            "y": 27.2,
+            "width": 44,
+            "height": 44,
+            "right": 526.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 531.2,
+            "y": 27.2,
+            "width": 127,
+            "height": 44,
+            "right": 658.2
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 663.2,
+            "y": 29.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 728.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1009,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 691.6,
+        "height": 93.3,
+        "right": 978.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 768,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 753,
+        "height": 1018.2,
+        "right": 1009
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 697.1,
+            "y": 51.1,
+            "width": 44,
+            "height": 44,
+            "right": 741.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 751.1,
+            "y": 51.1,
+            "width": 131.4,
+            "height": 44,
+            "right": 882.5
+          },
+          "icon": {
+            "x": 762.1,
+            "y": 64.6,
+            "width": 17,
+            "height": 17,
+            "right": 779.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 892.5,
+            "y": 53.1,
+            "width": 65.3,
+            "height": 40,
+            "right": 957.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1009,
+      "header": {
+        "x": 106.7,
+        "y": 28,
+        "width": 871.6,
+        "height": 93.3,
+        "right": 978.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 768,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 933,
+        "height": 1018.2,
+        "right": 1009
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 697.1,
+            "y": 51.1,
+            "width": 44,
+            "height": 44,
+            "right": 741.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 751.1,
+            "y": 51.1,
+            "width": 131.4,
+            "height": 44,
+            "right": 882.5
+          },
+          "icon": {
+            "x": 762.1,
+            "y": 64.6,
+            "width": 17,
+            "height": 17,
+            "right": 779.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 892.5,
+            "y": 53.1,
+            "width": 65.3,
+            "height": 40,
+            "right": 957.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1024,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 706.6,
+        "height": 93.8,
+        "right": 993.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 768,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 768,
+        "height": 768,
+        "right": 1024
+      },
+      "workspace": {
+        "x": 286.7,
+        "y": 313.8,
+        "width": 706.6,
+        "height": 96.2,
+        "right": 993.3
+      },
+      "sidePanel": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "detailsDisplay": "none",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 720.9,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 764.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 774.9,
+            "y": 51.4,
+            "width": 122.6,
+            "height": 44,
+            "right": 897.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 907.5,
+            "y": 53.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 972.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1024,
+      "header": {
+        "x": 106.7,
+        "y": 28,
+        "width": 886.6,
+        "height": 93.8,
+        "right": 993.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 768,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 948,
+        "height": 768,
+        "right": 1024
+      },
+      "workspace": {
+        "x": 106.7,
+        "y": 313.8,
+        "width": 886.6,
+        "height": 96.2,
+        "right": 993.3
+      },
+      "sidePanel": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "detailsDisplay": "none",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 720.9,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 764.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 774.9,
+            "y": 51.4,
+            "width": 122.6,
+            "height": 44,
+            "right": 897.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 907.5,
+            "y": 53.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 972.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1009,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 691.6,
+        "height": 93.8,
+        "right": 978.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 768,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 753,
+        "height": 798.5,
+        "right": 1009
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 286.7,
+        "y": 201,
+        "width": 691.6,
+        "height": 40,
+        "right": 978.3
+      },
+      "map": {
+        "x": 520.9,
+        "y": 319,
+        "width": 457.4,
+        "height": 370,
+        "right": 978.3
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 705.9,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 749.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 759.9,
+            "y": 51.4,
+            "width": 122.6,
+            "height": 44,
+            "right": 882.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 892.5,
+            "y": 53.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 957.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1009,
+      "header": {
+        "x": 106.7,
+        "y": 28,
+        "width": 871.6,
+        "height": 93.8,
+        "right": 978.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 768,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 933,
+        "height": 798.5,
+        "right": 1009
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 106.7,
+        "y": 201,
+        "width": 871.6,
+        "height": 40,
+        "right": 978.3
+      },
+      "map": {
+        "x": 399.4,
+        "y": 319,
+        "width": 578.9,
+        "height": 370,
+        "right": 978.3
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 705.9,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 749.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 759.9,
+            "y": 51.4,
+            "width": 122.6,
+            "height": 44,
+            "right": 882.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 892.5,
+            "y": 53.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 957.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1009,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 691.6,
+        "height": 93.3,
+        "right": 978.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 768,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 753,
+        "height": 1018.2,
+        "right": 1009
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 697.1,
+            "y": 51.1,
+            "width": 44,
+            "height": 44,
+            "right": 741.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 751.1,
+            "y": 51.1,
+            "width": 131.4,
+            "height": 44,
+            "right": 882.5
+          },
+          "icon": {
+            "x": 762.1,
+            "y": 64.6,
+            "width": 17,
+            "height": 17,
+            "right": 779.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 892.5,
+            "y": 53.1,
+            "width": 65.3,
+            "height": 40,
+            "right": 957.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1009,
+      "header": {
+        "x": 106.7,
+        "y": 28,
+        "width": 871.6,
+        "height": 93.3,
+        "right": 978.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 768,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 933,
+        "height": 1018.2,
+        "right": 1009
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 697.1,
+            "y": 51.1,
+            "width": 44,
+            "height": 44,
+            "right": 741.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 751.1,
+            "y": 51.1,
+            "width": 131.4,
+            "height": 44,
+            "right": 882.5
+          },
+          "icon": {
+            "x": 762.1,
+            "y": 64.6,
+            "width": 17,
+            "height": 17,
+            "right": 779.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 892.5,
+            "y": 53.1,
+            "width": 65.3,
+            "height": 40,
+            "right": 957.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1024,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 706.6,
+        "height": 93.8,
+        "right": 993.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 768,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 768,
+        "height": 768,
+        "right": 1024
+      },
+      "workspace": {
+        "x": 286.7,
+        "y": 313.8,
+        "width": 706.6,
+        "height": 96.2,
+        "right": 993.3
+      },
+      "sidePanel": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "detailsDisplay": "none",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 720.9,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 764.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 774.9,
+            "y": 51.4,
+            "width": 122.6,
+            "height": 44,
+            "right": 897.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 907.5,
+            "y": 53.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 972.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1024,
+      "header": {
+        "x": 106.7,
+        "y": 28,
+        "width": 886.6,
+        "height": 93.8,
+        "right": 993.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 768,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 948,
+        "height": 768,
+        "right": 1024
+      },
+      "workspace": {
+        "x": 106.7,
+        "y": 313.8,
+        "width": 886.6,
+        "height": 96.2,
+        "right": 993.3
+      },
+      "sidePanel": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0
+      },
+      "detailsDisplay": "none",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 720.9,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 764.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 774.9,
+            "y": 51.4,
+            "width": 122.6,
+            "height": 44,
+            "right": 897.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 907.5,
+            "y": 53.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 972.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1009,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 691.6,
+        "height": 93.8,
+        "right": 978.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 768,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 753,
+        "height": 798.5,
+        "right": 1009
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 286.7,
+        "y": 201,
+        "width": 691.6,
+        "height": 40,
+        "right": 978.3
+      },
+      "map": {
+        "x": 520.9,
+        "y": 319,
+        "width": 457.4,
+        "height": 370,
+        "right": 978.3
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 705.9,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 749.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 759.9,
+            "y": 51.4,
+            "width": 122.6,
+            "height": 44,
+            "right": 882.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 892.5,
+            "y": 53.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 957.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1009,
+      "header": {
+        "x": 106.7,
+        "y": 28,
+        "width": 871.6,
+        "height": 93.8,
+        "right": 978.3
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 768,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 933,
+        "height": 798.5,
+        "right": 1009
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 106.7,
+        "y": 201,
+        "width": 871.6,
+        "height": 40,
+        "right": 978.3
+      },
+      "map": {
+        "x": 399.4,
+        "y": 319,
+        "width": 578.9,
+        "height": 370,
+        "right": 978.3
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 705.9,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 749.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 759.9,
+            "y": 51.4,
+            "width": 122.6,
+            "height": 44,
+            "right": 882.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 892.5,
+            "y": 53.4,
+            "width": 65.3,
+            "height": 40,
+            "right": 957.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1265,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 932.2,
+        "height": 98.2,
+        "right": 1226.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 800,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1009,
+        "height": 953,
+        "right": 1265
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 919.1,
+            "y": 53.6,
+            "width": 44,
+            "height": 44,
+            "right": 963.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 973.1,
+            "y": 53.6,
+            "width": 152.6,
+            "height": 44,
+            "right": 1125.7
+          },
+          "icon": {
+            "x": 989.1,
+            "y": 65.6,
+            "width": 20,
+            "height": 20,
+            "right": 1009.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1135.7,
+            "y": 55.6,
+            "width": 65.3,
+            "height": 40,
+            "right": 1201
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1265,
+      "header": {
+        "x": 114.4,
+        "y": 28,
+        "width": 1112.2,
+        "height": 98.2,
+        "right": 1226.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 800,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1189,
+        "height": 953,
+        "right": 1265
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 919.1,
+            "y": 53.6,
+            "width": 44,
+            "height": 44,
+            "right": 963.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 973.1,
+            "y": 53.6,
+            "width": 152.6,
+            "height": 44,
+            "right": 1125.7
+          },
+          "icon": {
+            "x": 989.1,
+            "y": 65.6,
+            "width": 20,
+            "height": 20,
+            "right": 1009.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1135.7,
+            "y": 55.6,
+            "width": 65.3,
+            "height": 40,
+            "right": 1201
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1280,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 947.2,
+        "height": 98.8,
+        "right": 1241.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 800,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1024,
+        "height": 800,
+        "right": 1280
+      },
+      "workspace": {
+        "x": 294.4,
+        "y": 318.8,
+        "width": 947.2,
+        "height": 256.7,
+        "right": 1241.6
+      },
+      "sidePanel": {
+        "x": 956.6,
+        "y": 318.8,
+        "width": 285,
+        "height": 256.7,
+        "right": 1241.6
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 945.7,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 989.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 999.7,
+            "y": 53.9,
+            "width": 141,
+            "height": 44,
+            "right": 1140.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1150.7,
+            "y": 55.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1216
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1280,
+      "header": {
+        "x": 114.4,
+        "y": 28,
+        "width": 1127.2,
+        "height": 98.8,
+        "right": 1241.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 800,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1204,
+        "height": 800,
+        "right": 1280
+      },
+      "workspace": {
+        "x": 114.4,
+        "y": 318.8,
+        "width": 1127.2,
+        "height": 256.7,
+        "right": 1241.6
+      },
+      "sidePanel": {
+        "x": 956.6,
+        "y": 318.8,
+        "width": 285,
+        "height": 256.7,
+        "right": 1241.6
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 945.7,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 989.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 999.7,
+            "y": 53.9,
+            "width": 141,
+            "height": 44,
+            "right": 1140.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1150.7,
+            "y": 55.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1216
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1265,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 932.2,
+        "height": 98.8,
+        "right": 1226.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 800,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1009,
+        "height": 803.5,
+        "right": 1265
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 294.4,
+        "y": 206,
+        "width": 932.2,
+        "height": 40,
+        "right": 1226.6
+      },
+      "map": {
+        "x": 518.4,
+        "y": 324,
+        "width": 434.2,
+        "height": 370,
+        "right": 952.6
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 930.7,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 974.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 984.7,
+            "y": 53.9,
+            "width": 141,
+            "height": 44,
+            "right": 1125.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1135.7,
+            "y": 55.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1201
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1265,
+      "header": {
+        "x": 114.4,
+        "y": 28,
+        "width": 1112.2,
+        "height": 98.8,
+        "right": 1226.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 800,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1189,
+        "height": 803.5,
+        "right": 1265
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 114.4,
+        "y": 206,
+        "width": 1112.2,
+        "height": 40,
+        "right": 1226.6
+      },
+      "map": {
+        "x": 356.6,
+        "y": 324,
+        "width": 570.6,
+        "height": 370,
+        "right": 927.3
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 930.7,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 974.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 984.7,
+            "y": 53.9,
+            "width": 141,
+            "height": 44,
+            "right": 1125.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1135.7,
+            "y": 55.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1201
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1265,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 932.2,
+        "height": 98.2,
+        "right": 1226.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 800,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1009,
+        "height": 953,
+        "right": 1265
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 919.1,
+            "y": 53.6,
+            "width": 44,
+            "height": 44,
+            "right": 963.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 973.1,
+            "y": 53.6,
+            "width": 152.6,
+            "height": 44,
+            "right": 1125.7
+          },
+          "icon": {
+            "x": 989.1,
+            "y": 65.6,
+            "width": 20,
+            "height": 20,
+            "right": 1009.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1135.7,
+            "y": 55.6,
+            "width": 65.3,
+            "height": 40,
+            "right": 1201
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1265,
+      "header": {
+        "x": 114.4,
+        "y": 28,
+        "width": 1112.2,
+        "height": 98.2,
+        "right": 1226.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 800,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1189,
+        "height": 953,
+        "right": 1265
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 919.1,
+            "y": 53.6,
+            "width": 44,
+            "height": 44,
+            "right": 963.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 973.1,
+            "y": 53.6,
+            "width": 152.6,
+            "height": 44,
+            "right": 1125.7
+          },
+          "icon": {
+            "x": 989.1,
+            "y": 65.6,
+            "width": 20,
+            "height": 20,
+            "right": 1009.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1135.7,
+            "y": 55.6,
+            "width": 65.3,
+            "height": 40,
+            "right": 1201
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1280,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 947.2,
+        "height": 98.8,
+        "right": 1241.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 800,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1024,
+        "height": 800,
+        "right": 1280
+      },
+      "workspace": {
+        "x": 294.4,
+        "y": 318.8,
+        "width": 947.2,
+        "height": 256.7,
+        "right": 1241.6
+      },
+      "sidePanel": {
+        "x": 956.6,
+        "y": 318.8,
+        "width": 285,
+        "height": 256.7,
+        "right": 1241.6
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 945.7,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 989.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 999.7,
+            "y": 53.9,
+            "width": 141,
+            "height": 44,
+            "right": 1140.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1150.7,
+            "y": 55.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1216
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1280,
+      "header": {
+        "x": 114.4,
+        "y": 28,
+        "width": 1127.2,
+        "height": 98.8,
+        "right": 1241.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 800,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1204,
+        "height": 800,
+        "right": 1280
+      },
+      "workspace": {
+        "x": 114.4,
+        "y": 318.8,
+        "width": 1127.2,
+        "height": 256.7,
+        "right": 1241.6
+      },
+      "sidePanel": {
+        "x": 956.6,
+        "y": 318.8,
+        "width": 285,
+        "height": 256.7,
+        "right": 1241.6
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 945.7,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 989.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 999.7,
+            "y": 53.9,
+            "width": 141,
+            "height": 44,
+            "right": 1140.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1150.7,
+            "y": 55.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1216
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1265,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 932.2,
+        "height": 98.8,
+        "right": 1226.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 800,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1009,
+        "height": 803.5,
+        "right": 1265
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 294.4,
+        "y": 206,
+        "width": 932.2,
+        "height": 40,
+        "right": 1226.6
+      },
+      "map": {
+        "x": 518.4,
+        "y": 324,
+        "width": 434.2,
+        "height": 370,
+        "right": 952.6
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 930.7,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 974.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 984.7,
+            "y": 53.9,
+            "width": 141,
+            "height": 44,
+            "right": 1125.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1135.7,
+            "y": 55.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1201
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1265,
+      "header": {
+        "x": 114.4,
+        "y": 28,
+        "width": 1112.2,
+        "height": 98.8,
+        "right": 1226.6
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 800,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1189,
+        "height": 803.5,
+        "right": 1265
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 114.4,
+        "y": 206,
+        "width": 1112.2,
+        "height": 40,
+        "right": 1226.6
+      },
+      "map": {
+        "x": 356.6,
+        "y": 324,
+        "width": 570.6,
+        "height": 370,
+        "right": 927.3
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 930.7,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 974.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 984.7,
+            "y": 53.9,
+            "width": 141,
+            "height": 44,
+            "right": 1125.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1135.7,
+            "y": 55.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1201
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1425,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1082.6,
+        "height": 102.2,
+        "right": 1381.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 900,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1169,
+        "height": 957,
+        "right": 1425
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 1071.9,
+            "y": 55.6,
+            "width": 44,
+            "height": 44,
+            "right": 1115.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1125.9,
+            "y": 55.6,
+            "width": 152.6,
+            "height": 44,
+            "right": 1278.5
+          },
+          "icon": {
+            "x": 1141.9,
+            "y": 67.6,
+            "width": 20,
+            "height": 20,
+            "right": 1161.9
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1288.5,
+            "y": 57.6,
+            "width": 65.3,
+            "height": 40,
+            "right": 1353.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1425,
+      "header": {
+        "x": 119.2,
+        "y": 28,
+        "width": 1262.6,
+        "height": 102.2,
+        "right": 1381.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 900,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1349,
+        "height": 957,
+        "right": 1425
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 1071.9,
+            "y": 55.6,
+            "width": 44,
+            "height": 44,
+            "right": 1115.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1125.9,
+            "y": 55.6,
+            "width": 152.6,
+            "height": 44,
+            "right": 1278.5
+          },
+          "icon": {
+            "x": 1141.9,
+            "y": 67.6,
+            "width": 20,
+            "height": 20,
+            "right": 1161.9
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1288.5,
+            "y": 57.6,
+            "width": 65.3,
+            "height": 40,
+            "right": 1353.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1440,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1097.6,
+        "height": 102.7,
+        "right": 1396.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 900,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1184,
+        "height": 900,
+        "right": 1440
+      },
+      "workspace": {
+        "x": 299.2,
+        "y": 322.7,
+        "width": 1097.6,
+        "height": 256.7,
+        "right": 1396.8
+      },
+      "sidePanel": {
+        "x": 1111.8,
+        "y": 322.7,
+        "width": 285,
+        "height": 256.7,
+        "right": 1396.8
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1098.5,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1142.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1152.5,
+            "y": 55.9,
+            "width": 141,
+            "height": 44,
+            "right": 1293.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1303.5,
+            "y": 57.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1368.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1440,
+      "header": {
+        "x": 119.2,
+        "y": 28,
+        "width": 1277.6,
+        "height": 102.7,
+        "right": 1396.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 900,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1364,
+        "height": 900,
+        "right": 1440
+      },
+      "workspace": {
+        "x": 119.2,
+        "y": 322.7,
+        "width": 1277.6,
+        "height": 256.7,
+        "right": 1396.8
+      },
+      "sidePanel": {
+        "x": 1111.8,
+        "y": 322.7,
+        "width": 285,
+        "height": 256.7,
+        "right": 1396.8
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1098.5,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1142.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1152.5,
+            "y": 55.9,
+            "width": 141,
+            "height": 44,
+            "right": 1293.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1303.5,
+            "y": 57.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1368.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1440,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1097.6,
+        "height": 102.7,
+        "right": 1396.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 900,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1184,
+        "height": 900,
+        "right": 1440
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 299.2,
+        "y": 209.9,
+        "width": 1097.6,
+        "height": 40,
+        "right": 1396.8
+      },
+      "map": {
+        "x": 538.4,
+        "y": 327.9,
+        "width": 563,
+        "height": 370,
+        "right": 1101.3
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1098.5,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1142.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1152.5,
+            "y": 55.9,
+            "width": 141,
+            "height": 44,
+            "right": 1293.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1303.5,
+            "y": 57.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1368.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1440,
+      "header": {
+        "x": 119.2,
+        "y": 28,
+        "width": 1277.6,
+        "height": 102.7,
+        "right": 1396.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 900,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1364,
+        "height": 900,
+        "right": 1440
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 119.2,
+        "y": 209.9,
+        "width": 1277.6,
+        "height": 40,
+        "right": 1396.8
+      },
+      "map": {
+        "x": 396.3,
+        "y": 327.9,
+        "width": 657.7,
+        "height": 370,
+        "right": 1054
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1098.5,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1142.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1152.5,
+            "y": 55.9,
+            "width": 141,
+            "height": 44,
+            "right": 1293.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1303.5,
+            "y": 57.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1368.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1425,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1082.6,
+        "height": 102.2,
+        "right": 1381.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 900,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1169,
+        "height": 957,
+        "right": 1425
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 1071.9,
+            "y": 55.6,
+            "width": 44,
+            "height": 44,
+            "right": 1115.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1125.9,
+            "y": 55.6,
+            "width": 152.6,
+            "height": 44,
+            "right": 1278.5
+          },
+          "icon": {
+            "x": 1141.9,
+            "y": 67.6,
+            "width": 20,
+            "height": 20,
+            "right": 1161.9
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1288.5,
+            "y": 57.6,
+            "width": 65.3,
+            "height": 40,
+            "right": 1353.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1425,
+      "header": {
+        "x": 119.2,
+        "y": 28,
+        "width": 1262.6,
+        "height": 102.2,
+        "right": 1381.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 900,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1349,
+        "height": 957,
+        "right": 1425
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 1071.9,
+            "y": 55.6,
+            "width": 44,
+            "height": 44,
+            "right": 1115.9
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1125.9,
+            "y": 55.6,
+            "width": 152.6,
+            "height": 44,
+            "right": 1278.5
+          },
+          "icon": {
+            "x": 1141.9,
+            "y": 67.6,
+            "width": 20,
+            "height": 20,
+            "right": 1161.9
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1288.5,
+            "y": 57.6,
+            "width": 65.3,
+            "height": 40,
+            "right": 1353.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1440,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1097.6,
+        "height": 102.7,
+        "right": 1396.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 900,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1184,
+        "height": 900,
+        "right": 1440
+      },
+      "workspace": {
+        "x": 299.2,
+        "y": 322.7,
+        "width": 1097.6,
+        "height": 256.7,
+        "right": 1396.8
+      },
+      "sidePanel": {
+        "x": 1111.8,
+        "y": 322.7,
+        "width": 285,
+        "height": 256.7,
+        "right": 1396.8
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1098.5,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1142.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1152.5,
+            "y": 55.9,
+            "width": 141,
+            "height": 44,
+            "right": 1293.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1303.5,
+            "y": 57.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1368.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1440,
+      "header": {
+        "x": 119.2,
+        "y": 28,
+        "width": 1277.6,
+        "height": 102.7,
+        "right": 1396.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 900,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1364,
+        "height": 900,
+        "right": 1440
+      },
+      "workspace": {
+        "x": 119.2,
+        "y": 322.7,
+        "width": 1277.6,
+        "height": 256.7,
+        "right": 1396.8
+      },
+      "sidePanel": {
+        "x": 1111.8,
+        "y": 322.7,
+        "width": 285,
+        "height": 256.7,
+        "right": 1396.8
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1098.5,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1142.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1152.5,
+            "y": 55.9,
+            "width": 141,
+            "height": 44,
+            "right": 1293.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1303.5,
+            "y": 57.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1368.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1440,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1097.6,
+        "height": 102.7,
+        "right": 1396.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 900,
+        "right": 256
+      },
+      "main": {
+        "x": 256,
+        "y": 0,
+        "width": 1184,
+        "height": 900,
+        "right": 1440
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 299.2,
+        "y": 209.9,
+        "width": 1097.6,
+        "height": 40,
+        "right": 1396.8
+      },
+      "map": {
+        "x": 538.4,
+        "y": 327.9,
+        "width": 563,
+        "height": 370,
+        "right": 1101.3
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1098.5,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1142.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1152.5,
+            "y": 55.9,
+            "width": 141,
+            "height": 44,
+            "right": 1293.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1303.5,
+            "y": 57.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1368.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1440,
+      "header": {
+        "x": 119.2,
+        "y": 28,
+        "width": 1277.6,
+        "height": 102.7,
+        "right": 1396.8
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 900,
+        "right": 76
+      },
+      "main": {
+        "x": 76,
+        "y": 0,
+        "width": 1364,
+        "height": 900,
+        "right": 1440
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 119.2,
+        "y": 209.9,
+        "width": 1277.6,
+        "height": 40,
+        "right": 1396.8
+      },
+      "map": {
+        "x": 396.3,
+        "y": 327.9,
+        "width": 657.7,
+        "height": 370,
+        "right": 1054
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1098.5,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1142.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1152.5,
+            "y": 55.9,
+            "width": 141,
+            "height": 44,
+            "right": 1293.5
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1303.5,
+            "y": 57.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1368.8
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1920,
+      "header": {
+        "x": 336,
+        "y": 28,
+        "width": 1504,
+        "height": 104.8,
+        "right": 1840
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 1080,
+        "right": 256
+      },
+      "main": {
+        "x": 288,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1888
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 1530.1,
+            "y": 56.9,
+            "width": 44,
+            "height": 44,
+            "right": 1574.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1584.1,
+            "y": 56.9,
+            "width": 152.6,
+            "height": 44,
+            "right": 1736.7
+          },
+          "icon": {
+            "x": 1600.1,
+            "y": 68.9,
+            "width": 20,
+            "height": 20,
+            "right": 1620.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1746.7,
+            "y": 58.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1812
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "light",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1920,
+      "header": {
+        "x": 246,
+        "y": 28,
+        "width": 1504,
+        "height": 104.8,
+        "right": 1750
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1080,
+        "right": 76
+      },
+      "main": {
+        "x": 198,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1798
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 1440.1,
+            "y": 56.9,
+            "width": 44,
+            "height": 44,
+            "right": 1484.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1494.1,
+            "y": 56.9,
+            "width": 152.6,
+            "height": 44,
+            "right": 1646.7
+          },
+          "icon": {
+            "x": 1510.1,
+            "y": 68.9,
+            "width": 20,
+            "height": 20,
+            "right": 1530.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1656.7,
+            "y": 58.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1722
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1920,
+      "header": {
+        "x": 336,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1840
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 1080,
+        "right": 256
+      },
+      "main": {
+        "x": 288,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1888
+      },
+      "workspace": {
+        "x": 336,
+        "y": 325.3,
+        "width": 1504,
+        "height": 256.7,
+        "right": 1840
+      },
+      "sidePanel": {
+        "x": 1555,
+        "y": 325.3,
+        "width": 285,
+        "height": 256.7,
+        "right": 1840
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1541.7,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1585.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1595.7,
+            "y": 57.2,
+            "width": 141,
+            "height": 44,
+            "right": 1736.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1746.7,
+            "y": 59.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 1812
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "light",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1920,
+      "header": {
+        "x": 246,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1750
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1080,
+        "right": 76
+      },
+      "main": {
+        "x": 198,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1798
+      },
+      "workspace": {
+        "x": 246,
+        "y": 325.3,
+        "width": 1504,
+        "height": 256.7,
+        "right": 1750
+      },
+      "sidePanel": {
+        "x": 1465,
+        "y": 325.3,
+        "width": 285,
+        "height": 256.7,
+        "right": 1750
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1451.7,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1495.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1505.7,
+            "y": 57.2,
+            "width": 141,
+            "height": 44,
+            "right": 1646.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1656.7,
+            "y": 59.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 1722
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1920,
+      "header": {
+        "x": 336,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1840
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 1080,
+        "right": 256
+      },
+      "main": {
+        "x": 288,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1888
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 336,
+        "y": 212.5,
+        "width": 1504,
+        "height": 40,
+        "right": 1840
+      },
+      "map": {
+        "x": 660.7,
+        "y": 330.5,
+        "width": 776.8,
+        "height": 370,
+        "right": 1437.6
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1541.7,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1585.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1595.7,
+            "y": 57.2,
+            "width": 141,
+            "height": 44,
+            "right": 1736.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1746.7,
+            "y": 59.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 1812
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "light",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1920,
+      "header": {
+        "x": 246,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1750
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1080,
+        "right": 76
+      },
+      "main": {
+        "x": 198,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1798
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 246,
+        "y": 212.5,
+        "width": 1504,
+        "height": 40,
+        "right": 1750
+      },
+      "map": {
+        "x": 570.7,
+        "y": 330.5,
+        "width": 776.8,
+        "height": 370,
+        "right": 1347.6
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1451.7,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1495.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1505.7,
+            "y": 57.2,
+            "width": 141,
+            "height": 44,
+            "right": 1646.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1656.7,
+            "y": 59.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 1722
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1920,
+      "header": {
+        "x": 336,
+        "y": 28,
+        "width": 1504,
+        "height": 104.8,
+        "right": 1840
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 1080,
+        "right": 256
+      },
+      "main": {
+        "x": 288,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1888
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 1530.1,
+            "y": 56.9,
+            "width": 44,
+            "height": 44,
+            "right": 1574.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1584.1,
+            "y": 56.9,
+            "width": 152.6,
+            "height": 44,
+            "right": 1736.7
+          },
+          "icon": {
+            "x": 1600.1,
+            "y": 68.9,
+            "width": 20,
+            "height": 20,
+            "right": 1620.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1746.7,
+            "y": 58.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1812
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "dark",
+      "page": "inicio",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1920,
+      "header": {
+        "x": 246,
+        "y": 28,
+        "width": 1504,
+        "height": 104.8,
+        "right": 1750
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1080,
+        "right": 76
+      },
+      "main": {
+        "x": 198,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1798
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos e notificações",
+          "box": {
+            "x": 1440.1,
+            "y": 56.9,
+            "width": 44,
+            "height": 44,
+            "right": 1484.1
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1494.1,
+            "y": 56.9,
+            "width": 152.6,
+            "height": 44,
+            "right": 1646.7
+          },
+          "icon": {
+            "x": 1510.1,
+            "y": 68.9,
+            "width": 20,
+            "height": 20,
+            "right": 1530.1
+          },
+          "iconDisplay": "block"
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1656.7,
+            "y": 58.9,
+            "width": 65.3,
+            "height": 40,
+            "right": 1722
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1920,
+      "header": {
+        "x": 336,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1840
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 1080,
+        "right": 256
+      },
+      "main": {
+        "x": 288,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1888
+      },
+      "workspace": {
+        "x": 336,
+        "y": 325.3,
+        "width": 1504,
+        "height": 256.7,
+        "right": 1840
+      },
+      "sidePanel": {
+        "x": 1555,
+        "y": 325.3,
+        "width": 285,
+        "height": 256.7,
+        "right": 1840
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1541.7,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1585.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1595.7,
+            "y": 57.2,
+            "width": 141,
+            "height": 44,
+            "right": 1736.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1746.7,
+            "y": 59.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 1812
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "dark",
+      "page": "pedidos",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1920,
+      "header": {
+        "x": 246,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1750
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1080,
+        "right": 76
+      },
+      "main": {
+        "x": 198,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1798
+      },
+      "workspace": {
+        "x": 246,
+        "y": 325.3,
+        "width": 1504,
+        "height": 256.7,
+        "right": 1750
+      },
+      "sidePanel": {
+        "x": 1465,
+        "y": 325.3,
+        "width": 285,
+        "height": 256.7,
+        "right": 1750
+      },
+      "detailsDisplay": "block",
+      "filterbar": null,
+      "map": null,
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1451.7,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1495.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1505.7,
+            "y": 57.2,
+            "width": 141,
+            "height": 44,
+            "right": 1646.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1656.7,
+            "y": 59.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 1722
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": false,
+      "toggleExpanded": "true",
+      "documentWidth": 1920,
+      "header": {
+        "x": 336,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1840
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 256,
+        "height": 1080,
+        "right": 256
+      },
+      "main": {
+        "x": 288,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1888
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 336,
+        "y": 212.5,
+        "width": 1504,
+        "height": 40,
+        "right": 1840
+      },
+      "map": {
+        "x": 660.7,
+        "y": 330.5,
+        "width": 776.8,
+        "height": 370,
+        "right": 1437.6
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1541.7,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1585.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1595.7,
+            "y": 57.2,
+            "width": 141,
+            "height": 44,
+            "right": 1736.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1746.7,
+            "y": 59.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 1812
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "dark",
+      "page": "rotas",
+      "collapsed": true,
+      "toggleExpanded": "false",
+      "documentWidth": 1920,
+      "header": {
+        "x": 246,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1750
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 76,
+        "height": 1080,
+        "right": 76
+      },
+      "main": {
+        "x": 198,
+        "y": 0,
+        "width": 1600,
+        "height": 1080,
+        "right": 1798
+      },
+      "workspace": null,
+      "sidePanel": null,
+      "detailsDisplay": null,
+      "filterbar": {
+        "x": 246,
+        "y": 212.5,
+        "width": 1504,
+        "height": 40,
+        "right": 1750
+      },
+      "map": {
+        "x": 570.7,
+        "y": 330.5,
+        "width": 776.8,
+        "height": 370,
+        "right": 1347.6
+      },
+      "duplicateLabels": [],
+      "buttons": [
+        {
+          "name": "Abrir eventos",
+          "box": {
+            "x": 1451.7,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1495.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Nova corrida",
+          "box": {
+            "x": 1505.7,
+            "y": 57.2,
+            "width": 141,
+            "height": 44,
+            "right": 1646.7
+          },
+          "icon": null,
+          "iconDisplay": null
+        },
+        {
+          "name": "Abrir conta e acesso",
+          "box": {
+            "x": 1656.7,
+            "y": 59.2,
+            "width": 65.3,
+            "height": 40,
+            "right": 1722
+          },
+          "icon": null,
+          "iconDisplay": null
+        }
+      ]
+    }
+  ]
+}

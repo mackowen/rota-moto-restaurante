@@ -10,14 +10,32 @@
 | G5 — PC | PARTIAL | Capturas 1280/1440/1920 claro/escuro; lista/mapa/detalhes mantidos sem dados. Barra operacional e conteúdo populado ainda divergem da referência. |
 | G6 — Mapa/cartografia | PARTIAL | Leaflet e serviços existentes preservados; geocode tácito removido; falha/resize/tiles E2E pendentes. |
 | G7 — Planejamento | PARTIAL | UI reutiliza regras/persistência existentes; sequência e save Browser não testados. |
-| G8 — Persistência | BLOCKED | Login 403 impediu confirmação em UI/reload. |
+| G8 — Persistência | BLOCKED | No E2E mais recente, desafio MFA foi concluído após `403 MFA_REQUIRED`, mas reload deixou `#app` oculto; não se comprovou persistência/reabertura da rota. |
 | G9 — Integração | PARTIAL | Contratos e responsabilidades preservados; jornada cross-app não executada. |
-| G10 — Sync/concorrência | BLOCKED | Sem sessão E2E Browser válida para cenários; tentativas anteriores foram interrompidas/falharam. |
+| G10 — Sync/concorrência | BLOCKED | A sessão Browser não permaneceu utilizável após reload do desafio MFA; cenários de sincronização/concorrência não foram exercitados. |
 | G11 — Segurança/RBAC | PARTIAL | Validadores atuais preservados; tenant adversarial/RBAC de rotas não testados. |
 | G12 — Offline/resiliência | PARTIAL | Não foi demonstrada confirmação remota falsa; falhas/reconexão ainda não testadas nesta UI. |
-| G13 — E2E | FAIL | Suite Browser tentada, mas não concluiu por falha de harness/autenticação; testes unitários não substituem E2E. |
+| G13 — E2E | BLOCKED | Login inicial respondeu `403 MFA_REQUIRED`; após completar o desafio, reload ocultou `#app` e não havia `#main`/`#routeMap`. O fluxo autenticado não concluiu; não houve bypass. |
 | G14 — Fidelidade visual | FAIL | Reprovação explícita do proprietário. Intervenção estrutural e comparações fixture registradas; diferenças desktop/toolbar e validação com aplicação autenticada/dados reais permanecem. Aprovação exclusiva do proprietário pendente. |
 | G15 — Sem regressões | PARTIAL | Testes direcionados de mapas/logística/contrato passaram; regression Browser Início/Pedidos/Motoboys autenticado bloqueado. |
+
+## Adendo 0304 — shell desktop/mobile, 2026-10-24
+
+Esta tabela complementa os gates originais. Nenhuma linha fecha pendência anterior ou altera o G14 reprovado pelo proprietário.
+
+| Área/gate deste adendo | Estado | Evidência/limite |
+|---|---|---|
+| Navegação lateral — rótulos e estado | PASS (renderer/fixture) | Um rótulo visual por item; abreviação mobile; aria-label/tooltip; expandir/recolher e persistência local cobertos por `tests/test-navigation-shell-renderer.js`. Sem validação autenticada de permissões nesta execução. |
+| Cabeçalho compartilhado | PARTIAL | Início passa pelo renderer comum, com título/descrição/contexto e ações. CDP mediu 72 combinações; login real, ação Conta e nova corrida autenticada pendentes. |
+| Ícone “+” da Início mobile | PASS (layout fixture) | Causa corrigida; 390×844 claro/escuro mede o botão em 44×44 e glyph em 19×19; teste inclui falha se o glyph ficar menor que 10 px/oculto. A ação funcional depende da sessão e não foi clicada. |
+| Responsividade desktop / painel de Pedidos | PARTIAL | Painel selecionado visível a >=1180 px; 285 px em 1280/1440/1920, ambos temas e estados de sidebar. Fixture controlado, sem pedido autenticado. |
+| Sidebar expandida/recolhida | PASS (DOM/CSS fixture) | Alternância, atributos acessíveis, grid recolhido e labels testados; avaliações nas viewports especificadas não acharam duplicação nem overflow documental. Persistência real entre reloads não foi exercitada no app autenticado. |
+| Preservação mobile | PARTIAL | 360/390 px nos dois temas; shell e ícones geométricos medidos. Conteúdo/ações reais sem sessão e Chrome Android físico continuam pendentes. |
+| Fidelidade visual de Rotas | FAIL | Reprovação expressa do proprietário mantida. A captura fixture e ajustes não substituem referência nem revisão do proprietário; tiles/dados reais e composição final continuam pendentes. |
+| Testes funcionais/E2E | PARTIAL | `npm test` e CDP isolado só serão reportados conforme execução final; fluxo autenticado de rotas, filtros com dados, Eventos e persistência não provados. |
+| Segurança e integridade | PARTIAL | Nenhum banco oficial escrito, autenticação/MFA não contornada; isolamento/RBAC concorrente da UI ainda sem E2E válido. |
+
+O browser foi Chromium/CDP com emulação de viewport, não Chrome Android físico nem modo computador físico. O `403` inicial foi uma resposta de desafio MFA e não prova de senha/permissão recusada; a falha subsequente ocorreu após reload, quando o shell autenticado não apareceu.
 
 ## Intervenção do proprietário — reprovação visual (checkpoint)
 

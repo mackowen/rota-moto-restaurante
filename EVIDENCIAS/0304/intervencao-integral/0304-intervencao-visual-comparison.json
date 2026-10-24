@@ -1,0 +1,7055 @@
+{
+  "createdAt": "2026-10-24T01:00:18.348Z",
+  "mode": "isolated production routes() renderer with controlled synthetic order #1234 and route; no coordinates, distances, or ETA are synthesized; map empty and missing-coordinate messages are layout-only fixtures",
+  "baseline": "HEAD source/styles versus corrected worktree; no persistent or database writes",
+  "rows": [
+    {
+      "width": 320,
+      "height": 720,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 320,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 316,
+        "height": 57,
+        "right": 318,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 134.1,
+        "width": 296,
+        "height": 81,
+        "right": 308,
+        "bottom": 215.1
+      },
+      "map": {
+        "x": 12,
+        "y": 224.1,
+        "width": 296,
+        "height": 259.2,
+        "right": 308,
+        "bottom": 483.3
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 224.1,
+        "width": 296,
+        "height": 454,
+        "right": 308,
+        "bottom": 678.1
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 296,
+        "height": 58.1,
+        "right": 308,
+        "bottom": 125.1
+      },
+      "viewSwitch": {
+        "x": 12,
+        "y": 689.1,
+        "width": 296,
+        "height": 50,
+        "right": 308,
+        "bottom": 739.1
+      },
+      "plans": {
+        "x": 12,
+        "y": 748.1,
+        "width": 296,
+        "height": 86.4,
+        "right": 308,
+        "bottom": 834.5
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 654,
+        "width": 320,
+        "height": 66,
+        "right": 320,
+        "bottom": 720
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 134.1,
+          "width": 70.3,
+          "height": 38,
+          "right": 82.3
+        },
+        {
+          "label": "Entregas",
+          "x": 87.3,
+          "y": 134.1,
+          "width": 70.3,
+          "height": 38,
+          "right": 157.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 162.5,
+          "y": 134.1,
+          "width": 70.3,
+          "height": 38,
+          "right": 232.8
+        },
+        {
+          "label": "Rotas",
+          "x": 237.8,
+          "y": 134.1,
+          "width": 70.3,
+          "height": 38,
+          "right": 308
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 177.1,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 316,
+            "height": 57,
+            "right": 318,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 216,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 260,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 228.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 247.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": {
+            "x": 12,
+            "y": 67,
+            "width": 296,
+            "height": 58.1,
+            "right": 308,
+            "bottom": 125.1
+          },
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 134.1,
+            "width": 296,
+            "height": 81,
+            "right": 308,
+            "bottom": 215.1
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 224.1,
+            "width": 296,
+            "height": 259.2,
+            "right": 308,
+            "bottom": 483.3
+          },
+          ".routes-v2-map-information": {
+            "x": 12,
+            "y": 483.3,
+            "width": 296,
+            "height": 194.8,
+            "right": 308,
+            "bottom": 678.1
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 12,
+            "y": 491.3,
+            "width": 296,
+            "height": 50.8,
+            "right": 308,
+            "bottom": 542.1
+          },
+          "#routeMapLocationNotice": {
+            "x": 12,
+            "y": 549.1,
+            "width": 296,
+            "height": 44,
+            "right": 308,
+            "bottom": 593.1
+          },
+          ".map-legend": {
+            "x": 12,
+            "y": 600.1,
+            "width": 296,
+            "height": 29,
+            "right": 308,
+            "bottom": 629.1
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 636.1,
+            "width": 292,
+            "height": 42,
+            "right": 306,
+            "bottom": 678.1
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 654,
+            "width": 320,
+            "height": 66,
+            "right": 320,
+            "bottom": 720
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 12,
+            "y": 798.6,
+            "width": 296,
+            "height": 158.4,
+            "right": 308,
+            "bottom": 957
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 12,
+            "y": 810.6,
+            "width": 296,
+            "height": 22,
+            "right": 308,
+            "bottom": 832.6
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 12,
+            "y": 838.6,
+            "width": 296,
+            "height": 63.4,
+            "right": 308,
+            "bottom": 902
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 12,
+            "y": 908,
+            "width": 99.3,
+            "height": 38,
+            "right": 111.3,
+            "bottom": 946
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 296,
+            "scrollWidth": 296,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 296,
+            "scrollWidth": 296,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 320,
+      "height": 720,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 320,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 316,
+        "height": 57,
+        "right": 318,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 134.1,
+        "width": 296,
+        "height": 81,
+        "right": 308,
+        "bottom": 215.1
+      },
+      "map": {
+        "x": 12,
+        "y": 224.1,
+        "width": 296,
+        "height": 259.2,
+        "right": 308,
+        "bottom": 483.3
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 224.1,
+        "width": 296,
+        "height": 454,
+        "right": 308,
+        "bottom": 678.1
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 296,
+        "height": 58.1,
+        "right": 308,
+        "bottom": 125.1
+      },
+      "viewSwitch": {
+        "x": 12,
+        "y": 689.1,
+        "width": 296,
+        "height": 50,
+        "right": 308,
+        "bottom": 739.1
+      },
+      "plans": {
+        "x": 12,
+        "y": 748.1,
+        "width": 296,
+        "height": 86.4,
+        "right": 308,
+        "bottom": 834.5
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 654,
+        "width": 320,
+        "height": 66,
+        "right": 320,
+        "bottom": 720
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 134.1,
+          "width": 70.3,
+          "height": 38,
+          "right": 82.3
+        },
+        {
+          "label": "Entregas",
+          "x": 87.3,
+          "y": 134.1,
+          "width": 70.3,
+          "height": 38,
+          "right": 157.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 162.5,
+          "y": 134.1,
+          "width": 70.3,
+          "height": 38,
+          "right": 232.8
+        },
+        {
+          "label": "Rotas",
+          "x": 237.8,
+          "y": 134.1,
+          "width": 70.3,
+          "height": 38,
+          "right": 308
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 177.1,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 316,
+            "height": 57,
+            "right": 318,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 216,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 260,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 228.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 247.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": {
+            "x": 12,
+            "y": 67,
+            "width": 296,
+            "height": 58.1,
+            "right": 308,
+            "bottom": 125.1
+          },
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 134.1,
+            "width": 296,
+            "height": 81,
+            "right": 308,
+            "bottom": 215.1
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 224.1,
+            "width": 296,
+            "height": 259.2,
+            "right": 308,
+            "bottom": 483.3
+          },
+          ".routes-v2-map-information": {
+            "x": 12,
+            "y": 483.3,
+            "width": 296,
+            "height": 194.8,
+            "right": 308,
+            "bottom": 678.1
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 12,
+            "y": 491.3,
+            "width": 296,
+            "height": 50.8,
+            "right": 308,
+            "bottom": 542.1
+          },
+          "#routeMapLocationNotice": {
+            "x": 12,
+            "y": 549.1,
+            "width": 296,
+            "height": 44,
+            "right": 308,
+            "bottom": 593.1
+          },
+          ".map-legend": {
+            "x": 12,
+            "y": 600.1,
+            "width": 296,
+            "height": 29,
+            "right": 308,
+            "bottom": 629.1
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 636.1,
+            "width": 292,
+            "height": 42,
+            "right": 306,
+            "bottom": 678.1
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 654,
+            "width": 320,
+            "height": 66,
+            "right": 320,
+            "bottom": 720
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 12,
+            "y": 798.6,
+            "width": 296,
+            "height": 158.4,
+            "right": 308,
+            "bottom": 957
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 12,
+            "y": 810.6,
+            "width": 296,
+            "height": 22,
+            "right": 308,
+            "bottom": 832.6
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 12,
+            "y": 838.6,
+            "width": 296,
+            "height": 63.4,
+            "right": 308,
+            "bottom": 902
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 12,
+            "y": 908,
+            "width": 99.3,
+            "height": 38,
+            "right": 111.3,
+            "bottom": 946
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 296,
+            "scrollWidth": 296,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 296,
+            "scrollWidth": 296,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 134.1,
+        "width": 336,
+        "height": 81,
+        "right": 348,
+        "bottom": 215.1
+      },
+      "map": {
+        "x": 12,
+        "y": 224.1,
+        "width": 336,
+        "height": 288,
+        "right": 348,
+        "bottom": 512.1
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 224.1,
+        "width": 336,
+        "height": 454.8,
+        "right": 348,
+        "bottom": 678.9
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 336,
+        "height": 58.1,
+        "right": 348,
+        "bottom": 125.1
+      },
+      "viewSwitch": {
+        "x": 12,
+        "y": 689.9,
+        "width": 336,
+        "height": 50,
+        "right": 348,
+        "bottom": 739.9
+      },
+      "plans": {
+        "x": 12,
+        "y": 748.9,
+        "width": 336,
+        "height": 86.4,
+        "right": 348,
+        "bottom": 835.4
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 734,
+        "width": 360,
+        "height": 66,
+        "right": 360,
+        "bottom": 800
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 134.1,
+          "width": 80.3,
+          "height": 38,
+          "right": 92.3
+        },
+        {
+          "label": "Entregas",
+          "x": 97.3,
+          "y": 134.1,
+          "width": 80.3,
+          "height": 38,
+          "right": 177.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 182.5,
+          "y": 134.1,
+          "width": 80.3,
+          "height": 38,
+          "right": 262.8
+        },
+        {
+          "label": "Rotas",
+          "x": 267.8,
+          "y": 134.1,
+          "width": 80.3,
+          "height": 38,
+          "right": 348
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 177.1,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 356,
+            "height": 57,
+            "right": 358,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 256,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 300,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 268.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 287.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": {
+            "x": 12,
+            "y": 67,
+            "width": 336,
+            "height": 58.1,
+            "right": 348,
+            "bottom": 125.1
+          },
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 134.1,
+            "width": 336,
+            "height": 81,
+            "right": 348,
+            "bottom": 215.1
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 224.1,
+            "width": 336,
+            "height": 288,
+            "right": 348,
+            "bottom": 512.1
+          },
+          ".routes-v2-map-information": {
+            "x": 12,
+            "y": 512.1,
+            "width": 336,
+            "height": 166.8,
+            "right": 348,
+            "bottom": 678.9
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 12,
+            "y": 520.1,
+            "width": 336,
+            "height": 50.8,
+            "right": 348,
+            "bottom": 570.9
+          },
+          "#routeMapLocationNotice": {
+            "x": 12,
+            "y": 577.9,
+            "width": 336,
+            "height": 30,
+            "right": 348,
+            "bottom": 607.9
+          },
+          ".map-legend": {
+            "x": 12,
+            "y": 614.9,
+            "width": 336,
+            "height": 29,
+            "right": 348,
+            "bottom": 643.9
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 650.9,
+            "width": 332,
+            "height": 28,
+            "right": 346,
+            "bottom": 678.9
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 734,
+            "width": 360,
+            "height": 66,
+            "right": 360,
+            "bottom": 800
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 12,
+            "y": 799.4,
+            "width": 336,
+            "height": 158.4,
+            "right": 348,
+            "bottom": 957.8
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 12,
+            "y": 811.4,
+            "width": 336,
+            "height": 22,
+            "right": 348,
+            "bottom": 833.4
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 12,
+            "y": 839.4,
+            "width": 336,
+            "height": 63.4,
+            "right": 348,
+            "bottom": 902.8
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 12,
+            "y": 908.8,
+            "width": 99.3,
+            "height": 38,
+            "right": 111.3,
+            "bottom": 946.8
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 336,
+            "scrollWidth": 336,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 336,
+            "scrollWidth": 336,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 360,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 356,
+        "height": 57,
+        "right": 358,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 134.1,
+        "width": 336,
+        "height": 81,
+        "right": 348,
+        "bottom": 215.1
+      },
+      "map": {
+        "x": 12,
+        "y": 224.1,
+        "width": 336,
+        "height": 288,
+        "right": 348,
+        "bottom": 512.1
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 224.1,
+        "width": 336,
+        "height": 454.8,
+        "right": 348,
+        "bottom": 678.9
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 336,
+        "height": 58.1,
+        "right": 348,
+        "bottom": 125.1
+      },
+      "viewSwitch": {
+        "x": 12,
+        "y": 689.9,
+        "width": 336,
+        "height": 50,
+        "right": 348,
+        "bottom": 739.9
+      },
+      "plans": {
+        "x": 12,
+        "y": 748.9,
+        "width": 336,
+        "height": 86.4,
+        "right": 348,
+        "bottom": 835.4
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 734,
+        "width": 360,
+        "height": 66,
+        "right": 360,
+        "bottom": 800
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 134.1,
+          "width": 80.3,
+          "height": 38,
+          "right": 92.3
+        },
+        {
+          "label": "Entregas",
+          "x": 97.3,
+          "y": 134.1,
+          "width": 80.3,
+          "height": 38,
+          "right": 177.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 182.5,
+          "y": 134.1,
+          "width": 80.3,
+          "height": 38,
+          "right": 262.8
+        },
+        {
+          "label": "Rotas",
+          "x": 267.8,
+          "y": 134.1,
+          "width": 80.3,
+          "height": 38,
+          "right": 348
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 177.1,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 356,
+            "height": 57,
+            "right": 358,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 256,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 300,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 268.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 287.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": {
+            "x": 12,
+            "y": 67,
+            "width": 336,
+            "height": 58.1,
+            "right": 348,
+            "bottom": 125.1
+          },
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 134.1,
+            "width": 336,
+            "height": 81,
+            "right": 348,
+            "bottom": 215.1
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 224.1,
+            "width": 336,
+            "height": 288,
+            "right": 348,
+            "bottom": 512.1
+          },
+          ".routes-v2-map-information": {
+            "x": 12,
+            "y": 512.1,
+            "width": 336,
+            "height": 166.8,
+            "right": 348,
+            "bottom": 678.9
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 12,
+            "y": 520.1,
+            "width": 336,
+            "height": 50.8,
+            "right": 348,
+            "bottom": 570.9
+          },
+          "#routeMapLocationNotice": {
+            "x": 12,
+            "y": 577.9,
+            "width": 336,
+            "height": 30,
+            "right": 348,
+            "bottom": 607.9
+          },
+          ".map-legend": {
+            "x": 12,
+            "y": 614.9,
+            "width": 336,
+            "height": 29,
+            "right": 348,
+            "bottom": 643.9
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 650.9,
+            "width": 332,
+            "height": 28,
+            "right": 346,
+            "bottom": 678.9
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 734,
+            "width": 360,
+            "height": 66,
+            "right": 360,
+            "bottom": 800
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 12,
+            "y": 799.4,
+            "width": 336,
+            "height": 158.4,
+            "right": 348,
+            "bottom": 957.8
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 12,
+            "y": 811.4,
+            "width": 336,
+            "height": 22,
+            "right": 348,
+            "bottom": 833.4
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 12,
+            "y": 839.4,
+            "width": 336,
+            "height": 63.4,
+            "right": 348,
+            "bottom": 902.8
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 12,
+            "y": 908.8,
+            "width": 99.3,
+            "height": 38,
+            "right": 111.3,
+            "bottom": 946.8
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 336,
+            "scrollWidth": 336,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 336,
+            "scrollWidth": 336,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "phase": "before",
+      "docWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 366,
+        "height": 81,
+        "right": 378,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 366,
+        "height": 379.8,
+        "right": 378,
+        "bottom": 536.8
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 366,
+        "height": 413.8,
+        "right": 378,
+        "bottom": 570.8
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 778,
+        "width": 390,
+        "height": 66,
+        "right": 390,
+        "bottom": 844
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 99.8
+        },
+        {
+          "label": "Entregas",
+          "x": 104.8,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 192.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 197.5,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 285.3
+        },
+        {
+          "label": "Rotas",
+          "x": 290.3,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 378
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 386,
+            "height": 57,
+            "right": 388,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 298.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 317.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": null,
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 67,
+            "width": 366,
+            "height": 81,
+            "right": 378,
+            "bottom": 148
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 157,
+            "width": 366,
+            "height": 379.8,
+            "right": 378,
+            "bottom": 536.8
+          },
+          ".routes-v2-map-information": null,
+          "#mapState": {
+            "x": 22,
+            "y": 167,
+            "width": 300.2,
+            "height": 27,
+            "right": 322.2,
+            "bottom": 194
+          },
+          "#routeMapEmpty": {
+            "x": 22,
+            "y": 207,
+            "width": 298,
+            "height": 54.8,
+            "right": 320,
+            "bottom": 261.8
+          },
+          "#routeMapLocationNotice": null,
+          ".map-legend": {
+            "x": 22,
+            "y": 499.8,
+            "width": 189.9,
+            "height": 27,
+            "right": 211.9,
+            "bottom": 526.8
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 542.8,
+            "width": 362,
+            "height": 28,
+            "right": 376,
+            "bottom": 570.8
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 778,
+            "width": 390,
+            "height": 66,
+            "right": 390,
+            "bottom": 844
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": null,
+          ".routes-v2-delivery-heading": null,
+          ".routes-v2-delivery-copy": null,
+          ".routes-v2-delivery-card>.btn": null
+        },
+        "addressClipping": [],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 122.8,
+        "width": 366,
+        "height": 81,
+        "right": 378,
+        "bottom": 203.8
+      },
+      "map": {
+        "x": 12,
+        "y": 212.8,
+        "width": 366,
+        "height": 303.8,
+        "right": 378,
+        "bottom": 516.7
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 212.8,
+        "width": 366,
+        "height": 455.3,
+        "right": 378,
+        "bottom": 668.1
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 366,
+        "height": 46.8,
+        "right": 378,
+        "bottom": 113.8
+      },
+      "viewSwitch": {
+        "x": 12,
+        "y": 679.1,
+        "width": 366,
+        "height": 50,
+        "right": 378,
+        "bottom": 729.1
+      },
+      "plans": {
+        "x": 12,
+        "y": 738.1,
+        "width": 366,
+        "height": 86.4,
+        "right": 378,
+        "bottom": 824.5
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 778,
+        "width": 390,
+        "height": 66,
+        "right": 390,
+        "bottom": 844
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 122.8,
+          "width": 87.8,
+          "height": 38,
+          "right": 99.8
+        },
+        {
+          "label": "Entregas",
+          "x": 104.8,
+          "y": 122.8,
+          "width": 87.8,
+          "height": 38,
+          "right": 192.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 197.5,
+          "y": 122.8,
+          "width": 87.8,
+          "height": 38,
+          "right": 285.3
+        },
+        {
+          "label": "Rotas",
+          "x": 290.3,
+          "y": 122.8,
+          "width": 87.8,
+          "height": 38,
+          "right": 378
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 165.8,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 386,
+            "height": 57,
+            "right": 388,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 298.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 317.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": {
+            "x": 12,
+            "y": 67,
+            "width": 366,
+            "height": 46.8,
+            "right": 378,
+            "bottom": 113.8
+          },
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 122.8,
+            "width": 366,
+            "height": 81,
+            "right": 378,
+            "bottom": 203.8
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 212.8,
+            "width": 366,
+            "height": 303.8,
+            "right": 378,
+            "bottom": 516.7
+          },
+          ".routes-v2-map-information": {
+            "x": 12,
+            "y": 516.7,
+            "width": 366,
+            "height": 151.4,
+            "right": 378,
+            "bottom": 668.1
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 12,
+            "y": 524.7,
+            "width": 366,
+            "height": 35.4,
+            "right": 378,
+            "bottom": 560.1
+          },
+          "#routeMapLocationNotice": {
+            "x": 12,
+            "y": 567.1,
+            "width": 366,
+            "height": 30,
+            "right": 378,
+            "bottom": 597.1
+          },
+          ".map-legend": {
+            "x": 12,
+            "y": 604.1,
+            "width": 366,
+            "height": 29,
+            "right": 378,
+            "bottom": 633.1
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 640.1,
+            "width": 362,
+            "height": 28,
+            "right": 376,
+            "bottom": 668.1
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 778,
+            "width": 390,
+            "height": 66,
+            "right": 390,
+            "bottom": 844
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 12,
+            "y": 788.6,
+            "width": 366,
+            "height": 158.4,
+            "right": 378,
+            "bottom": 947
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 12,
+            "y": 800.6,
+            "width": 366,
+            "height": 22,
+            "right": 378,
+            "bottom": 822.6
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 12,
+            "y": 828.6,
+            "width": 366,
+            "height": 63.4,
+            "right": 378,
+            "bottom": 892
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 12,
+            "y": 898,
+            "width": 99.3,
+            "height": 38,
+            "right": 111.3,
+            "bottom": 936
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 366,
+            "scrollWidth": 366,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 366,
+            "scrollWidth": 366,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "phase": "before",
+      "docWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 67,
+        "width": 366,
+        "height": 81,
+        "right": 378,
+        "bottom": 148
+      },
+      "map": {
+        "x": 12,
+        "y": 157,
+        "width": 366,
+        "height": 379.8,
+        "right": 378,
+        "bottom": 536.8
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 157,
+        "width": 366,
+        "height": 413.8,
+        "right": 378,
+        "bottom": 570.8
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 778,
+        "width": 390,
+        "height": 66,
+        "right": 390,
+        "bottom": 844
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 99.8
+        },
+        {
+          "label": "Entregas",
+          "x": 104.8,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 192.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 197.5,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 285.3
+        },
+        {
+          "label": "Rotas",
+          "x": 290.3,
+          "y": 67,
+          "width": 87.8,
+          "height": 38,
+          "right": 378
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 110,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 386,
+            "height": 57,
+            "right": 388,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 298.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 317.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": null,
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 67,
+            "width": 366,
+            "height": 81,
+            "right": 378,
+            "bottom": 148
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 157,
+            "width": 366,
+            "height": 379.8,
+            "right": 378,
+            "bottom": 536.8
+          },
+          ".routes-v2-map-information": null,
+          "#mapState": {
+            "x": 22,
+            "y": 167,
+            "width": 300.2,
+            "height": 27,
+            "right": 322.2,
+            "bottom": 194
+          },
+          "#routeMapEmpty": {
+            "x": 22,
+            "y": 207,
+            "width": 298,
+            "height": 54.8,
+            "right": 320,
+            "bottom": 261.8
+          },
+          "#routeMapLocationNotice": null,
+          ".map-legend": {
+            "x": 22,
+            "y": 499.8,
+            "width": 189.9,
+            "height": 27,
+            "right": 211.9,
+            "bottom": 526.8
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 542.8,
+            "width": 362,
+            "height": 28,
+            "right": 376,
+            "bottom": 570.8
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 778,
+            "width": 390,
+            "height": 66,
+            "right": 390,
+            "bottom": 844
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": null,
+          ".routes-v2-delivery-heading": null,
+          ".routes-v2-delivery-copy": null,
+          ".routes-v2-delivery-card>.btn": null
+        },
+        "addressClipping": [],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 390,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 386,
+        "height": 57,
+        "right": 388,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 122.8,
+        "width": 366,
+        "height": 81,
+        "right": 378,
+        "bottom": 203.8
+      },
+      "map": {
+        "x": 12,
+        "y": 212.8,
+        "width": 366,
+        "height": 303.8,
+        "right": 378,
+        "bottom": 516.7
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 212.8,
+        "width": 366,
+        "height": 455.3,
+        "right": 378,
+        "bottom": 668.1
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 366,
+        "height": 46.8,
+        "right": 378,
+        "bottom": 113.8
+      },
+      "viewSwitch": {
+        "x": 12,
+        "y": 679.1,
+        "width": 366,
+        "height": 50,
+        "right": 378,
+        "bottom": 729.1
+      },
+      "plans": {
+        "x": 12,
+        "y": 738.1,
+        "width": 366,
+        "height": 86.4,
+        "right": 378,
+        "bottom": 824.5
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 778,
+        "width": 390,
+        "height": 66,
+        "right": 390,
+        "bottom": 844
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 122.8,
+          "width": 87.8,
+          "height": 38,
+          "right": 99.8
+        },
+        {
+          "label": "Entregas",
+          "x": 104.8,
+          "y": 122.8,
+          "width": 87.8,
+          "height": 38,
+          "right": 192.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 197.5,
+          "y": 122.8,
+          "width": 87.8,
+          "height": 38,
+          "right": 285.3
+        },
+        {
+          "label": "Rotas",
+          "x": 290.3,
+          "y": 122.8,
+          "width": 87.8,
+          "height": 38,
+          "right": 378
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 165.8,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 386,
+            "height": 57,
+            "right": 388,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 286,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 330,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 298.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 317.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": {
+            "x": 12,
+            "y": 67,
+            "width": 366,
+            "height": 46.8,
+            "right": 378,
+            "bottom": 113.8
+          },
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 122.8,
+            "width": 366,
+            "height": 81,
+            "right": 378,
+            "bottom": 203.8
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 212.8,
+            "width": 366,
+            "height": 303.8,
+            "right": 378,
+            "bottom": 516.7
+          },
+          ".routes-v2-map-information": {
+            "x": 12,
+            "y": 516.7,
+            "width": 366,
+            "height": 151.4,
+            "right": 378,
+            "bottom": 668.1
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 12,
+            "y": 524.7,
+            "width": 366,
+            "height": 35.4,
+            "right": 378,
+            "bottom": 560.1
+          },
+          "#routeMapLocationNotice": {
+            "x": 12,
+            "y": 567.1,
+            "width": 366,
+            "height": 30,
+            "right": 378,
+            "bottom": 597.1
+          },
+          ".map-legend": {
+            "x": 12,
+            "y": 604.1,
+            "width": 366,
+            "height": 29,
+            "right": 378,
+            "bottom": 633.1
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 640.1,
+            "width": 362,
+            "height": 28,
+            "right": 376,
+            "bottom": 668.1
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 778,
+            "width": 390,
+            "height": 66,
+            "right": 390,
+            "bottom": 844
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 12,
+            "y": 788.6,
+            "width": 366,
+            "height": 158.4,
+            "right": 378,
+            "bottom": 947
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 12,
+            "y": 800.6,
+            "width": 366,
+            "height": 22,
+            "right": 378,
+            "bottom": 822.6
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 12,
+            "y": 828.6,
+            "width": 366,
+            "height": 63.4,
+            "right": 378,
+            "bottom": 892
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 12,
+            "y": 898,
+            "width": 99.3,
+            "height": 38,
+            "right": 111.3,
+            "bottom": 936
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 366,
+            "scrollWidth": 366,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 366,
+            "scrollWidth": 366,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 430,
+      "height": 932,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 430,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 426,
+        "height": 57,
+        "right": 428,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 122.8,
+        "width": 406,
+        "height": 81,
+        "right": 418,
+        "bottom": 203.8
+      },
+      "map": {
+        "x": 12,
+        "y": 212.8,
+        "width": 406,
+        "height": 335.5,
+        "right": 418,
+        "bottom": 548.4
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 212.8,
+        "width": 406,
+        "height": 487,
+        "right": 418,
+        "bottom": 699.8
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 406,
+        "height": 46.8,
+        "right": 418,
+        "bottom": 113.8
+      },
+      "viewSwitch": {
+        "x": 12,
+        "y": 710.8,
+        "width": 406,
+        "height": 50,
+        "right": 418,
+        "bottom": 760.8
+      },
+      "plans": {
+        "x": 12,
+        "y": 769.8,
+        "width": 406,
+        "height": 86.4,
+        "right": 418,
+        "bottom": 856.2
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 866,
+        "width": 430,
+        "height": 66,
+        "right": 430,
+        "bottom": 932
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 122.8,
+          "width": 97.8,
+          "height": 38,
+          "right": 109.8
+        },
+        {
+          "label": "Entregas",
+          "x": 114.8,
+          "y": 122.8,
+          "width": 97.8,
+          "height": 38,
+          "right": 212.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 217.5,
+          "y": 122.8,
+          "width": 97.8,
+          "height": 38,
+          "right": 315.3
+        },
+        {
+          "label": "Rotas",
+          "x": 320.3,
+          "y": 122.8,
+          "width": 97.8,
+          "height": 38,
+          "right": 418
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 165.8,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 426,
+            "height": 57,
+            "right": 428,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 326,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 370,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 338.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 357.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": {
+            "x": 12,
+            "y": 67,
+            "width": 406,
+            "height": 46.8,
+            "right": 418,
+            "bottom": 113.8
+          },
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 122.8,
+            "width": 406,
+            "height": 81,
+            "right": 418,
+            "bottom": 203.8
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 212.8,
+            "width": 406,
+            "height": 335.5,
+            "right": 418,
+            "bottom": 548.4
+          },
+          ".routes-v2-map-information": {
+            "x": 12,
+            "y": 548.4,
+            "width": 406,
+            "height": 151.4,
+            "right": 418,
+            "bottom": 699.8
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 12,
+            "y": 556.4,
+            "width": 406,
+            "height": 35.4,
+            "right": 418,
+            "bottom": 591.8
+          },
+          "#routeMapLocationNotice": {
+            "x": 12,
+            "y": 598.8,
+            "width": 406,
+            "height": 30,
+            "right": 418,
+            "bottom": 628.8
+          },
+          ".map-legend": {
+            "x": 12,
+            "y": 635.8,
+            "width": 406,
+            "height": 29,
+            "right": 418,
+            "bottom": 664.8
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 671.8,
+            "width": 402,
+            "height": 28,
+            "right": 416,
+            "bottom": 699.8
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 866,
+            "width": 430,
+            "height": 66,
+            "right": 430,
+            "bottom": 932
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 12,
+            "y": 820.3,
+            "width": 406,
+            "height": 128.2,
+            "right": 418,
+            "bottom": 948.5
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 12,
+            "y": 832.3,
+            "width": 406,
+            "height": 22,
+            "right": 418,
+            "bottom": 854.3
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 12,
+            "y": 860.3,
+            "width": 406,
+            "height": 33.2,
+            "right": 418,
+            "bottom": 893.5
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 12,
+            "y": 899.5,
+            "width": 99.3,
+            "height": 38,
+            "right": 111.3,
+            "bottom": 937.5
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 406,
+            "scrollWidth": 406,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 406,
+            "scrollWidth": 406,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 430,
+      "height": 932,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 430,
+      "header": {
+        "x": 2,
+        "y": 0,
+        "width": 426,
+        "height": 57,
+        "right": 428,
+        "bottom": 57
+      },
+      "filterbar": {
+        "x": 12,
+        "y": 122.8,
+        "width": 406,
+        "height": 81,
+        "right": 418,
+        "bottom": 203.8
+      },
+      "map": {
+        "x": 12,
+        "y": 212.8,
+        "width": 406,
+        "height": 335.5,
+        "right": 418,
+        "bottom": 548.4
+      },
+      "mapPanel": {
+        "x": 12,
+        "y": 212.8,
+        "width": 406,
+        "height": 487,
+        "right": 418,
+        "bottom": 699.8
+      },
+      "summary": {
+        "x": 12,
+        "y": 67,
+        "width": 406,
+        "height": 46.8,
+        "right": 418,
+        "bottom": 113.8
+      },
+      "viewSwitch": {
+        "x": 12,
+        "y": 710.8,
+        "width": 406,
+        "height": 50,
+        "right": 418,
+        "bottom": 760.8
+      },
+      "plans": {
+        "x": 12,
+        "y": 769.8,
+        "width": 406,
+        "height": 86.4,
+        "right": 418,
+        "bottom": 856.2
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 866,
+        "width": 430,
+        "height": 66,
+        "right": 430,
+        "bottom": 932
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 12,
+          "y": 122.8,
+          "width": 97.8,
+          "height": 38,
+          "right": 109.8
+        },
+        {
+          "label": "Entregas",
+          "x": 114.8,
+          "y": 122.8,
+          "width": 97.8,
+          "height": 38,
+          "right": 212.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 217.5,
+          "y": 122.8,
+          "width": 97.8,
+          "height": 38,
+          "right": 315.3
+        },
+        {
+          "label": "Rotas",
+          "x": 320.3,
+          "y": 122.8,
+          "width": 97.8,
+          "height": 38,
+          "right": 418
+        },
+        {
+          "label": "Ajustar",
+          "x": 12,
+          "y": 165.8,
+          "width": 104,
+          "height": 38,
+          "right": 116
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 2,
+            "y": 0,
+            "width": 426,
+            "height": 57,
+            "right": 428,
+            "bottom": 57
+          },
+          ".rm-notifications-action": {
+            "x": 326,
+            "y": 6,
+            "width": 44,
+            "height": 44,
+            "right": 370,
+            "bottom": 50
+          },
+          ".rm-notifications-action svg": {
+            "x": 338.5,
+            "y": 18.5,
+            "width": 19,
+            "height": 19,
+            "right": 357.5,
+            "bottom": 37.5
+          },
+          ".routes-v2-summary": {
+            "x": 12,
+            "y": 67,
+            "width": 406,
+            "height": 46.8,
+            "right": 418,
+            "bottom": 113.8
+          },
+          ".routes-v2-filterbar": {
+            "x": 12,
+            "y": 122.8,
+            "width": 406,
+            "height": 81,
+            "right": 418,
+            "bottom": 203.8
+          },
+          "#routeMap": {
+            "x": 12,
+            "y": 212.8,
+            "width": 406,
+            "height": 335.5,
+            "right": 418,
+            "bottom": 548.4
+          },
+          ".routes-v2-map-information": {
+            "x": 12,
+            "y": 548.4,
+            "width": 406,
+            "height": 151.4,
+            "right": 418,
+            "bottom": 699.8
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 12,
+            "y": 556.4,
+            "width": 406,
+            "height": 35.4,
+            "right": 418,
+            "bottom": 591.8
+          },
+          "#routeMapLocationNotice": {
+            "x": 12,
+            "y": 598.8,
+            "width": 406,
+            "height": 30,
+            "right": 418,
+            "bottom": 628.8
+          },
+          ".map-legend": {
+            "x": 12,
+            "y": 635.8,
+            "width": 406,
+            "height": 29,
+            "right": 418,
+            "bottom": 664.8
+          },
+          ".routes-v2-map-note": {
+            "x": 14,
+            "y": 671.8,
+            "width": 402,
+            "height": 28,
+            "right": 416,
+            "bottom": 699.8
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 866,
+            "width": 430,
+            "height": 66,
+            "right": 430,
+            "bottom": 932
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 12,
+            "y": 820.3,
+            "width": 406,
+            "height": 128.2,
+            "right": 418,
+            "bottom": 948.5
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 12,
+            "y": 832.3,
+            "width": 406,
+            "height": 22,
+            "right": 418,
+            "bottom": 854.3
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 12,
+            "y": 860.3,
+            "width": 406,
+            "height": 33.2,
+            "right": 418,
+            "bottom": 893.5
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 12,
+            "y": 899.5,
+            "width": 99.3,
+            "height": 38,
+            "right": 111.3,
+            "bottom": 937.5
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 406,
+            "scrollWidth": 406,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 406,
+            "scrollWidth": 406,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 600,
+      "height": 960,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 600,
+      "header": {
+        "x": 82,
+        "y": 12,
+        "width": 504,
+        "height": 100.3,
+        "right": 586,
+        "bottom": 112.3
+      },
+      "filterbar": {
+        "x": 82,
+        "y": 193.5,
+        "width": 504,
+        "height": 85,
+        "right": 586,
+        "bottom": 278.5
+      },
+      "map": {
+        "x": 82,
+        "y": 290.5,
+        "width": 504,
+        "height": 499.2,
+        "right": 586,
+        "bottom": 789.7
+      },
+      "mapPanel": {
+        "x": 82,
+        "y": 290.5,
+        "width": 504,
+        "height": 654.1,
+        "right": 586,
+        "bottom": 944.6
+      },
+      "summary": {
+        "x": 82,
+        "y": 130.3,
+        "width": 504,
+        "height": 51.2,
+        "right": 586,
+        "bottom": 181.5
+      },
+      "viewSwitch": {
+        "x": 82,
+        "y": 956.6,
+        "width": 504,
+        "height": 50,
+        "right": 586,
+        "bottom": 1006.6
+      },
+      "plans": {
+        "x": 82,
+        "y": 1018.6,
+        "width": 504,
+        "height": 86.4,
+        "right": 586,
+        "bottom": 1105
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 82,
+          "y": 193.5,
+          "width": 122.3,
+          "height": 40,
+          "right": 204.3
+        },
+        {
+          "label": "Entregas",
+          "x": 209.3,
+          "y": 193.5,
+          "width": 122.3,
+          "height": 40,
+          "right": 331.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 336.5,
+          "y": 193.5,
+          "width": 122.3,
+          "height": 40,
+          "right": 458.8
+        },
+        {
+          "label": "Rotas",
+          "x": 463.8,
+          "y": 193.5,
+          "width": 122.3,
+          "height": 40,
+          "right": 586
+        },
+        {
+          "label": "Ajustar",
+          "x": 82,
+          "y": 238.5,
+          "width": 71.7,
+          "height": 40,
+          "right": 153.7
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 82,
+            "y": 12,
+            "width": 504,
+            "height": 100.3,
+            "right": 586,
+            "bottom": 112.3
+          },
+          ".rm-notifications-action": {
+            "x": 424.1,
+            "y": 36.7,
+            "width": 44,
+            "height": 44,
+            "right": 468.1,
+            "bottom": 80.7
+          },
+          ".rm-notifications-action svg": {
+            "x": 436.6,
+            "y": 49.2,
+            "width": 19,
+            "height": 19,
+            "right": 455.6,
+            "bottom": 68.2
+          },
+          ".routes-v2-summary": {
+            "x": 82,
+            "y": 130.3,
+            "width": 504,
+            "height": 51.2,
+            "right": 586,
+            "bottom": 181.5
+          },
+          ".routes-v2-filterbar": {
+            "x": 82,
+            "y": 193.5,
+            "width": 504,
+            "height": 85,
+            "right": 586,
+            "bottom": 278.5
+          },
+          "#routeMap": {
+            "x": 82,
+            "y": 290.5,
+            "width": 504,
+            "height": 499.2,
+            "right": 586,
+            "bottom": 789.7
+          },
+          ".routes-v2-map-information": {
+            "x": 82,
+            "y": 789.7,
+            "width": 504,
+            "height": 154.9,
+            "right": 586,
+            "bottom": 944.6
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 82,
+            "y": 797.7,
+            "width": 504,
+            "height": 35.4,
+            "right": 586,
+            "bottom": 833.1
+          },
+          "#routeMapLocationNotice": {
+            "x": 82,
+            "y": 840.1,
+            "width": 504,
+            "height": 30,
+            "right": 586,
+            "bottom": 870.1
+          },
+          ".map-legend": {
+            "x": 82,
+            "y": 877.1,
+            "width": 504,
+            "height": 32.5,
+            "right": 586,
+            "bottom": 909.6
+          },
+          ".routes-v2-map-note": {
+            "x": 84,
+            "y": 916.6,
+            "width": 500,
+            "height": 28,
+            "right": 584,
+            "bottom": 944.6
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 82,
+            "y": 1069.1,
+            "width": 504,
+            "height": 98.2,
+            "right": 586,
+            "bottom": 1167.3
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 82,
+            "y": 1081.1,
+            "width": 394.8,
+            "height": 22,
+            "right": 476.8,
+            "bottom": 1103.1
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 82,
+            "y": 1109.1,
+            "width": 394.8,
+            "height": 47.2,
+            "right": 476.8,
+            "bottom": 1156.3
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 486.8,
+            "y": 1099.7,
+            "width": 99.3,
+            "height": 38,
+            "right": 586,
+            "bottom": 1137.7
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 395,
+            "scrollWidth": 395,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 395,
+            "scrollWidth": 395,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 600,
+      "height": 960,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 600,
+      "header": {
+        "x": 82,
+        "y": 12,
+        "width": 504,
+        "height": 100.3,
+        "right": 586,
+        "bottom": 112.3
+      },
+      "filterbar": {
+        "x": 82,
+        "y": 193.5,
+        "width": 504,
+        "height": 85,
+        "right": 586,
+        "bottom": 278.5
+      },
+      "map": {
+        "x": 82,
+        "y": 290.5,
+        "width": 504,
+        "height": 499.2,
+        "right": 586,
+        "bottom": 789.7
+      },
+      "mapPanel": {
+        "x": 82,
+        "y": 290.5,
+        "width": 504,
+        "height": 654.1,
+        "right": 586,
+        "bottom": 944.6
+      },
+      "summary": {
+        "x": 82,
+        "y": 130.3,
+        "width": 504,
+        "height": 51.2,
+        "right": 586,
+        "bottom": 181.5
+      },
+      "viewSwitch": {
+        "x": 82,
+        "y": 956.6,
+        "width": 504,
+        "height": 50,
+        "right": 586,
+        "bottom": 1006.6
+      },
+      "plans": {
+        "x": 82,
+        "y": 1018.6,
+        "width": 504,
+        "height": 86.4,
+        "right": 586,
+        "bottom": 1105
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 82,
+          "y": 193.5,
+          "width": 122.3,
+          "height": 40,
+          "right": 204.3
+        },
+        {
+          "label": "Entregas",
+          "x": 209.3,
+          "y": 193.5,
+          "width": 122.3,
+          "height": 40,
+          "right": 331.5
+        },
+        {
+          "label": "Motoboys",
+          "x": 336.5,
+          "y": 193.5,
+          "width": 122.3,
+          "height": 40,
+          "right": 458.8
+        },
+        {
+          "label": "Rotas",
+          "x": 463.8,
+          "y": 193.5,
+          "width": 122.3,
+          "height": 40,
+          "right": 586
+        },
+        {
+          "label": "Ajustar",
+          "x": 82,
+          "y": 238.5,
+          "width": 71.7,
+          "height": 40,
+          "right": 153.7
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 82,
+            "y": 12,
+            "width": 504,
+            "height": 100.3,
+            "right": 586,
+            "bottom": 112.3
+          },
+          ".rm-notifications-action": {
+            "x": 424.1,
+            "y": 36.7,
+            "width": 44,
+            "height": 44,
+            "right": 468.1,
+            "bottom": 80.7
+          },
+          ".rm-notifications-action svg": {
+            "x": 436.6,
+            "y": 49.2,
+            "width": 19,
+            "height": 19,
+            "right": 455.6,
+            "bottom": 68.2
+          },
+          ".routes-v2-summary": {
+            "x": 82,
+            "y": 130.3,
+            "width": 504,
+            "height": 51.2,
+            "right": 586,
+            "bottom": 181.5
+          },
+          ".routes-v2-filterbar": {
+            "x": 82,
+            "y": 193.5,
+            "width": 504,
+            "height": 85,
+            "right": 586,
+            "bottom": 278.5
+          },
+          "#routeMap": {
+            "x": 82,
+            "y": 290.5,
+            "width": 504,
+            "height": 499.2,
+            "right": 586,
+            "bottom": 789.7
+          },
+          ".routes-v2-map-information": {
+            "x": 82,
+            "y": 789.7,
+            "width": 504,
+            "height": 154.9,
+            "right": 586,
+            "bottom": 944.6
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 82,
+            "y": 797.7,
+            "width": 504,
+            "height": 35.4,
+            "right": 586,
+            "bottom": 833.1
+          },
+          "#routeMapLocationNotice": {
+            "x": 82,
+            "y": 840.1,
+            "width": 504,
+            "height": 30,
+            "right": 586,
+            "bottom": 870.1
+          },
+          ".map-legend": {
+            "x": 82,
+            "y": 877.1,
+            "width": 504,
+            "height": 32.5,
+            "right": 586,
+            "bottom": 909.6
+          },
+          ".routes-v2-map-note": {
+            "x": 84,
+            "y": 916.6,
+            "width": 500,
+            "height": 28,
+            "right": 584,
+            "bottom": 944.6
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 82,
+            "y": 1069.1,
+            "width": 504,
+            "height": 98.2,
+            "right": 586,
+            "bottom": 1167.3
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 82,
+            "y": 1081.1,
+            "width": 394.8,
+            "height": 22,
+            "right": 476.8,
+            "bottom": 1103.1
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 82,
+            "y": 1109.1,
+            "width": 394.8,
+            "height": 47.2,
+            "right": 476.8,
+            "bottom": 1156.3
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 486.8,
+            "y": 1099.7,
+            "width": 99.3,
+            "height": 38,
+            "right": 586,
+            "bottom": 1137.7
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 395,
+            "scrollWidth": 395,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 395,
+            "scrollWidth": 395,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "phase": "before",
+      "docWidth": 768,
+      "header": {
+        "x": 103.8,
+        "y": 12,
+        "width": 628.5,
+        "height": 81.4,
+        "right": 732.2,
+        "bottom": 93.4
+      },
+      "filterbar": {
+        "x": 103.8,
+        "y": 111.4,
+        "width": 628.5,
+        "height": 40,
+        "right": 732.2,
+        "bottom": 151.4
+      },
+      "map": {
+        "x": 103.8,
+        "y": 163.4,
+        "width": 628.5,
+        "height": 532.5,
+        "right": 732.2,
+        "bottom": 695.9
+      },
+      "mapPanel": {
+        "x": 103.8,
+        "y": 163.4,
+        "width": 628.5,
+        "height": 552.5,
+        "right": 732.2,
+        "bottom": 715.9
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 103.8,
+          "y": 111.4,
+          "width": 128.6,
+          "height": 40,
+          "right": 232.4
+        },
+        {
+          "label": "Entregas",
+          "x": 238.4,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 367.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 373.1,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 501.7
+        },
+        {
+          "label": "Rotas",
+          "x": 507.7,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 636.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 642.4,
+          "y": 111.4,
+          "width": 89.8,
+          "height": 40,
+          "right": 732.2
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 103.8,
+            "y": 12,
+            "width": 628.5,
+            "height": 81.4,
+            "right": 732.2,
+            "bottom": 93.4
+          },
+          ".rm-notifications-action": {
+            "x": 570.3,
+            "y": 27.2,
+            "width": 44,
+            "height": 44,
+            "right": 614.3,
+            "bottom": 71.2
+          },
+          ".rm-notifications-action svg": {
+            "x": 582.8,
+            "y": 39.7,
+            "width": 19,
+            "height": 19,
+            "right": 601.8,
+            "bottom": 58.7
+          },
+          ".routes-v2-summary": null,
+          ".routes-v2-filterbar": {
+            "x": 103.8,
+            "y": 111.4,
+            "width": 628.5,
+            "height": 40,
+            "right": 732.2,
+            "bottom": 151.4
+          },
+          "#routeMap": {
+            "x": 103.8,
+            "y": 163.4,
+            "width": 628.5,
+            "height": 532.5,
+            "right": 732.2,
+            "bottom": 695.9
+          },
+          ".routes-v2-map-information": null,
+          "#mapState": {
+            "x": 113.8,
+            "y": 173.4,
+            "width": 300.2,
+            "height": 27,
+            "right": 414,
+            "bottom": 200.4
+          },
+          "#routeMapEmpty": {
+            "x": 113.8,
+            "y": 213.4,
+            "width": 560.5,
+            "height": 37.4,
+            "right": 674.2,
+            "bottom": 250.8
+          },
+          "#routeMapLocationNotice": null,
+          ".map-legend": {
+            "x": 113.8,
+            "y": 655.4,
+            "width": 223.2,
+            "height": 30.5,
+            "right": 337,
+            "bottom": 685.9
+          },
+          ".routes-v2-map-note": {
+            "x": 105.8,
+            "y": 701.9,
+            "width": 624.5,
+            "height": 14,
+            "right": 730.2,
+            "bottom": 715.9
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": null,
+          ".routes-v2-delivery-heading": null,
+          ".routes-v2-delivery-copy": null,
+          ".routes-v2-delivery-card>.btn": null
+        },
+        "addressClipping": [],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 768,
+      "header": {
+        "x": 103.8,
+        "y": 12,
+        "width": 628.5,
+        "height": 81.4,
+        "right": 732.2,
+        "bottom": 93.4
+      },
+      "filterbar": {
+        "x": 103.8,
+        "y": 174.6,
+        "width": 628.5,
+        "height": 40,
+        "right": 732.2,
+        "bottom": 214.6
+      },
+      "map": {
+        "x": 103.8,
+        "y": 226.6,
+        "width": 628.5,
+        "height": 532.5,
+        "right": 732.2,
+        "bottom": 759.1
+      },
+      "mapPanel": {
+        "x": 103.8,
+        "y": 226.6,
+        "width": 628.5,
+        "height": 673.4,
+        "right": 732.2,
+        "bottom": 900
+      },
+      "summary": {
+        "x": 103.8,
+        "y": 111.4,
+        "width": 628.5,
+        "height": 51.2,
+        "right": 732.2,
+        "bottom": 162.6
+      },
+      "viewSwitch": {
+        "x": 103.8,
+        "y": 912,
+        "width": 628.5,
+        "height": 50,
+        "right": 732.2,
+        "bottom": 962
+      },
+      "plans": {
+        "x": 103.8,
+        "y": 974,
+        "width": 628.5,
+        "height": 86.4,
+        "right": 732.2,
+        "bottom": 1060.4
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 103.8,
+          "y": 174.6,
+          "width": 128.6,
+          "height": 40,
+          "right": 232.4
+        },
+        {
+          "label": "Entregas",
+          "x": 238.4,
+          "y": 174.6,
+          "width": 128.7,
+          "height": 40,
+          "right": 367.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 373.1,
+          "y": 174.6,
+          "width": 128.7,
+          "height": 40,
+          "right": 501.7
+        },
+        {
+          "label": "Rotas",
+          "x": 507.7,
+          "y": 174.6,
+          "width": 128.7,
+          "height": 40,
+          "right": 636.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 642.4,
+          "y": 174.6,
+          "width": 89.8,
+          "height": 40,
+          "right": 732.2
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 103.8,
+            "y": 12,
+            "width": 628.5,
+            "height": 81.4,
+            "right": 732.2,
+            "bottom": 93.4
+          },
+          ".rm-notifications-action": {
+            "x": 570.3,
+            "y": 27.2,
+            "width": 44,
+            "height": 44,
+            "right": 614.3,
+            "bottom": 71.2
+          },
+          ".rm-notifications-action svg": {
+            "x": 582.8,
+            "y": 39.7,
+            "width": 19,
+            "height": 19,
+            "right": 601.8,
+            "bottom": 58.7
+          },
+          ".routes-v2-summary": {
+            "x": 103.8,
+            "y": 111.4,
+            "width": 628.5,
+            "height": 51.2,
+            "right": 732.2,
+            "bottom": 162.6
+          },
+          ".routes-v2-filterbar": {
+            "x": 103.8,
+            "y": 174.6,
+            "width": 628.5,
+            "height": 40,
+            "right": 732.2,
+            "bottom": 214.6
+          },
+          "#routeMap": {
+            "x": 103.8,
+            "y": 226.6,
+            "width": 628.5,
+            "height": 532.5,
+            "right": 732.2,
+            "bottom": 759.1
+          },
+          ".routes-v2-map-information": {
+            "x": 103.8,
+            "y": 759.1,
+            "width": 628.5,
+            "height": 140.9,
+            "right": 732.2,
+            "bottom": 900
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 103.8,
+            "y": 767.1,
+            "width": 628.5,
+            "height": 35.4,
+            "right": 732.2,
+            "bottom": 802.5
+          },
+          "#routeMapLocationNotice": {
+            "x": 103.8,
+            "y": 809.5,
+            "width": 628.5,
+            "height": 30,
+            "right": 732.2,
+            "bottom": 839.5
+          },
+          ".map-legend": {
+            "x": 103.8,
+            "y": 846.5,
+            "width": 628.5,
+            "height": 32.5,
+            "right": 732.2,
+            "bottom": 879
+          },
+          ".routes-v2-map-note": {
+            "x": 105.8,
+            "y": 886,
+            "width": 624.5,
+            "height": 14,
+            "right": 730.2,
+            "bottom": 900
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 103.8,
+            "y": 1024.5,
+            "width": 628.5,
+            "height": 84.2,
+            "right": 732.2,
+            "bottom": 1108.7
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 103.8,
+            "y": 1036.5,
+            "width": 519.2,
+            "height": 22,
+            "right": 623,
+            "bottom": 1058.5
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 103.8,
+            "y": 1064.5,
+            "width": 519.2,
+            "height": 33.2,
+            "right": 623,
+            "bottom": 1097.7
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 633,
+            "y": 1048.1,
+            "width": 99.3,
+            "height": 38,
+            "right": 732.2,
+            "bottom": 1086.1
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 519,
+            "scrollWidth": 519,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 519,
+            "scrollWidth": 519,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "phase": "before",
+      "docWidth": 768,
+      "header": {
+        "x": 103.8,
+        "y": 12,
+        "width": 628.5,
+        "height": 81.4,
+        "right": 732.2,
+        "bottom": 93.4
+      },
+      "filterbar": {
+        "x": 103.8,
+        "y": 111.4,
+        "width": 628.5,
+        "height": 40,
+        "right": 732.2,
+        "bottom": 151.4
+      },
+      "map": {
+        "x": 103.8,
+        "y": 163.4,
+        "width": 628.5,
+        "height": 532.5,
+        "right": 732.2,
+        "bottom": 695.9
+      },
+      "mapPanel": {
+        "x": 103.8,
+        "y": 163.4,
+        "width": 628.5,
+        "height": 552.5,
+        "right": 732.2,
+        "bottom": 715.9
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "selected": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 103.8,
+          "y": 111.4,
+          "width": 128.6,
+          "height": 40,
+          "right": 232.4
+        },
+        {
+          "label": "Entregas",
+          "x": 238.4,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 367.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 373.1,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 501.7
+        },
+        {
+          "label": "Rotas",
+          "x": 507.7,
+          "y": 111.4,
+          "width": 128.7,
+          "height": 40,
+          "right": 636.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 642.4,
+          "y": 111.4,
+          "width": 89.8,
+          "height": 40,
+          "right": 732.2
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 103.8,
+            "y": 12,
+            "width": 628.5,
+            "height": 81.4,
+            "right": 732.2,
+            "bottom": 93.4
+          },
+          ".rm-notifications-action": {
+            "x": 570.3,
+            "y": 27.2,
+            "width": 44,
+            "height": 44,
+            "right": 614.3,
+            "bottom": 71.2
+          },
+          ".rm-notifications-action svg": {
+            "x": 582.8,
+            "y": 39.7,
+            "width": 19,
+            "height": 19,
+            "right": 601.8,
+            "bottom": 58.7
+          },
+          ".routes-v2-summary": null,
+          ".routes-v2-filterbar": {
+            "x": 103.8,
+            "y": 111.4,
+            "width": 628.5,
+            "height": 40,
+            "right": 732.2,
+            "bottom": 151.4
+          },
+          "#routeMap": {
+            "x": 103.8,
+            "y": 163.4,
+            "width": 628.5,
+            "height": 532.5,
+            "right": 732.2,
+            "bottom": 695.9
+          },
+          ".routes-v2-map-information": null,
+          "#mapState": {
+            "x": 113.8,
+            "y": 173.4,
+            "width": 300.2,
+            "height": 27,
+            "right": 414,
+            "bottom": 200.4
+          },
+          "#routeMapEmpty": {
+            "x": 113.8,
+            "y": 213.4,
+            "width": 560.5,
+            "height": 37.4,
+            "right": 674.2,
+            "bottom": 250.8
+          },
+          "#routeMapLocationNotice": null,
+          ".map-legend": {
+            "x": 113.8,
+            "y": 655.4,
+            "width": 223.2,
+            "height": 30.5,
+            "right": 337,
+            "bottom": 685.9
+          },
+          ".routes-v2-map-note": {
+            "x": 105.8,
+            "y": 701.9,
+            "width": 624.5,
+            "height": 14,
+            "right": 730.2,
+            "bottom": 715.9
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": null,
+          ".routes-v2-delivery-heading": null,
+          ".routes-v2-delivery-copy": null,
+          ".routes-v2-delivery-card>.btn": null
+        },
+        "addressClipping": [],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 768,
+      "height": 1024,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 768,
+      "header": {
+        "x": 103.8,
+        "y": 12,
+        "width": 628.5,
+        "height": 81.4,
+        "right": 732.2,
+        "bottom": 93.4
+      },
+      "filterbar": {
+        "x": 103.8,
+        "y": 174.6,
+        "width": 628.5,
+        "height": 40,
+        "right": 732.2,
+        "bottom": 214.6
+      },
+      "map": {
+        "x": 103.8,
+        "y": 226.6,
+        "width": 628.5,
+        "height": 532.5,
+        "right": 732.2,
+        "bottom": 759.1
+      },
+      "mapPanel": {
+        "x": 103.8,
+        "y": 226.6,
+        "width": 628.5,
+        "height": 673.4,
+        "right": 732.2,
+        "bottom": 900
+      },
+      "summary": {
+        "x": 103.8,
+        "y": 111.4,
+        "width": 628.5,
+        "height": 51.2,
+        "right": 732.2,
+        "bottom": 162.6
+      },
+      "viewSwitch": {
+        "x": 103.8,
+        "y": 912,
+        "width": 628.5,
+        "height": 50,
+        "right": 732.2,
+        "bottom": 962
+      },
+      "plans": {
+        "x": 103.8,
+        "y": 974,
+        "width": 628.5,
+        "height": 86.4,
+        "right": 732.2,
+        "bottom": 1060.4
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 103.8,
+          "y": 174.6,
+          "width": 128.6,
+          "height": 40,
+          "right": 232.4
+        },
+        {
+          "label": "Entregas",
+          "x": 238.4,
+          "y": 174.6,
+          "width": 128.7,
+          "height": 40,
+          "right": 367.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 373.1,
+          "y": 174.6,
+          "width": 128.7,
+          "height": 40,
+          "right": 501.7
+        },
+        {
+          "label": "Rotas",
+          "x": 507.7,
+          "y": 174.6,
+          "width": 128.7,
+          "height": 40,
+          "right": 636.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 642.4,
+          "y": 174.6,
+          "width": 89.8,
+          "height": 40,
+          "right": 732.2
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 103.8,
+            "y": 12,
+            "width": 628.5,
+            "height": 81.4,
+            "right": 732.2,
+            "bottom": 93.4
+          },
+          ".rm-notifications-action": {
+            "x": 570.3,
+            "y": 27.2,
+            "width": 44,
+            "height": 44,
+            "right": 614.3,
+            "bottom": 71.2
+          },
+          ".rm-notifications-action svg": {
+            "x": 582.8,
+            "y": 39.7,
+            "width": 19,
+            "height": 19,
+            "right": 601.8,
+            "bottom": 58.7
+          },
+          ".routes-v2-summary": {
+            "x": 103.8,
+            "y": 111.4,
+            "width": 628.5,
+            "height": 51.2,
+            "right": 732.2,
+            "bottom": 162.6
+          },
+          ".routes-v2-filterbar": {
+            "x": 103.8,
+            "y": 174.6,
+            "width": 628.5,
+            "height": 40,
+            "right": 732.2,
+            "bottom": 214.6
+          },
+          "#routeMap": {
+            "x": 103.8,
+            "y": 226.6,
+            "width": 628.5,
+            "height": 532.5,
+            "right": 732.2,
+            "bottom": 759.1
+          },
+          ".routes-v2-map-information": {
+            "x": 103.8,
+            "y": 759.1,
+            "width": 628.5,
+            "height": 140.9,
+            "right": 732.2,
+            "bottom": 900
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 103.8,
+            "y": 767.1,
+            "width": 628.5,
+            "height": 35.4,
+            "right": 732.2,
+            "bottom": 802.5
+          },
+          "#routeMapLocationNotice": {
+            "x": 103.8,
+            "y": 809.5,
+            "width": 628.5,
+            "height": 30,
+            "right": 732.2,
+            "bottom": 839.5
+          },
+          ".map-legend": {
+            "x": 103.8,
+            "y": 846.5,
+            "width": 628.5,
+            "height": 32.5,
+            "right": 732.2,
+            "bottom": 879
+          },
+          ".routes-v2-map-note": {
+            "x": 105.8,
+            "y": 886,
+            "width": 624.5,
+            "height": 14,
+            "right": 730.2,
+            "bottom": 900
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 103.8,
+            "y": 1024.5,
+            "width": 628.5,
+            "height": 84.2,
+            "right": 732.2,
+            "bottom": 1108.7
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 103.8,
+            "y": 1036.5,
+            "width": 519.2,
+            "height": 22,
+            "right": 623,
+            "bottom": 1058.5
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 103.8,
+            "y": 1064.5,
+            "width": 519.2,
+            "height": 33.2,
+            "right": 623,
+            "bottom": 1097.7
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 633,
+            "y": 1048.1,
+            "width": 99.3,
+            "height": 38,
+            "right": 732.2,
+            "bottom": 1086.1
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 519,
+            "scrollWidth": 519,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 519,
+            "scrollWidth": 519,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 1009,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 691.6,
+        "height": 93.8,
+        "right": 978.3,
+        "bottom": 121.8
+      },
+      "filterbar": {
+        "x": 286.7,
+        "y": 201,
+        "width": 691.6,
+        "height": 40,
+        "right": 978.3,
+        "bottom": 241
+      },
+      "map": {
+        "x": 520.9,
+        "y": 319,
+        "width": 457.4,
+        "height": 445.4,
+        "right": 978.3,
+        "bottom": 764.5
+      },
+      "mapPanel": {
+        "x": 520.9,
+        "y": 319,
+        "width": 457.4,
+        "height": 600.3,
+        "right": 978.3,
+        "bottom": 919.3
+      },
+      "summary": {
+        "x": 286.7,
+        "y": 135.8,
+        "width": 691.6,
+        "height": 51.2,
+        "right": 978.3,
+        "bottom": 187
+      },
+      "viewSwitch": {
+        "x": 286.7,
+        "y": 255,
+        "width": 691.6,
+        "height": 50,
+        "right": 978.3,
+        "bottom": 305
+      },
+      "plans": {
+        "x": 286.7,
+        "y": 319,
+        "width": 220.2,
+        "height": 600.3,
+        "right": 506.9,
+        "bottom": 919.3
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 286.7,
+          "y": 201,
+          "width": 144.4,
+          "height": 40,
+          "right": 431.1
+        },
+        {
+          "label": "Entregas",
+          "x": 437.1,
+          "y": 201,
+          "width": 144.4,
+          "height": 40,
+          "right": 581.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 587.6,
+          "y": 201,
+          "width": 144.4,
+          "height": 40,
+          "right": 732
+        },
+        {
+          "label": "Rotas",
+          "x": 738,
+          "y": 201,
+          "width": 144.4,
+          "height": 40,
+          "right": 882.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 888.4,
+          "y": 201,
+          "width": 89.8,
+          "height": 40,
+          "right": 978.3
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 286.7,
+            "y": 28,
+            "width": 691.6,
+            "height": 93.8,
+            "right": 978.3,
+            "bottom": 121.8
+          },
+          ".rm-notifications-action": {
+            "x": 792.4,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 836.4,
+            "bottom": 95.4
+          },
+          ".rm-notifications-action svg": {
+            "x": 804.9,
+            "y": 63.9,
+            "width": 19,
+            "height": 19,
+            "right": 823.9,
+            "bottom": 82.9
+          },
+          ".routes-v2-summary": {
+            "x": 286.7,
+            "y": 135.8,
+            "width": 691.6,
+            "height": 51.2,
+            "right": 978.3,
+            "bottom": 187
+          },
+          ".routes-v2-filterbar": {
+            "x": 286.7,
+            "y": 201,
+            "width": 691.6,
+            "height": 40,
+            "right": 978.3,
+            "bottom": 241
+          },
+          "#routeMap": {
+            "x": 520.9,
+            "y": 319,
+            "width": 457.4,
+            "height": 445.4,
+            "right": 978.3,
+            "bottom": 764.5
+          },
+          ".routes-v2-map-information": {
+            "x": 520.9,
+            "y": 764.5,
+            "width": 457.4,
+            "height": 154.9,
+            "right": 978.3,
+            "bottom": 919.3
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 520.9,
+            "y": 772.5,
+            "width": 457.4,
+            "height": 35.4,
+            "right": 978.3,
+            "bottom": 807.8
+          },
+          "#routeMapLocationNotice": {
+            "x": 520.9,
+            "y": 814.8,
+            "width": 457.4,
+            "height": 30,
+            "right": 978.3,
+            "bottom": 844.8
+          },
+          ".map-legend": {
+            "x": 520.9,
+            "y": 851.8,
+            "width": 457.4,
+            "height": 32.5,
+            "right": 978.3,
+            "bottom": 884.3
+          },
+          ".routes-v2-map-note": {
+            "x": 522.9,
+            "y": 891.3,
+            "width": 453.4,
+            "height": 28,
+            "right": 976.3,
+            "bottom": 919.3
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 286.7,
+            "y": 413.5,
+            "width": 220.2,
+            "height": 214.1,
+            "right": 506.9,
+            "bottom": 627.7
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 286.7,
+            "y": 425.5,
+            "width": 111,
+            "height": 47.4,
+            "right": 397.7,
+            "bottom": 472.9
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 286.7,
+            "y": 478.9,
+            "width": 111,
+            "height": 137.8,
+            "right": 397.7,
+            "bottom": 616.7
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 407.7,
+            "y": 502.1,
+            "width": 99.3,
+            "height": 38,
+            "right": 506.9,
+            "bottom": 540.1
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 111,
+            "scrollWidth": 111,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 111,
+            "scrollWidth": 111,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1024,
+      "height": 768,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 1009,
+      "header": {
+        "x": 286.7,
+        "y": 28,
+        "width": 691.6,
+        "height": 93.8,
+        "right": 978.3,
+        "bottom": 121.8
+      },
+      "filterbar": {
+        "x": 286.7,
+        "y": 201,
+        "width": 691.6,
+        "height": 40,
+        "right": 978.3,
+        "bottom": 241
+      },
+      "map": {
+        "x": 520.9,
+        "y": 319,
+        "width": 457.4,
+        "height": 445.4,
+        "right": 978.3,
+        "bottom": 764.5
+      },
+      "mapPanel": {
+        "x": 520.9,
+        "y": 319,
+        "width": 457.4,
+        "height": 600.3,
+        "right": 978.3,
+        "bottom": 919.3
+      },
+      "summary": {
+        "x": 286.7,
+        "y": 135.8,
+        "width": 691.6,
+        "height": 51.2,
+        "right": 978.3,
+        "bottom": 187
+      },
+      "viewSwitch": {
+        "x": 286.7,
+        "y": 255,
+        "width": 691.6,
+        "height": 50,
+        "right": 978.3,
+        "bottom": 305
+      },
+      "plans": {
+        "x": 286.7,
+        "y": 319,
+        "width": 220.2,
+        "height": 600.3,
+        "right": 506.9,
+        "bottom": 919.3
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 286.7,
+          "y": 201,
+          "width": 144.4,
+          "height": 40,
+          "right": 431.1
+        },
+        {
+          "label": "Entregas",
+          "x": 437.1,
+          "y": 201,
+          "width": 144.4,
+          "height": 40,
+          "right": 581.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 587.6,
+          "y": 201,
+          "width": 144.4,
+          "height": 40,
+          "right": 732
+        },
+        {
+          "label": "Rotas",
+          "x": 738,
+          "y": 201,
+          "width": 144.4,
+          "height": 40,
+          "right": 882.4
+        },
+        {
+          "label": "Ajustar",
+          "x": 888.4,
+          "y": 201,
+          "width": 89.8,
+          "height": 40,
+          "right": 978.3
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 286.7,
+            "y": 28,
+            "width": 691.6,
+            "height": 93.8,
+            "right": 978.3,
+            "bottom": 121.8
+          },
+          ".rm-notifications-action": {
+            "x": 792.4,
+            "y": 51.4,
+            "width": 44,
+            "height": 44,
+            "right": 836.4,
+            "bottom": 95.4
+          },
+          ".rm-notifications-action svg": {
+            "x": 804.9,
+            "y": 63.9,
+            "width": 19,
+            "height": 19,
+            "right": 823.9,
+            "bottom": 82.9
+          },
+          ".routes-v2-summary": {
+            "x": 286.7,
+            "y": 135.8,
+            "width": 691.6,
+            "height": 51.2,
+            "right": 978.3,
+            "bottom": 187
+          },
+          ".routes-v2-filterbar": {
+            "x": 286.7,
+            "y": 201,
+            "width": 691.6,
+            "height": 40,
+            "right": 978.3,
+            "bottom": 241
+          },
+          "#routeMap": {
+            "x": 520.9,
+            "y": 319,
+            "width": 457.4,
+            "height": 445.4,
+            "right": 978.3,
+            "bottom": 764.5
+          },
+          ".routes-v2-map-information": {
+            "x": 520.9,
+            "y": 764.5,
+            "width": 457.4,
+            "height": 154.9,
+            "right": 978.3,
+            "bottom": 919.3
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 520.9,
+            "y": 772.5,
+            "width": 457.4,
+            "height": 35.4,
+            "right": 978.3,
+            "bottom": 807.8
+          },
+          "#routeMapLocationNotice": {
+            "x": 520.9,
+            "y": 814.8,
+            "width": 457.4,
+            "height": 30,
+            "right": 978.3,
+            "bottom": 844.8
+          },
+          ".map-legend": {
+            "x": 520.9,
+            "y": 851.8,
+            "width": 457.4,
+            "height": 32.5,
+            "right": 978.3,
+            "bottom": 884.3
+          },
+          ".routes-v2-map-note": {
+            "x": 522.9,
+            "y": 891.3,
+            "width": 453.4,
+            "height": 28,
+            "right": 976.3,
+            "bottom": 919.3
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 286.7,
+            "y": 413.5,
+            "width": 220.2,
+            "height": 214.1,
+            "right": 506.9,
+            "bottom": 627.7
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 286.7,
+            "y": 425.5,
+            "width": 111,
+            "height": 47.4,
+            "right": 397.7,
+            "bottom": 472.9
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 286.7,
+            "y": 478.9,
+            "width": 111,
+            "height": 137.8,
+            "right": 397.7,
+            "bottom": 616.7
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 407.7,
+            "y": 502.1,
+            "width": 99.3,
+            "height": 38,
+            "right": 506.9,
+            "bottom": 540.1
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 111,
+            "scrollWidth": 111,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 111,
+            "scrollWidth": 111,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 1265,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 932.2,
+        "height": 98.8,
+        "right": 1226.6,
+        "bottom": 126.8
+      },
+      "filterbar": {
+        "x": 294.4,
+        "y": 206,
+        "width": 932.2,
+        "height": 40,
+        "right": 1226.6,
+        "bottom": 246
+      },
+      "map": {
+        "x": 518.4,
+        "y": 324,
+        "width": 434.2,
+        "height": 512,
+        "right": 952.6,
+        "bottom": 836
+      },
+      "mapPanel": {
+        "x": 518.4,
+        "y": 324,
+        "width": 434.2,
+        "height": 666.9,
+        "right": 952.6,
+        "bottom": 990.8
+      },
+      "summary": {
+        "x": 294.4,
+        "y": 140.8,
+        "width": 932.2,
+        "height": 51.2,
+        "right": 1226.6,
+        "bottom": 192
+      },
+      "viewSwitch": {
+        "x": 294.4,
+        "y": 260,
+        "width": 932.2,
+        "height": 50,
+        "right": 1226.6,
+        "bottom": 310
+      },
+      "plans": {
+        "x": 294.4,
+        "y": 324,
+        "width": 210,
+        "height": 86.4,
+        "right": 504.4,
+        "bottom": 410.4
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 294.4,
+          "y": 206,
+          "width": 204.6,
+          "height": 40,
+          "right": 499
+        },
+        {
+          "label": "Entregas",
+          "x": 505,
+          "y": 206,
+          "width": 204.6,
+          "height": 40,
+          "right": 709.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 715.6,
+          "y": 206,
+          "width": 204.6,
+          "height": 40,
+          "right": 920.2
+        },
+        {
+          "label": "Rotas",
+          "x": 926.2,
+          "y": 206,
+          "width": 204.6,
+          "height": 40,
+          "right": 1130.8
+        },
+        {
+          "label": "Ajustar",
+          "x": 1136.8,
+          "y": 206,
+          "width": 89.8,
+          "height": 40,
+          "right": 1226.6
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 294.4,
+            "y": 28,
+            "width": 932.2,
+            "height": 98.8,
+            "right": 1226.6,
+            "bottom": 126.8
+          },
+          ".rm-notifications-action": {
+            "x": 1017.1,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 1061.1,
+            "bottom": 97.9
+          },
+          ".rm-notifications-action svg": {
+            "x": 1029.6,
+            "y": 66.4,
+            "width": 19,
+            "height": 19,
+            "right": 1048.6,
+            "bottom": 85.4
+          },
+          ".routes-v2-summary": {
+            "x": 294.4,
+            "y": 140.8,
+            "width": 932.2,
+            "height": 51.2,
+            "right": 1226.6,
+            "bottom": 192
+          },
+          ".routes-v2-filterbar": {
+            "x": 294.4,
+            "y": 206,
+            "width": 932.2,
+            "height": 40,
+            "right": 1226.6,
+            "bottom": 246
+          },
+          "#routeMap": {
+            "x": 518.4,
+            "y": 324,
+            "width": 434.2,
+            "height": 512,
+            "right": 952.6,
+            "bottom": 836
+          },
+          ".routes-v2-map-information": {
+            "x": 518.4,
+            "y": 836,
+            "width": 434.2,
+            "height": 154.9,
+            "right": 952.6,
+            "bottom": 990.8
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 518.4,
+            "y": 844,
+            "width": 434.2,
+            "height": 35.4,
+            "right": 952.6,
+            "bottom": 879.3
+          },
+          "#routeMapLocationNotice": {
+            "x": 518.4,
+            "y": 886.3,
+            "width": 434.2,
+            "height": 30,
+            "right": 952.6,
+            "bottom": 916.3
+          },
+          ".map-legend": {
+            "x": 518.4,
+            "y": 923.3,
+            "width": 434.2,
+            "height": 32.5,
+            "right": 952.6,
+            "bottom": 955.8
+          },
+          ".routes-v2-map-note": {
+            "x": 520.4,
+            "y": 962.8,
+            "width": 430.2,
+            "height": 28,
+            "right": 950.6,
+            "bottom": 990.8
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 294.4,
+            "y": 411,
+            "width": 210,
+            "height": 244.3,
+            "right": 504.4,
+            "bottom": 655.3
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 294.4,
+            "y": 423,
+            "width": 100.8,
+            "height": 47.4,
+            "right": 395.1,
+            "bottom": 470.3
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 294.4,
+            "y": 476.3,
+            "width": 100.8,
+            "height": 167.9,
+            "right": 395.1,
+            "bottom": 644.3
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 405.1,
+            "y": 514.6,
+            "width": 99.3,
+            "height": 38,
+            "right": 504.4,
+            "bottom": 552.6
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 101,
+            "scrollWidth": 101,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 101,
+            "scrollWidth": 101,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 1265,
+      "header": {
+        "x": 294.4,
+        "y": 28,
+        "width": 932.2,
+        "height": 98.8,
+        "right": 1226.6,
+        "bottom": 126.8
+      },
+      "filterbar": {
+        "x": 294.4,
+        "y": 206,
+        "width": 932.2,
+        "height": 40,
+        "right": 1226.6,
+        "bottom": 246
+      },
+      "map": {
+        "x": 518.4,
+        "y": 324,
+        "width": 434.2,
+        "height": 512,
+        "right": 952.6,
+        "bottom": 836
+      },
+      "mapPanel": {
+        "x": 518.4,
+        "y": 324,
+        "width": 434.2,
+        "height": 666.9,
+        "right": 952.6,
+        "bottom": 990.8
+      },
+      "summary": {
+        "x": 294.4,
+        "y": 140.8,
+        "width": 932.2,
+        "height": 51.2,
+        "right": 1226.6,
+        "bottom": 192
+      },
+      "viewSwitch": {
+        "x": 294.4,
+        "y": 260,
+        "width": 932.2,
+        "height": 50,
+        "right": 1226.6,
+        "bottom": 310
+      },
+      "plans": {
+        "x": 294.4,
+        "y": 324,
+        "width": 210,
+        "height": 86.4,
+        "right": 504.4,
+        "bottom": 410.4
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 294.4,
+          "y": 206,
+          "width": 204.6,
+          "height": 40,
+          "right": 499
+        },
+        {
+          "label": "Entregas",
+          "x": 505,
+          "y": 206,
+          "width": 204.6,
+          "height": 40,
+          "right": 709.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 715.6,
+          "y": 206,
+          "width": 204.6,
+          "height": 40,
+          "right": 920.2
+        },
+        {
+          "label": "Rotas",
+          "x": 926.2,
+          "y": 206,
+          "width": 204.6,
+          "height": 40,
+          "right": 1130.8
+        },
+        {
+          "label": "Ajustar",
+          "x": 1136.8,
+          "y": 206,
+          "width": 89.8,
+          "height": 40,
+          "right": 1226.6
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 294.4,
+            "y": 28,
+            "width": 932.2,
+            "height": 98.8,
+            "right": 1226.6,
+            "bottom": 126.8
+          },
+          ".rm-notifications-action": {
+            "x": 1017.1,
+            "y": 53.9,
+            "width": 44,
+            "height": 44,
+            "right": 1061.1,
+            "bottom": 97.9
+          },
+          ".rm-notifications-action svg": {
+            "x": 1029.6,
+            "y": 66.4,
+            "width": 19,
+            "height": 19,
+            "right": 1048.6,
+            "bottom": 85.4
+          },
+          ".routes-v2-summary": {
+            "x": 294.4,
+            "y": 140.8,
+            "width": 932.2,
+            "height": 51.2,
+            "right": 1226.6,
+            "bottom": 192
+          },
+          ".routes-v2-filterbar": {
+            "x": 294.4,
+            "y": 206,
+            "width": 932.2,
+            "height": 40,
+            "right": 1226.6,
+            "bottom": 246
+          },
+          "#routeMap": {
+            "x": 518.4,
+            "y": 324,
+            "width": 434.2,
+            "height": 512,
+            "right": 952.6,
+            "bottom": 836
+          },
+          ".routes-v2-map-information": {
+            "x": 518.4,
+            "y": 836,
+            "width": 434.2,
+            "height": 154.9,
+            "right": 952.6,
+            "bottom": 990.8
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 518.4,
+            "y": 844,
+            "width": 434.2,
+            "height": 35.4,
+            "right": 952.6,
+            "bottom": 879.3
+          },
+          "#routeMapLocationNotice": {
+            "x": 518.4,
+            "y": 886.3,
+            "width": 434.2,
+            "height": 30,
+            "right": 952.6,
+            "bottom": 916.3
+          },
+          ".map-legend": {
+            "x": 518.4,
+            "y": 923.3,
+            "width": 434.2,
+            "height": 32.5,
+            "right": 952.6,
+            "bottom": 955.8
+          },
+          ".routes-v2-map-note": {
+            "x": 520.4,
+            "y": 962.8,
+            "width": 430.2,
+            "height": 28,
+            "right": 950.6,
+            "bottom": 990.8
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 294.4,
+            "y": 411,
+            "width": 210,
+            "height": 244.3,
+            "right": 504.4,
+            "bottom": 655.3
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 294.4,
+            "y": 423,
+            "width": 100.8,
+            "height": 47.4,
+            "right": 395.1,
+            "bottom": 470.3
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 294.4,
+            "y": 476.3,
+            "width": 100.8,
+            "height": 167.9,
+            "right": 395.1,
+            "bottom": 644.3
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 405.1,
+            "y": 514.6,
+            "width": 99.3,
+            "height": 38,
+            "right": 504.4,
+            "bottom": 552.6
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 101,
+            "scrollWidth": 101,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 101,
+            "scrollWidth": 101,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "phase": "before",
+      "docWidth": 1440,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1097.6,
+        "height": 102.7,
+        "right": 1396.8,
+        "bottom": 130.7
+      },
+      "filterbar": {
+        "x": 299.2,
+        "y": 144.7,
+        "width": 1097.6,
+        "height": 40,
+        "right": 1396.8,
+        "bottom": 184.7
+      },
+      "map": {
+        "x": 583.2,
+        "y": 198.7,
+        "width": 469.6,
+        "height": 576,
+        "right": 1052.8,
+        "bottom": 774.7
+      },
+      "mapPanel": {
+        "x": 583.2,
+        "y": 198.7,
+        "width": 469.6,
+        "height": 610,
+        "right": 1052.8,
+        "bottom": 808.7
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 299.2,
+        "y": 198.7,
+        "width": 270,
+        "height": 86.4,
+        "right": 569.2,
+        "bottom": 285.2
+      },
+      "selected": {
+        "x": 1066.8,
+        "y": 198.7,
+        "width": 330,
+        "height": 84,
+        "right": 1396.8,
+        "bottom": 282.7
+      },
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 299.2,
+          "y": 144.7,
+          "width": 245.9,
+          "height": 40,
+          "right": 545.1
+        },
+        {
+          "label": "Entregas",
+          "x": 551.1,
+          "y": 144.7,
+          "width": 246,
+          "height": 40,
+          "right": 797.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 803.1,
+          "y": 144.7,
+          "width": 245.9,
+          "height": 40,
+          "right": 1049
+        },
+        {
+          "label": "Rotas",
+          "x": 1055,
+          "y": 144.7,
+          "width": 246,
+          "height": 40,
+          "right": 1301
+        },
+        {
+          "label": "Ajustar",
+          "x": 1307,
+          "y": 144.7,
+          "width": 89.8,
+          "height": 40,
+          "right": 1396.8
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 299.2,
+            "y": 28,
+            "width": 1097.6,
+            "height": 102.7,
+            "right": 1396.8,
+            "bottom": 130.7
+          },
+          ".rm-notifications-action": {
+            "x": 1184.9,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1228.9,
+            "bottom": 99.9
+          },
+          ".rm-notifications-action svg": {
+            "x": 1197.4,
+            "y": 68.4,
+            "width": 19,
+            "height": 19,
+            "right": 1216.4,
+            "bottom": 87.4
+          },
+          ".routes-v2-summary": null,
+          ".routes-v2-filterbar": {
+            "x": 299.2,
+            "y": 144.7,
+            "width": 1097.6,
+            "height": 40,
+            "right": 1396.8,
+            "bottom": 184.7
+          },
+          "#routeMap": {
+            "x": 583.2,
+            "y": 198.7,
+            "width": 469.6,
+            "height": 576,
+            "right": 1052.8,
+            "bottom": 774.7
+          },
+          ".routes-v2-map-information": null,
+          "#mapState": {
+            "x": 593.2,
+            "y": 208.7,
+            "width": 300.2,
+            "height": 27,
+            "right": 893.4,
+            "bottom": 235.7
+          },
+          "#routeMapEmpty": {
+            "x": 593.2,
+            "y": 248.7,
+            "width": 401.6,
+            "height": 37.4,
+            "right": 994.8,
+            "bottom": 286.1
+          },
+          "#routeMapLocationNotice": null,
+          ".map-legend": {
+            "x": 593.2,
+            "y": 734.2,
+            "width": 223.2,
+            "height": 30.5,
+            "right": 816.4,
+            "bottom": 764.7
+          },
+          ".routes-v2-map-note": {
+            "x": 585.2,
+            "y": 780.7,
+            "width": 465.6,
+            "height": 28,
+            "right": 1050.8,
+            "bottom": 808.7
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": null,
+          ".routes-v2-delivery-heading": null,
+          ".routes-v2-delivery-copy": null,
+          ".routes-v2-delivery-card>.btn": null
+        },
+        "addressClipping": [],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 1425,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1082.6,
+        "height": 102.7,
+        "right": 1381.8,
+        "bottom": 130.7
+      },
+      "filterbar": {
+        "x": 299.2,
+        "y": 209.9,
+        "width": 1082.6,
+        "height": 40,
+        "right": 1381.8,
+        "bottom": 249.9
+      },
+      "map": {
+        "x": 535.2,
+        "y": 327.9,
+        "width": 555.1,
+        "height": 576,
+        "right": 1090.3,
+        "bottom": 903.9
+      },
+      "mapPanel": {
+        "x": 535.2,
+        "y": 327.9,
+        "width": 555.1,
+        "height": 730.9,
+        "right": 1090.3,
+        "bottom": 1058.8
+      },
+      "summary": {
+        "x": 299.2,
+        "y": 144.7,
+        "width": 1082.6,
+        "height": 51.2,
+        "right": 1381.8,
+        "bottom": 195.9
+      },
+      "viewSwitch": {
+        "x": 299.2,
+        "y": 263.9,
+        "width": 1082.6,
+        "height": 50,
+        "right": 1381.8,
+        "bottom": 313.9
+      },
+      "plans": {
+        "x": 299.2,
+        "y": 327.9,
+        "width": 222,
+        "height": 86.4,
+        "right": 521.2,
+        "bottom": 414.3
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 299.2,
+          "y": 209.9,
+          "width": 242.2,
+          "height": 40,
+          "right": 541.4
+        },
+        {
+          "label": "Entregas",
+          "x": 547.4,
+          "y": 209.9,
+          "width": 242.2,
+          "height": 40,
+          "right": 789.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 795.6,
+          "y": 209.9,
+          "width": 242.2,
+          "height": 40,
+          "right": 1037.8
+        },
+        {
+          "label": "Rotas",
+          "x": 1043.8,
+          "y": 209.9,
+          "width": 242.2,
+          "height": 40,
+          "right": 1286
+        },
+        {
+          "label": "Ajustar",
+          "x": 1292,
+          "y": 209.9,
+          "width": 89.8,
+          "height": 40,
+          "right": 1381.8
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 299.2,
+            "y": 28,
+            "width": 1082.6,
+            "height": 102.7,
+            "right": 1381.8,
+            "bottom": 130.7
+          },
+          ".rm-notifications-action": {
+            "x": 1169.9,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1213.9,
+            "bottom": 99.9
+          },
+          ".rm-notifications-action svg": {
+            "x": 1182.4,
+            "y": 68.4,
+            "width": 19,
+            "height": 19,
+            "right": 1201.4,
+            "bottom": 87.4
+          },
+          ".routes-v2-summary": {
+            "x": 299.2,
+            "y": 144.7,
+            "width": 1082.6,
+            "height": 51.2,
+            "right": 1381.8,
+            "bottom": 195.9
+          },
+          ".routes-v2-filterbar": {
+            "x": 299.2,
+            "y": 209.9,
+            "width": 1082.6,
+            "height": 40,
+            "right": 1381.8,
+            "bottom": 249.9
+          },
+          "#routeMap": {
+            "x": 535.2,
+            "y": 327.9,
+            "width": 555.1,
+            "height": 576,
+            "right": 1090.3,
+            "bottom": 903.9
+          },
+          ".routes-v2-map-information": {
+            "x": 535.2,
+            "y": 903.9,
+            "width": 555.1,
+            "height": 154.9,
+            "right": 1090.3,
+            "bottom": 1058.8
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 535.2,
+            "y": 911.9,
+            "width": 555.1,
+            "height": 35.4,
+            "right": 1090.3,
+            "bottom": 947.3
+          },
+          "#routeMapLocationNotice": {
+            "x": 535.2,
+            "y": 954.3,
+            "width": 555.1,
+            "height": 30,
+            "right": 1090.3,
+            "bottom": 984.3
+          },
+          ".map-legend": {
+            "x": 535.2,
+            "y": 991.3,
+            "width": 555.1,
+            "height": 32.5,
+            "right": 1090.3,
+            "bottom": 1023.8
+          },
+          ".routes-v2-map-note": {
+            "x": 537.2,
+            "y": 1030.8,
+            "width": 551.1,
+            "height": 28,
+            "right": 1088.3,
+            "bottom": 1058.8
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 299.2,
+            "y": 414.9,
+            "width": 222,
+            "height": 214.1,
+            "right": 521.2,
+            "bottom": 629
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 299.2,
+            "y": 426.9,
+            "width": 112.8,
+            "height": 47.4,
+            "right": 412,
+            "bottom": 474.3
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 299.2,
+            "y": 480.3,
+            "width": 112.8,
+            "height": 137.8,
+            "right": 412,
+            "bottom": 618
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 422,
+            "y": 503.5,
+            "width": 99.3,
+            "height": 38,
+            "right": 521.2,
+            "bottom": 541.5
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 113,
+            "scrollWidth": 113,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 113,
+            "scrollWidth": 113,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "phase": "before",
+      "docWidth": 1440,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1097.6,
+        "height": 102.7,
+        "right": 1396.8,
+        "bottom": 130.7
+      },
+      "filterbar": {
+        "x": 299.2,
+        "y": 144.7,
+        "width": 1097.6,
+        "height": 40,
+        "right": 1396.8,
+        "bottom": 184.7
+      },
+      "map": {
+        "x": 583.2,
+        "y": 198.7,
+        "width": 469.6,
+        "height": 576,
+        "right": 1052.8,
+        "bottom": 774.7
+      },
+      "mapPanel": {
+        "x": 583.2,
+        "y": 198.7,
+        "width": 469.6,
+        "height": 610,
+        "right": 1052.8,
+        "bottom": 808.7
+      },
+      "summary": null,
+      "viewSwitch": null,
+      "plans": {
+        "x": 299.2,
+        "y": 198.7,
+        "width": 270,
+        "height": 86.4,
+        "right": 569.2,
+        "bottom": 285.2
+      },
+      "selected": {
+        "x": 1066.8,
+        "y": 198.7,
+        "width": 330,
+        "height": 84,
+        "right": 1396.8,
+        "bottom": 282.7
+      },
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 299.2,
+          "y": 144.7,
+          "width": 245.9,
+          "height": 40,
+          "right": 545.1
+        },
+        {
+          "label": "Entregas",
+          "x": 551.1,
+          "y": 144.7,
+          "width": 246,
+          "height": 40,
+          "right": 797.1
+        },
+        {
+          "label": "Motoboys",
+          "x": 803.1,
+          "y": 144.7,
+          "width": 245.9,
+          "height": 40,
+          "right": 1049
+        },
+        {
+          "label": "Rotas",
+          "x": 1055,
+          "y": 144.7,
+          "width": 246,
+          "height": 40,
+          "right": 1301
+        },
+        {
+          "label": "Ajustar",
+          "x": 1307,
+          "y": 144.7,
+          "width": 89.8,
+          "height": 40,
+          "right": 1396.8
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 2,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 299.2,
+            "y": 28,
+            "width": 1097.6,
+            "height": 102.7,
+            "right": 1396.8,
+            "bottom": 130.7
+          },
+          ".rm-notifications-action": {
+            "x": 1184.9,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1228.9,
+            "bottom": 99.9
+          },
+          ".rm-notifications-action svg": {
+            "x": 1197.4,
+            "y": 68.4,
+            "width": 19,
+            "height": 19,
+            "right": 1216.4,
+            "bottom": 87.4
+          },
+          ".routes-v2-summary": null,
+          ".routes-v2-filterbar": {
+            "x": 299.2,
+            "y": 144.7,
+            "width": 1097.6,
+            "height": 40,
+            "right": 1396.8,
+            "bottom": 184.7
+          },
+          "#routeMap": {
+            "x": 583.2,
+            "y": 198.7,
+            "width": 469.6,
+            "height": 576,
+            "right": 1052.8,
+            "bottom": 774.7
+          },
+          ".routes-v2-map-information": null,
+          "#mapState": {
+            "x": 593.2,
+            "y": 208.7,
+            "width": 300.2,
+            "height": 27,
+            "right": 893.4,
+            "bottom": 235.7
+          },
+          "#routeMapEmpty": {
+            "x": 593.2,
+            "y": 248.7,
+            "width": 401.6,
+            "height": 37.4,
+            "right": 994.8,
+            "bottom": 286.1
+          },
+          "#routeMapLocationNotice": null,
+          ".map-legend": {
+            "x": 593.2,
+            "y": 734.2,
+            "width": 223.2,
+            "height": 30.5,
+            "right": 816.4,
+            "bottom": 764.7
+          },
+          ".routes-v2-map-note": {
+            "x": 585.2,
+            "y": 780.7,
+            "width": 465.6,
+            "height": 28,
+            "right": 1050.8,
+            "bottom": 808.7
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": null,
+          ".routes-v2-delivery-heading": null,
+          ".routes-v2-delivery-copy": null,
+          ".routes-v2-delivery-card>.btn": null
+        },
+        "addressClipping": [],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 1425,
+      "header": {
+        "x": 299.2,
+        "y": 28,
+        "width": 1082.6,
+        "height": 102.7,
+        "right": 1381.8,
+        "bottom": 130.7
+      },
+      "filterbar": {
+        "x": 299.2,
+        "y": 209.9,
+        "width": 1082.6,
+        "height": 40,
+        "right": 1381.8,
+        "bottom": 249.9
+      },
+      "map": {
+        "x": 535.2,
+        "y": 327.9,
+        "width": 555.1,
+        "height": 576,
+        "right": 1090.3,
+        "bottom": 903.9
+      },
+      "mapPanel": {
+        "x": 535.2,
+        "y": 327.9,
+        "width": 555.1,
+        "height": 730.9,
+        "right": 1090.3,
+        "bottom": 1058.8
+      },
+      "summary": {
+        "x": 299.2,
+        "y": 144.7,
+        "width": 1082.6,
+        "height": 51.2,
+        "right": 1381.8,
+        "bottom": 195.9
+      },
+      "viewSwitch": {
+        "x": 299.2,
+        "y": 263.9,
+        "width": 1082.6,
+        "height": 50,
+        "right": 1381.8,
+        "bottom": 313.9
+      },
+      "plans": {
+        "x": 299.2,
+        "y": 327.9,
+        "width": 222,
+        "height": 86.4,
+        "right": 521.2,
+        "bottom": 414.3
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 299.2,
+          "y": 209.9,
+          "width": 242.2,
+          "height": 40,
+          "right": 541.4
+        },
+        {
+          "label": "Entregas",
+          "x": 547.4,
+          "y": 209.9,
+          "width": 242.2,
+          "height": 40,
+          "right": 789.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 795.6,
+          "y": 209.9,
+          "width": 242.2,
+          "height": 40,
+          "right": 1037.8
+        },
+        {
+          "label": "Rotas",
+          "x": 1043.8,
+          "y": 209.9,
+          "width": 242.2,
+          "height": 40,
+          "right": 1286
+        },
+        {
+          "label": "Ajustar",
+          "x": 1292,
+          "y": 209.9,
+          "width": 89.8,
+          "height": 40,
+          "right": 1381.8
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 299.2,
+            "y": 28,
+            "width": 1082.6,
+            "height": 102.7,
+            "right": 1381.8,
+            "bottom": 130.7
+          },
+          ".rm-notifications-action": {
+            "x": 1169.9,
+            "y": 55.9,
+            "width": 44,
+            "height": 44,
+            "right": 1213.9,
+            "bottom": 99.9
+          },
+          ".rm-notifications-action svg": {
+            "x": 1182.4,
+            "y": 68.4,
+            "width": 19,
+            "height": 19,
+            "right": 1201.4,
+            "bottom": 87.4
+          },
+          ".routes-v2-summary": {
+            "x": 299.2,
+            "y": 144.7,
+            "width": 1082.6,
+            "height": 51.2,
+            "right": 1381.8,
+            "bottom": 195.9
+          },
+          ".routes-v2-filterbar": {
+            "x": 299.2,
+            "y": 209.9,
+            "width": 1082.6,
+            "height": 40,
+            "right": 1381.8,
+            "bottom": 249.9
+          },
+          "#routeMap": {
+            "x": 535.2,
+            "y": 327.9,
+            "width": 555.1,
+            "height": 576,
+            "right": 1090.3,
+            "bottom": 903.9
+          },
+          ".routes-v2-map-information": {
+            "x": 535.2,
+            "y": 903.9,
+            "width": 555.1,
+            "height": 154.9,
+            "right": 1090.3,
+            "bottom": 1058.8
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 535.2,
+            "y": 911.9,
+            "width": 555.1,
+            "height": 35.4,
+            "right": 1090.3,
+            "bottom": 947.3
+          },
+          "#routeMapLocationNotice": {
+            "x": 535.2,
+            "y": 954.3,
+            "width": 555.1,
+            "height": 30,
+            "right": 1090.3,
+            "bottom": 984.3
+          },
+          ".map-legend": {
+            "x": 535.2,
+            "y": 991.3,
+            "width": 555.1,
+            "height": 32.5,
+            "right": 1090.3,
+            "bottom": 1023.8
+          },
+          ".routes-v2-map-note": {
+            "x": 537.2,
+            "y": 1030.8,
+            "width": 551.1,
+            "height": 28,
+            "right": 1088.3,
+            "bottom": 1058.8
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 299.2,
+            "y": 414.9,
+            "width": 222,
+            "height": 214.1,
+            "right": 521.2,
+            "bottom": 629
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 299.2,
+            "y": 426.9,
+            "width": 112.8,
+            "height": 47.4,
+            "right": 412,
+            "bottom": 474.3
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 299.2,
+            "y": 480.3,
+            "width": 112.8,
+            "height": 137.8,
+            "right": 412,
+            "bottom": 618
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 422,
+            "y": 503.5,
+            "width": 99.3,
+            "height": 38,
+            "right": 521.2,
+            "bottom": 541.5
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 113,
+            "scrollWidth": 113,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 113,
+            "scrollWidth": 113,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "light",
+      "phase": "after",
+      "docWidth": 1905,
+      "header": {
+        "x": 328.5,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1832.5,
+        "bottom": 133.3
+      },
+      "filterbar": {
+        "x": 328.5,
+        "y": 212.5,
+        "width": 1504,
+        "height": 40,
+        "right": 1832.5,
+        "bottom": 252.5
+      },
+      "map": {
+        "x": 653.2,
+        "y": 330.5,
+        "width": 776.8,
+        "height": 650,
+        "right": 1430.1,
+        "bottom": 980.5
+      },
+      "mapPanel": {
+        "x": 653.2,
+        "y": 330.5,
+        "width": 776.8,
+        "height": 790.9,
+        "right": 1430.1,
+        "bottom": 1121.4
+      },
+      "summary": {
+        "x": 328.5,
+        "y": 147.3,
+        "width": 1504,
+        "height": 51.2,
+        "right": 1832.5,
+        "bottom": 198.5
+      },
+      "viewSwitch": {
+        "x": 328.5,
+        "y": 266.5,
+        "width": 1504,
+        "height": 50,
+        "right": 1832.5,
+        "bottom": 316.5
+      },
+      "plans": {
+        "x": 328.5,
+        "y": 330.5,
+        "width": 310.7,
+        "height": 86.4,
+        "right": 639.2,
+        "bottom": 416.9
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 328.5,
+          "y": 212.5,
+          "width": 347.5,
+          "height": 40,
+          "right": 676
+        },
+        {
+          "label": "Entregas",
+          "x": 682,
+          "y": 212.5,
+          "width": 347.5,
+          "height": 40,
+          "right": 1029.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 1035.6,
+          "y": 212.5,
+          "width": 347.5,
+          "height": 40,
+          "right": 1383.1
+        },
+        {
+          "label": "Rotas",
+          "x": 1389.1,
+          "y": 212.5,
+          "width": 347.5,
+          "height": 40,
+          "right": 1736.7
+        },
+        {
+          "label": "Ajustar",
+          "x": 1742.7,
+          "y": 212.5,
+          "width": 89.8,
+          "height": 40,
+          "right": 1832.5
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 328.5,
+            "y": 28,
+            "width": 1504,
+            "height": 105.3,
+            "right": 1832.5,
+            "bottom": 133.3
+          },
+          ".rm-notifications-action": {
+            "x": 1620.6,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1664.6,
+            "bottom": 101.2
+          },
+          ".rm-notifications-action svg": {
+            "x": 1633.1,
+            "y": 69.7,
+            "width": 19,
+            "height": 19,
+            "right": 1652.1,
+            "bottom": 88.7
+          },
+          ".routes-v2-summary": {
+            "x": 328.5,
+            "y": 147.3,
+            "width": 1504,
+            "height": 51.2,
+            "right": 1832.5,
+            "bottom": 198.5
+          },
+          ".routes-v2-filterbar": {
+            "x": 328.5,
+            "y": 212.5,
+            "width": 1504,
+            "height": 40,
+            "right": 1832.5,
+            "bottom": 252.5
+          },
+          "#routeMap": {
+            "x": 653.2,
+            "y": 330.5,
+            "width": 776.8,
+            "height": 650,
+            "right": 1430.1,
+            "bottom": 980.5
+          },
+          ".routes-v2-map-information": {
+            "x": 653.2,
+            "y": 980.5,
+            "width": 776.8,
+            "height": 140.9,
+            "right": 1430.1,
+            "bottom": 1121.4
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 653.2,
+            "y": 988.5,
+            "width": 776.8,
+            "height": 35.4,
+            "right": 1430.1,
+            "bottom": 1023.9
+          },
+          "#routeMapLocationNotice": {
+            "x": 653.2,
+            "y": 1030.9,
+            "width": 776.8,
+            "height": 30,
+            "right": 1430.1,
+            "bottom": 1060.9
+          },
+          ".map-legend": {
+            "x": 653.2,
+            "y": 1067.9,
+            "width": 776.8,
+            "height": 32.5,
+            "right": 1430.1,
+            "bottom": 1100.4
+          },
+          ".routes-v2-map-note": {
+            "x": 655.2,
+            "y": 1107.4,
+            "width": 772.8,
+            "height": 14,
+            "right": 1428.1,
+            "bottom": 1121.4
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 328.5,
+            "y": 381,
+            "width": 310.7,
+            "height": 128.4,
+            "right": 639.2,
+            "bottom": 509.4
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 328.5,
+            "y": 393,
+            "width": 201.5,
+            "height": 22,
+            "right": 530,
+            "bottom": 415
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 328.5,
+            "y": 421,
+            "width": 201.5,
+            "height": 77.4,
+            "right": 530,
+            "bottom": 498.4
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 540,
+            "y": 426.7,
+            "width": 99.3,
+            "height": 38,
+            "right": 639.2,
+            "bottom": 464.7
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 201,
+            "scrollWidth": 201,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 201,
+            "scrollWidth": 201,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "theme": "dark",
+      "phase": "after",
+      "docWidth": 1905,
+      "header": {
+        "x": 328.5,
+        "y": 28,
+        "width": 1504,
+        "height": 105.3,
+        "right": 1832.5,
+        "bottom": 133.3
+      },
+      "filterbar": {
+        "x": 328.5,
+        "y": 212.5,
+        "width": 1504,
+        "height": 40,
+        "right": 1832.5,
+        "bottom": 252.5
+      },
+      "map": {
+        "x": 653.2,
+        "y": 330.5,
+        "width": 776.8,
+        "height": 650,
+        "right": 1430.1,
+        "bottom": 980.5
+      },
+      "mapPanel": {
+        "x": 653.2,
+        "y": 330.5,
+        "width": 776.8,
+        "height": 790.9,
+        "right": 1430.1,
+        "bottom": 1121.4
+      },
+      "summary": {
+        "x": 328.5,
+        "y": 147.3,
+        "width": 1504,
+        "height": 51.2,
+        "right": 1832.5,
+        "bottom": 198.5
+      },
+      "viewSwitch": {
+        "x": 328.5,
+        "y": 266.5,
+        "width": 1504,
+        "height": 50,
+        "right": 1832.5,
+        "bottom": 316.5
+      },
+      "plans": {
+        "x": 328.5,
+        "y": 330.5,
+        "width": 310.7,
+        "height": 86.4,
+        "right": 639.2,
+        "bottom": 416.9
+      },
+      "selected": null,
+      "deliveries": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "bottomNav": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "right": 0,
+        "bottom": 0
+      },
+      "filters": [
+        {
+          "label": "Todos",
+          "x": 328.5,
+          "y": 212.5,
+          "width": 347.5,
+          "height": 40,
+          "right": 676
+        },
+        {
+          "label": "Entregas",
+          "x": 682,
+          "y": 212.5,
+          "width": 347.5,
+          "height": 40,
+          "right": 1029.6
+        },
+        {
+          "label": "Motoboys",
+          "x": 1035.6,
+          "y": 212.5,
+          "width": 347.5,
+          "height": 40,
+          "right": 1383.1
+        },
+        {
+          "label": "Rotas",
+          "x": 1389.1,
+          "y": 212.5,
+          "width": 347.5,
+          "height": 40,
+          "right": 1736.7
+        },
+        {
+          "label": "Ajustar",
+          "x": 1742.7,
+          "y": 212.5,
+          "width": 89.8,
+          "height": 40,
+          "right": 1832.5
+        }
+      ],
+      "visibleFilterCount": 5,
+      "emptyCount": 1,
+      "geometry": {
+        "boxes": {
+          ".rm-global-header": {
+            "x": 328.5,
+            "y": 28,
+            "width": 1504,
+            "height": 105.3,
+            "right": 1832.5,
+            "bottom": 133.3
+          },
+          ".rm-notifications-action": {
+            "x": 1620.6,
+            "y": 57.2,
+            "width": 44,
+            "height": 44,
+            "right": 1664.6,
+            "bottom": 101.2
+          },
+          ".rm-notifications-action svg": {
+            "x": 1633.1,
+            "y": 69.7,
+            "width": 19,
+            "height": 19,
+            "right": 1652.1,
+            "bottom": 88.7
+          },
+          ".routes-v2-summary": {
+            "x": 328.5,
+            "y": 147.3,
+            "width": 1504,
+            "height": 51.2,
+            "right": 1832.5,
+            "bottom": 198.5
+          },
+          ".routes-v2-filterbar": {
+            "x": 328.5,
+            "y": 212.5,
+            "width": 1504,
+            "height": 40,
+            "right": 1832.5,
+            "bottom": 252.5
+          },
+          "#routeMap": {
+            "x": 653.2,
+            "y": 330.5,
+            "width": 776.8,
+            "height": 650,
+            "right": 1430.1,
+            "bottom": 980.5
+          },
+          ".routes-v2-map-information": {
+            "x": 653.2,
+            "y": 980.5,
+            "width": 776.8,
+            "height": 140.9,
+            "right": 1430.1,
+            "bottom": 1121.4
+          },
+          "#mapState": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          },
+          "#routeMapEmpty": {
+            "x": 653.2,
+            "y": 988.5,
+            "width": 776.8,
+            "height": 35.4,
+            "right": 1430.1,
+            "bottom": 1023.9
+          },
+          "#routeMapLocationNotice": {
+            "x": 653.2,
+            "y": 1030.9,
+            "width": 776.8,
+            "height": 30,
+            "right": 1430.1,
+            "bottom": 1060.9
+          },
+          ".map-legend": {
+            "x": 653.2,
+            "y": 1067.9,
+            "width": 776.8,
+            "height": 32.5,
+            "right": 1430.1,
+            "bottom": 1100.4
+          },
+          ".routes-v2-map-note": {
+            "x": 655.2,
+            "y": 1107.4,
+            "width": 772.8,
+            "height": 14,
+            "right": 1428.1,
+            "bottom": 1121.4
+          },
+          ".bottom-nav": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "right": 0,
+            "bottom": 0
+          }
+        },
+        "deliveryCard": {
+          ".routes-v2-delivery-card": {
+            "x": 328.5,
+            "y": 381,
+            "width": 310.7,
+            "height": 128.4,
+            "right": 639.2,
+            "bottom": 509.4
+          },
+          ".routes-v2-delivery-heading": {
+            "x": 328.5,
+            "y": 393,
+            "width": 201.5,
+            "height": 22,
+            "right": 530,
+            "bottom": 415
+          },
+          ".routes-v2-delivery-copy": {
+            "x": 328.5,
+            "y": 421,
+            "width": 201.5,
+            "height": 77.4,
+            "right": 530,
+            "bottom": 498.4
+          },
+          ".routes-v2-delivery-card>.btn": {
+            "x": 540,
+            "y": 426.7,
+            "width": 99.3,
+            "height": 38,
+            "right": 639.2,
+            "bottom": 464.7
+          }
+        },
+        "addressClipping": [
+          {
+            "text": "Cliente de teste com nome longo para quebra de linha",
+            "clientWidth": 201,
+            "scrollWidth": 201,
+            "clipped": false
+          },
+          {
+            "text": "Rua das Entregas, 1234 — complemento e referência de acesso com texto longo",
+            "clientWidth": 201,
+            "scrollWidth": 201,
+            "clipped": false
+          }
+        ],
+        "overlaps": {
+          "emptyFilter": false,
+          "legendNote": false,
+          "mapFilter": false,
+          "stateLegend": false
+        },
+        "notificationSvgVisible": true
+      }
+    }
+  ]
+}

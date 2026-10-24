@@ -31,3 +31,23 @@ Os dois testes de semântica/integração inicialmente falharam porque aguardava
 - Comparação visual completa pós-correção: bloqueada pela ausência de tela autenticada. O renderer Home isolado só confirma geometria, não regressão global.
 - Browser autenticado: os fluxos de rotas e as regressões interativas permanecem bloqueados apesar da suíte unitária completa passar.
 - Chrome Android físico: proprietário deve avaliar.
+
+## Adendo shell desktop e ícone Nova corrida — 2026-10-24
+
+### PASS em ambiente local
+
+- `npm test` — suíte completa encadeada do Restaurante; exit code 0 após a correção final do ícone e atualização dos assets/cache.
+- `node tests/test-navigation-shell-renderer.js` — um label por destino, alternância acessível/persistida, layout recolhido e detalhe desktop em Pedidos.
+- `node tests/test-dashboard-v2.js`, `node tests/test-dashboard-width-contract.js`, `node tests/test-dashboard-semantics.js`.
+- `node tests/test-visual-shell-cache.js`, `node tests/test-printing-offline.js`, `node tests/test-dispatch-assignment.js`.
+- `node tests/test-routes-v2.js`, `node tests/test-planned-route-geometry.js`, `node tests/test-map-runtime-lifecycle.js`, `node tests/test-cross-app-contract-parity.js`.
+- `node --check app.js dashboard-v2.js sw.js`; `git diff --check`.
+- Chromium/CDP: 72 combinações de layout/tema/navigation; zero label duplicado/overflow documental. Revalidação mede o glyph do “+” na Home mobile; 390px 19×19 dentro do botão 44×44. Pedidos em 1280/1440/1920: painel lateral de detalhe `display:block`, largura 285px.
+- Renderer Rotas/CDP: 26 linhas, cinco filtros acessíveis; fixture de layout sem sessão, tiles ou dados operacionais.
+
+### BLOCKED/PARTIAL preservados
+
+- E2E autenticado não concluído: `403 MFA_REQUIRED` iniciou o desafio; após completá-lo, reload deixou `#app` oculto e não criou `#main`/`#routeMap`. Não houve bypass.
+- Clique do sino, nova corrida e demais ações autenticadas, RBAC/tenant, persistência/sync/concorrência ainda não testados nesta sessão.
+- Chrome Android físico/mode computador físico não disponível; CDP é emulação e não substitui o teste do proprietário.
+- G14 e fidelidade visual de Rotas continuam FAIL. Nenhum estado vazio/operacional ou aprovação de design foi inferido das capturas sintéticas.

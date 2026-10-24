@@ -12,12 +12,13 @@
   --dv-muted:#AABBD0;
   --dv-border:#34465B;
   color:var(--dv-text);
-  background:var(--dv-canvas);
   min-height:100%;
-  padding:12px 18px 24px;
+  min-width:0;
+  width:100%;
+  padding:0 0 24px;
   font-family:inherit;
   line-height:1.4;
-  border-radius:18px}
+  border-radius:0}
 
 html[data-resolved-theme="light"] .dashboard-v2{
   --dv-canvas:#F4F7FB;
@@ -42,13 +43,6 @@ html[data-resolved-theme="light"] .dashboard-v2{
   font-weight:600;
   cursor:pointer;
   padding:8px}
-.dv2-header{
-  height:56px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  border-bottom:1px solid var(--dv-border);
-  gap:12px}
 .dv2-brand{
   display:flex;
   align-items:center;
@@ -63,11 +57,6 @@ html[data-resolved-theme="light"] .dashboard-v2{
 .dv2-brand small{
   font-size:11px;
   color:var(--dv-muted)}
-.dv2-header-actions{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  margin-left:auto}
 .dv2-button{
   min-height:44px;
   min-width:44px;
@@ -114,7 +103,7 @@ html[data-resolved-theme="light"] .dashboard-v2{
   align-items:center;
   gap:16px;
   padding:20px 2px 16px}
-.dv2-greeting h1{
+.dv2-greeting h2{
   font-size:23px;
   line-height:1.2;
   margin:2px 0 4px;
@@ -411,18 +400,11 @@ html[data-resolved-theme="light"] .dashboard-v2{
     padding:0 0 18px;
     border-radius:0}
   .dv2-greeting{padding-top:23px}
-  .dv2-header{
-    height:56px}
   .dv2-brand img{
     width:34px;
     height:34px}
   .dv2-brand strong{
     font-size:14px}
-  .dv2-header-actions{
-    gap:6px}
-  .dv2-header-actions .dv2-icon-button{
-    width:42px;
-    min-width:42px}
   .dv2-icon-button .dv2-icon svg{width:20px;height:20px}
   .dv2-new-race{
     width:44px;
@@ -436,7 +418,7 @@ html[data-resolved-theme="light"] .dashboard-v2{
     flex-direction:column;
     padding:15px 1px 13px;
     gap:8px}
-  .dv2-greeting h1{
+  .dv2-greeting h2{
     font-size:clamp(17px,4.8vw,20px)}
   .dv2-greeting p{
     font-size:12px}
@@ -555,13 +537,6 @@ html[data-resolved-theme="light"] .dashboard-v2{
     padding:14px}
   }
 
-@media(max-width:599px){
-  /* Keep Home actions in the same trailing grid track as operational headers. */
-  .dashboard-v2 .dv2-header-actions{
-    grid-column:3;
-    gap:4px}
-}
-
 @media(max-width:350px){
   .dv2-all{gap:3px;padding-inline:4px;font-size:10px}
   .dv2-all .dv2-icon svg{width:14px;height:14px}
@@ -584,57 +559,6 @@ html[data-resolved-theme="light"] .dashboard-v2{
   .dv2-icon-button{
     width:42px;
     min-width:42px}
-  }
-
-@media (min-width:600px) and (max-width:800px){
-  .shell.dashboard-v2-shell{
-    display:grid;
-    grid-template-columns:164px minmax(0,1fr);
-    align-items:start}
-  .dashboard-v2-shell .sidebar{
-    display:flex;
-    position:sticky;
-    top:0;
-    width:164px;
-    height:100vh;
-    min-height:100vh;
-    padding:14px 9px;
-    overflow-y:auto}
-  .dashboard-v2-shell .sidebar .profile{
-    display:none}
-  .dashboard-v2-shell .brand{
-    gap:6px}
-  .dashboard-v2-shell .brand>div{
-    display:grid}
-  .dashboard-v2-shell .brand img{
-    width:32px;
-    height:32px}
-  .dashboard-v2-shell .brand strong{
-    font-size:13px}
-  .dashboard-v2-shell .brand small{
-    font-size:9px}
-  .dashboard-v2-shell .sidebar-toggle{
-    display:none}
-  .dashboard-v2-shell .side-nav{
-    gap:5px}
-  .dashboard-v2-shell .nav-group>h2{
-    display:block;
-    font-size:9px}
-  .dashboard-v2-shell .nav-label-full{
-    display:inline}
-  .dashboard-v2-shell .nav-label-short{
-    display:none}
-  .dashboard-v2-shell .nav-item{
-    min-height:40px;
-    padding:7px 8px;
-    font-size:11px}
-  .dashboard-v2-shell .side-foot{
-    font-size:10px}
-  .dashboard-v2-shell .main{
-    min-width:0;
-    padding:12px 12px 24px}
-  .dashboard-v2-shell .bottom-nav{
-    display:none}
   }
 
 /* The dashboard uses the same sticky page-header contract as operational tabs. */

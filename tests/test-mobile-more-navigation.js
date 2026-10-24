@@ -28,8 +28,8 @@ assert.match(app, /const menuIcon=\(\)=>'[^']*M4 6h16M4 12h16M4 18h16/u,
   'the Mais item uses a bundled three-line SVG icon, not a font glyph or emoji');
 assert.match(app, /function navigationGroups\(items\)[\s\S]*Operação[\s\S]*Gestão[\s\S]*Administração/u,
   'the desktop navigation uses clear operational and management groups');
-assert.match(app, /data-sidebar-toggle[\s\S]*sidebar-expanded/u,
-  'tablet navigation can collapse and expand without changing destinations');
+assert.match(app, /data-sidebar-toggle[\s\S]*sidebar-collapsed[\s\S]*rotamoto\.sidebar\.collapsed/u,
+  'tablet and desktop navigation can collapse and expand with a persisted preference');
 assert.match(app, /function goTab\(tab\)[\s\S]*pushState[\s\S]*state\.tab=tab/u,
   'navigation preserves the existing history/deep-link state flow');
 assert.match(designSystem, /@media\(min-width:600px\) and \(max-width:1023px\)[\s\S]*\.sidebar\{display:flex/u,
@@ -38,8 +38,10 @@ assert.match(designSystem, /@media\(min-width:600px\) and \(max-width:1023px\)[\
   'tablet uses a compact, expandable sidebar');
 assert.match(designSystem, /@media\(max-width:599px\)[\s\S]*grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/u,
   'phone navigation fits four primary destinations and More without horizontal scrolling');
-assert.match(designSystem, /\.bottom-nav \.nav-label-full\{display:none\}\.bottom-nav \.nav-label-short\{display:block\}/u,
-  'mobile navigation displays one concise label variant for each destination');
+assert.match(app, /function navButton\(n,context=''\)[\s\S]*isBottom=context==='nav-primary-item'[\s\S]*aria-label="\$\{n\[2\]\}" title="\$\{n\[2\]\}"[\s\S]*class="nav-label"/u,
+  'each navigation button renders one visible label and retains its accessible full name and tooltip');
+assert.match(designSystem, /\.sidebar-collapsed[\s\S]*\.side-nav \.nav-group \.nav-item\{justify-content:center/u,
+  'collapsed navigation centers its icons without reserving label space');
 assert.match(designSystem, /\.nav-more-overlay:not\(\[hidden\]\)[\s\S]*position:fixed/u,
   'More opens a viewport-bounded overlay above the mobile navigation');
 assert.match(designSystem, /border-radius:20px 20px 0 0/u,

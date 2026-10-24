@@ -69,3 +69,43 @@ As medidas acima não provam fidelidade final. O resultado do browser fixture av
 | G-VIS-10 — Sem regressão funcional | PARTIAL | Regressões automatizadas direcionadas passam; E2E autenticado continua bloqueado por HTTP 403. |
 
 **Decisão:** G14 e G-VIS-02 permanecem FAIL/PARTIAL conforme tabela de gates de `gates.md`. Nenhuma aprovação visual foi declarada; cabe ao proprietário avaliar a versão corrigida no Chrome Android.
+
+## Revalidação acumulativa — correções de shell e adendo desktop (2026-10-24)
+
+Esta seção acrescenta medidas e causas encontradas; os dados de comparação acima são preservados como checkpoints anteriores, não substituídos. A reprovação e as pendências visuais de Rotas continuam abertas.
+
+| Componente | Causa/estado anterior | Evidência após correção | Limite |
+|---|---|---|---|
+| Sidebar expandida | Labels da renderização redundantes. | `navButton()` gera um label completo por item; teste enumera labels e fixture roda Operação/Gestão/Administração/Suporte. | Ainda falta validar permissões/navegação na sessão autenticada real. |
+| Sidebar recolhida | Layout não tinha regra completa para trilha, centralização e conteúdo dos grupos. | Toggle via renderer real; `aria-expanded`, tooltip e chave local `rotamoto.sidebar.collapsed`; testes de abrir/fechar e CSS de grid. | Persistência em reload autenticado não testada. |
+| Cabeçalho Início | Estrutura própria e faixa superior sem a mesma identificação da página. | Renderer compartilhado com título Início, contexto e ações; saudação ajustada para evitar repetição. | Cabeçalho funcional e conta exigem sessão real. |
+| Ações Início mobile | Ícone “+” era descendente do texto recortado. | CDP 390×844: botão Nova corrida 44×44 px, centro (308, 28), ícone 19×19 px em tema claro/escuro; Notificações x238, Nova corrida x286, Conta x334, gaps de 4 px e margem final até viewport de 12 px. | Fixture de shell, não avaliação física do Chrome Android; sem clique autenticado. |
+| Pedidos desktop | `.orders-v2-selection` era escondido por regra responsiva apesar de haver painel lateral. | Detalhes visíveis em >=1180 px; painel com 285 px em 1280, 1440 e 1920 nos dois temas. | Conteúdo de pedido e ação são sintéticos no fixture. |
+| Rotas | Referências e divergências anteriores permanecem. | Capturas do shell e renderer e matriz geométrica atualizada em `intervencao-integral/`; filtro 5/5 e sem overflow no fixture. | Continua **FAIL** na avaliação do proprietário; nenhum dado de rota ou tile real na comparação de shell. |
+
+### Medidas complementares de shell
+
+O fixture CDP gerou 72 combinações: 3 módulos × 2 temas × 7 viewports (360×800, 390×844, 768×1024, 1024×768, 1280×800, 1440×900, 1920×1080), com sidebar expandida/recolhida em tablet/desktop. Resultado: zero labels duplicados e zero overflow do documento. A tabela JSON registra DOM/boxes; capturas estão em `adendo-desktop/`. Essas métricas verificam geometria e estrutura, não aprovação visual.
+
+Na Início mobile, três botões do cabeçalho medem 44×44 px; distribuição em 390 px: x=238, 286, 334 e right do último=378, portanto 12 px até a viewport. O ícone “+” mede 19×19 px, sem clipping. O arranjo geométrico não encerra a avaliação do proprietário.
+
+Ver [`adendo-desktop/README.md`](adendo-desktop/README.md), [`adendo-desktop/0304-shell-visual-report.json`](adendo-desktop/0304-shell-visual-report.json) e [`adendo-desktop/0304-shell-inicio-390x844-dark-expanded.png`](adendo-desktop/0304-shell-inicio-390x844-dark-expanded.png). G14 permanece FAIL; nenhuma pendência anterior é encerrada por este acréscimo.
+
+### Medidas correntes do mapa no fixture Rotas (10 viewports × 2 temas)
+
+Coordenadas CSS do canvas `.map-canvas`, obtidas após a última execução do renderer `routes()` de produção. Tabela compacta do tema escuro; os valores geométricos claro/escuro coincidem no fixture. Todas as linhas têm 5/5 filtros e largura documental igual à viewport até 1024px; de 1280px em diante a sidebar/layout deixa a viewport de conteúdo 15px menor, sem overflow lateral do documento.
+
+| Viewport | Mapa x/y | Canvas L×A | Filtros |
+|---:|---:|---:|---:|
+| 320×720 | 12 / 224.1 | 296×259.2 | 5/5 |
+| 360×800 | 12 / 224.1 | 336×288 | 5/5 |
+| 390×844 | 12 / 212.8 | 366×303.8 | 5/5 |
+| 430×932 | 12 / 212.8 | 406×335.5 | 5/5 |
+| 600×960 | 82 / 290.5 | 504×499.2 | 5/5 |
+| 768×1024 | 103.8 / 226.6 | 628.5×532.5 | 5/5 |
+| 1024×768 | 520.9 / 319 | 457.4×445.4 | 5/5 |
+| 1280×800 | 518.4 / 324 | 434.2×512 | 5/5 |
+| 1440×900 | 535.2 / 327.9 | 555.1×576 | 5/5 |
+| 1920×1080 | 653.2 / 330.5 | 776.8×650 | 5/5 |
+
+Essa medida torna visível uma limitação que permanece: o mapa no fixture de 1280px só mede 434.2px de largura, enquanto o desenho aprovado prioriza a área cartográfica. A correção do shell desktop não resolve a pendência estrutural da composição Rotas; G14 continua FAIL. Origem completa: `intervencao-integral/0304-intervencao-visual-comparison.json`.

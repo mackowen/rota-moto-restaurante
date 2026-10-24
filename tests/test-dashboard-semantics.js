@@ -38,7 +38,7 @@ assert.match(fs.readFileSync('pilot-views.css','utf8'),/\.pilot-sync \.sync-stat
 assert.match(source,/Alterações não enviadas ficam salvas neste aparelho/u,'disconnected notice explains local persistence in concise language');
 assert.doesNotMatch(dashboard,/pilot-command-head/u,'Home no longer has a separate header implementation');
 const routes=source.match(/function routes\(\)\{[\s\S]*?\n\}/u)?.[0]||'';
-assert.match(routes,/aria-label="Planejamento de rotas"[\s\S]*Rotas planejadas[\s\S]*Entregas elegíveis para planejamento/u,'route overview names the saved plans and eligible deliveries');
+assert.match(routes,/aria-label="Planejamento de rotas"[\s\S]*Rotas planejadas[\s\S]*Pedidos elegíveis para planejamento/u,'route overview names the saved plans and eligible deliveries');
 assert.doesNotMatch(routes,/Route\.deliveryIds|cada Delivery/u,'internal entity names are not shown in route copy');
 assert.match(routes,/id="routeMapEmpty" class="map-empty-inline" role="status" hidden/u,
   'empty map feedback is placed in document flow rather than floating over the map');

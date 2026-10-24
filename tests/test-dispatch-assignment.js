@@ -30,7 +30,7 @@ assert.match(css,/\.bike-races-dialog \.race-filters\{display:grid;grid-template
 assert.match(css,/@media\(max-width:640px\)\{\.bike-races-dialog[\s\S]*?grid-template-columns:minmax\(0,1fr\)/u,'race modal stacks filters and controls on narrow screens');
 assert.match(css,/\.modal \.detail-form-actions\{[^}]*position:static/u,'detail form actions stay in document flow instead of covering scrolled fields');
 assert.match(css,/\.detail-retry-actions #retryDetailSync\[hidden\]\{display:none\}/u,'retry stays hidden after a successful canonical save even though button styles define display');
-assert.match(html,/styles\.css\?v=0302\.1/u,'the edited stylesheet is cache-busted');
-assert.match(html,/app\.js\?v=0304\.1/u,'the application script uses the current campaign cache key');
-assert.match(sw,/CACHE_PREFIX\}v98/u);
+assert.match(html,/styles\.css\?v=0304\.7/u,'the edited stylesheet is cache-busted');
+assert.match(html,/app\.js\?v=0304\.8/u,'the application script uses the current campaign cache key');
+assert.match(sw,/CACHE_PREFIX\}v105/u);
 console.log('dispatch assignment UI regression tests passed');

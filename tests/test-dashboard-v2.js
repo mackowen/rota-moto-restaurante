@@ -25,6 +25,7 @@ assert.match(html,/data-detail="order-a"/u,'open uses the existing delivery deta
 assert.match(html,/data-print-order="order-a"/u,'print calls the existing print preview handler');
 assert.match(html,/data-qr-open="order-a"/u,'eligible secure QR calls the existing signed QR handler');
 assert.match(html,/data-new/u,'new race delegates to the existing create flow');
+assert.match(html,/class="btn primary dv2-new-race"[^>]*><span class="dv2-icon"[^>]*><svg/u,'new race keeps its visible plus icon inside the accessible button');
 assert.match(html,/data-tab="orders"/u,'view all uses the existing orders navigation');
 assert.match(html,/data-tab="reports"/u,'reports action uses the existing reports destination');
 assert.match(html,/data-tab="events"/u,'notification action uses the existing events and notifications destination');
@@ -35,13 +36,17 @@ assert.match(renderContext.renderNotificationAction({available:false,showUnavail
 assert.match(html,/Origem[\s\S]*Motoboy[\s\S]*Taxa[\s\S]*Distância estimada/u,'cards show commercial origin, assigned driver, known fee and known distance');
 assert.match(html,/id="syncStatusPanel"[\s\S]*data-sync-label[\s\S]*data-sync-detail[\s\S]*data-sync-now/u,'dashboard status reuses the canonical live synchronization feedback and retry handler');
 assert.match(html,/rm-global-header topbar rm-page-header dv2-header/u,'dashboard renders the shared operational page-header contract');
+assert.match(html,/topbar-main[\s\S]*<h1 aria-label="Início">[\s\S]*Visão geral da operação, pedidos e indicadores\.[\s\S]*dv2-header-actions/u,'Home header uses the shared title/description/actions structure');
+assert.match(html,/<section class="dv2-greeting"[\s\S]*<h2>Olá,[\s\S]*Confira o que precisa de atenção hoje\./u,'operational greeting remains distinct from the page title and summary');
 assert.match(renderContext.renderHeader({title:'Pedidos',eyebrow:'Restaurante',subtitle:'Resumo',actions:'<button>Nova</button>'}),/rm-global-header topbar rm-page-header[\s\S]*RotaMoto[\s\S]*Pedidos[\s\S]*Nova/u,'other operational tabs use the same shared header renderer');
 assert.match(app,/function header\(title,sub,action=''\)\{[\s\S]*?canModule\('events'\)\?window\.RotaMotoDashboardV2\.renderNotificationAction\(\):''[\s\S]*?actions:notifications\+action/u,'all operational tabs reuse the notifications action only when Events is permitted');
 assert.match(app,/document\.querySelectorAll\('\[data-tab\]'\)\.forEach\(b=>b\.onclick=\(\)=>goTab\(b\.dataset\.tab\)\)/u,'notifications continue through the application navigation handler');
 assert.match(app,/function goTab\(tab\)\{[\s\S]*?if\(!tab\|\|!canModule\(tab\)\)return/u,'Events navigation checks the existing module permission before changing tabs');
 assert.doesNotMatch(app,/orders-v2-notifications/u,'Orders has no separate notifications implementation');
 assert.match(ds,/\.rm-page-header \.top-actions \.rm-notifications-action\{box-sizing:border-box;flex:0 0 44px;width:44px;min-width:44px;max-width:44px;height:44px;min-height:44px;padding:0;gap:0;color:var\(--text-primary\);background:var\(--surface-raised\);border-color:var\(--border-strong\)\}/u,'shared notifications control has one 44 by 44 high contrast design-system size');
-assert.match(ds,/\.rm-page-header \.top-actions \.rm-notifications-action \.dv2-icon\{position:static;display:grid;place-items:center;width:19px;height:19px;margin:0;overflow:visible;clip:auto;white-space:normal;border:0\}/u,'notifications SVG wrapper is not clipped with text spans at mobile breakpoints');
+assert.match(ds,/\.rm-page-header \.top-actions \.btn>span:not\(\.dv2-icon\)/u,'mobile text clipping preserves wrapped button icons');
+assert.match(renderContext.renderNotificationAction(),/class="btn rm-notifications-action"[^>]*data-tab="events"[^>]*><svg aria-hidden="true"/u,'notification SVG is a direct button child, so mobile accessible-label clipping cannot hide the icon');
+assert.doesNotMatch(baseCss,/\.top-actions \[aria-label="Abrir eventos"\]\{display:none\}/u,'legacy responsive rule does not remove an Events action');
 const denied = renderContext.render({canOrders:false,canEvents:false,canReports:false,orders:[{id:'x',number:'x',canOpen:false,canPrint:false,printUnavailable:'Sem permissão',qrEligible:true,canQr:false}]});
 assert.match(denied,/disabled[^>]*title="Seu perfil não tem acesso a pedidos"/u,'restricted actions explain the RBAC denial');
 assert.doesNotMatch(denied,/data-print-order="x"/u,'print is not exposed when orders permission is absent');
@@ -115,11 +120,11 @@ assert.match(ds,/nav-more-menu:not\(\[hidden\]\)[\s\S]*border-radius:20px 20px 0
 assert.match(ds,/nav-more-groups[\s\S]*overflow:auto/u,'More destinations scroll inside the available viewport');
 assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection state distinguishes active synchronization');
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
-assert.match(index,/dashboard-v2\.js\?v=0304\.3/u,'shared header component bundle uses the current campaign cache key');
-assert.match(index,/dashboard-v2\.css\?v=0304\.5/u,'dashboard width/header CSS uses the current campaign cache key');
-assert.match(sw,/CACHE_PREFIX\}v101/u,'service worker shell cache is advanced for the current campaign');
-assert.match(index,/app\.js\?v=0304\.2/u,'official app script uses the current campaign cache key');
-assert.match(index,/orders-v2\.css\?v=0303\.1/u,'Orders V2 layout uses a fresh cache key');
+assert.match(index,/dashboard-v2\.js\?v=0304\.8/u,'shared header component bundle uses the corrected campaign cache key');
+assert.match(index,/dashboard-v2\.css\?v=0304\.7/u,'dashboard width/header CSS uses the current campaign cache key');
+assert.match(sw,/CACHE_PREFIX\}v105/u,'service worker shell cache is advanced for the current campaign');
+assert.match(index,/app\.js\?v=0304\.8/u,'official app script uses the corrected campaign cache key');
+assert.match(index,/orders-v2\.css\?v=0304\.2/u,'Orders V2 layout uses a fresh cache key');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
 
 assert.match(app,/const session=await restoreSyncSession\(\);if\(session\)\{const editing=[\s\S]*?if\(!editing\)render\(\);scheduleServerSync\(0\)\}/u,'authenticated startup reprojects local state after restoring the tenant without replacing an in-progress form');
