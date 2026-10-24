@@ -5,19 +5,23 @@
 | G0 — Referências | PASS | Três referências abertas, medidas, identificadas e SHA-256 registrados. |
 | G1 — Auditoria | PARTIAL | Contratos e serviços centrais inventariados; testes operacionais e conflitos não executados. |
 | G2 — Design System | PARTIAL | Tokens/regras V2 reaproveitados; fidelidade visual comparativa Rotas pendente. |
-| G3 — Celular | PARTIAL | Renderer production fixture capturado em 320/360/390/430, claro/escuro; 5 filtros visíveis e mapa antes das listas. Sessão real/tiles/rotas autenticadas pendentes. |
+| G3 — Celular | PARTIAL | CDP fixture 320/360/390/430 claro/escuro; cinco filtros em linha e 27,6–27,8 px de folga entre último conteúdo e navegação fixa no scroll inferior. E2E autenticado e Android físico pendentes. |
 | G4 — Tablet | PARTIAL | Capturas 600/768 retrato e 1024 paisagem claro/escuro; retrato vertical e paisagem em painéis; validação autenticada e comparação final pendentes. |
-| G5 — PC | PARTIAL | Capturas 1280/1440/1920 claro/escuro; lista/mapa/detalhes mantidos sem dados. Barra operacional e conteúdo populado ainda divergem da referência. |
-| G6 — Mapa/cartografia | PARTIAL | Leaflet e serviços existentes preservados; geocode tácito removido; falha/resize/tiles E2E pendentes. |
+| G5 — PC | PARTIAL | Capturas Rotas 1280/1440/1920 claro/escuro; Home/Pedidos 1024–1920; painel Pedidos 320–380 px. Fixture e conteúdo sintético; correspondência final e dados autenticados pendentes. |
+| G6 — Mapa/cartografia | PARTIAL | Reproduzida causa do fallback CARTO sem chave; Leaflet fallback OSM carregou 20 tiles no cenário Chromium sem GPU. Rede móvel, resize e fluxo autenticado ainda pendentes. |
 | G7 — Planejamento | PARTIAL | UI reutiliza regras/persistência existentes; sequência e save Browser não testados. |
-| G8 — Persistência | BLOCKED | No E2E mais recente, desafio MFA foi concluído após `403 MFA_REQUIRED`, mas reload deixou `#app` oculto; não se comprovou persistência/reabertura da rota. |
-| G9 — Integração | PARTIAL | Contratos e responsabilidades preservados; jornada cross-app não executada. |
-| G10 — Sync/concorrência | BLOCKED | A sessão Browser não permaneceu utilizável após reload do desafio MFA; cenários de sincronização/concorrência não foram exercitados. |
+| G8 — Persistência | PASS (escopo local-first) | E2E anterior criou planejamento com 2 paradas e confirmou readback IndexedDB após reload; fluxo cross-app durável foi comprovado em conexão independente como evidência complementar. Este ajuste visual não muda esse escopo. |
+| G9 — Integração | PARTIAL | E2E MFA anterior comprovou criação/aceite e projeção bidirecional durável; retirada refletida no Restaurante, RETURN e concorrência de UI permanecem pendentes. |
+| G10 — Sync/concorrência | PARTIAL | Sync bidirecional durável e concorrência backend foram comprovados no checkpoint anterior; concorrência operacional completa e demais conflitos seguem pendentes. |
 | G11 — Segurança/RBAC | PARTIAL | Validadores atuais preservados; tenant adversarial/RBAC de rotas não testados. |
 | G12 — Offline/resiliência | PARTIAL | Não foi demonstrada confirmação remota falsa; falhas/reconexão ainda não testadas nesta UI. |
-| G13 — E2E | BLOCKED | Login inicial respondeu `403 MFA_REQUIRED`; após completar o desafio, reload ocultou `#app` e não havia `#main`/`#routeMap`. O fluxo autenticado não concluiu; não houve bypass. |
-| G14 — Fidelidade visual | FAIL | Reprovação explícita do proprietário. Intervenção estrutural e comparações fixture registradas; diferenças desktop/toolbar e validação com aplicação autenticada/dados reais permanecem. Aprovação exclusiva do proprietário pendente. |
-| G15 — Sem regressões | PARTIAL | Testes direcionados de mapas/logística/contrato passaram; regression Browser Início/Pedidos/Motoboys autenticado bloqueado. |
+| G13 — E2E | PARTIAL | MFA, navegação, planejamento local e integração cross-app durável foram concluídos em checkpoints anteriores com escopo delimitado. E2E autenticado pós-patch desta intervenção não foi executado. |
+| G14 — Fidelidade visual | FAIL | Reprovação explícita do proprietário. Capturas e correções desta rodada são evidência técnica fixture/cartográfica, não aprovação visual. Aprovação exclusiva do proprietário pendente. |
+| G15 — Sem regressões | PARTIAL | `npm test` completo e testes direcionados passaram; Browser E2E autenticado pós-patch e validação física seguem pendentes. |
+
+## Atualização visual — 2026-10-24
+
+G3/G5/G6/G13 foram reavaliados com nova evidência, mantendo estados conservadores. Capturas e limites estão em `intervencao-visual-2026-10-24/README.md`; G14 não pode avançar sem aprovação do proprietário.
 
 ## Adendo 0304 — shell desktop/mobile, 2026-10-24
 

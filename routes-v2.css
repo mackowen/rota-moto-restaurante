@@ -5,9 +5,9 @@
 .routes-v2-summary>div+div{border-left:1px solid var(--border)}
 .routes-v2-summary dt{color:var(--text-secondary);font-size:10px;line-height:1.25;overflow-wrap:anywhere}
 .routes-v2-summary dd{margin:0;color:var(--text-primary);font-size:17px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
-.routes-v2-filterbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:6px;align-items:center;min-width:0}
+.routes-v2-filterbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
 .routes-v2-filterbar>.btn{min-width:0;min-height:40px;padding:6px 9px;white-space:nowrap}
-.routes-v2-filterbar>[data-map-mode]{width:100%}
+.routes-v2-filterbar>[data-map-mode]{width:auto}
 .routes-v2-filterbar .routes-v2-fit{display:inline-flex;gap:5px;align-items:center}
 .routes-v2-filterbar .routes-v2-fit svg{width:16px;height:16px}
 .routes-v2-filterbar .active,.routes-v2-view-switch [aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--text-primary)}
@@ -27,7 +27,6 @@
 .routes-v2-view-switch{display:flex;align-items:center;gap:6px;min-width:0;padding:0 0 7px;border-bottom:1px solid var(--border)}
 .routes-v2-view-switch button{display:inline-flex;flex:0 0 auto;min-height:36px;align-items:center;justify-content:center;gap:7px;padding:6px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text-secondary);font:inherit;font-size:12px;font-weight:700;white-space:nowrap}
 .routes-v2-view-switch button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.routes-v2-view-switch button span{min-width:20px;padding:2px 6px;border-radius:99px;background:var(--surface-soft);color:var(--text-primary);font-size:10px;text-align:center}
 .routes-v2-plans,.routes-v2-selected,.routes-v2-deliveries{min-width:0}
 .routes-v2-plans>.section-head,.routes-v2-deliveries>.section-head{margin:0 0 8px;align-items:center}
 .routes-v2-plans .section-head h2,.routes-v2-deliveries .section-head h2{font-size:16px}
@@ -63,7 +62,7 @@
 .routes-v2-delivery-copy small{color:var(--text-secondary);font-size:10px;line-height:1.4;white-space:normal;overflow:visible;text-overflow:clip}
 .routes-v2-delivery-card>.btn{grid-area:action;align-self:center;min-height:40px;padding:7px 12px;font-size:11px;white-space:nowrap}
 .routes-v2-empty-inline,.routes-v2-empty-state{display:grid;gap:5px;color:var(--text-secondary);font-size:11px}
-.routes-v2-empty-inline{padding:8px 0}
+.routes-v2-empty-inline{padding:9px 10px;border:1px dashed var(--border);border-radius:10px;background:var(--surface-soft)}
 .routes-v2-empty-inline strong,.routes-v2-empty-state strong{color:var(--text-primary);font-size:13px}
 .routes-v2-empty-state{padding:12px 2px}
 .routes-v2-empty-state .btn{justify-self:start;margin-top:5px}
@@ -86,9 +85,11 @@
  .routes-v2-summary>div{padding:0 6px}
  .routes-v2-summary dt{font-size:9px}
  .routes-v2-summary dd{font-size:16px}
- .routes-v2-filterbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
- .routes-v2-filterbar>.btn{min-height:38px;padding:5px 3px;font-size:10px}
- .routes-v2-filterbar .routes-v2-fit{grid-column:1/-1;justify-self:start;min-width:104px;padding-inline:9px;font-size:11px}
+ .routes-v2-filterbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+ .routes-v2-filterbar>.btn{min-height:38px;padding:5px 2px;font-size:clamp(9px,2.8vw,10px)}
+ .routes-v2-filterbar>[data-map-mode]{width:100%}
+ .routes-v2-filterbar .routes-v2-fit{justify-content:center;min-width:0;padding-inline:2px;font-size:clamp(9px,2.8vw,10px)}
+ .routes-v2-filterbar .routes-v2-fit svg{width:13px;height:13px;flex:0 0 13px}
  .routes-v2 .real-map{height:clamp(240px,36dvh,360px);min-height:240px;border-radius:14px}
  .routes-v2-view-switch{margin-top:0}
  .routes-v2 .route-plan-card{padding:9px 10px}
@@ -107,10 +108,10 @@
  .shell:has(#main[data-module="routes"]) .side-nav{width:100%;overflow:auto}
  .shell:has(#main[data-module="routes"]) .side-nav .nav-item{justify-content:center;min-height:42px;padding:7px 2px}
  .shell:has(#main[data-module="routes"]) .bottom-nav{display:none}
- .shell:has(#main[data-module="routes"])>.main{min-width:0;padding:10px 12px 18px}
- .routes-v2-filterbar{grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+ .shell:has(#main[data-module="routes"])>.main{min-width:0;padding:10px 12px calc(100px + env(safe-area-inset-bottom))}
+ .routes-v2-filterbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
  .routes-v2-filterbar>.btn{padding-inline:4px;font-size:10px}
- .routes-v2-filterbar .routes-v2-fit{grid-column:1/-1;justify-self:start}
+ .routes-v2-filterbar .routes-v2-fit{justify-content:center;min-width:0;padding-inline:4px}
  .routes-v2 .real-map{height:clamp(300px,42vh,420px)}
 }
 @media(min-width:760px) and (max-width:1023px) and (orientation:landscape){

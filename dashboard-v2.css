@@ -387,7 +387,7 @@ html[data-resolved-theme="light"] .dashboard-v2{
     grid-column:1/-1}
   .dashboard-v2{
     padding:0 0 22px}
-  .dv2-greeting{padding-top:32px}
+  .dv2-greeting{padding-top:14px}
   }
 
 @media(min-width:600px){

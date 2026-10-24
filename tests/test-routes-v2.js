@@ -24,6 +24,9 @@ assert.match(routesView,/<dl class="routes-v2-summary" aria-label="Resumo operac
 assert.match(routesView,/data-map-mode="all" aria-pressed="true"[\s\S]*data-map-mode="delivery"[\s\S]*data-map-mode="bike"[\s\S]*data-map-mode="route"[\s\S]*data-map-overview/u,'all map filters and the fit action remain real and accessible');
 assert.match(routesView,/data-map-fullscreen aria-label="Abrir mapa em tela cheia"/u,'fullscreen control is reachable and labeled over the map');
 assert.match(routesView,/data-routes-view="routes" aria-pressed="true"[\s\S]*data-routes-view="deliveries"/u,'route plans and eligible deliveries have an accessible view switch');
+assert.match(routesView,/data-routes-view="routes" aria-pressed="true">Rotas<\/button>[\s\S]*data-routes-view="deliveries" aria-pressed="false">Entregas<\/button>/u,'operational summary carries counts once; view tabs stay compact');
+assert.match(styles,/@media\(max-width:599px\)[\s\S]*?\.routes-v2-filterbar\{display:grid;grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/u,'all five mobile map controls share a compact row');
+assert.doesNotMatch(styles,/\.routes-v2-filterbar \.routes-v2-fit\{[^}]*grid-column:1\/-1/u,'map overview action cannot occupy a lone full-width row');
 assert.match(app,/event\.target\.closest\('\[data-routes-view\]'\)/u,'route and delivery view switch is connected to application behavior');
 assert.match(app,/const active=b\.dataset\.mapMode===mode;b\.classList\.toggle\('active',active\);b\.setAttribute\('aria-pressed',String\(active\)\)/u,'map filter state updates both rendered layer and accessible pressed state');
 assert.match(routesView,/id="routeMap"[^]*class="routes-v2-map-information"[^]*id="mapState"[^]*id="routeMapEmpty"[^]*class="map-legend"/u,'map status, empty state, and legend use their own flow area below the canvas');
@@ -46,10 +49,11 @@ assert.match(styles,/@media\(min-width:760px\) and \(max-width:1023px\)/,'tablet
 assert.match(styles,/@media\(min-width:600px\) and \(max-width:850px\) and \(orientation:portrait\)/,'tablet portrait stacks panels and gives the map the dominant width');
 assert.match(styles,/@media\(min-width:1180px\)/,'desktop planning station has route, map and detail panels');
 assert.match(styles,/grid-template-columns:minmax\(200px,\.8fr\) minmax\(460px,2\.35fr\) minmax\(245px,1fr\)/u,'wide desktop reserves more width for the central map');
-assert.match(styles,/@media\(max-width:599px\)\{[\s\S]*?\.routes-v2-filterbar\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\);gap:5px\}/u,'mobile filter controls wrap instead of clipping horizontally');
+assert.match(styles,/@media\(max-width:599px\)\{[\s\S]*?\.routes-v2-filterbar\{display:grid;grid-template-columns:repeat\(5,minmax\(0,1fr\)\);gap:4px\}/u,'all mobile map controls have compact equal tracks');
 assert.match(styles,/\.routes-v2 \.real-map\{height:clamp\(240px,36dvh,360px\);min-height:240px/u,'mobile map receives a dedicated dominant but viewport-aware height');
+assert.match(styles,/\.shell:has\(#main\[data-module="routes"\]\)>\.main\{min-width:0;padding:10px 12px calc\(100px \+ env\(safe-area-inset-bottom\)\)\}/u,'mobile route content reserves bottom navigation and device safe-area space');
 assert.match(styles,/\.shell:has\(#main\[data-module="routes"\]\)/u,'tablet sidebar adaptation is limited to the Routes page');
 assert.match(styles,/@media\(max-width:599px\)/,'mobile map first layout breakpoint exists');
-assert.match(html,/routes-v2\.css\?v=0304\.7/,'route styles are loaded with an updated campaign cache key');
-assert.match(fs.readFileSync('sw.js','utf8'),/routes-v2\.css\?v=0304\.7/,'route styles are included in the local-first application shell');
+assert.match(html,/routes-v2\.css\?v=0304\.9/,'route styles are loaded with an updated campaign cache key');
+assert.match(fs.readFileSync('sw.js','utf8'),/routes-v2\.css\?v=0304\.9/,'route styles are included in the local-first application shell');
 console.log('Routes V2 layout, coordinate validation and no implicit geocoding: PASS');

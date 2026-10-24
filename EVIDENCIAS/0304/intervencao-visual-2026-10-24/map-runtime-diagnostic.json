@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-24T18:46:04.451Z",
+  "classification": "isolated map-runtime test only; no route, delivery, driver, marker, or operational coordinates; app default neutral view; Chromium forced no-GPU to exercise WebGL fallback",
+  "startup": {
+    "leaflet": true,
+    "vectorSupported": true
+  },
+  "tileResponses": [
+    {
+      "host": "tiles.openfreemap.org",
+      "status": 200
+    },
+    {
+      "host": "tiles.openfreemap.org",
+      "status": 200
+    },
+    {
+      "host": "tiles.openfreemap.org",
+      "status": 200
+    },
+    {
+      "host": "tiles.openfreemap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    },
+    {
+      "host": "tile.openstreetmap.org",
+      "status": 200
+    }
+  ],
+  "networkErrors": [
+    "Uncaught",
+    "Uncaught (in promise)"
+  ]
+}

@@ -8,11 +8,11 @@ const styles = {
 };
 const raster = {
   light: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-  dark: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+  dark: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 };
 const rasterAttribution = {
   light: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  dark: '© <a href="https://carto.com/attributions">CARTO</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  dark: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 };
 const vectorAttribution = '© <a href="https://openfreemap.org">OpenFreeMap</a> · © <a href="https://openmaptiles.org">OpenMapTiles</a> · © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const layers = new Map();
@@ -217,7 +217,8 @@ function addRaster(map, entry, reason) {
     crossOrigin: true,
     updateWhenIdle: true,
     updateWhenZooming: false,
-    keepBuffer: 3
+    keepBuffer: 3,
+    className: pending.theme === 'dark' ? 'rm-map-dark-raster' : ''
   });
   pending.layer = layer;
   pending.theme = activeTheme;

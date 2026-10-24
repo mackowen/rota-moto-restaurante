@@ -60,6 +60,9 @@ assert.match(sourceCss, /\.shell\.sidebar-collapsed\{grid-template-columns:76px/
 assert.match(sourceCss, /@media\(min-width:1024px\)[\s\S]*?\.sidebar-toggle\{display:grid/u, 'desktop navigation exposes the collapse control');
 assert.match(ordersCss, /@media\(min-width:1180px\)[\s\S]*?\.orders-v2-side\{grid-column:2;grid-row:1\}/u, 'wide Orders retains a visible list and detail workspace');
 assert.match(ordersCss, /@media\(min-width:1180px\)[\s\S]*?\.orders-v2-selection\{display:block\}/u, 'wide Orders shows the selected order details beside the list');
+assert.match(ordersCss, /grid-template-columns:minmax\(0,1fr\) clamp\(320px,30%,380px\)/u, 'desktop Orders reserves a readable detail panel');
+assert.match(ordersCss, /\.orders-v2-table th:nth-child\(n\+5\),#main\[data-module="orders"\] \.orders-v2-table td:nth-child\(n\+5\)\{display:none\}/u, 'desktop list stays a concise summary while the selected panel carries detail');
+assert.match(source, /orders-v2-detail-actions[\s\S]*?data-orders-open[\s\S]*?data-orders-print/u, 'primary race and print actions remain available in the detail panel');
 assert.match(source, /orders-v2-side[\s\S]*?id="ordersV2Selection"[\s\S]*?orders-v2-metrics/u, 'Orders prioritizes selected-order details before summary metrics in the desktop panel');
 assert.doesNotMatch(ordersCss, /@media\(min-width:1024px\) and \(max-width:1340px\)[\s\S]{0,180}\.orders-v2-side\{display:none\}/u, 'desktop Orders has no later rule that hides its details panel');
 console.log('Single-label navigation, collapse contract and desktop Orders workspace: PASS');

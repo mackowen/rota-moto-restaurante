@@ -19,7 +19,7 @@ function runtime({ webgl = false } = {}) {
     remove() { this.isConnected = false; }
   }
   class Layer {
-    constructor(mode, url = '') { this.mode = mode; this.url = url; this.handlers = new Map(); this.removed = false; this.loading = false; this.opacity = 1; this.errors = 0; this.loadedTiles = 0; this._tiles = {}; this.renderer = mode === 'vector' ? new Renderer() : null; allLayers.push(this); }
+    constructor(mode, url = '', options = {}) { this.mode = mode; this.url = url; this.options = options; this.handlers = new Map(); this.removed = false; this.loading = false; this.opacity = 1; this.errors = 0; this.loadedTiles = 0; this._tiles = {}; this.renderer = mode === 'vector' ? new Renderer() : null; allLayers.push(this); }
     on(type, handler) { const list = this.handlers.get(type) || []; list.push({ handler, once: false }); this.handlers.set(type, list); return this; }
     once(type, handler) { const list = this.handlers.get(type) || []; list.push({ handler, once: true }); this.handlers.set(type, list); return this; }
     fire(type, value = {}) { if (type === 'load') this.loading = false; if (type === 'tileload' || type === 'tileerror') this.setVisibleTile(type === 'tileload'); const list = this.handlers.get(type) || []; for (const item of [...list]) { item.handler(value); if (item.once) this.handlers.set(type, (this.handlers.get(type) || []).filter(candidate => candidate !== item)); } }
@@ -56,7 +56,7 @@ function runtime({ webgl = false } = {}) {
   };
   const window = { dispatchEvent() {}, addEventListener() {}, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '0', transitionDuration: '200ms' }), L: null };
   const document = { baseURI: 'http://localhost/', documentElement: { dataset: { resolvedTheme: 'light' } }, createElement: tag => tag === 'canvas' ? { getContext: kind => webgl && kind === 'webgl2' ? {} : null } : new Node() };
-  const L = { tileLayer: url => new Layer('raster', url) };
+  const L = { tileLayer: (url, options) => new Layer('raster', url, options) };
   const source = fs.readFileSync(path.join(__dirname, '..', 'map-runtime.js'), 'utf8')
     .replace(/^import .*;\s*$/gmu, '')
     .replace(/^setWorkerUrl\(.*\);\s*$/gmu, '');
@@ -93,7 +93,8 @@ function runtime({ webgl = false } = {}) {
   test.window.RotaMotoMapTheme.setTheme('dark');
   assert.equal(test.map.layers.has(first), true, 'theme change preserves the raster layer and current map view');
   const darkCandidate = test.allLayers.at(-1);
-  assert.match(darkCandidate.url, /basemaps\.cartocdn\.com\/dark_all/u, 'dark mode requests a dark raster basemap');
+  assert.match(darkCandidate.url, /tile\.openstreetmap\.org/u, 'dark fallback uses the public OSM raster source without a provider key');
+  assert.equal(darkCandidate.options.className, 'rm-map-dark-raster', 'dark fallback applies the local dark map treatment');
   assert.equal(test.map.layers.has(darkCandidate), true, 'dark layer is prepared while the valid light map remains visible');
   darkCandidate.fire('tileerror'); darkCandidate.fire('load');
   assert.equal(test.map.layers.has(first), true, 'failed theme update cannot remove the previously usable cartography');

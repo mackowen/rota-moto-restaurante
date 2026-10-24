@@ -109,3 +109,11 @@ Coordenadas CSS do canvas `.map-canvas`, obtidas após a última execução do r
 | 1920×1080 | 653.2 / 330.5 | 776.8×650 | 5/5 |
 
 Essa medida torna visível uma limitação que permanece: o mapa no fixture de 1280px só mede 434.2px de largura, enquanto o desenho aprovado prioriza a área cartográfica. A correção do shell desktop não resolve a pendência estrutural da composição Rotas; G14 continua FAIL. Origem completa: `intervencao-integral/0304-intervencao-visual-comparison.json`.
+
+## Revalidação complementar — 2026-10-24
+
+Os valores de versões anteriores são checkpoints históricos, não foram substituídos. Após a intervenção mais recente, as dimensões do mapa foram medidas novamente em `intervencao-visual-2026-10-24/0304-intervencao-visual-comparison.json`. Em 1280×800 o mapa passou a medir 678,2 px no estado sem seleção, com colunas laterais liberadas; a grade de três regiões permanece condicionada à rota selecionada. No celular, os cinco filtros agora ocupam a mesma linha em 320–430 px; no scroll máximo, o último painel ficou 27,6–27,8 px acima da navegação fixa. Capturas before/after usam fixture e não possuem Leaflet.
+
+O fallback escuro anterior foi reproduzido com CARTO retornando imagem “API KEY REQUIRED” sob HTTP 200. Agora o fallback OSM raster carregou 20 tiles em teste Leaflet/CDP isolado sem GPU, capturado em `intervencao-visual-2026-10-24/map-real-cartography-1280x800-dark.png`; sem coordenadas operacionais, marcadores ou trajetos. Home/Pedidos têm captura comparativa em 1024/1280/1440/1920 px nos dois temas e sidebar expandida/recolhida. Pedidos: detalhe 320 px em 1024/1280, 329,3 em 1440, 380 em 1920.
+
+Continua PARTIAL: dados/seleção autenticados, rede móvel, tablet físico/Chrome Android, clique de filtros/ações operacionais e comparação final do proprietário não foram demonstrados nesta execução. **G14 permanece FAIL.**
