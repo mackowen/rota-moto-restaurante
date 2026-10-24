@@ -19,3 +19,7 @@ Capturas verificadas: `orders-verified-390-light-1.png`, `orders-verified-1280-l
 As capturas exploratórias anteriores nesta pasta histórica que não tinham o wrapper `#app` ou ainda mostravam ponteiro sobre o botão Conta foram preservadas como histórico, mas substituídas para fins de comparação pelas medições e imagens verificadas deste README. Não há nova sessão sintética com limpeza autorizada nesta rodada; E2E autenticado fica BLOCKED. G14 continua FAIL até aprovação explícita do proprietário.
 
 O arquivo `served-assets-sha256.json` preserva o status HTTP e os SHA-256 source/servido dos quatro assets.
+
+## Controlled header screenshot comparison
+
+`header-controlled-before-1280-pedidos.png` and `header-controlled-after-1280-pedidos.png` use the same production `renderHeader()` markup and static shell fixture at 1280×800. Only the Design System stylesheet changes: committed baseline `6c5eeb3` versus the current stylesheet. Insets and button positions are recorded in `header-controlled-geometries.json`. This is a header-focused CDP fixture, not a complete authenticated application screenshot or owner approval.

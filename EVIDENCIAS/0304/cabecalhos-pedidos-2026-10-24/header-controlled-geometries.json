@@ -1,0 +1,63 @@
+{
+  "createdAt": "2026-10-24T22:35:00Z",
+  "method": "CDP static header fixture; identical shell/header renderer DOM and viewport, production CSS except design-system.css swapped between HEAD 6c5eeb3 and current; getBoundingClientRect on header and visible-child union",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "before": {
+    "designSystemSha256": "75d762d6f30f933a1093b9b7bf32b0ce013507b3c247a1c286c69ca0a2068a3e",
+    "paddingInline": "25.6px",
+    "contentInsetLeft": 25.59375,
+    "contentInsetRight": 25.59375,
+    "contentInsetTop": 10,
+    "contentInsetBottom": 13,
+    "buttons": [
+      {
+        "x": 932.72,
+        "width": 44,
+        "gapAfter": 10
+      },
+      {
+        "x": 986.72,
+        "width": 152.58,
+        "gapAfter": 10
+      },
+      {
+        "x": 1149.3,
+        "width": 66.72,
+        "rightInset": 25.59
+      }
+    ]
+  },
+  "after": {
+    "designSystemSha256": "058f2cf8c4c84df76c6061c02c93b50910ae7397fe78fcf276a5e14840782bac",
+    "paddingInline": "28.16px",
+    "contentInsetLeft": 28.15625,
+    "contentInsetRight": 28.15625,
+    "contentInsetTop": 10,
+    "contentInsetBottom": 13,
+    "buttons": [
+      {
+        "x": 930.16,
+        "width": 44,
+        "gapAfter": 10
+      },
+      {
+        "x": 984.16,
+        "width": 152.58,
+        "gapAfter": 10
+      },
+      {
+        "x": 1146.73,
+        "width": 66.72,
+        "rightInset": 28.16
+      }
+    ]
+  },
+  "screenshots": [
+    "header-controlled-before-1280-pedidos.png",
+    "header-controlled-after-1280-pedidos.png"
+  ],
+  "note": "These are cropped-context header renderer fixtures, not complete authenticated application screenshots or owner visual approval."
+}
