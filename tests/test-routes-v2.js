@@ -40,6 +40,8 @@ assert.match(routesView,/<article class="routes-v2-delivery-card"><div class="ro
 assert.match(routesView,/Nenhuma rota planejada<\/strong><span>Os planejamentos salvos aparecerão aqui\./u,'empty planning state explains what will appear without a large empty card');
 assert.match(routesView,/class="btn small primary" data-detail=/u,'delivery action uses the established primary action treatment');
 assert.match(styles,/\.routes-v2-delivery-card\{display:grid;grid-template-columns:minmax\(0,1fr\) auto;grid-template-areas:"heading action" "copy action"/u,'desktop delivery cards reserve an independent action column');
+assert.match(styles,/@media\(min-width:1024px\) and \(max-width:1179px\)[\s\S]*?\.routes-v2\[data-view="deliveries"\] \.routes-v2-delivery-card\{grid-template-columns:minmax\(0,1fr\);grid-template-areas:"heading" "copy" "action"/u,'narrow desktop delivery cards stack details above a compact action');
+assert.match(styles,/@media\(min-width:1180px\)[\s\S]*?\.routes-v2\[data-view="deliveries"\] \.routes-v2-delivery-card>\.btn\{justify-self:start;width:auto;min-height:36px/u,'wide desktop delivery action keeps its intrinsic compact width');
 assert.match(styles,/\.routes-v2-view-switch\{display:flex;align-items:center;gap:6px/u,'route/delivery views use compact content-sized tabs');
 assert.match(styles,/@media\(max-width:599px\)\{[\s\S]*?\.routes-v2-filterbar\{order:1\}[\s\S]*?\.routes-v2-map-panel\{order:2\}[\s\S]*?\.routes-v2-summary\{order:3\}/u,'mobile moves live summary below the map while filters stay above it');
 assert.match(styles,/\.routes-v2-delivery-copy small\{[^}]*white-space:normal;overflow:visible;text-overflow:clip/u,'delivery addresses wrap without clipping');
@@ -54,6 +56,6 @@ assert.match(styles,/\.routes-v2 \.real-map\{height:clamp\(240px,36dvh,360px\);m
 assert.match(styles,/\.shell:has\(#main\[data-module="routes"\]\)>\.main\{min-width:0;padding:10px 12px calc\(100px \+ env\(safe-area-inset-bottom\)\)\}/u,'mobile route content reserves bottom navigation and device safe-area space');
 assert.match(styles,/\.shell:has\(#main\[data-module="routes"\]\)/u,'tablet sidebar adaptation is limited to the Routes page');
 assert.match(styles,/@media\(max-width:599px\)/,'mobile map first layout breakpoint exists');
-assert.match(html,/routes-v2\.css\?v=0304\.9/,'route styles are loaded with an updated campaign cache key');
-assert.match(fs.readFileSync('sw.js','utf8'),/routes-v2\.css\?v=0304\.9/,'route styles are included in the local-first application shell');
+assert.match(html,/routes-v2\.css\?v=0304\.10/,'route styles are loaded with an updated campaign cache key');
+assert.match(fs.readFileSync('sw.js','utf8'),/routes-v2\.css\?v=0304\.10/,'route styles are included in the local-first application shell');
 console.log('Routes V2 layout, coordinate validation and no implicit geocoding: PASS');

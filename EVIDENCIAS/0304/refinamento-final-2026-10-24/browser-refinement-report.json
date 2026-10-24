@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-24",
+  "campaign": "0304",
+  "classification": "synthetic browser renderer fixture; not authenticated operational E2E",
+  "browser": "Chromium via CDP, isolated port 9224",
+  "scenarioCount": 102,
+  "viewportMatrix": {
+    "routes": [320, 360, 390, 430, 768, 1024, 1280, 1440, 1920],
+    "orders": [768, 1024, 1280, 1440, 1920],
+    "home": [1024, 1280, 1440, 1920],
+    "themes": ["light", "dark"],
+    "routeDeliveryCounts": [0, 1, 5, 20],
+    "orderCounts": [1, 20]
+  },
+  "checks": {
+    "realHomeRenderer": "PASS",
+    "realOrdersRenderersAndSelectionBinding": "PASS",
+    "routeFiltersVisibleInFixture": "PASS (5/5 controls have non-zero width)",
+    "routeDesktopListInternalScrollAndLastCardAccess": "PASS in controlled fixture",
+    "ordersTabletStack": "PASS (700–850 px uses one column)",
+    "ordersKeyboardSelectionScrollEnd": "PASS (768 px; detail panel visible, focus on H2 after scrollend)",
+    "ordersDesktopDetailWidth": "PASS (320 px at 1280 px; grows to configured maximum)",
+    "horizontalDocumentOverflow": "not observed in recorded scenarios"
+  },
+  "automatedSuite": {
+    "command": "npm test",
+    "result": "PASS",
+    "exitCode": 0,
+    "targeted": [
+      "node tests/test-navigation-shell-renderer.js",
+      "node tests/test-visual-shell-cache.js",
+      "node tests/test-routes-v2.js",
+      "node tests/test-dashboard-v2.js",
+      "node tests/test-dispatch-assignment.js",
+      "node --check app.js",
+      "node --check sw.js",
+      "git diff --check"
+    ]
+  },
+  "authenticatedOperationalE2E": {
+    "result": "BLOCKED",
+    "reason": "The available app instance displayed login; no isolated synthetic tenant/session with real MFA and verified cleanup was available for this refinement run.",
+    "security": "No MFA/RBAC bypass; no official PostgreSQL writes."
+  },
+  "visualApproval": "FAIL pending explicit owner approval; technical fixture captures do not establish visual fidelity."
+}

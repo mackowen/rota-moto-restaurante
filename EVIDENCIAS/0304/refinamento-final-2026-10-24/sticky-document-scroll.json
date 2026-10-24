@@ -1,0 +1,82 @@
+{
+  "viewport": "390x844",
+  "positions": [
+    {
+      "requested": 0,
+      "scrollY": 0,
+      "headerTop": 0,
+      "headerBottom": 57,
+      "position": "sticky",
+      "zIndex": "1500"
+    },
+    {
+      "requested": 1,
+      "scrollY": 1,
+      "headerTop": 0,
+      "headerBottom": 57,
+      "position": "sticky",
+      "zIndex": "1500"
+    },
+    {
+      "requested": 5,
+      "scrollY": 5,
+      "headerTop": 0,
+      "headerBottom": 57,
+      "position": "sticky",
+      "zIndex": "1500"
+    },
+    {
+      "requested": 10,
+      "scrollY": 10,
+      "headerTop": 0,
+      "headerBottom": 57,
+      "position": "sticky",
+      "zIndex": "1500"
+    },
+    {
+      "requested": 20,
+      "scrollY": 20,
+      "headerTop": 0,
+      "headerBottom": 57,
+      "position": "sticky",
+      "zIndex": "1500"
+    },
+    {
+      "requested": 50,
+      "scrollY": 50,
+      "headerTop": 0,
+      "headerBottom": 57,
+      "position": "sticky",
+      "zIndex": "1500"
+    },
+    {
+      "requested": 100,
+      "scrollY": 100,
+      "headerTop": 0,
+      "headerBottom": 57,
+      "position": "sticky",
+      "zIndex": "1500"
+    },
+    {
+      "requested": 300,
+      "scrollY": 300,
+      "headerTop": 0,
+      "headerBottom": 57,
+      "position": "sticky",
+      "zIndex": "1500"
+    }
+  ],
+  "bottom": {
+    "scrollY": 1545,
+    "scrollHeight": 2389,
+    "headerTop": 0,
+    "headerBottom": 57,
+    "navTop": 778,
+    "navBottom": 844,
+    "focusTargetTop": -1476,
+    "focusTargetReachable": false,
+    "navZ": "1600"
+  },
+  "keyboardFocus": "programmatic focus target remained addressable; physical keyboard navigation not exercised in this scroll probe",
+  "classification": "fixture geometry only; no app authentication or operations"
+}

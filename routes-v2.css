@@ -157,6 +157,8 @@
  .routes-v2[data-view="deliveries"] .routes-v2-deliveries{grid-column:1;grid-row:4/6;max-height:calc(100dvh - 210px);overflow:auto}
  .routes-v2-empty-state{display:none}
  .routes-v2 .real-map{height:min(58vh,520px);min-height:390px}
+ .routes-v2[data-view="deliveries"] .routes-v2-delivery-card{grid-template-columns:minmax(0,1fr);grid-template-areas:"heading" "copy" "action";gap:6px;padding:10px}
+ .routes-v2[data-view="deliveries"] .routes-v2-delivery-card>.btn{justify-self:start;width:auto;min-height:36px;padding:6px 10px}
 }
 @media(min-width:1180px){
  .routes-v2{grid-template-columns:minmax(200px,.8fr) minmax(460px,2.35fr) minmax(245px,1fr);gap:14px;align-items:start}
@@ -171,5 +173,7 @@
  .routes-v2[data-view="deliveries"] .routes-v2-deliveries{grid-column:1;grid-row:4/6;max-height:calc(100dvh - 220px);overflow:auto}
  .routes-v2-empty-state{display:none}
  .routes-v2 .real-map{height:min(64vh,650px);min-height:430px}
+ .routes-v2[data-view="deliveries"] .routes-v2-delivery-card{grid-template-columns:minmax(0,1fr);grid-template-areas:"heading" "copy" "action";gap:6px;padding:10px}
+ .routes-v2[data-view="deliveries"] .routes-v2-delivery-card>.btn{justify-self:start;width:auto;min-height:36px;padding:6px 10px}
  .routes-v2 .route-plan-card{padding:10px}
 }

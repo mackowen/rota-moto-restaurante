@@ -8,8 +8,8 @@ const manifest=JSON.parse(fs.readFileSync(require.resolve('../manifest.json'),'u
 const designSystem=fs.readFileSync(require.resolve('../design-system.css'),'utf8');
 const styles=fs.readFileSync(require.resolve('../styles.css'),'utf8');
 assert.match(html,/identity-ui\.css\?v=0256d1\.1[\s\S]*design-system\.css\?v=0304\.3/u);
-assert.match(html,/styles\.css\?v=0304\.8[\s\S]*pilot-views\.css\?v=0299\.1[\s\S]*dashboard-v2\.css\?v=0304\.8[\s\S]*orders-v2\.css\?v=0304\.3[\s\S]*routes-v2\.css\?v=0304\.9[\s\S]*app\.js\?v=0304\.9/u,'the campaign shell cache keys the current visual modules and dashboard markup');
-assert.match(worker,/CACHE_PREFIX\}v107/u,'updated visual assets use a new atomic shell cache');
+assert.match(html,/styles\.css\?v=0304\.8[\s\S]*pilot-views\.css\?v=0299\.1[\s\S]*dashboard-v2\.css\?v=0304\.8[\s\S]*orders-v2\.css\?v=0304\.4[\s\S]*routes-v2\.css\?v=0304\.10[\s\S]*app\.js\?v=0304\.9/u,'the campaign shell cache keys the current visual modules and dashboard markup');
+assert.match(worker,/CACHE_PREFIX\}v109/u,'updated visual assets use a new atomic shell cache');
 assert.match(html,/rel="icon" type="image\/svg\+xml" href="favicon\.svg\?v=0140\.1"/u);
 assert.match(html,/rel="manifest" href="\/manifest\.json"/u);
 assert.match(html,/sizes="192x192" href="\/icons\/icon-192\.png"/u);
@@ -32,12 +32,12 @@ assert(identityAsset&&worker.includes(`/${identityAsset}`),'service worker inclu
 assert.match(worker,/\/server-update-coordinator\.js\?v=0253\.1/u);
 assert.match(worker,/\/styles\.css\?v=0304\.8/u);
 assert.match(worker,/\/design-system\.css\?v=0304\.3/u);
-assert.match(worker,/\/orders-v2\.css\?v=0304\.3/u);
+assert.match(worker,/\/orders-v2\.css\?v=0304\.4/u);
 assert.match(worker,/\/pilot-views\.css\?v=0299\.1/u);
 assert.match(worker,/\/app\.js\?v=0304\.9/u);
 assert.match(worker,/\/dashboard-v2\.js\?v=0304\.8/u);
 assert.match(worker,/\/dashboard-v2\.css\?v=0304\.8/u);
-assert.match(worker,/\/routes-v2\.css\?v=0304\.9/u);
+assert.match(worker,/\/routes-v2\.css\?v=0304\.10/u);
 const stylesheetAsset=html.match(/styles\.css\?v=[^"']+/u)?.[0];assert(stylesheetAsset,'index declares a versioned stylesheet');
 assert(worker.includes(`/${stylesheetAsset}`),'service worker caches the exact stylesheet declared by index.html');
 assert.match(html,/analytics-view\.js\?v=0254\.1/u);
