@@ -56,3 +56,4 @@ Os valores acima são o estado registrado antes da intervenção; não os substi
 - E2E: `403 MFA_REQUIRED` foi desafio esperado, completado; após reload não apareceu o shell e `#app` ficou oculto. Persistência/sync/RBAC/jornada funcional seguem BLOCKED. Chrome Android físico pendente.
 - G14/G-VIS 02 permanecem FAIL/PARTIAL conforme gates; a reprovação visual não é revertida. As referências originais permanecem imutáveis. Pendências antigas continuam abertas.
 - Nenhum dado de banco oficial, serviço, contrato ou Motoboy foi alterado. Nenhum app/browser push será feito; somente Histórico será publicado em fast-forward.
+- Atualização após commits: checkpoint de preservação G01 agora PASS para os arquivos e estados registrados, sem autorizar descarte de alterações preexistentes do Browser QA. A verificação final registrou somente push fast-forward no Histórico; não houve push dos apps/Browser. Este estado não altera G14 FAIL nem fecha pendências funcionais/visuais.

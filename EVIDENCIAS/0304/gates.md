@@ -37,6 +37,16 @@ Esta tabela complementa os gates originais. Nenhuma linha fecha pendência anter
 
 O browser foi Chromium/CDP com emulação de viewport, não Chrome Android físico nem modo computador físico. O `403` inicial foi uma resposta de desafio MFA e não prova de senha/permissão recusada; a falha subsequente ocorreu após reload, quando o shell autenticado não apareceu.
 
+## G15–G17 — integridade e publicação do histórico
+
+| Gate | Estado | Evidência/limite |
+|---|---|---|
+| G15 — Integridade dos repositórios | PARTIAL | Branches, HEADs, remotos e baselines verificadas; tag baseline intacta. Não foi feita operação destrutiva. Browser QA conservou alterações preexistentes, com somente o runner da campanha em commit local. Busca de credenciais em arquivos do adendo/histórico não encontrou marcadores conhecidos. A auditoria ampla de todo o conteúdo remoto permanece limitada pelas alterações históricas e não autoriza limpeza/rewrite. |
+| G16 — Histórico e evidências | PASS (registro desta intervenção) | Registro 0304-A, resumo, índice, estado, inventário, pendências, gates/matriz/regressões e capturas foram organizados; links relativos do conjunto atualizado validados. Não encerra pendências anteriores. |
+| G17 — Política de publicação | PASS | Push fast-forward apenas de `codex-historico` (`3b988fe` → `b1a0093` → `07f080b` → `d7456f9`). Nenhum push de Restaurante, Motoboy ou Browser QA. |
+
+Nota: a linha G15 da tabela original desta campanha refere-se a “sem regressões”. Para manter os identificadores da matriz inicial, ela continua preservada como avaliação de regressões; nesta intervenção de auditoria, G15 usa a definição de integridade dos repositórios definida pelo proprietário. As duas avaliações não encerram uma à outra.
+
 ## Intervenção do proprietário — reprovação visual (checkpoint)
 
 Estado atualizado em 2026-10-23: **G-VIS-01–G-VIS-10 em avaliação; G14 FAIL por decisão do proprietário.** A campanha permanece aberta, sem aprovação visual ou PASS global.
