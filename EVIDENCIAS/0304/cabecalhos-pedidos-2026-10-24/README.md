@@ -27,3 +27,13 @@ O arquivo `served-assets-sha256.json` preserva o status HTTP e os SHA-256 source
 ## Artefatos exploratórios preservados
 
 Os arquivos gerados antes da montagem correta do wrapper `#app` ou antes de estabilizar a pintura permanecem preservados, mas não sustentam os resultados desta intervenção: `header-measurements-before.json` (sem viewport meta, portanto linhas mobile inválidas), `header-measurements-after.json` e `header-before/after-pedidos-*` (fixtures anteriores sem contexto completo de identidade), e as capturas `orders-after-*`, `orders-final-*`, `orders-final-ui-*` e `orders-reviewed-*` (gerações exploratórias substituídas). Os resultados válidos desta rodada estão limitados aos nomes citados acima: `header-four-edge-before-after.json`, `header-controlled-*.png`, `header-controlled-geometries.json`, `orders-card-measurements.json`, `orders-verified-*.png` e `served-assets-sha256.json`. Não houve exclusão de evidência.
+
+## Referências aprovadas consultadas
+
+As capturas históricas de Pedidos foram abertas e comparadas com as capturas CDP desta rodada:
+
+- [Desktop claro 1280×800](../../0303/capturas/orders-1280x800-light.png), SHA-256 `50656e55ca65727bab7a9e57f2d7f58def509810336427b4fdfa05775ef6d4c2`: sidebar, cabeçalho alinhado, filtros e tabela única; a correção atual troca a tabela pela apresentação em cartões porque a solicitação 0304 exige cartão operacional único por pedido e retirada do painel lateral redundante. Essa divergência estrutural foi solicitada, não é declarada como aprovação visual; G14 permanece FAIL.
+- [Tablet claro 768×1024](../../0303/capturas/orders-768x1024-light.png), SHA-256 `03ee3209ba48267bf7a1db85f9168b95f04815bb4fac80323975c2892049e5b7`: lista e detalhe selecionado lado a lado; nesta correção a ação Abrir segue para o detalhe existente sem duplicação persistente.
+- [Mobile claro 390×844](../../0303/capturas/orders-390x844-light.png), SHA-256 `6dcf1049ad81a70167e17ee9ac281ea5d5b2a36e291b8905b55acf19da9d23e6`: cartões únicos, cabeçalho compacto e navegação inferior; comparação correspondente após está em `orders-verified-390-light-1.png`.
+
+As referências originais foram preservadas sem alteração. As capturas novas são sintéticas; os dados reais e a aprovação visual humana continuam pendentes.
