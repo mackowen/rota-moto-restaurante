@@ -12,7 +12,7 @@ Principais gutters horizontais computados (esquerda/direita): 390 px 10/10 px an
 
 `orders-card-measurements.json` registra 72 verificações em larguras 320, 360, 390, 430, 768, 1024, 1280, 1440 e 1920 px, claro/escuro e 0/1/5/20 pedidos. Resultado: quantidade de artigos igual à quantidade de pedidos; sem painel lateral duplicado; ação Abrir visível; imprimir disponível; documento sem overflow. Cliques sintéticos acionaram os handlers existentes `openDetail` e `openPrintPreview`. O teste unitário `tests/test-orders-v2-cards.js` valida renderização e a integração dos handlers.
 
-Capturas verificadas: `orders-verified-390-light-1.png`, `orders-verified-1280-light-1.png`, `orders-verified-1280-dark-20.png` e `orders-verified-1440-light-5.png`. A captura desktop escura teve estado e cor de fundo verificados antes da gravação. As capturas são fixtures visuais sintéticas, não substituem sessão autenticada nem validação física no Chrome Android.
+Capturas verificadas: `orders-verified-390-light-1.png`, `orders-verified-1280-light-1.png`, `orders-verified-1280-dark-20.png` e `orders-verified-1440-light-5.png` e `orders-verified-768-light-5.png` (tablet). A captura desktop escura teve estado e cor de fundo verificados antes da gravação. As capturas são fixtures visuais sintéticas, não substituem sessão autenticada nem validação física no Chrome Android.
 
 ## Limites
 
