@@ -16,7 +16,7 @@ Capturas verificadas: `orders-verified-390-light-1.png`, `orders-verified-1280-l
 
 ## Limites
 
-As capturas exploratórias anteriores nesta pasta histórica que não tinham o wrapper `#app` ou ainda mostravam ponteiro sobre o botão Conta foram preservadas como histórico, mas substituídas para fins de comparação pelas medições e imagens verificadas deste README. Não há nova sessão sintética com limpeza autorizada nesta rodada; E2E autenticado fica BLOCKED. G14 continua FAIL até aprovação explícita do proprietário.
+As capturas exploratórias desta rodada que não tinham o wrapper `#app` ou ainda mostravam o ponteiro sobre o botão Conta foram preservadas como histórico, mas substituídas para fins de comparação pelas medições e imagens verificadas deste README. Não há nova sessão sintética com limpeza autorizada nesta rodada; E2E autenticado fica BLOCKED. G14 continua FAIL até aprovação explícita do proprietário.
 
 O arquivo `served-assets-sha256.json` preserva o status HTTP e os SHA-256 source/servido dos quatro assets.
 
