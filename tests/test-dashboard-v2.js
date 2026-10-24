@@ -94,8 +94,9 @@ assert.match(app,/function orderQuickFilterMarkup\(\)[\s\S]*aria-pressed=/u,'ord
 assert.match(app,/data-orders-clear/u,'orders search provides a working clear action');
 assert.match(app,/const quick=ORDER_QUICK_STATUS\[ordersQuickFilter\]/u,'orders filtering applies the selected canonical status group');
 assert.match(app,/bindOrdersV2Actions\(el\)/u,'filtered rows rebind open, print and eligible QR actions after replacing the list');
-assert.match(app,/function ordersV2Table\(rows\)[\s\S]*data-orders-select[\s\S]*data-orders-print[\s\S]*data-orders-qr/u,'Orders V2 renders order rows with selection, printing and eligible QR actions');
-assert.match(app,/function ordersV2DetailPanel\(order\)[\s\S]*data-orders-open/u,'tablet details delegate to the existing order detail flow');
+assert.match(app,/function ordersV2CardList\(rows\)[\s\S]*data-orders-select[\s\S]*data-orders-open[\s\S]*data-orders-print[\s\S]*data-orders-qr/u,'Orders V2 renders one operational card with selection, open, print and eligible QR actions');
+assert.doesNotMatch(app,/ordersV2DetailPanel|ordersV2Selection/u,'the selected order is not repeated in a permanent side panel');
+assert.match(app,/function bindOrdersV2Actions[\s\S]*openDetail\(button\.dataset\.ordersOpen\)/u,'the card primary action opens the existing complete order detail flow');
 assert.match(app,/function ordersV2QrEligible\(order\)[\s\S]*ASSIGNED[\s\S]*OUT_FOR_DELIVERY[\s\S]*delivery\.deleted/u,'secure QR action is shown only for a non-deleted delivery in an eligible canonical status');
 assert.match(app,/function orders\(\)[\s\S]*ordersV2TablePage[\s\S]*ordersV2Metrics/u,'Orders V2 uses canonical order data for its list and metrics');
 assert.match(app,/main\.dataset\.module=state\.tab/u,'shared module styling receives the active route without changing module behavior');
@@ -103,7 +104,7 @@ assert.match(ds,/#main\[data-module="orders"\] \.order-quick-filters/u,'orders c
 const ordersCss=fs.readFileSync('orders-v2.css','utf8');
 assert.match(app,/orders-search-control[\s\S]*data-orders-clear[\s\S]*orders-advanced-filters/u,'search, clear and filters have an explicit single-row structure');
 assert.match(ordersCss,/orders-search-control\{display:grid[\s\S]*grid-template-columns:20px minmax\(0,1fr\) auto/u,'search input and clear action share a non-overlapping control');
-assert.match(ordersCss,/orders-v2-actions--without-qr\{grid-template-columns:minmax\(0,1fr\) 44px/u,'ineligible QR leaves no empty action column');
+assert.match(ordersCss,/orders-v2-actions \.orders-v2-icon-action\{display:grid;place-items:center;flex:0 0 44px/u,'secondary print and QR controls remain compact and do not reserve an ineligible action column');
 assert.match(app,/function closeOrdersAdvancedFilters[\s\S]*event=>\{const details=document.querySelector\('.orders-advanced-filters\[open\]'\)/u,'advanced filters dismiss on outside interaction');
 assert.match(app,/event.key==='Escape'[\s\S]*closeOrdersAdvancedFilters\(true\)/u,'Escape closes filters and restores focus to the trigger');
 assert.match(app,/closeOrdersAdvancedFilters\(false\);closeMoreMenu/u,'navigation closes the advanced filter panel');
@@ -122,9 +123,10 @@ assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection sta
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
 assert.match(index,/dashboard-v2\.js\?v=0304\.8/u,'shared header component bundle uses the corrected campaign cache key');
 assert.match(index,/dashboard-v2\.css\?v=0304\.8/u,'dashboard width/header CSS uses the current campaign cache key');
-assert.match(sw,/CACHE_PREFIX\}v109/u,'service worker shell cache is advanced for the current campaign');
-assert.match(index,/app\.js\?v=0304\.9/u,'official app script uses the corrected campaign cache key');
-assert.match(index,/orders-v2\.css\?v=0304\.4/u,'Orders V2 layout uses a fresh cache key');
+assert.match(sw,/CACHE_PREFIX\}v110/u,'service worker shell cache is advanced for the current campaign');
+assert.match(index,/app\.js\?v=0304\.10/u,'official app script uses the corrected campaign cache key');
+assert.match(index,/orders-v2\.css\?v=0304\.5/u,'Orders V2 layout uses a fresh cache key');
+assert.match(index,/design-system\.css\?v=0304\.4/u,'shared header spacing uses a fresh cache key');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
 
 assert.match(app,/const session=await restoreSyncSession\(\);if\(session\)\{const editing=[\s\S]*?if\(!editing\)render\(\);scheduleServerSync\(0\)\}/u,'authenticated startup reprojects local state after restoring the tenant without replacing an in-progress form');

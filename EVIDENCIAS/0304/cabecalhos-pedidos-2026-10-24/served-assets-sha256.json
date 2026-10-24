@@ -1,0 +1,42 @@
+{
+  "createdAt": "2026-10-24T22:31:07.866Z",
+  "origin": "http://127.0.0.1:8083",
+  "entries": [
+    {
+      "file": "index.html",
+      "httpStatus": 200,
+      "sourceBytes": 3188,
+      "servedBytes": 3188,
+      "sourceSha256": "52107dbb1c082e5c8197b849251e6d8a90bbfd5574f76b34c4a9b5fbd9131aac",
+      "servedSha256": "52107dbb1c082e5c8197b849251e6d8a90bbfd5574f76b34c4a9b5fbd9131aac",
+      "matches": true
+    },
+    {
+      "file": "design-system.css",
+      "httpStatus": 200,
+      "sourceBytes": 32669,
+      "servedBytes": 32669,
+      "sourceSha256": "058f2cf8c4c84df76c6061c02c93b50910ae7397fe78fcf276a5e14840782bac",
+      "servedSha256": "058f2cf8c4c84df76c6061c02c93b50910ae7397fe78fcf276a5e14840782bac",
+      "matches": true
+    },
+    {
+      "file": "orders-v2.css",
+      "httpStatus": 200,
+      "sourceBytes": 10820,
+      "servedBytes": 10820,
+      "sourceSha256": "f462876585d6052d087c55a8f0608d03668425f79d32d0d1df9541393df94e3c",
+      "servedSha256": "f462876585d6052d087c55a8f0608d03668425f79d32d0d1df9541393df94e3c",
+      "matches": true
+    },
+    {
+      "file": "app.js",
+      "httpStatus": 200,
+      "sourceBytes": 496040,
+      "servedBytes": 496040,
+      "sourceSha256": "dd058bf04bdd7cbe3b57c7c1a5e8f42c78c4b9ef7fde0cc4d0c0fe2b713dc53b",
+      "servedSha256": "dd058bf04bdd7cbe3b57c7c1a5e8f42c78c4b9ef7fde0cc4d0c0fe2b713dc53b",
+      "matches": true
+    }
+  ]
+}
