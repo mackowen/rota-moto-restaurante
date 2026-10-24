@@ -21,6 +21,17 @@ assert.equal((bottom.match(/class="nav-label"/gu)||[]).length, 1, 'mobile item c
 assert.match(bottom, /<span class="nav-label">Início<\/span>/u, 'mobile navigation uses its approved concise label');
 assert.match(bottom, /aria-current="page"/u, 'active destination remains programmatically indicated');
 
+for (const [id, label] of [
+  ['dashboard','Visão geral'], ['orders','Pedidos e entregas'], ['routes','Rotas'],
+  ['bikes','Motoboys'], ['reports','Relatórios'], ['events','Eventos'],
+  ['settings','Configurações'], ['admin','Administração'],
+  ['integrationLab','Laboratório de integrações'], ['help','Ajuda']
+]) {
+  const rendered = context.render([id,'grid',label], '');
+  assert.equal((rendered.match(/class="nav-label"/gu)||[]).length, 1, `${label} renders one sidebar label`);
+  assert(rendered.includes(`<span class="nav-label">${label}</span>`), `${label} remains available in the expanded sidebar`);
+}
+
 const toggleStart = source.indexOf('function bindSidebarToggle(');
 const toggleEnd = source.indexOf('function navigationGroups(', toggleStart);
 assert(toggleStart >= 0 && toggleEnd > toggleStart, 'sidebar toggle binding is separately testable');
