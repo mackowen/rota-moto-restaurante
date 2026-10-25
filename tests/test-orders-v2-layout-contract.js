@@ -15,4 +15,8 @@ assert.match(css,/\.orders-advanced-filters>summary\{[^}]*min-width:100px[^}]*wh
   'the Filters label is not compressed or wrapped');
 assert.doesNotMatch(css,/@container orders-v2-page \(min-width:920px\)/u,
   'the previous desktop-only threshold is removed');
+assert.doesNotMatch(css,/\.orders-v2-operations\{[^}]*max-height:[^}]*\}/u,
+  'the operational panel has no viewport-bound height');
+assert.doesNotMatch(css,/\.orders-v2-operations\{[^}]*overflow-y?\s*:\s*(?:auto|scroll)/u,
+  'the operational panel does not create an internal scroll area');
 console.log('Orders V2 responsive layout contract: PASS');
