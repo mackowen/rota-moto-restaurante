@@ -29,6 +29,7 @@ function renderFixture(count,{queue=[],availability={},permissions=true}={}){
 for(const count of [0,1,5,20]){
   const {html}=renderFixture(count);
   assert.match(html,/data-bikes-v2/u);
+  if(count===0)assert.match(html,/bikes-v2-workspace no-selection/u,'empty roster uses one operational empty state, not a duplicate detail panel');
   assert.equal((html.match(/class="bikes-v2-person /gu)||[]).length,Math.min(count,50),`renders ${count} real roster rows`);
   assert.match(html,/Cadastrados/u);
   assert.match(html,/Disponibilidade não confirmada/u,'unknown availability is not rendered as offline/zero');
@@ -45,14 +46,10 @@ assert.match(source,/async function openAssignment\(preselectBikeId,preselectOrd
 assert.match(source,/preselectBikeId===b\.id\|\|preselectBikeId===\(b\.sync\?\.canonicalId\|\|b\.id\)/u,'assignment recognizes local and canonical Driver identity');
 assert(source.includes("()=>put('bikes',b)"),'new Driver continues through the existing local-first store');
 if(process.argv.includes('--fixture')){
-  const queue=[
-    {driverId:'canonical-1',name:'Motoboy 1',online:true,present:true,confirmed:true,eligible:true,busy:false,checkedInAt:'2026-10-25T10:00:00Z'},
-    {driverId:'canonical-2',name:'Motoboy 2',online:true,present:true,confirmed:true,eligible:false,busy:true,checkedInAt:'2026-10-25T10:02:00Z'},
-    {driverId:'canonical-3',name:'Motoboy 3',online:true,present:true,confirmed:false,eligible:false,busy:false,checkedInAt:'2026-10-25T10:04:00Z'},
-    {driverId:'canonical-4',name:'Motoboy 4',online:false,present:false,confirmed:false,eligible:false,busy:false,checkedInAt:null},
-    {driverId:'canonical-5',name:'Motoboy 5',online:false,present:false,confirmed:false,eligible:false,busy:false,checkedInAt:null}
-  ];
-  const availability=Object.fromEntries(queue.slice(0,3).map((row,index)=>[row.driverId,{effectiveStatus:index<3?'online':'offline',updatedAt:'2026-10-25T10:05:00Z'}]));
-  const fixture=renderFixture(5,{queue,availability});
+  const countArg=process.argv.find(argument=>argument.startsWith('--fixture-count='));
+  const fixtureCount=countArg?Math.max(0,Math.min(20,Number(countArg.split('=')[1])||0)):5;
+  const queue=Array.from({length:fixtureCount},(_,index)=>({driverId:`canonical-${index+1}`,name:`Motoboy ${index+1}`,online:index<3,present:index<2,confirmed:index<2,eligible:index===0,busy:index===1,checkedInAt:index<2?`2026-10-25T10:${String(index).padStart(2,'0')}:00Z`:null}));
+  const availability=Object.fromEntries(queue.map((row,index)=>[row.driverId,{effectiveStatus:index<3?'online':'offline',updatedAt:'2026-10-25T10:05:00Z'}]));
+  const fixture=renderFixture(fixtureCount,{queue,availability});
   process.stdout.write(JSON.stringify({html:fixture.html.replace(/^<header>[\s\S]*?<\/header>/u,'')})+'\n');
 }else console.log('Motoboys V2 rendering, responsive data contract, and dispatch entry guards: PASS');
