@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'rotamoto-restaurante-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v115`;
+const CACHE_NAME = `${CACHE_PREFIX}v116`;
 const APP_SHELL = Object.freeze([
   '/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/styles.css?v=0304.10', '/identity-ui.css?v=0256d1.1', '/design-system.css?v=0304.4', '/pilot-views.css?v=0299.1', '/favicon.svg?v=0140.1', '/dashboard-v2.css?v=0304.8', '/orders-v2.css?v=0304.8', '/routes-v2.css?v=0304.10', '/dashboard-v2.js?v=0304.8',
   '/qr-local.js', '/ifood-integration.js', '/keeta-integration.js', '/99food-integration.js',
@@ -9,7 +9,7 @@ const APP_SHELL = Object.freeze([
   '/indexeddb-schema.js?v=2', '/order-money.js?v=1', '/ticket-renderer.js?v=0256d1.1',
   '/browser-printer-provider.js?v=1', '/restaurant-operations.js?v=2',
   '/analytics.js?v=2', '/analytics-view.js?v=0254.1', '/logistics-ui.js?v=0254.1',
-  '/identity-session-guard.js', '/server-update-coordinator.js?v=0253.1', '/company-settings-persistence.js?v=0286.1', '/app.js?v=0304.14', '/identity-ui.js?v=0288.1',
+  '/identity-session-guard.js', '/server-update-coordinator.js?v=0253.1', '/company-settings-persistence.js?v=0286.1', '/app.js?v=0304.15', '/identity-ui.js?v=0288.1',
   '/vendor/leaflet/leaflet.css', '/vendor/maplibre/maplibre-gl.css?v=0139.1', '/vendor/maplibre/rotamoto-map-runtime.js?v=0140.11', '/vendor/maplibre/maplibre-gl-worker.js?v=0139.1', '/vendor/leaflet/leaflet.js'
 ]);
 const OPTIONAL_ASSETS = new Set([

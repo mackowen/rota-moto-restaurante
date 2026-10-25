@@ -41,6 +41,11 @@ const {html}=renderFixture(1,{queue:syntheticQueue,availability:{'canonical-1':{
 assert.match(html,/Online/u);
 assert.match(html,/Elegível/u);
 assert.match(html,/presença confirmada/u);
+const noCheckin=renderFixture(1,{queue:[{driverId:'canonical-1',name:'Pessoa 1',online:true,present:false,confirmed:false,eligible:false,busy:false}],availability:{'canonical-1':{effectiveStatus:'online'}}}).html;
+assert.match(noCheckin,/Sem check-in/u);
+assert.match(noCheckin,/Online · sem check-in confirmado/u,'online lease remains distinct from missing presence check-in');
+const waitingPresence=renderFixture(1,{queue:[{driverId:'canonical-1',name:'Pessoa 1',online:true,present:true,confirmed:false,eligible:false,busy:false}],availability:{'canonical-1':{effectiveStatus:'online'}}}).html;
+assert.match(waitingPresence,/Online · aguardando elegibilidade/u,'confirmed online lease remains distinct from dispatch eligibility');
 assert.match(html,/data-bikeassign="canonical-1"/u,'operational action delegates using the canonical Driver id');
 assert.match(source,/async function openAssignment\(preselectBikeId,preselectOrderId=null\)\{\s*if\(!canModule\('orders'\)\)/u,'assignment entry checks module access');
 assert.match(source,/preselectBikeId===b\.id\|\|preselectBikeId===\(b\.sync\?\.canonicalId\|\|b\.id\)/u,'assignment recognizes local and canonical Driver identity');
