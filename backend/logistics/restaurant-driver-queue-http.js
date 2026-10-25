@@ -11,7 +11,7 @@ function createRestaurantDriverQueueHttpHandler({identityService,service,rateLim
   if(!identityService||!service)throw new TypeError('Serviços de identidade e fila obrigatórios.');
   return async function restaurantDriverQueueHttp(req,res){
     const url=new URL(req.url,'http://127.0.0.1');if(!url.pathname.startsWith('/api/restaurant-driver-queue'))return false;
-    const requestId=req.requestId||crypto.randomUUID();let status=500,errorCode;
+    const requestId=req.requestId||crypto.randomUUID();let status=500,errorCode,diagnosticCode=null;
     const respond=(code,data)=>{status=code;const text=JSON.stringify({...data,requestId});res.writeHead(code,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Pragma':'no-cache','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Request-ID':requestId,'Content-Length':Buffer.byteLength(text)});res.end(text)};
     try{
       const path=url.pathname,known=new Set(['/api/restaurant-driver-queue','/api/restaurant-driver-queue/check-in','/api/restaurant-driver-queue/check-out','/api/restaurant-driver-queue/confirm','/api/restaurant-driver-queue/settings','/api/restaurant-driver-queue/qr','/api/restaurant-driver-queue/qr-check-in']);
@@ -35,9 +35,9 @@ function createRestaurantDriverQueueHttpHandler({identityService,service,rateLim
       },read?'sync.pull':'sync.push');
       respond(200,result);return true;
     }catch(error){
-      errorCode=typeof error?.code==='string'?error.code:'INTERNAL_ERROR';const map={INVALID_INPUT:400,PAYLOAD_TOO_LARGE:413,UNAUTHENTICATED:401,FORBIDDEN:403,DRIVER_LINK_REQUIRED:403,DRIVER_INACTIVE:409,DRIVER_NOT_AVAILABLE:409,DRIVER_BUSY:409,CSRF_INVALID:403,ORIGIN_INVALID:403,NOT_FOUND:404,RATE_LIMITED:429,REVISION_CONFLICT:409,PRESENCE_QR_INVALID:400,PRESENCE_QR_REPLAY:409,PRESENCE_QR_TENANT_MISMATCH:403,PRESENCE_QR_UNAVAILABLE:503,PRESENCE_NOT_FOUND:404};
-      status=map[errorCode]||500;const code=status>=500?'INTERNAL_ERROR':errorCode;req.apiErrorCode=code;respond(status,{error:{code,message:status>=500?'Falha interna ao processar a fila operacional.':error.message}});return true;
-    }finally{try{logger({event:'restaurant_driver_queue.request',requestId,method:req.method,path:url.pathname,status,...(errorCode?{errorCode:req.apiErrorCode||errorCode}:{})})}catch(_){}}
+      errorCode=typeof error?.code==='string'?error.code:'INTERNAL_ERROR';diagnosticCode=typeof error?.causeCode==='string'&&/^[A-Z0-9_]{2,32}$/iu.test(error.causeCode)?error.causeCode:typeof error?.code==='string'&&/^[0-9A-Z]{5}$/iu.test(error.code)?error.code:null;const map={INVALID_INPUT:400,PAYLOAD_TOO_LARGE:413,UNAUTHENTICATED:401,FORBIDDEN:403,DRIVER_LINK_REQUIRED:403,DRIVER_INACTIVE:409,DRIVER_NOT_AVAILABLE:409,DRIVER_BUSY:409,CSRF_INVALID:403,ORIGIN_INVALID:403,NOT_FOUND:404,RATE_LIMITED:429,REVISION_CONFLICT:409,PRESENCE_QR_INVALID:400,PRESENCE_QR_REPLAY:409,PRESENCE_QR_TENANT_MISMATCH:403,PRESENCE_QR_UNAVAILABLE:503,PRESENCE_NOT_FOUND:404};
+      status=map[errorCode]||500;const expectedUnavailable=errorCode==='PRESENCE_QR_UNAVAILABLE';const code=status>=500&&!expectedUnavailable?'INTERNAL_ERROR':errorCode;req.apiErrorCode=code;respond(status,{error:{code,message:expectedUnavailable?'QR de presença temporariamente indisponível.':status>=500?'Falha interna ao processar a fila operacional.':error.message}});return true;
+    }finally{try{logger({event:'restaurant_driver_queue.request',requestId,method:req.method,path:url.pathname,status,...(errorCode?{errorCode:req.apiErrorCode||errorCode}:{}),...(diagnosticCode?{diagnosticCode}:{})})}catch(_){}}
   };
 }
 module.exports={createRestaurantDriverQueueHttpHandler,MAX_BODY_BYTES};

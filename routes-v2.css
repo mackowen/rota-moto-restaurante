@@ -64,6 +64,11 @@
 .routes-v2-empty-inline,.routes-v2-empty-state{display:grid;gap:5px;color:var(--text-secondary);font-size:11px}
 .routes-v2-empty-inline{padding:9px 10px;border:1px dashed var(--border);border-radius:10px;background:var(--surface-soft)}
 .routes-v2-empty-inline strong,.routes-v2-empty-state strong{color:var(--text-primary);font-size:13px}
+.routes-v2-plan-empty{grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto;align-items:center;gap:3px 10px;padding:12px;border-color:var(--border-strong);background:var(--surface-soft);line-height:1.4}
+.routes-v2-plan-empty>.routes-v2-empty-icon{grid-column:1;grid-row:1/3;display:grid;width:34px;height:34px;place-items:center;border:1px solid color-mix(in srgb,var(--info) 45%,var(--border-strong));border-radius:11px;background:var(--info-soft);color:var(--info)}
+.routes-v2-plan-empty>.routes-v2-empty-icon svg{width:19px;height:19px;stroke-width:2}
+.routes-v2-plan-empty>strong,.routes-v2-plan-empty>span:last-child{grid-column:2;min-width:0;overflow-wrap:anywhere}
+.routes-v2-plan-empty>span:last-child{color:var(--text-secondary);font-size:11px;line-height:1.4}
 .routes-v2-empty-state{padding:12px 2px}
 .routes-v2-empty-state .btn{justify-self:start;margin-top:5px}
 .routes-v2-selected-empty{display:grid;align-content:start;gap:5px;min-height:84px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
@@ -98,7 +103,10 @@
  .routes-v2 .map-legend .legend-dot{width:8px;height:8px;margin-right:3px}
  .routes-v2-delivery-card{grid-template-columns:minmax(0,1fr);grid-template-areas:"heading" "copy" "action";gap:7px;padding:11px}
  .routes-v2-delivery-card>.btn{justify-self:start;width:100%}
- .routes-v2 .routes-v2-empty-inline{padding:7px 0;font-size:11px}
+ .routes-v2 .routes-v2-empty-inline:not(.routes-v2-plan-empty){padding:7px 0;font-size:11px}
+ .routes-v2-plan-empty{grid-template-columns:32px minmax(0,1fr);gap:2px 8px;padding:10px}
+ .routes-v2-plan-empty>.routes-v2-empty-icon{width:30px;height:30px;border-radius:9px}
+ .routes-v2-plan-empty>.routes-v2-empty-icon svg{width:17px;height:17px}
 }
 @media(min-width:600px) and (max-width:759px){
  .shell:has(#main[data-module="routes"]){display:grid;grid-template-columns:64px minmax(0,1fr);align-items:start}

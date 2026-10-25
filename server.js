@@ -156,14 +156,14 @@ async function authorizeInitialBootstrap({action,context}){
 }
 const identityService=createIdentityService({pool:identityPool,authorizeProvisioner:authorizeInitialBootstrap,
   requireBootstrapAuthorization:true,emailProvider,mfaProvider,secretProvider});
-const LOG_FIELDS=new Set(['event','requestId','method','path','status','durationMs','errorCode','code','host','port','environment','signal']);
+const LOG_FIELDS=new Set(['event','requestId','method','path','status','durationMs','errorCode','diagnosticCode','code','host','port','environment','signal']);
 const requestLogger=entry=>{
   const safe={};
   for(const [key,value] of Object.entries(entry||{})){
     if(!LOG_FIELDS.has(key))continue;
     if(key==='path')safe.path=sanitizeLogPath(value);
     else if(key==='requestId'&&typeof value==='string'&&/^[0-9a-f-]{36}$/iu.test(value))safe.requestId=value;
-    else if(['event','method','errorCode','code','environment','signal'].includes(key)&&typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,80}$/u.test(value))safe[key]=value;
+    else if(['event','method','errorCode','diagnosticCode','code','environment','signal'].includes(key)&&typeof value==='string'&&/^[a-zA-Z0-9_.-]{1,80}$/u.test(value))safe[key]=value;
     else if(['status','durationMs','port'].includes(key)&&Number.isFinite(Number(value)))safe[key]=Number(value);
     else if(key==='host'&&typeof value==='string'&&/^[a-zA-Z0-9.:[\]-]{1,120}$/u.test(value))safe.host=value;
   }

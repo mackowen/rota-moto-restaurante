@@ -41,8 +41,24 @@ function createRestaurantDriverQueueService({ clock = () => new Date(), uuid = c
   async function issueRestaurantQr(client, principal) {
     await permissions(client,principal,['orders.manage','company.manage']);
     if (!qrKey || !qrKid) fail('PRESENCE_QR_UNAVAILABLE','QR de presença seguro não está configurado.');
-    const key = typeof qrKey === 'function' ? await qrKey() : qrKey;
-    const keyObject = key?.type === 'private' ? key : crypto.createPrivateKey(key);
+    let key;
+    try { key = typeof qrKey === 'function' ? await qrKey() : qrKey; }
+    catch (error) {
+      const causeCode = typeof error?.code === 'string' && /^[A-Z0-9_]{2,32}$/iu.test(error.code)
+        ? error.code : 'SECRET_PROVIDER_ERROR';
+      throw Object.assign(new Error('QR de presença temporariamente indisponível.'), {
+        code: 'PRESENCE_QR_UNAVAILABLE', causeCode
+      });
+    }
+    let keyObject;
+    try { keyObject = key?.type === 'private' ? key : crypto.createPrivateKey(key); }
+    catch (error) {
+      const causeCode = typeof error?.code === 'string' && /^[A-Z0-9_]{2,32}$/iu.test(error.code)
+        ? error.code : 'QR_KEY_INVALID';
+      throw Object.assign(new Error('QR de presença temporariamente indisponível.'), {
+        code: 'PRESENCE_QR_UNAVAILABLE', causeCode
+      });
+    }
     if (keyObject.asymmetricKeyType!=='ed25519') fail('PRESENCE_QR_UNAVAILABLE','Chave de presença inválida.');
     const issued=now(),nonce=uuid(),exp=Math.floor(issued.getTime()/1000)+QR_TTL_SECONDS;
     await client.query(`INSERT INTO rotamoto.restaurant_presence_qr_nonces(company_id,nonce_id,issued_by_user_id,expires_at)
