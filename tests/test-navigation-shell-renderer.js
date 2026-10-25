@@ -60,7 +60,7 @@ assert.match(sourceCss, /\.shell\.sidebar-collapsed\{grid-template-columns:76px/
 assert.match(sourceCss, /@media\(min-width:1024px\)[\s\S]*?\.sidebar-toggle\{display:grid/u, 'desktop navigation exposes the collapse control');
 assert.match(ordersCss, /\.orders-v2-card-list\{display:grid/u, 'Orders uses one standalone operational card per item');
 assert.match(ordersCss, /@container orders-v2-list \(min-width:560px\)/u, 'card fields reorganize from the card container width');
-assert.match(ordersCss, /@container orders-v2-page \(min-width:920px\)[\s\S]*?\.orders-v2-workspace\{grid-template-columns:minmax\(0,1fr\) minmax\(290px,min\(34%,380px\)\)\}/u, 'wide Orders allocates a compact list and a complementary operations area');
+assert.match(ordersCss, /@container orders-v2-page \(min-width:680px\)[\s\S]*?\.orders-v2-workspace\{grid-template-columns:minmax\(340px,1fr\) minmax\(280px,min\(45%,640px\)\)\}/u, 'Orders uses available container width and maintains usable list and operations panels');
 assert.match(ordersCss, /\.orders-v2-operations\{[^\n]*overflow:auto/u, 'desktop operations panel scrolls within the viewport');
 assert.doesNotMatch(ordersCss, /orders-v2-selection|orders-v2-detail/u, 'no duplicate order detail card is permanently rendered');
 assert.doesNotMatch(source, /ordersV2Selection|ordersV2DetailPanel/u, 'the operations area does not render a second full order card');

@@ -32,12 +32,14 @@ assert.match(html,/>1</u,'assignment count is derived from current eligible orde
 assert.match(html,/Motoboy sintético/u,'only current server-eligible queue members are shown');
 assert.match(html,/Selecionar pedidos para distribuir/u,'bulk action explicitly opens the eligible selection flow');
 assert.match(html,/Preparar distribuição do selecionado/u,'selected action clearly refers to the current pedido');
-assert.match(html,/Abre a mesma distribuição com este pedido já marcado/u,'the selected action explains its preselection and confirmation behavior');
+assert.match(html,/Pedido pré-selecionado; revise e confirme para atribuir/u,'the selected action explains its preselection and confirmation behavior');
+assert.match(html,/Nenhuma atribuição antes da confirmação/u,'confirmation guidance sits beside the bulk preparation action');
+assert.doesNotMatch(html,/Selecione pedidos e motoboys; nada é atribuído/u,'the panel avoids a repeated explanatory paragraph');
 assert.match(html,/Corrida aceita/u,'the selected delivery shows its received execution event');
 assert.doesNotMatch(html,/Gerenciamento completo|data-orders-manage/u,'central does not repeat the card open action');
 assert.match(html,/data-orders-assign-driver="synthetic-driver-1"/u,'eligible driver action is scoped to the selected dispatchable order');
 assert.match(html,/Usar este motoboy/u,'driver action label explains the preselection context');
-assert.match(html,/este pedido e este motoboy marcados; confirme para atribuir/u,'driver action states that assignment still requires confirmation');
+assert.match(html,/Pedido e motoboy pré-selecionados; confirme a atribuição na próxima etapa/u,'driver action states that assignment still requires confirmation');
 
 context.restaurantQueueStatus='error';
 context.restaurantQueueRecords=[{driverId:'synthetic-driver-1',name:'Motoboy sintético',eligible:true,leaseExpiresAt:future}];

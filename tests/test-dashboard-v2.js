@@ -123,9 +123,9 @@ assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection sta
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
 assert.match(index,/dashboard-v2\.js\?v=0304\.8/u,'shared header component bundle uses the corrected campaign cache key');
 assert.match(index,/dashboard-v2\.css\?v=0304\.8/u,'dashboard width/header CSS uses the current campaign cache key');
-assert.match(sw,/CACHE_PREFIX\}v111/u,'service worker shell cache is advanced for the current campaign');
-assert.match(index,/app\.js\?v=0304\.11/u,'official app script uses the corrected campaign cache key');
-assert.match(index,/orders-v2\.css\?v=0304\.6/u,'Orders V2 layout uses a fresh cache key');
+assert.match(sw,/CACHE_PREFIX\}v112/u,'service worker shell cache is advanced for the current campaign');
+assert.match(index,/app\.js\?v=0304\.12/u,'official app script uses the corrected campaign cache key');
+assert.match(index,/orders-v2\.css\?v=0304\.7/u,'Orders V2 layout uses a fresh cache key');
 assert.match(index,/design-system\.css\?v=0304\.4/u,'shared header spacing uses a fresh cache key');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
 
