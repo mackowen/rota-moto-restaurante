@@ -24,6 +24,20 @@ assert.match(html, /identity-session-guard\.js[\s\S]*?app\.js/u, 'shared session
 assert.match(html, /<div id="app" hidden inert aria-hidden="true">/u, 'the operational app starts inert before identity/session authorization resolves');
 
 assert.match(source, /autocomplete="current-password"/u);
+assert.match(source, /data-login-presentation aria-labelledby="rm-login-heading"/u, 'unauthenticated login includes the desktop presentation region');
+assert.match(source, /Gestão completa de entregas para o seu restaurante/u, 'login copy follows the approved composition');
+assert.match(source, /data-login-mobile-brand/u, 'mobile login has a compact brand treatment');
+assert.match(source, /data-toggle-password/u, 'password visibility is a real accessible control');
+assert.match(source, /autocomplete="username"/u, 'email uses the username autocomplete contract');
+assert.match(source, /name="companyId" autocomplete="off"[^>]*required/u, 'the server-validated company code remains required');
+assert.match(source, /data-recovery-request/u, 'the existing access recovery flow remains present');
+assert.match(source, /data-accept-invitation/u, 'the existing invitation flow remains present');
+assert.doesNotMatch(source, /name="rememberMe"|data-remember-me|localStorage\.setItem\([^\n]*password/iu, 'login does not introduce insecure remembered credentials');
+assert.match(styles, /#rmIdentityRoot\[data-gated="true"\][\s\S]*?grid-template-columns: minmax\(0, 1\.08fr\) minmax\(360px, \.92fr\)/u, 'desktop login uses a two-region composition');
+assert.match(styles, /@media \(max-width: 980px\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/u, 'tablet login stacks presentation and form when width is constrained');
+assert.match(styles, /@media \(max-width: 600px\)[\s\S]*?\.rm-login-presentation \{ display: none; \}/u, 'mobile login prioritizes the form and hides promotional presentation');
+assert.match(styles, /@media \(orientation: landscape\) and \(max-height: 500px\)[\s\S]*?\.rm-login-presentation \{ display: none; \}/u, 'short mobile landscape login prioritizes the form');
+assert.match(styles, /env\(safe-area-inset-(?:top|right|bottom|left)\)/u, 'login gutters respect device safe areas');
 assert.match(source, /autocomplete="one-time-code"/u);
 assert.match(source, /data-mfa-qr width="208" height="208"/u, 'TOTP enrollment includes an accessible local QR target');
 assert.match(source, /renderMfaQr\(result\.otpauthUri\)/u, 'the enrollment URI is rendered by the bundled offline QR encoder');
@@ -88,6 +102,10 @@ assert(identityAsset, 'identity UI bundle has a cache busting version');
 const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
 assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v\d+`/u, 'service worker uses a versioned cache');
 assert.ok(sw.includes(`'/${identityAsset}'`), 'current identity UI asset is included in the offline shell');
+assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v126`/u, 'service worker cache version advances with changed login assets');
+assert.doesNotMatch(html, /<script[^>]+rotamoto-map-runtime/u, 'heavy cartography runtime is not loaded before authentication');
+assert.doesNotMatch(sw.split('const OPTIONAL_ASSETS')[0], /rotamoto-map-runtime|maplibre-gl-worker/u, 'large map runtime and worker are not precached with the login shell');
+assert.match(appSource, /function ensureMapRuntime\(\)[\s\S]*rotamoto-map-runtime\.js[\s\S]*?function initRouteMap\(\)[\s\S]*await ensureMapRuntime\(\)/u, 'map runtime loads on demand before route map initialization');
 assert.match(source, /function clearMfaEnrollment[\s\S]{0,180}clearRect/u, 'closing or completing enrollment clears QR pixels');
 assert(html.indexOf('qr-local.js') >= 0 && html.indexOf('qr-local.js') < html.indexOf('identity-ui.js'),
   'offline QR encoder loads before identity UI');

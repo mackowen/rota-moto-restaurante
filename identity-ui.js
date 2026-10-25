@@ -44,14 +44,27 @@
   host.id = 'rmIdentityRoot';
   host.innerHTML = `<button type="button" class="rm-account-trigger" data-account-security aria-label="Abrir conta e acesso" aria-controls="rmIdentityPanel" aria-expanded="false">Conta</button>
     <section id="rmIdentityPanel" class="rm-identity-panel" role="main" aria-labelledby="rmIdentityTitle" hidden>
+      <section class="rm-login-presentation" data-login-presentation aria-labelledby="rm-login-heading">
+        <div class="rm-login-brand"><img src="/favicon.svg?v=0140.1" alt=""><span>RotaMoto</span></div>
+        <div class="rm-login-intro"><p class="rm-login-eyebrow">OPERAÇÃO DO RESTAURANTE</p><h1 id="rm-login-heading">Gestão completa de entregas para o seu restaurante</h1>
+          <p>Pedidos, rotas, motoboys e operações em um só lugar.</p></div>
+        <ul class="rm-login-benefits">
+          <li><span class="rm-login-benefit-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5M8 17h3"/></svg></span><span><strong>Mais controle</strong><small>Acompanhe pedidos e operações em um só painel.</small></span></li>
+          <li><span class="rm-login-benefit-icon rm-login-benefit-icon--green" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8M17 14a5 5 0 0 1 3.5 4.8"/></svg></span><span><strong>Equipe conectada</strong><small>Gerencie motoboys e presença operacional.</small></span></li>
+          <li><span class="rm-login-benefit-icon rm-login-benefit-icon--amber" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19 9 14l4 3 7-9M15 8h5v5"/><circle cx="4" cy="19" r="1"/><circle cx="9" cy="14" r="1"/><circle cx="13" cy="17" r="1"/></svg></span><span><strong>Rotas eficientes</strong><small>Planeje e acompanhe as entregas da equipe.</small></span></li>
+        </ul>
+        <div class="rm-login-route-art" aria-hidden="true"><span class="rm-login-route-art__pin"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span><span class="rm-login-route-art__line"></span><span class="rm-login-route-art__dot"></span><span class="rm-login-route-art__caption">Pedidos · Equipe · Entregas</span></div>
+      </section>
       <header><div><strong id="rmIdentityTitle">Conta RotaMoto</strong><small data-identity-status>Verificando sua conta…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
       <div class="rm-identity-content">
-        <form data-login novalidate><h2>Entrar</h2><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label>
-          <label>Senha<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+        <div class="rm-login-mobile-brand" data-login-mobile-brand><img src="/favicon.svg?v=0140.1" alt=""><span>RotaMoto</span></div>
+        <form data-login novalidate><div class="rm-login-form-heading"><h2>Conta RotaMoto</h2><p>Entre para acessar sua conta.</p></div>
+          <label>Email<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input name="email" type="email" autocomplete="username" required maxlength="320"></span></label>
+          <label>Senha<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input name="password" type="password" autocomplete="current-password" required maxlength="1024"><button class="rm-password-toggle" type="button" data-toggle-password aria-label="Mostrar senha" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
           <label data-mfa-label hidden>Código de verificação ou recuperação<input name="mfaCode" autocomplete="one-time-code" minlength="6" maxlength="128"></label>
-          <label>Código da empresa<input name="companyId" autocomplete="off" spellcheck="false" aria-describedby="companyHelp" required></label>
+          <label>Código da empresa<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1m4 0h1m-6 4h1m4 0h1m-5 7v-4h4v4"/></svg><input name="companyId" autocomplete="off" spellcheck="false" aria-describedby="companyHelp" required></span></label>
           <small id="companyHelp">Use o código recebido no convite. O servidor confirma o vínculo da conta.</small>
-          <button class="rm-primary" type="submit">Entrar</button><p data-login-error role="alert" aria-live="polite"></p></form>
+          <button class="rm-primary rm-login-submit" type="submit"><span>Entrar</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><p data-login-error role="alert" aria-live="polite"></p></form>
         <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-company-name>Empresa ativa</span><span data-company-code-row>Identificador da empresa: <code data-company-id></code> <button type="button" data-copy-company-id>Copiar</button></span></div>
           <section data-mfa hidden><p data-mfa-status role="status"></p>
             <p data-mfa-start-status role="alert" aria-live="assertive" aria-atomic="true"></p><button type="button" data-mfa-start>Configurar verificação em duas etapas</button>
@@ -352,6 +365,17 @@
   function applyMailAction(){let params;try{params=new URLSearchParams(location.hash.slice(1))}catch(_){return}const action=params.get('action'),token=params.get('token');if(!token||token.length>43)return;if(action==='password_recovery'){$('[data-recovery-consume] [name=token]').value=token;$('[data-recovery]').open=true;setOpen(true)}else if(action==='mfa_recovery'){$('[data-mfa-recovery-confirm] [name=token]').value=token;$('[data-recovery]').open=true;$('[data-recovery] details').open=true;setOpen(true)}else if(['owner_invitation','membership_invitation'].includes(action)){invitationKind=action;$('[data-accept-invitation] [name=token]').value=token;$('[data-invitation]').open=true;setOpen(true)}if(action==='password_recovery'||action==='mfa_recovery'||['owner_invitation','membership_invitation'].includes(action))history.replaceState(null,'',location.pathname+location.search)}
   applyMailAction();
   $('[data-login] [name=companyId]').value = hintedCompany();
+  $('[data-toggle-password]').addEventListener('click', event => {
+    const button = event.currentTarget;
+    const input = $('[data-login] [name=password]');
+    const visible = input.type === 'password';
+    input.type = visible ? 'text' : 'password';
+    button.setAttribute('aria-pressed', String(visible));
+    button.setAttribute('aria-label', visible ? 'Ocultar senha' : 'Mostrar senha');
+    button.innerHTML = visible
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.2 6.2C3.5 8 2 12 2 12s3.5 7 10 7a10 10 0 0 0 4-.8"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+  });
   function clearMfaEnrollment(){const canvas=mfaQrCanvas;canvas?.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);if(mfaSecretInput)mfaSecretInput.value=''}
   function renderMfaQr(uri){const canvas=$('[data-mfa-qr]'),context=canvas?.getContext('2d'),encoder=window.RotaMotoQRCode;
     if(!canvas||!context||typeof encoder!=='function')throw new Error('QR local indisponível. Use a chave manual.');
