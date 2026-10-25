@@ -8,7 +8,7 @@ const last=source.indexOf('function destroyRouteMap()',first);
 assert(first>=0&&last>first,'Motoboys V2 renderer is present');
 const renderer=source.slice(first,last);
 function renderFixture(count,{queue=[],availability={},permissions=true}={}){
-  const drivers=Array.from({length:count},(_,index)=>({id:`driver-${index+1}`,companyId:'tenant-synthetic',name:`Pessoa ${index+1}`,phone:index===0?'(11) 90000-0001':'',status:'ACTIVE',createdAt:1000+index,updatedAt:2000+index,sync:{canonicalId:`canonical-${index+1}`}}));
+  const drivers=Array.from({length:count},(_,index)=>({id:`driver-${index+1}`,companyId:'tenant-synthetic',name:`Pessoa ${index+1}`,phone:'',status:'ACTIVE',createdAt:1000+index,updatedAt:2000+index,sync:{canonicalId:`canonical-${index+1}`}}));
   const context={
     state:{bikes:drivers,bikesUI:{selectedId:null,section:'overview',filter:'all',sort:'name',query:'',mobileDetail:false},pagination:{},settings:{global:{companyId:'tenant-synthetic'}}},
     restaurantQueueRecords:queue,restaurantQueueStatus:queue.length||count===0?'confirmed':'unknown',operationalAvailabilityCheckedAt:Object.keys(availability).length?1:0,operationalAvailabilityFailure:null,
@@ -33,7 +33,7 @@ for(const count of [0,1,5,20]){
   assert.equal((html.match(/class="bikes-v2-person /gu)||[]).length,Math.min(count,50),`renders ${count} real roster rows`);
   assert.match(html,/Cadastrados/u);
   assert.match(html,/Disponibilidade não confirmada/u,'unknown availability is not rendered as offline/zero');
-  assert.doesNotMatch(html,/<img\b|R\$ 48,50|92%/u,'no profile photos or reference-only financial values');
+  assert.doesNotMatch(html,/<img\b|R\$ 48,50|92%|\(11\) 90000-0001/u,'no profile photos, personal-looking fixture phone, or reference-only financial values');
   if(count)assert.match(html,/Visão geral[\s\S]*Corridas[\s\S]*Histórico[\s\S]*Localização/u);
 }
 const syntheticQueue=[{driverId:'canonical-1',name:'Pessoa 1',online:true,present:true,confirmed:true,eligible:true,busy:false,checkedInAt:'2026-10-25T10:00:00Z'}];
