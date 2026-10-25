@@ -20,6 +20,9 @@ assert.match(routeMap,/validGeoPoint\(point\.latitude,point\.longitude\)/,'locat
 assert.doesNotMatch(routeMap,/nominatim|geocode\(/i,'opening the route map must not send addresses to a geocoder');
 assert.doesNotMatch(routeMap,/-23\.5505|-46\.6333/,'map startup must not imply an unconfigured restaurant location');
 assert.match(routesView,/routes-v2-filterbar[\s\S]*id="routeMap"[\s\S]*routes-v2-view-switch[\s\S]*routes-v2-plans/,'mobile hierarchy places compact real map filters, map, then route and delivery views');
+assert.match(routesView,/routes-v2-plan-empty[\s\S]*icon\('route'\)[\s\S]*Nenhuma rota planejada[\s\S]*Os planejamentos salvos aparecerão aqui\./u,'planned routes use the shared route icon and labeled empty state');
+assert.match(styles,/\.routes-v2-plan-empty\{[^}]*padding:12px/u,'planned-route empty state has internal spacing');
+assert.match(styles,/\.routes-v2-plan-empty>\.routes-v2-empty-icon\{[^}]*background:var\(--info-soft\)[^}]*color:var\(--info\)/u,'planned-route empty icon uses semantic contrast tokens');
 assert.match(routesView,/<dl class="routes-v2-summary" aria-label="Resumo operacional">[\s\S]*<dt>Planejamentos<\/dt><dd>\$\{activeRoutes\.length\}<\/dd>[\s\S]*<dt>Entregas elegíveis<\/dt><dd>\$\{activeDeliveries\.length\}<\/dd>[\s\S]*<dt>Motoboys cadastrados<\/dt><dd>\$\{registeredDrivers\.length\}<\/dd>/u,'operational counts have distinct semantic labels and live values');
 assert.match(routesView,/data-map-mode="all" aria-pressed="true"[\s\S]*data-map-mode="delivery"[\s\S]*data-map-mode="bike"[\s\S]*data-map-mode="route"[\s\S]*data-map-overview/u,'all map filters and the fit action remain real and accessible');
 assert.match(routesView,/data-map-fullscreen aria-label="Abrir mapa em tela cheia"/u,'fullscreen control is reachable and labeled over the map');
