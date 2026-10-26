@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const VERSION=6;
-  const stores=[['meta','key'],['companies','id'],['orders','id'],['deliveries','id'],['bikes','id'],['routes','id'],['events','id'],['deliveryEvents','id'],['locations','id'],['proofs','id'],['earnings','id'],['outbox','id'],['inbox','id'],['tombstones','id'],['syncState','id'],['logs','id'],['profiles','id'],['users','id']];
+  const VERSION=7;
+  const stores=[['meta','key'],['companies','id'],['orders','id'],['deliveries','id'],['bikes','id'],['routes','id'],['events','id'],['deliveryEvents','id'],['locations','id'],['proofs','id'],['earnings','id'],['outbox','id'],['inbox','id'],['tombstones','id'],['syncState','id'],['logs','id'],['profiles','id'],['users','id'],['financialEvents','id'],['financeOutbox','id']];
   const migrations={
     1:({db})=>{for(const[name,keyPath]of stores)if(!db.objectStoreNames.contains(name))db.createObjectStore(name,{keyPath})},
     2:()=>{}, // Versão histórica: sem transformação de dados.
@@ -33,6 +33,14 @@
       replace('events',['byCreatedAt'],[['byOccurredAt','at']]);
       replace('deliveryEvents',['byDeliveryId','byCreatedAt'],[['byEntityId','entityId'],['byOccurredAt','occurredAt']]);
       replace('logs',['byCreatedAt'],[['byOccurredAt','at']]);
+    },
+    7: ({transaction}) => {
+      const events=transaction.objectStore('financialEvents');
+      if(!events.indexNames.contains('byOrderId'))events.createIndex('byOrderId','orderId',{unique:false});
+      if(!events.indexNames.contains('byOccurredAt'))events.createIndex('byOccurredAt','occurredAt',{unique:false});
+      const outbox=transaction.objectStore('financeOutbox');
+      if(!outbox.indexNames.contains('byStatus'))outbox.createIndex('byStatus','status',{unique:false});
+      if(!outbox.indexNames.contains('byCreatedAt'))outbox.createIndex('byCreatedAt','createdAt',{unique:false});
     }
   };
   function upgrade(db,transaction,oldVersion,newVersion){

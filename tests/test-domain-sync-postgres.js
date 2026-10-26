@@ -18,24 +18,35 @@ const { createAdminHttpHandler } = require('../backend/admin/http');
 const { createLogisticsService } = require('../backend/logistics/service');
 const { createLogisticsHttpHandler } = require('../backend/logistics/http');
 const Analytics = require('../analytics');
+const { createFinanceService } = require('../backend/finance/service');
+const { createFinanceHttpHandler } = require('../backend/finance/http');
 
 function savepointPool(client) {
-  let counter = 0;
-  const stack = [];
+  let counter = 0, tail = Promise.resolve();
   return { async connect() {
+    let releaseTransaction = null, savepoint = null;
     return {
       async query(sql, values) {
         const command = sql.trim().toUpperCase();
         if (command === 'BEGIN') {
-          const name = `domain_sync_${++counter}`;
-          stack.push(name);
-          return client.query(`SAVEPOINT ${name}`);
+          const previous = tail;
+          let release;
+          tail = new Promise(resolve => { release = resolve; });
+          await previous;
+          releaseTransaction = release;
+          savepoint = `domain_sync_${++counter}`;
+          return client.query(`SAVEPOINT ${savepoint}`);
         }
         if (command === 'COMMIT' || command === 'ROLLBACK') {
-          const name = stack.pop();
-          if (!name) throw new Error('unexpected savepoint operation');
-          if (command === 'ROLLBACK') await client.query(`ROLLBACK TO SAVEPOINT ${name}`);
-          return client.query(`RELEASE SAVEPOINT ${name}`);
+          if (!savepoint || !releaseTransaction) throw new Error('unexpected savepoint operation');
+          try {
+            if (command === 'ROLLBACK') await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+            return await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+          } finally {
+            const release = releaseTransaction;
+            savepoint = releaseTransaction = null;
+            release();
+          }
         }
         return client.query(sql, values);
       },
@@ -61,6 +72,8 @@ async function main() {
     assert.equal(migration.rowCount, 1, 'canonical model constraints migration is applied by the migrator');
     const driverBindingMigration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0013_membership_driver_binding'");
     assert.equal(driverBindingMigration.rowCount, 1, 'membership↔Driver binding migration is applied by the migrator');
+    const financeMigration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0052_financial_ledger'");
+    assert.equal(financeMigration.rowCount, 1, 'immutable financial ledger migration is applied by the E2E migrator');
     assert.equal((await client.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_app');
     await client.query('BEGIN');
     const companyId = crypto.randomUUID();
@@ -90,6 +103,7 @@ async function main() {
     await client.query("INSERT INTO rotamoto.roles(id,company_id,role_key,display_name) VALUES($1,$2,'qa-sync','Synthetic sync role')", [roleId, companyId]);
     await client.query(`INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version)
       VALUES($1,$2,'sync.push',1),($1,$2,'sync.pull',1),($1,$2,'orders.read',1),($1,$2,'orders.manage',1),
+        ($1,$2,'finance.read',1),($1,$2,'finance.manage',1),
         ($1,$2,'company.manage',1),($1,$2,'members.read',1),($1,$2,'integrations.manage',1)`, [companyId, roleId]);
     await client.query("INSERT INTO rotamoto.memberships(id,company_id,user_id,role_id,status,activated_at) VALUES($1,$2,$3,$4,'active',now())", [membershipId, companyId, userId, roleId]);
     await client.query(`INSERT INTO rotamoto.sessions(id,user_id,active_company_id,token_digest,csrf_digest,created_at,last_seen_at,idle_expires_at,absolute_expires_at,mfa_verified_at)
@@ -142,12 +156,15 @@ async function main() {
       rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
     const adminHttp = createAdminHttpHandler({ identityService, adminService,
       rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
+    const financeHttp = createFinanceHttpHandler({ identityService, financeService:createFinanceService(),
+      rateLimiter:createRateLimiter({policies:{default:{limit:100,windowMs:60000}}}),logger:value=>logs.push(value) });
     const logisticsService = createLogisticsService();
     const logisticsHttp = createLogisticsHttpHandler({ identityService, logisticsService,
       rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
     const server = http.createServer(async (req, res) => {
       req.requestId = crypto.randomUUID();
       if (await adminHttp(req, res)) return;
+      if (await financeHttp(req, res)) return;
       if (await queryHttp(req, res)) return;
       if (await logisticsHttp(req, res)) return;
       return handler(req, res);
@@ -182,7 +199,7 @@ async function main() {
       const deniedPull = await call('/api/sync/pull?deviceId=unauthorized-device', { cookie: `${COOKIE_NAME}=${readOnlyToken}` });
       assert.equal(deniedPull.status, 403);
       assert.equal(deniedPull.body.error.code, 'FORBIDDEN');
-      await client.query("INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version) VALUES($1,$2,'sync.pull',1),($1,$2,'sync.push',1)", [companyId, readOnlyRoleId]);
+      await client.query("INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version) VALUES($1,$2,'sync.pull',1),($1,$2,'sync.push',1),($1,$2,'finance.read',1)", [companyId, readOnlyRoleId]);
       const crossInstallPull = await call('/api/sync/pull?deviceId=restaurant-test-device', { cookie: `${COOKIE_NAME}=${readOnlyToken}` });
       assert.equal(crossInstallPull.status, 409);
       assert.equal(crossInstallPull.body.error.code, 'INSTALLATION_REQUIRED', 'another tenant member cannot use a registered installation');
@@ -266,6 +283,51 @@ async function main() {
       assert.equal(domainOrders.body.records[0].id, orderId);
       assert.equal(domainOrders.body.records[0].version, 1);
       assert.deepEqual(domainOrders.body.records[0].record.money,packet.data.orders[0].money,'canonical server read returns the exact validated financial source');
+      const paymentOne={eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),kind:'PAYMENT_CONFIRMED',orderId,
+        amountMinor:4000,currency:'BRL',method:'pix',reference:'PIX-SYNTH-1',reason:'Confirmação manual declarada pelo operador'};
+      const firstPayment=await call('/api/finance/events',{method:'POST',body:paymentOne});
+      assert.equal(firstPayment.status,201,JSON.stringify(firstPayment.body));
+      assert.equal(firstPayment.body.event.source_kind,'operator_declaration');
+      assert.equal(firstPayment.body.event.actor_user_id,userId);
+      assert.equal(firstPayment.body.event.amount_minor,'4000');
+      const replayPayment=await call('/api/finance/events',{method:'POST',body:paymentOne});
+      assert.equal(replayPayment.status,201);assert.equal(replayPayment.body.duplicate,true,'same event and idempotency key replay returns one immutable fact');
+      const conflictingReplay=await call('/api/finance/events',{method:'POST',body:{...paymentOne,amountMinor:3999}});
+      assert.equal(conflictingReplay.status,409);assert.equal(conflictingReplay.body.error.code,'IDEMPOTENCY_CONFLICT');
+      const overflowPayment=await call('/api/finance/events',{method:'POST',body:{...paymentOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:Number.MAX_SAFE_INTEGER+1}});
+      assert.equal(overflowPayment.status,400);assert.equal(overflowPayment.body.error.code,'INVALID_INPUT');
+      const unsupportedCurrency=await call('/api/finance/events',{method:'POST',body:{...paymentOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),currency:'BTC'}});
+      assert.equal(unsupportedCurrency.status,400);assert.equal(unsupportedCurrency.body.error.code,'INVALID_INPUT');
+      const expiredFinanceSession=await call('/api/finance/events',{cookie:`${COOKIE_NAME}=${'x'.repeat(43)}`});
+      assert.equal(expiredFinanceSession.status,401);
+      const financeReadOnly=await call(`/api/finance/events?orderId=${orderId}`,{cookie:`${COOKIE_NAME}=${readOnlyToken}`});
+      assert.equal(financeReadOnly.status,200,'explicit finance.read role can inspect but not mutate the ledger');
+      const financeWriteDenied=await call('/api/finance/events',{method:'POST',body:{...paymentOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID()},cookie:`${COOKIE_NAME}=${readOnlyToken}`,csrf:readOnlyCsrf});
+      assert.equal(financeWriteDenied.status,403);assert.equal(financeWriteDenied.body.error.code,'FORBIDDEN');
+      const paymentTwo={...paymentOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:3000,reference:'PIX-SYNTH-2'};
+      const secondPayment=await call('/api/finance/events',{method:'POST',body:paymentTwo});
+      assert.equal(secondPayment.status,201,'multiple partial payments are recorded separately');
+      const concurrentPayments=await Promise.all([1,2].map(index=>call('/api/finance/events',{method:'POST',body:{...paymentOne,
+        eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:2000,reference:`CONCURRENT-${index}`}})));
+      assert.deepEqual(concurrentPayments.map(response=>response.status).sort(),[201,409],'overlapping requests through the single-client fixture adapter serialize without exceeding the balance');
+      const refund={eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),kind:'REFUND',orderId,relatedEventId:firstPayment.body.event.event_id,
+        amountMinor:1500,currency:'BRL',method:'pix',reference:'REFUND-SYNTH-1',reason:'Estorno parcial de teste'};
+      const refundResponse=await call('/api/finance/events',{method:'POST',body:refund});assert.equal(refundResponse.status,201,JSON.stringify(refundResponse.body));
+      const refundReplay=await call('/api/finance/events',{method:'POST',body:refund});assert.equal(refundReplay.body.duplicate,true);
+      const excessRefund=await call('/api/finance/events',{method:'POST',body:{...refund,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:2501}});
+      assert.equal(excessRefund.status,409);assert.equal(excessRefund.body.error.code,'REFUND_EXCEEDS_PAYMENT');
+      const adjustment=await call('/api/finance/events',{method:'POST',body:{eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),kind:'ADJUSTMENT',orderId,
+        relatedEventId:secondPayment.body.event.event_id,amountMinor:-100,currency:'BRL',reference:'ADJ-SYNTH-1',reason:'Correção auditável de valor'}});
+      assert.equal(adjustment.status,201,JSON.stringify(adjustment.body));
+      const tenantBFinance=await call('/api/finance/events',{cookie:`${COOKIE_NAME}=${tenantBToken}`});
+      assert.equal(tenantBFinance.status,403,'finance read requires explicit tenant-scoped authorization');
+      const noCsrfFinance=await call('/api/finance/events',{method:'POST',csrf:null,body:paymentOne});
+      assert.equal(noCsrfFinance.status,403);assert.equal(noCsrfFinance.body.error.code,'CSRF_INVALID');
+      const financialRead=await call(`/api/finance/events?orderId=${orderId}`);
+      assert.equal(financialRead.status,200);assert.equal(financialRead.body.events.length,5,JSON.stringify(financialRead.body.events.map(row=>row.event_kind)));
+      assert(financialRead.body.events.some(row=>row.event_id===concurrentPayments.find(response=>response.status===201).body.event.event_id),
+        'the acknowledged partial payment appears in canonical readback');
+      assert.equal(financialRead.body.coverage.complete,false,'manual ledger events do not claim complete coverage of external payment channels');
       const serverFinance=Analytics.aggregate({orders:domainOrders.body.records.map(item=>({...item.record,id:item.id,version:item.version}))},{now:Date.now(),period:'all'}).financial;
       assert.deepEqual(serverFinance.totals.BRL,{grossMinor:11500,discountMinor:1000,orderTotalMinor:10500,count:1},'server-read canonical records reconcile to the independent exact-cents expectation');
       const duplicateOrders=await call('/api/domain/orders?limit=10');
@@ -391,6 +453,16 @@ async function main() {
         data:{...packet.data,orders:[],deliveries:[],drivers:[],routes:[],deliveryEvents:[],locationUpdates:[],proofs:[],earnings:[pendingEarning],tombstones:[]}}});
       assert.equal(completedEarning.body.operationResults[0].status,'accepted',JSON.stringify(completedEarning.body.operationResults));
       const earningId=completedEarning.body.aliases.find(row=>row.entity==='Earning').canonicalId;
+      const payoutOne={eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),kind:'PAYOUT_SETTLED',earningId,
+        amountMinor:500,currency:'BRL',reference:'PAYOUT-SYNTH-1',reason:'Liquidação parcial declarada pelo operador'};
+      const payoutFirst=await call('/api/finance/events',{method:'POST',body:payoutOne});
+      assert.equal(payoutFirst.status,201,JSON.stringify(payoutFirst.body));
+      assert.equal(payoutFirst.body.event.source_kind,'operator_declaration');
+      assert.equal((await call('/api/finance/events?earningId='+earningId)).body.events.length,1);
+      const payoutSecond=await call('/api/finance/events',{method:'POST',body:{...payoutOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:750,reference:'PAYOUT-SYNTH-2'}});
+      assert.equal(payoutSecond.status,201,'partial payout settlements can complete the exact earning obligation');
+      const payoutExcess=await call('/api/finance/events',{method:'POST',body:{...payoutOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:1,reference:'PAYOUT-SYNTH-3'}});
+      assert.equal(payoutExcess.status,409);assert.equal(payoutExcess.body.error.code,'PAYOUT_EXCEEDS_EARNING');
       const storedEarning=await client.query(`SELECT payload->>'amountMinor' AS amount_minor,payload->>'currency' AS currency,payload->>'deliveryId' AS delivery_id,payload->>'ruleVersion' AS rule_version,payload->'components' AS components,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'`,[companyId,earningId]);
       assert.equal(storedEarning.rows[0].amount_minor,'1250');assert.equal(storedEarning.rows[0].currency,'BRL');
       assert.equal(storedEarning.rows[0].rule_version,'fees-v1');assert.equal(storedEarning.rows[0].delivery_id,earningDeliveryId);

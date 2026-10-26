@@ -8,9 +8,9 @@ const { generateSecret, otpauthUri, verifyCode, generateRecoveryCodes, recoveryD
 
 const OWNER_PERMISSIONS = Object.freeze([
   'company.manage', 'members.invite', 'members.read', 'orders.read', 'orders.manage', 'integrations.manage',
-  'sync.pull', 'sync.push'
+  'sync.pull', 'sync.push', 'finance.read', 'finance.manage'
 ]);
-const MFA_PERMISSIONS = Object.freeze(['company.manage', 'members.invite', 'integrations.manage']);
+const MFA_PERMISSIONS = Object.freeze(['company.manage', 'members.invite', 'integrations.manage', 'finance.manage']);
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 const SESSION_ABSOLUTE_MS = 12 * 60 * 60 * 1000;
 const INVITATION_TTL_MS = 24 * 60 * 60 * 1000;

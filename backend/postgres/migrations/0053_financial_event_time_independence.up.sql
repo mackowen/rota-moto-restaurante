@@ -1,0 +1,1 @@
+ALTER TABLE rotamoto.financial_events DROP CONSTRAINT financial_events_check6;

@@ -58,6 +58,8 @@ const {createMarketplaceAccountWriter}=require('./backend/integrations/marketpla
 const {createMarketplaceAccountService,validPublicUrl}=require('./backend/integrations/marketplace-account-service');
 const {createMarketplaceAdminHandler,createMarketplaceUnavailableHandler}=require('./backend/integrations/marketplace-admin-http');
 const {createMarketplaceRuntime}=require('./backend/integrations/marketplace-runtime');
+const {createFinanceService}=require('./backend/finance/service');
+const {createFinanceHttpHandler}=require('./backend/finance/http');
 
 function bootstrapFailure(error){
   if(require.main===module){process.stderr.write(`${JSON.stringify({event:'http.bootstrap_failed',code:/^ROTAMOTO_CONFIG_/u.test(error?.code||'')?error.code:'STARTUP_CONFIGURATION_INVALID'})}\n`);process.exit(1)}
@@ -186,6 +188,7 @@ const restaurantDriverQueueService=createRestaurantDriverQueueService({
 });
 const syncService=createSyncService({mediaStorage,driverAvailability:driverAvailabilityService,restaurantDriverQueue:restaurantDriverQueueService});
 const syncHttp=createSyncHttpHandler({identityService,syncService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
+const financeHttp=createFinanceHttpHandler({identityService,financeService:createFinanceService(),logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
 const domainQueryService=createDomainQueryService({repository:createDomainQueryRepository()});
 const domainQueryHttp=createDomainQueryHttpHandler({identityService,queryService:domainQueryService,logger:()=>{}});
 const driverAvailabilityHttp=createDriverAvailabilityHttpHandler({identityService,service:driverAvailabilityService,logger:requestLogger,allowedOrigin:ALLOWED_ORIGINS});
@@ -284,6 +287,7 @@ async function route(req,res,dependencies={}){
       return json(res,503,{error:{code:'MARKETPLACE_RUNTIME_UNAVAILABLE',message:'A integração ainda não está configurada neste servidor.'},requestId:req.requestId});
     }
     if(await proofMediaHttp(req,res))return;
+    if(await financeHttp(req,res))return;
     if(await domainQueryHttp(req,res))return;
     if(await driverAvailabilityHttp(req,res))return;
     if(await restaurantDriverQueueHttp(req,res))return;

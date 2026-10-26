@@ -127,9 +127,20 @@ assert.equal(financialFixture.financial.dailyByCurrency.BRL[0].date,'2026-10-05'
 assert.equal(financialFixture.financial.dailyByCurrency.BRL[0].count,1,'redelivery does not duplicate a single Order financial amount');
 assert.equal(financialFixture.financial.received.available,false,'unvalidated Order.payments are not treated as receipts');
 assert.equal(financialFixture.exportRows.find(row=>row.num==='').grossRecordedMinor,11500);
+const noLedgerEvents=Analytics.aggregate({orders:financialFixtureOrders,financialEvents:[]},{now,period:'all',timeZone:'America/Sao_Paulo'});
+assert.equal(noLedgerEvents.financial.received.available,false,'an empty confirmed event list does not become zero received');
+assert.match(noLedgerEvents.financial.received.reason,/ausência de eventos não prova ausência/u);
+const paymentEvent={event_id:'a1',order_id:'fin-paid-looking',event_kind:'PAYMENT_CONFIRMED',amount_minor:'7000',currency:'BRL',source_kind:'operator_declaration',occurred_at:'2026-10-06T03:00:00.000Z'};
+const refundEvent={event_id:'a2',order_id:'fin-paid-looking',related_event_id:'a1',event_kind:'REFUND',amount_minor:'1000',currency:'BRL',source_kind:'operator_declaration',occurred_at:'2026-10-06T03:30:00.000Z'};
+const adjustmentEvent={event_id:'a3',order_id:'fin-paid-looking',related_event_id:'a1',event_kind:'ADJUSTMENT',amount_minor:'-100',currency:'BRL',source_kind:'operator_declaration',occurred_at:'2026-10-06T03:45:00.000Z'};
+const ledgerFixture=Analytics.aggregate({orders:financialFixtureOrders,financialEvents:[paymentEvent,refundEvent,adjustmentEvent]},{now,period:'all',timeZone:'America/Sao_Paulo'});
+assert.equal(ledgerFixture.financial.received.available,true);
+assert.equal(ledgerFixture.financial.refunds.available,true);
+assert.equal(ledgerFixture.financialLedger.totals.BRL.netReceivedMinor,6000);
+assert.equal(ledgerFixture.financialLedger.totals.BRL.adjustmentMinor,-100,'adjustments stay separate from received cash');
 const financialHtml=View.render({report:financialFixture,filters:{period:'all',bike:'',status:'',type:'',source:''},statusLabel:value=>value,typeLabel:value=>value,sources:{},bikes:[],types:[],freshNote:'fixture financeira'});
 assert.match(financialHtml,/Faturamento bruto registrado[\s\S]*R\$ 115,00/u,'the Executive presents the known gross order amount without labeling it received');
-assert.match(financialHtml,/Liquidação indisponível/u,'payment settlement is separately unavailable');
+assert.match(financialHtml,/Nenhum evento financeiro carregado|Razão financeiro não consultado pelo servidor/u,'settlement is unavailable until a server ledger is loaded');
 
 const timezone = Analytics.aggregate({ orders: [
   { id: 'before', createdAt: Date.parse('2026-10-06T02:59:59Z') },

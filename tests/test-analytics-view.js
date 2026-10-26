@@ -34,7 +34,7 @@ assert.doesNotMatch(zero.html,/<svg class="report-chart"/u,'zero deliveries show
 assert.match(zero.html,/Sem dados neste período/u);
 assert.match(zero.html,/Sem pedidos neste período/u);
 assert.match(zero.html,/Faturamento bruto registrado/u);
-assert.match(zero.html,/Liquidação indisponível/u);
+assert.match(zero.html,/Nenhum evento financeiro carregado|Razão financeiro não consultado pelo servidor/u);
 assert.doesNotMatch(zero.html,/Faturamento bruto registrado[\s\S]*R\$ 0,00/u,'financial data absence never becomes revenue zero');
 assert.match(zero.html,/report-unavailable--compact[\s\S]*Entenda a limitação/u,'financial limitation stays compact with explanation on demand');
 assert.match(zero.html,/Canceladas e falhas[\s\S]*Canceladas[\s\S]*Com falha/u,'the operational overview retains both state counts in a balanced tile');
@@ -50,7 +50,7 @@ const reportStart=app.indexOf('function reports(){');
 const reportEnd=app.indexOf('function activateReportMainView(',reportStart);
 assert(reportStart>=0&&reportEnd>reportStart,'the reports screen factory remains available');
 assert.match(app.slice(reportStart,reportEnd),/return header\('Relatórios','Análises executivas e operacionais'\)/u,'reports uses the shared page-header component with a real title');
-assert.match(app.slice(reportStart,reportEnd),/RotaMotoAnalytics\.aggregate\(\{orders:state\.orders,deliveries:state\.deliveries,deliveryEvents:state\.deliveryEvents,earnings:state\.earnings,bikes:state\.bikes\}/u,'reports explicitly aggregates the local IndexedDB projection');
+assert.match(app.slice(reportStart,reportEnd),/RotaMotoAnalytics\.aggregate\(\{orders:state\.orders,deliveries:state\.deliveries,deliveryEvents:state\.deliveryEvents,earnings:state\.earnings,bikes:state\.bikes,financialEvents:financeLedgerStatus==='confirmed'\?tenantFinancialEvents:undefined/u,'reports aggregates the local IndexedDB projection and includes only tenant-scoped server-confirmed ledger events');
 assert.match(app.slice(reportStart,reportEnd),/reportFreshness\(sync,\{online:navigator\.onLine!==false,sessionActive:!!syncSession,[\s\S]*companyId:syncSession\?\.companyId/u,'report freshness is bound to the active tenant and live session');
 assert.match(app,/transport:'unverified'/u,'startup does not preserve a stale connected state as current confirmation');
 assert.match(app,/transport:'connected',lastSuccessAt:confirmedAt,[\s\S]*lastServerConfirmedAt:confirmedAt,serverConfirmedCompanyId:session\.companyId/u,'only a completed server sync cycle records a tenant-bound confirmation');

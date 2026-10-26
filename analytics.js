@@ -10,7 +10,8 @@
     orders: { name: 'Pedidos', source: 'Order.createdAt/status/type/source', formula: 'contagem de Orders no período de criação e filtros selecionados', unit: 'pedidos', states: 'todos os estados conhecidos; status ausente fica em “desconhecido”', period: 'Order.createdAt (datas civis da Company quando timezone configurado; intervalo UTC quando ausente)', missing: 'data inválida é excluída e contada como incompleta', limits: 'origem é comercial, não provider logístico' },
     deliveryFees: { name: 'Taxas de entrega', source: 'Order.deliveryFee; legado Order.value', formula: 'soma/média de uma taxa por Order cuja entrega principal foi concluída; Delivery RETURN não cria taxa', unit: 'BRL', currency: 'BRL', states: 'Delivery principal DELIVERED e taxa válida', period: 'coorte por Order.createdAt', missing: 'taxa ausente/inválida ou moeda desconhecida é excluída do denominador e reduz cobertura', limits: 'BRL legado só é reconhecido para canais locais conhecidos; não é faturamento de produtos nem valor integral do pedido' },
     orderTicket: { name: 'Ticket médio do pedido', source: 'Order.money.totalMinor + Order.money.currency', formula: 'média do total explicitamente mapeado em minor units, agrupado por moeda', unit: 'valor médio por pedido', currency: 'agrupado por ISO 4217; moedas nunca são somadas', states: 'Orders com total conhecido e moeda explícita no objeto monetário canônico', period: 'coorte por Order.createdAt', missing: 'legado amountMinor/value sem composição comprovada fica fora e reduz cobertura', limits: 'média de totais conhecidos não equivale a faturamento agregado; cobertura depende da origem' },
-    recordedOrderBilling: { name: 'Valores comerciais registrados', source: 'Order.money completo e validado', formula: 'bruto = subtotal + taxas; líquido registrado = totalMinor após desconto; soma por moeda e uma vez por Order', unit: 'unidade mínima monetária', currency: 'agrupado por ISO 4217; moedas nunca são somadas', states: 'Orders não cancelados com composição canônica completa; cancelados são reportados à parte', period: 'competência operacional por Order.createdAt no fuso da empresa', missing: 'somente composição completa e moeda válida entram; desconhecidos permanecem fora e reduzem cobertura', limits: 'valor registrado no pedido, não recebimento, receita liquidada nem faturamento fiscal; sem razão canônica não determina estornos/refundos' },
+    recordedOrderBilling: { name: 'Valores comerciais registrados', source: 'Order.money completo e validado', formula: 'bruto = subtotal + taxas; líquido registrado = totalMinor após desconto; soma por moeda e uma vez por Order', unit: 'unidade mínima monetária', currency: 'agrupado por ISO 4217; moedas nunca são somadas', states: 'Orders não cancelados com composição canônica completa; cancelados são reportados à parte', period: 'competência operacional por Order.createdAt no fuso da empresa', missing: 'somente composição completa e moeda válida entram; desconhecidos permanecem fora e reduzem cobertura', limits: 'valor registrado no pedido, não recebimento, receita liquidada nem faturamento fiscal' },
+    confirmedPayments: { name:'Eventos financeiros registrados',source:'financial_events retornados pela API autenticada',formula:'pagamentos confirmados − estornos; ajustes e repasses liquidados separados',unit:'unidade mínima monetária',currency:'agrupado por moeda ISO; nunca somado entre moedas',states:'somente eventos imutáveis aceitos pelo servidor; declarações do operador são explicitamente identificadas',period:'occurred_at no fuso civil da empresa',missing:'cache não lido do servidor ou ledger truncado não pode provar cobertura completa',limits:'declarações manuais não são liquidação bancária independente; meios externos não integrados não são inferidos' },
     orderMoneyComponents: { name: 'Componentes monetários do pedido', source: 'Order.money.components/provenance/completeness', formula: 'agregação de cada componente conhecido separada por ISO currency', unit: 'unidade mínima monetária', states: 'todos os Orders com componente válido', period: 'coorte por Order.createdAt', missing: 'componente ausente é desconhecido, nunca zero', limits: 'não calcula margem nem infere taxas omitidas' },
     driverPayout: { name: 'Repasse registrado', source: 'Earning.amountMinor/currency', formula: 'soma/média de Earnings BRL válidos associados às Deliveries elegíveis; RETURN excluída', unit: 'BRL', currency: 'BRL', states: 'Earning ligado a Delivery do recorte', period: 'coorte por Order.createdAt; não por data de pagamento', missing: 'Earning ausente não vira zero; cobertura por entregas associadas', limits: 'repasse ao Driver, não custo operacional integral' },
     estimatedDistance: { name: 'Distância estimada', source: 'Delivery.estimatedDistanceM; legado Order.km', formula: 'média e soma apenas de valores não negativos válidos', unit: 'km', states: 'Deliveries do recorte', period: 'coorte por Order.createdAt', missing: 'excluído e contado como indisponível', limits: 'Route ou estimativa local não é distância percorrida' },
@@ -260,9 +261,54 @@
       dailyByCurrency: Object.fromEntries(Object.entries(financialDaily).map(([currency, days]) => [currency,
         Object.entries(days).sort(([a],[b])=>a.localeCompare(b)).map(([date,value])=>({ date, ...value }))])),
       coverage: { available: financialAvailable, total: financialEligible, cancelled: financialCancelled, missing: Math.max(0, financialEligible - financialAvailable) },
-      received: { available: false, reason: 'Não existe evento canônico de liquidação de pagamento.' },
-      refunds: { available: false, reason: 'Não existe razão financeira canônica de estornos e ajustes.' },
+      received: { available: false, reason: 'Nenhum razão financeiro confirmado pelo servidor foi consultado.' },
+      refunds: { available: false, reason: 'Nenhum razão financeiro confirmado pelo servidor foi consultado.' },
     };
+    const ledgerEvents=Array.isArray(input.financialEvents)?input.financialEvents:[];
+    const canonicalOrderId=row=>row.order.sync?.canonicalId||row.order.canonicalId||row.order.id;
+    const orderIds=new Set(filtered.map(canonicalOrderId));
+    const deliveryIdsForLedger=new Set(filtered.flatMap(row=>row.relatedDeliveries.flatMap(delivery=>[delivery.id,delivery.canonicalId,delivery.sync?.canonicalId]).filter(Boolean)));
+    const earningIdsForLedger=new Set((input.earnings||[]).filter(earning=>deliveryIdsForLedger.has(earning.deliveryId))
+      .flatMap(earning=>[earning.id,earning.canonicalId,earning.sync?.canonicalId].filter(Boolean)));
+    const eventTime=event=>timestamp(event.occurred_at||event.occurredAt||event.created_at||event.createdAt);
+    const periodEvents=ledgerEvents.filter(event=>{
+      const at=eventTime(event),id=event.order_id||event.orderId;
+      if(at===null||!['PAYMENT_CONFIRMED','REFUND','ADJUSTMENT','PAYOUT_SETTLED'].includes(event.event_kind||event.kind))return false;
+      if((event.event_kind||event.kind)==='PAYOUT_SETTLED')return earningIdsForLedger.has(event.earning_id||event.earningId);
+      if(!orderIds.has(id))return false;
+      const local=tz?localDateKey(localParts(at,tz)):new Date(at).toISOString().slice(0,10);
+      return (!hasDateRange||!validRange||localStartDate===null||local>=localStartDate)&&(!hasDateRange||!validRange||localEndDate===null||local<=localEndDate)
+        &&(hasDateRange||cutoff===null||at>=cutoff);
+    });
+    const ledgerSums=Object.create(null),sumEvent=(row,field,amount)=>{
+      const current=ledgerSums[row.currency]||{paymentMinor:0,refundMinor:0,adjustmentMinor:0,payoutPaidMinor:0,paymentEvents:0,refundEvents:0,adjustmentEvents:0,payoutEvents:0,events:0};
+      const next=BigInt(current[field])+BigInt(amount);
+      if(next>9007199254740991n||next< -9007199254740991n){ledgerSums[row.currency]=null;return}
+      current[field]=Number(next);current[`${field.replace('Minor','')}Events`]++;current.events++;ledgerSums[row.currency]=current;
+    };
+    for(const event of periodEvents){
+      const kind=event.event_kind||event.kind,currency=event.currency,raw=event.amount_minor??event.amountMinor;
+      if(!validCurrency(currency)||!(/^-?\d+$/u.test(String(raw)))||!Number.isSafeInteger(Number(raw)))continue;
+      const amount=Number(raw),row={currency};
+      if(kind==='PAYMENT_CONFIRMED')sumEvent(row,'paymentMinor',amount);
+      else if(kind==='REFUND')sumEvent(row,'refundMinor',amount);
+      else if(kind==='ADJUSTMENT')sumEvent(row,'adjustmentMinor',amount);
+      else if(kind==='PAYOUT_SETTLED')sumEvent(row,'payoutPaidMinor',amount);
+    }
+    const canonicalEvents=periodEvents.filter(event=>event.source_kind==='operator_declaration'||event.sourceKind==='operator_declaration');
+    const ledgerByOrder=new Map();
+    for(const event of periodEvents){const id=event.order_id||event.orderId;if(!id)continue;const list=ledgerByOrder.get(id)||[];list.push(event);ledgerByOrder.set(id,list)}
+    const financialLedger={available:Array.isArray(input.financialEvents),confirmedByServer:Array.isArray(input.financialEvents),
+      events:periodEvents.length,manualDeclarations:canonicalEvents.length,totals:Object.fromEntries(Object.entries(ledgerSums).map(([currency,value])=>[currency,value&&{
+        ...value,netReceivedMinor:value.paymentMinor-value.refundMinor
+      }])),coverage:input.financialLedgerCoverage||{complete:false,truncated:false,reason:'A cobertura externa dos meios de pagamento não está integrada.'},
+      note:'Confirmações manuais são declarações auditáveis do operador; não são confirmação bancária independente.'};
+    if(Array.isArray(input.financialEvents)){
+      const paymentEvidence=Object.values(ledgerSums).some(value=>value?.paymentEvents>0);
+      const refundEvidence=Object.values(ledgerSums).some(value=>value?.refundEvents>0);
+      financial.received={available:paymentEvidence,totals:paymentEvidence?financialLedger.totals:{},reason:paymentEvidence?financialLedger.note:'Nenhum pagamento confirmado no recorte; ausência de eventos não prova ausência de recebimento.'};
+      financial.refunds={available:refundEvidence,totals:refundEvidence?financialLedger.totals:{},reason:refundEvidence?'Estornos são eventos compensatórios imutáveis aceitos pelo servidor.':'Nenhum estorno registrado no recorte; ausência de eventos não prova ausência de estorno.'};
+    }
 
     const earningsByDelivery = new Map();
     const deliveryAliases = new Map();
@@ -402,7 +448,7 @@
     const returnedCount = operations.filter(operation => operation.status === 'RETURNED').length;
     const open = operations.filter(operation => OPEN_STATUSES.has(operation.status)).length;
     return {
-      ...(options.includeExportRows ? { exportRows: filtered.map(row => { const orderStatus=String(row.order.status||'').trim().toUpperCase(),cancelled=['CANCELADA','CANCELADO','CANCELLED','CANCELED'].includes(orderStatus),complete=row.money.kind==='canonical_complete'&&!cancelled;const gross=complete?row.money.itemsSubtotalMinor+row.money.deliveryFeeMinor+row.money.serviceFeeMinor+row.money.otherFeeMinor:null;return { num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: requestedStatus || row.status, orderStatus:row.order.status||'', type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, moneyCurrency: row.money.currency || '', moneyCompleteness: row.money.kind, itemsSubtotalMinor: row.money.itemsSubtotalMinor ?? null, discountMinor: row.money.discountMinor ?? null, deliveryFeeMinor: row.money.deliveryFeeMinor ?? null, serviceFeeMinor: row.money.serviceFeeMinor ?? null, otherFeeMinor: row.money.otherFeeMinor ?? null, grossRecordedMinor:Number.isSafeInteger(gross)?gross:null, totalMinor: row.money.totalMinor ?? null, estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt }; }) } : {}),
+      ...(options.includeExportRows ? { exportRows: filtered.map(row => { const orderStatus=String(row.order.status||'').trim().toUpperCase(),cancelled=['CANCELADA','CANCELADO','CANCELLED','CANCELED'].includes(orderStatus),complete=row.money.kind==='canonical_complete'&&!cancelled;const gross=complete?row.money.itemsSubtotalMinor+row.money.deliveryFeeMinor+row.money.serviceFeeMinor+row.money.otherFeeMinor:null;const financeRows=ledgerByOrder.get(canonicalOrderId(row))||[],sumKind=kind=>{const values=financeRows.filter(event=>(event.event_kind||event.kind)===kind).map(event=>Number(event.amount_minor??event.amountMinor));return values.length&&values.every(Number.isSafeInteger)?values.reduce((sum,value)=>sum+value,0):null};return { num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: requestedStatus || row.status, orderStatus:row.order.status||'', type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, moneyCurrency: row.money.currency || '', moneyCompleteness: row.money.kind, itemsSubtotalMinor: row.money.itemsSubtotalMinor ?? null, discountMinor: row.money.discountMinor ?? null, deliveryFeeMinor: row.money.deliveryFeeMinor ?? null, serviceFeeMinor: row.money.serviceFeeMinor ?? null, otherFeeMinor: row.money.otherFeeMinor ?? null, grossRecordedMinor:Number.isSafeInteger(gross)?gross:null, totalMinor: row.money.totalMinor ?? null, paymentConfirmedMinor:sumKind('PAYMENT_CONFIRMED'), refundedMinor:sumKind('REFUND'), adjustmentMinor:sumKind('ADJUSTMENT'), estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt }; }) } : {}),
       total: filtered.length, deliveryTotal: operations.length, invalidCreatedAt,
       invalidDateRange: !validRange,
       dateRange: validRange && hasDateRange ? { from: requestedFrom, to: requestedTo, timeZone: tz || 'UTC' } : null,
@@ -426,7 +472,7 @@
         estimatedDistance: { available: estimatedDistance.count, total: operations.length, missing: estimatedMissing },
         actualDistance: { available: actualDistance.count, total: operations.length, missing: actualMissing },
       },
-      deliveryFees: fee, orderTicket, moneyComponents, financial, driverPayout: earnings,
+      deliveryFees: fee, orderTicket, moneyComponents, financial, financialLedger, driverPayout: earnings,
       estimatedDistance, actualDistance, durations,
       hourlyVolume: tz ? hourly : null, weekdayVolume: tz ? weekdays : null,
       dailyVolume, deliveryDailyVolume, deliveryHourlyVolume: tz ? deliveryHourly : null,

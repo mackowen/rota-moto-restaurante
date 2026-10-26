@@ -59,7 +59,14 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.deepEqual(migrations.slice(-10).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update'], 'company role descriptions append after immutable identity migrations');
+assert.deepEqual(migrations.slice(-13).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update','0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference'], 'financial ledger migrations append after immutable identity migrations');
+const financeMigration=migrations.find(migration=>migration.id==='0052_financial_ledger');
+assert.match(financeMigration.up,/CREATE TABLE rotamoto\.financial_events/u);
+assert.match(financeMigration.up,/ENABLE ROW LEVEL SECURITY[\s\S]*FORCE ROW LEVEL SECURITY[\s\S]*current_tenant_id/u);
+assert.match(financeMigration.up,/financial_events_immutable[\s\S]*BEFORE UPDATE OR DELETE/u);
+assert.match(financeMigration.down,/financial_events contém trilha financeira imutável/u);
+assert.match(migrations.find(migration=>migration.id==='0053_financial_event_time_independence').down,/occurred_at<=created_at/u);
+assert.match(migrations.find(migration=>migration.id==='0054_adjustment_event_reference').up,/event_kind='ADJUSTMENT' AND related_event_id IS NOT NULL/u);
 const migration0042 = migrations.find(migration => migration.id === '0042_marketplace_99food_runtime');
 const migration0043 = migrations.find(migration => migration.id === '0043_99food_application_and_cash_commands');
 assert.match(migration0042.up,/claim_marketplace_99food_token_refresh/u);
