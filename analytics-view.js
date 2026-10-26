@@ -142,7 +142,7 @@
     const customersCard=ranking('Top clientes',topCustomers,'Cliente recorrente',emptyState,'Nenhum cliente no período','Os pedidos deste recorte não incluem nomes utilizáveis.');
     const addressesCard=ranking('Principais endereços',topAddresses,'Endereço recorrente',emptyState,'Nenhum endereço no período','Os pedidos deste recorte não incluem endereços utilizáveis.');
     const mapCard=`<section class="report-card report-map-card"><div class="report-card-heading"><h3>Mapa de entregas</h3><a class="report-more" href="#report-territory">Ver mais</a></div><div id="territorial-heatmap" class="report-territory-extra"><div class="report-unavailable" role="status"><strong>Consultando dados geográficos autorizados</strong><span>O mapa só exibe destinos confirmados pelo serviço territorial.</span></div></div></section>`;
-    const overviewCharts=`<div class="report-v2-grid report-v2-primary">${dailyCard}${statusCard}</div><div class="report-v2-grid report-v2-secondary">${hourlyCard}${revenueCard}${driversCard}</div><div class="report-v2-grid report-v2-tertiary">${customersCard}${addressesCard}${mapCard}</div>`;
+    const overviewCharts=`<div class="report-v2-grid report-v2-primary">${dailyCard}${statusCard}</div><div class="report-v2-grid report-v2-secondary report-v2-grid--three-up">${hourlyCard}${revenueCard}${driversCard}</div><div class="report-v2-grid report-v2-tertiary report-v2-grid--territory">${customersCard}${addressesCard}${mapCard}</div>`;
     const executiveCategories=[['overview','Visão Geral'],['deliveries','Entregas'],['finance','Financeiro'],['drivers','Motoboys'],['hours','Horários'],['customers','Clientes'],['addresses','Endereços']];
     const executiveContent={
       overview:`${kpis}${overviewCharts}`,
@@ -151,7 +151,7 @@
       drivers:`<div class="report-v2-kpis">${kpiDelivery}${kpiTime}</div><div class="report-v2-grid report-v2-secondary">${driversCard}</div>`,
       hours:`<div class="report-v2-grid report-v2-primary">${hourlyCard}<section class="report-card"><h3>Distribuição por horário</h3><p>Agrupamento pela data de criação do pedido no fuso horário cadastrado pela empresa.</p></section></div>`,
       customers:`<div class="report-v2-grid report-v2-secondary">${customersCard}</div>`,
-      addresses:`<div class="report-v2-grid report-v2-secondary">${addressesCard}<section class="report-card"><h3>Mapa de entregas</h3><p>O mapa só é exibido quando o serviço territorial confirma dados geográficos autorizados.</p><a class="report-more" href="#report-territory">Abrir análise detalhada de clientes e endereços</a></section></div>`,
+      addresses:`<div class="report-v2-grid report-v2-secondary report-v2-grid--territory">${addressesCard}<section class="report-card"><h3>Mapa de entregas</h3><p>O mapa só é exibido quando o serviço territorial confirma dados geográficos autorizados.</p><a class="report-more" href="#report-territory">Abrir análise detalhada de clientes e endereços</a></section></div>`,
     };
     const categoryPanelId=id=>id==='overview'?'report-overview':`report-category-panel-${id}`;
     const executiveNav=`<nav class="report-section-nav report-executive-categories" role="tablist" aria-label="Categorias executivas">${executiveCategories.map(([id,label])=>`<button type="button" role="tab" id="report-category-tab-${id}" aria-controls="${categoryPanelId(id)}" aria-selected="${id===executiveCategory}" tabindex="${id===executiveCategory?'0':'-1'}" data-report-executive-category="${id}">${label}</button>`).join('')}</nav>`;
