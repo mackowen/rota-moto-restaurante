@@ -753,13 +753,12 @@ function reports(){
  const sources=Object.fromEntries((state.settings.orders?.sources||[]).map(source=>[source.id,source.name]));sources.unknown="Sem origem registrada";
  const sync=state.settings.global?.sync||{};
  const freshNote=sync.transport==="connected"&&sync.status==="ready"&&sync.lastReceivedAt?("Dados recebidos do servidor em "+dateFmt(sync.lastReceivedAt)):"A sincronização ainda não foi confirmada. Este relatório usa os dados salvos neste aparelho.";
- return header("","", "", false)+RotaMotoAnalyticsView.render({report:report,filters:q,statusLabel:statusLabel,typeLabel:typeLabel,sources:sources,bikes:state.bikes,types:TYPES,freshNote:freshNote,emptyState:emptyStateMarkup});
+ return header('Relatórios','Análises executivas e operacionais')+RotaMotoAnalyticsView.render({report:report,filters:q,statusLabel:statusLabel,typeLabel:typeLabel,sources:sources,bikes:state.bikes,types:TYPES,freshNote:freshNote,emptyState:emptyStateMarkup});
 }
 function activateReportMainView(view,{focus=false}={}){
  const selected=view==='operational'?'operational':'executive';state.report.mainView=selected;
  document.querySelectorAll('[data-report-main-view]').forEach(button=>{const active=button.dataset.reportMainView===selected;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1});
  document.querySelectorAll('[data-report-main-panel]').forEach(panel=>{panel.hidden=panel.dataset.reportMainPanel!==selected});
- const advanced=document.getElementById('report-advanced-filters');if(advanced)advanced.open=selected==='operational';
  if(focus)document.querySelector(`[data-report-main-view="${selected}"]`)?.focus();
  if(selected==='operational')window.RotaMotoLogisticsUI?.refreshReport?.();
  else if(state.report.executiveCategory==='overview')window.RotaMotoLogisticsUI?.refreshTerritorialReport?.();
@@ -780,6 +779,7 @@ function activateReportOperationalSection(id,{scroll=true}={}){
  if(state.report.mainView==='operational')window.RotaMotoLogisticsUI?.refreshReport?.();return true;
 }
 function bindReportNavigation(){
+ const advanced=document.getElementById('report-advanced-filters');advanced?.addEventListener('toggle',()=>{state.report.advancedFiltersOpen=advanced.open});
  document.querySelectorAll('[data-report-main-view]').forEach(button=>{
   button.addEventListener('click',()=>activateReportMainView(button.dataset.reportMainView));
   button.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('[data-report-main-view]')],index=tabs.indexOf(button),next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;activateReportMainView(tabs[next].dataset.reportMainView,{focus:true})});
