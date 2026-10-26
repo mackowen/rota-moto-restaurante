@@ -8,8 +8,8 @@ const manifest=JSON.parse(fs.readFileSync(require.resolve('../manifest.json'),'u
 const designSystem=fs.readFileSync(require.resolve('../design-system.css'),'utf8');
 const styles=fs.readFileSync(require.resolve('../styles.css'),'utf8');
 assert.match(html,/identity-ui\.css\?v=0304-login\.10[\s\S]*design-system\.css\?v=0304\.5/u);
-assert.match(html,/styles\.css\?v=0304\.17[\s\S]*pilot-views\.css\?v=0299\.1[\s\S]*dashboard-v2\.css\?v=0304\.8[\s\S]*orders-v2\.css\?v=0304\.8[\s\S]*routes-v2\.css\?v=0304\.11[\s\S]*app\.js\?v=0304-login\.12/u,'the campaign shell cache keys the current visual modules and dashboard markup');
-assert.match(worker,/CACHE_PREFIX\}v135/u,'updated visual assets use a new atomic shell cache');
+assert.match(html,/styles\.css\?v=0304\.18[\s\S]*pilot-views\.css\?v=0299\.1[\s\S]*dashboard-v2\.css\?v=0304\.8[\s\S]*orders-v2\.css\?v=0304\.8[\s\S]*routes-v2\.css\?v=0304\.11[\s\S]*app\.js\?v=0304-login\.12/u,'the campaign shell cache keys the current visual modules and dashboard markup');
+assert.match(worker,/CACHE_PREFIX\}v136/u,'updated visual assets use a new atomic shell cache');
 assert.match(html,/rel="icon" type="image\/svg\+xml" href="favicon\.svg\?v=0140\.1"/u);
 assert.match(html,/rel="manifest" href="\/manifest\.json"/u);
 assert.match(html,/sizes="192x192" href="\/icons\/icon-192\.png"/u);
@@ -32,7 +32,7 @@ assert.doesNotMatch(html,/rotamoto-map-runtime/u,'map runtime is lazy-loaded rat
 assert.doesNotMatch(worker.split('const OPTIONAL_ASSETS')[0],/rotamoto-map-runtime|maplibre-gl-worker/u,'the offline shell does not precache heavy map JavaScript');
 assert(identityAsset&&worker.includes(`/${identityAsset}`),'service worker includes the identity bundle referenced by index.html');
 assert.match(worker,/\/server-update-coordinator\.js\?v=0253\.1/u);
-assert.match(worker,/\/styles\.css\?v=0304\.17/u);
+assert.match(worker,/\/styles\.css\?v=0304\.18/u);
 assert.match(worker,/\/design-system\.css\?v=0304\.5/u);
 assert.match(worker,/\/orders-v2\.css\?v=0304\.8/u);
 assert.match(worker,/\/pilot-views\.css\?v=0299\.1/u);
