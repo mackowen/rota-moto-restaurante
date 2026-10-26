@@ -37,13 +37,32 @@ async function run(){
   const finance=createFinanceService(),companyId=uuid(),userId=uuid(),orderId=uuid(),deliveryId=uuid(),earningId=uuid();
   const restaurantInstallId=uuid(),motoboyInstallId=uuid();
   const principal={company_id:companyId,user_id:userId};
-  let fixtureCommitted=false,cleanupComplete=false,tenantRlsDisabled=false;
+  let fixtureCommitted=false,cleanupComplete=false,tenantRlsDisabled=false,fixtureSecurity=null;
+  async function restoreSecurity(){
+    for(const name of ['companies','users','sync_installations','domain_records','financial_events']){
+      const original=fixtureSecurity.get(name);
+      if(original.rls){await migrator.query(`ALTER TABLE rotamoto.${name} ENABLE ROW LEVEL SECURITY`);await migrator.query(`ALTER TABLE rotamoto.${name} ${original.force?'FORCE':'NO FORCE'} ROW LEVEL SECURITY`)}
+      else await migrator.query(`ALTER TABLE rotamoto.${name} DISABLE ROW LEVEL SECURITY`);
+    }
+    await migrator.query(`ALTER TABLE rotamoto.financial_events ${fixtureSecurity.get('financial_events').trigger==='O'?'ENABLE':'DISABLE'} TRIGGER financial_events_immutable`);
+  }
   try{
     await migrator.connect();await Promise.all(clients.map(client=>client.connect()));
     const migrations=await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0055_financial_reference_uniqueness'");
     assert.equal(migrations.rowCount,1,'finance uniqueness migration must be applied to the isolated E2E database');
     const identities=await Promise.all(clients.map(client=>client.query('SELECT pg_backend_pid() AS pid')));
     assert.notEqual(identities[0].rows[0].pid,identities[1].rows[0].pid,'race test uses two independent PostgreSQL backends');
+
+    const security=await migrator.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,
+      (SELECT tgenabled FROM pg_trigger WHERE tgrelid=c.oid AND tgname='financial_events_immutable') AS immutable_trigger
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='rotamoto' AND c.relname=ANY($1::text[])`,[['users','companies','sync_installations','domain_records','financial_events']]);
+    fixtureSecurity=new Map(security.rows.map(row=>[row.relname,{rls:row.relrowsecurity,force:row.relforcerowsecurity,trigger:row.immutable_trigger}]));
+    assert.equal(fixtureSecurity.size,5,'all fixture tables expose their security state');
+    assert.deepEqual(fixtureSecurity.get('users'),{rls:false,force:false,trigger:null},'global users table follows migrations and has no RLS policy');
+    for(const name of ['companies','sync_installations','domain_records','financial_events'])
+      assert.deepEqual({rls:fixtureSecurity.get(name)?.rls,force:fixtureSecurity.get(name)?.force},{rls:true,force:true},`${name} keeps forced tenant RLS`);
+    assert.equal(fixtureSecurity.get('financial_events')?.trigger,'O','financial event immutability trigger is enabled');
 
     await migrator.query('BEGIN');
     try{
@@ -69,7 +88,7 @@ async function run(){
     }catch(error){await migrator.query('ROLLBACK');throw error}
     await migrator.query('BEGIN');
     try{
-      for(const table of ['domain_records','sync_installations','users','companies'])await migrator.query(`ALTER TABLE rotamoto.${table} ENABLE ROW LEVEL SECURITY`);
+      await restoreSecurity();
       await migrator.query('COMMIT');tenantRlsDisabled=false;
     }catch(error){await migrator.query('ROLLBACK');throw error}
 
@@ -157,14 +176,12 @@ async function run(){
         await migrator.query('DELETE FROM rotamoto.companies WHERE id=$1',[companyId]);
         await migrator.query('COMMIT');
         await migrator.query('BEGIN');
-        await migrator.query('ALTER TABLE rotamoto.financial_events ENABLE ROW LEVEL SECURITY');
-        await migrator.query('ALTER TABLE rotamoto.financial_events ENABLE TRIGGER financial_events_immutable');
-        for(const table of ['domain_records','sync_installations','users','companies'])await migrator.query(`ALTER TABLE rotamoto.${table} ENABLE ROW LEVEL SECURITY`);
+        await restoreSecurity();
         await migrator.query('COMMIT');tenantRlsDisabled=false;cleanupComplete=true;
       }catch(error){await migrator.query('ROLLBACK').catch(()=>{});throw error}
     }else if(tenantRlsDisabled){
       await migrator.query('BEGIN');
-      try{for(const table of ['domain_records','sync_installations','users','companies'])await migrator.query(`ALTER TABLE rotamoto.${table} ENABLE ROW LEVEL SECURITY`);await migrator.query('COMMIT');tenantRlsDisabled=false}
+      try{if(fixtureSecurity)await restoreSecurity();await migrator.query('COMMIT');tenantRlsDisabled=false}
       catch(error){await migrator.query('ROLLBACK').catch(()=>{});throw error}
     }
     await Promise.all(clients.map(client=>client.end().catch(()=>{})));

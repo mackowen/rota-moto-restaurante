@@ -3,9 +3,11 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
 const { createClient } = require('../backend/postgres/connection');
 const { createIdentityService, tokenDigest } = require('../backend/identity/service');
-const { COOKIE_NAME, createRateLimiter } = require('../backend/identity/http');
+const { COOKIE_NAME, createRateLimiter, createIdentityHttpHandler } = require('../backend/identity/http');
 const { createSyncService } = require('../backend/domain/sync-service');
 const { createSyncHttpHandler } = require('../backend/domain/sync-http');
 const { createDomainQueryRepository } = require('../backend/domain/query-repository');
@@ -18,6 +20,7 @@ const { createAdminHttpHandler } = require('../backend/admin/http');
 const { createLogisticsService } = require('../backend/logistics/service');
 const { createLogisticsHttpHandler } = require('../backend/logistics/http');
 const Analytics = require('../analytics');
+const SyncReconciliation=require('../sync-reconciliation');
 const { createFinanceService } = require('../backend/finance/service');
 const { createFinanceHttpHandler } = require('../backend/finance/http');
 
@@ -55,6 +58,68 @@ function savepointPool(client) {
   } };
 }
 
+async function runAuthenticatedFinancialBrowser({base,sessionToken,orderId,companyId}){
+  const cdpPort=Number(process.env.E2E_BROWSER_CDP_PORT),cdpModule=process.env.E2E_CDP_MODULE_PATH;
+  assert(Number.isInteger(cdpPort)&&cdpPort>0&&cdpModule,'authorized browser run requires explicit CDP port and module path');
+  const CDP=require(cdpModule),target=await CDP.New({port:cdpPort,url:'about:blank'}),page=await CDP({port:cdpPort,target});
+  const browserErrors=[],httpErrors=[],dialogs=[],dialogDecisions=[];
+  const evaluate=async expression=>{const result=await page.Runtime.evaluate({expression,returnByValue:true,awaitPromise:true,userGesture:true});if(result.exceptionDetails)throw new Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text);return result.result.value};
+  const until=async(check,label,timeout=45000)=>{const started=Date.now();while(Date.now()-started<timeout){const result=await check();if(result)return result;await new Promise(resolve=>setTimeout(resolve,200))}throw new Error(`browser E2E timeout: ${label}`)};
+  page.Runtime.exceptionThrown(({exceptionDetails})=>browserErrors.push(exceptionDetails?.text||'javascript exception'));
+  page.Network.responseReceived(({response})=>{if(response.status>=400)httpErrors.push({status:response.status,url:response.url})});
+  page.Page.javascriptDialogOpening(({message})=>{dialogs.push(message);page.Page.handleJavaScriptDialog({accept:dialogDecisions.shift()??true}).catch(()=>{})});
+  try{
+    await Promise.all([page.Page.enable(),page.Runtime.enable(),page.Network.enable(),page.Network.setBypassServiceWorker({bypass:true})]);
+    const cookie=await page.Network.setCookie({name:COOKIE_NAME,value:sessionToken,url:base,path:'/',secure:true,httpOnly:true,sameSite:'Lax'});
+    assert.equal(cookie.success,true,'synthetic E2E session cookie is installed only in this disposable browser');
+    await page.Page.navigate({url:base});
+    await until(()=>evaluate(`window.RotaMotoAppReady===true&&window.RotaMotoIdentity?.getSession?.()?.activeCompanyId===${JSON.stringify(companyId)}`),'authenticated restaurant bootstrap');
+    let syncAttempt;try{syncAttempt=await evaluate("window.RotaMotoSync.syncNow()")}
+    catch(error){error.message+=` syncNow failure; HTTP=${JSON.stringify(httpErrors)} JS=${JSON.stringify(browserErrors)}`;throw error}
+    try{await until(()=>evaluate(`new Promise(resolve=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onerror=()=>resolve(false);r.onsuccess=()=>{const db=r.result,q=db.transaction('orders').objectStore('orders').getAll();q.onsuccess=()=>{const rows=q.result||[];const found=rows.some(row=>row.id===${JSON.stringify(orderId)}||row.sync?.canonicalId===${JSON.stringify(orderId)});db.close();resolve(found)};q.onerror=()=>resolve(false)}})`),'canonical Order pulled to local-first browser')}
+    catch(error){const diagnostics=await evaluate(`new Promise(resolve=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onerror=()=>resolve({openError:String(r.error)});r.onsuccess=()=>{const db=r.result,tx=db.transaction(['orders','syncState'],'readonly'),orders=tx.objectStore('orders').getAll(),sync=tx.objectStore('syncState').getAll();tx.oncomplete=async()=>{resolve({orders:orders.result?.length||0,sync:sync.result?.map(x=>({id:x.id,status:x.status,lastErrorCode:x.lastErrorCode})),identity:window.RotaMotoIdentity?.getSession?.(),syncStatus:await window.RotaMotoSync?.getStatus?.(),appReady:window.RotaMotoAppReady,title:document.title});db.close()}}})`);error.message+=` diagnostics=${JSON.stringify({diagnostics,syncAttempt,httpErrors,browserErrors})}`;throw error}
+    await evaluate("document.querySelector('[data-tab=orders]')?.click()");
+    const localOrderId=await until(()=>evaluate(`(async()=>{const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});const rows=await new Promise((resolve,reject)=>{const q=db.transaction('orders').objectStore('orders').getAll();q.onsuccess=()=>resolve(q.result||[]);q.onerror=()=>reject(q.error)});db.close();return rows.find(x=>x.id===${JSON.stringify(orderId)}||x.sync?.canonicalId===${JSON.stringify(orderId)})?.id||false})()`),'local Order id');
+    await until(()=>evaluate(`!!document.querySelector('[data-detail="${localOrderId}"]')`),'Order detail action');
+    await evaluate(`document.querySelector('[data-detail="${localOrderId}"]').click()`);
+    await until(()=>evaluate("!!document.querySelector('.financial-order-section [data-record-financial-order]')"),'financial order section');
+    await evaluate("document.querySelector('.financial-order-section [data-record-financial-order]').click()");
+    await until(()=>evaluate("!!document.querySelector('#financialReceiptForm')"),'manual receipt form');
+    const fillReceipt=async(reference,amount)=>evaluate(`(()=>{const f=document.querySelector('#financialReceiptForm');for(const [name,value] of Object.entries({amount:${JSON.stringify(String(amount))},reference:${JSON.stringify(reference)},reason:'browser authenticated fixture confirmation'})){const e=f.elements.namedItem(name);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}return true})()`);
+    const submitWithConfirmation=async({accept})=>{dialogDecisions.push(accept);await evaluate("document.querySelector('#financialReceiptForm').requestSubmit()");await until(()=>dialogs.length>0,'explicit receipt confirmation');await new Promise(resolve=>setTimeout(resolve,120))};
+    await fillReceipt('PIX-SYNTH-1',500);
+    await submitWithConfirmation({accept:false});
+    assert(await evaluate("!!document.querySelector('#financialReceiptForm')"),'canceling confirmation preserves the form');
+    await fillReceipt('PIX-SYNTH-1',500);
+    await submitWithConfirmation({accept:true});
+    await until(()=>evaluate("document.querySelector('#financialReceiptForm [role=alert]')?.textContent.includes('Esta referência já foi registrada')"),'visible server duplicate-reference error');
+    assert(await evaluate("!!document.querySelector('#financialReceiptForm')"),'server rejection preserves the form values');
+    const acceptedReference=`BROWSER-${crypto.randomUUID()}`;
+    await fillReceipt(acceptedReference,1000);
+    await submitWithConfirmation({accept:true});
+    await until(()=>evaluate("!document.querySelector('#financialReceiptForm')"),'server-confirmed receipt closes form');
+    await until(()=>evaluate(`new Promise(resolve=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onsuccess=()=>{const db=r.result,q=db.transaction('financialEvents').objectStore('financialEvents').getAll();q.onsuccess=()=>{const ok=q.result.some(x=>x.dataOrigin==='server-confirmed'&&x.reference===${JSON.stringify(acceptedReference)});db.close();resolve(ok)}}})`),'confirmed event reconciled to IndexedDB');
+    await evaluate("document.querySelector('[data-tab=reports]')?.click()");
+    await until(()=>evaluate("!!document.querySelector('[data-report-executive-category=finance]')"),'Relatórios V2');
+    await evaluate("document.querySelector('[data-report-executive-category=finance]').click()");
+    await until(()=>evaluate("document.querySelector('[data-report-executive-panel=finance]')?.textContent.includes('Recebimentos confirmados no razão')"),'financial ledger in Executive report');
+    const reportText=await evaluate("document.querySelector('[data-report-executive-panel=finance]').innerText");
+    const layouts=[];
+    for(const width of [320,390,430,768,980,1440])for(const theme of ['light','dark']){
+      await page.Emulation.setDeviceMetricsOverride({width,height:900,deviceScaleFactor:1,mobile:width<=430});
+      await page.Emulation.setEmulatedMedia({features:[{name:'prefers-color-scheme',value:theme}]});
+      await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+      const metrics=await evaluate("({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,theme:document.documentElement.dataset.resolvedTheme||getComputedStyle(document.documentElement).colorScheme,modal:!!document.querySelector('.modal-back')})");
+      layouts.push({requestedWidth:width,theme,...metrics});assert(metrics.scrollWidth<=width,`no horizontal overflow at ${width}px ${theme}`);
+    }
+    assert(httpErrors.length===0,JSON.stringify(httpErrors));assert(browserErrors.length===0,JSON.stringify(browserErrors));
+    return {authenticated:true,companyScoped:true,receiptConfirmationCancelled:true,duplicateReferenceErrorPreserved:true,receiptConfirmedAndReconciled:true,
+      reportContainsServerLedger:true,layouts,reportText:reportText.slice(0,1600),httpErrors,browserErrors,dialogCount:dialogs.length};
+  }finally{
+    await page.close().catch(()=>{});await CDP.Close({port:cdpPort,id:target.id}).catch(()=>{});
+  }
+}
+
 async function main() {
   if (!process.env.DATABASE_URL || !process.env.MIGRATOR_DATABASE_URL) {
     throw new Error('DATABASE_URL (runtime) e MIGRATOR_DATABASE_URL (status de migrations) são obrigatórias.');
@@ -74,6 +139,13 @@ async function main() {
     assert.equal(driverBindingMigration.rowCount, 1, 'membership↔Driver binding migration is applied by the migrator');
     const financeMigration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0052_financial_ledger'");
     assert.equal(financeMigration.rowCount, 1, 'immutable financial ledger migration is applied by the E2E migrator');
+    const expectedRls = await migrator.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='rotamoto' AND c.relname=ANY($1::text[])`,[['users','companies','domain_records','sync_installations','financial_events']]);
+    const rlsByTable = new Map(expectedRls.rows.map(row=>[row.relname,{enabled:row.relrowsecurity,forced:row.relforcerowsecurity}]));
+    assert.deepEqual(rlsByTable.get('users'),{enabled:false,forced:false},'users is global identity metadata, not a tenant RLS table');
+    for(const table of ['companies','domain_records','sync_installations','financial_events'])
+      assert.deepEqual(rlsByTable.get(table),{enabled:true,forced:true},`${table} preserves forced tenant RLS in E2E`);
     assert.equal((await client.query('SELECT current_user AS role')).rows[0].role, 'rotamoto_app');
     await client.query('BEGIN');
     const companyId = crypto.randomUUID();
@@ -146,6 +218,7 @@ async function main() {
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
 
     const identityService = createIdentityService({ pool: savepointPool(client) });
+    const identityHttp=createIdentityHttpHandler({identityService,logger:value=>logs.push(value),rateLimiter:createRateLimiter({policies:{default:{limit:100,windowMs:60000}}})});
     const syncService = createSyncService();
     const queryService = createDomainQueryService({ repository: createDomainQueryRepository() });
     const adminService = createAdminService({ repository: createAdminRepository() });
@@ -163,6 +236,17 @@ async function main() {
       rateLimiter: createRateLimiter({ policies: { default: { limit: 100, windowMs: 60000 } } }), logger: value => logs.push(value) });
     const server = http.createServer(async (req, res) => {
       req.requestId = crypto.randomUUID();
+      const pathname=new URL(req.url,'http://127.0.0.1').pathname;
+      if(!pathname.startsWith('/api/')&&['GET','HEAD'].includes(req.method)){
+        let decoded;try{decoded=decodeURIComponent(pathname)}catch(_){res.writeHead(400);res.end();return}
+        const relative=decoded==='/'?'index.html':decoded.slice(1),first=relative.split('/')[0];
+        if(first.startsWith('.')||['backend','tests','docs','EVIDENCIAS','evidencias','node_modules'].includes(first)){res.writeHead(404);res.end();return}
+        const target=path.resolve(__dirname,'..',relative),root=path.resolve(__dirname,'..');
+        if(!target.startsWith(`${root}${path.sep}`)){res.writeHead(403);res.end();return}
+        const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.webmanifest':'application/manifest+json','.ico':'image/x-icon'};
+        fs.stat(target,(error,info)=>{if(error||!info.isFile()){res.writeHead(404);res.end();return}res.writeHead(200,{'Content-Type':mime[path.extname(target)]||'application/octet-stream','Cache-Control':'no-store','Content-Length':info.size});if(req.method==='HEAD')return res.end();fs.createReadStream(target).pipe(res)});return;
+      }
+      if (await identityHttp(req,res)) return;
       if (await adminHttp(req, res)) return;
       if (await financeHttp(req, res)) return;
       if (await queryHttp(req, res)) return;
@@ -290,6 +374,12 @@ async function main() {
       assert.equal(firstPayment.body.event.source_kind,'operator_declaration');
       assert.equal(firstPayment.body.event.actor_user_id,userId);
       assert.equal(firstPayment.body.event.amount_minor,'4000');
+      await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=NULL WHERE id=$1',[sessionId]);
+      const financeWithoutMfa=await call('/api/finance/events',{method:'POST',body:{...paymentOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:1,reference:'MFA-FINANCE-DENIED'}});
+      assert.equal(financeWithoutMfa.status,403);assert.equal(financeWithoutMfa.body.error.code,'MFA_REQUIRED','finance.manage writes require an MFA-verified session');
+      await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=now() WHERE id=$1',[sessionId]);
+      const duplicatePaymentReference=await call('/api/finance/events',{method:'POST',body:{...paymentOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID()}});
+      assert.equal(duplicatePaymentReference.status,409);assert.equal(duplicatePaymentReference.body.error.code,'DUPLICATE_FINANCIAL_REFERENCE');
       const replayPayment=await call('/api/finance/events',{method:'POST',body:paymentOne});
       assert.equal(replayPayment.status,201);assert.equal(replayPayment.body.duplicate,true,'same event and idempotency key replay returns one immutable fact');
       const conflictingReplay=await call('/api/finance/events',{method:'POST',body:{...paymentOne,amountMinor:3999}});
@@ -314,7 +404,7 @@ async function main() {
         amountMinor:1500,currency:'BRL',method:'pix',reference:'REFUND-SYNTH-1',reason:'Estorno parcial de teste'};
       const refundResponse=await call('/api/finance/events',{method:'POST',body:refund});assert.equal(refundResponse.status,201,JSON.stringify(refundResponse.body));
       const refundReplay=await call('/api/finance/events',{method:'POST',body:refund});assert.equal(refundReplay.body.duplicate,true);
-      const excessRefund=await call('/api/finance/events',{method:'POST',body:{...refund,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:2501}});
+      const excessRefund=await call('/api/finance/events',{method:'POST',body:{...refund,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:2501,reference:'REFUND-SYNTH-EXCESS'}});
       assert.equal(excessRefund.status,409);assert.equal(excessRefund.body.error.code,'REFUND_EXCEEDS_PAYMENT');
       const adjustment=await call('/api/finance/events',{method:'POST',body:{eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),kind:'ADJUSTMENT',orderId,
         relatedEventId:secondPayment.body.event.event_id,amountMinor:-100,currency:'BRL',reference:'ADJ-SYNTH-1',reason:'Correção auditável de valor'}});
@@ -328,6 +418,10 @@ async function main() {
       assert(financialRead.body.events.some(row=>row.event_id===concurrentPayments.find(response=>response.status===201).body.event.event_id),
         'the acknowledged partial payment appears in canonical readback');
       assert.equal(financialRead.body.coverage.complete,false,'manual ledger events do not claim complete coverage of external payment channels');
+      const financeSums=Object.fromEntries(['PAYMENT_CONFIRMED','REFUND','ADJUSTMENT'].map(kind=>[kind,financialRead.body.events.filter(row=>row.event_kind===kind).reduce((sum,row)=>sum+Number(row.amount_minor),0)]));
+      assert.deepEqual(financeSums,{PAYMENT_CONFIRMED:9000,REFUND:1500,ADJUSTMENT:-100},'authenticated event readback reconciles to independently calculated minor-unit totals');
+      const paymentFilter=await call(`/api/finance/events?orderId=${orderId}&kind=PAYMENT_CONFIRMED&from=${encodeURIComponent(firstPayment.body.event.occurred_at)}&to=${encodeURIComponent(new Date(Date.parse(firstPayment.body.event.occurred_at)+1).toISOString())}`);
+      assert.equal(paymentFilter.status,200);assert(paymentFilter.body.events.some(row=>row.event_id===firstPayment.body.event.event_id),'company-scoped HTTP filters apply UTC event-time boundaries and kind');
       const serverFinance=Analytics.aggregate({orders:domainOrders.body.records.map(item=>({...item.record,id:item.id,version:item.version}))},{now:Date.now(),period:'all'}).financial;
       assert.deepEqual(serverFinance.totals.BRL,{grossMinor:11500,discountMinor:1000,orderTotalMinor:10500,count:1},'server-read canonical records reconcile to the independent exact-cents expectation');
       const duplicateOrders=await call('/api/domain/orders?limit=10');
@@ -458,9 +552,11 @@ async function main() {
       const payoutFirst=await call('/api/finance/events',{method:'POST',body:payoutOne});
       assert.equal(payoutFirst.status,201,JSON.stringify(payoutFirst.body));
       assert.equal(payoutFirst.body.event.source_kind,'operator_declaration');
-      assert.equal((await call('/api/finance/events?earningId='+earningId)).body.events.length,1);
+      const firstPayoutRead=await call('/api/finance/events?earningId='+earningId);assert.equal(firstPayoutRead.body.events.length,1);
       const payoutSecond=await call('/api/finance/events',{method:'POST',body:{...payoutOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:750,reference:'PAYOUT-SYNTH-2'}});
       assert.equal(payoutSecond.status,201,'partial payout settlements can complete the exact earning obligation');
+      const finalPayoutRead=await call('/api/finance/events?earningId='+earningId+'&kind=PAYOUT_SETTLED');
+      assert.equal(finalPayoutRead.body.events.reduce((sum,row)=>sum+Number(row.amount_minor),0),1250,'paid payout readback reconciles partial settlements to the Earning obligation');
       const payoutExcess=await call('/api/finance/events',{method:'POST',body:{...payoutOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:1,reference:'PAYOUT-SYNTH-3'}});
       assert.equal(payoutExcess.status,409);assert.equal(payoutExcess.body.error.code,'PAYOUT_EXCEEDS_EARNING');
       const storedEarning=await client.query(`SELECT payload->>'amountMinor' AS amount_minor,payload->>'currency' AS currency,payload->>'deliveryId' AS delivery_id,payload->>'ruleVersion' AS rule_version,payload->'components' AS components,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'`,[companyId,earningId]);
@@ -811,6 +907,9 @@ async function main() {
       assert(revoked,'former driver receives an assignment revocation notification');
       assert.deepEqual(Object.keys(revoked.payload).sort(),['companyId','id','updatedAt','version']);
       assert.equal(JSON.stringify(revoked).includes(otherDriverId),false,'revocation does not reveal the next driver identity');
+      const restaurantPull=await call('/api/sync/pull?limit=100&deviceId=restaurant-test-device');
+      assert.equal(restaurantPull.body.events.some(row=>row.type==='CANONICAL_ASSIGNMENT_REVOKED'),false,
+        'driver-only revocation notifications are excluded from the Restaurant canonical projection');
       const lateFact=await call('/api/sync/push',{method:'POST',body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,
         deviceId:'moto-proof-test-device',source:{app:'untrusted-client-label',deviceId:'moto-proof-test-device'},data:{...packet.data,orders:[],deliveries:[],drivers:[],routes:[],earnings:[],
           deliveryEvents:[{id:'late-old-driver-event',eventId:'late-old-driver-event',entity:'delivery',entityId:deliveryId,
@@ -1091,6 +1190,11 @@ async function main() {
         assert.equal(limited.status, 429, 'sync pull is rate limited by endpoint and IP');
       } finally {
         await new Promise(resolve => limitedServer.close(resolve));
+      }
+      if(process.env.E2E_BROWSER_CDP_PORT){
+        let browserEvidence;try{browserEvidence=await runAuthenticatedFinancialBrowser({base,sessionToken,orderId,companyId})}
+        catch(error){const pull=await call('/api/sync/pull?deviceId=restaurant-test-device'),events=pull.body?.events||[],invalid=events.filter(row=>{try{SyncReconciliation.canonicalEvent(row,companyId);return false}catch(_){return true}}).map(row=>({eventId:row.eventId,entity:row.entity,entityId:row.entityId,type:row.type,protocolVersion:row.protocolVersion,payloadType:row.payload&&typeof row.payload,payloadId:row.payload?.id,payloadVersion:row.payload?.version}));error.message+=` pullDiagnostic=${JSON.stringify({status:pull.status,eventCount:events.length,invalid:invalid.slice(0,8)})}`;throw error}
+        console.log(JSON.stringify({test:'finance-authenticated-browser-e2e',database:'rotamoto_e2e',...browserEvidence}));
       }
     } finally {
       server.closeAllConnections?.();

@@ -882,7 +882,12 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
       // truncates the cursor and can replay rows created in the same millisecond.
       afterAt = decoded[0]; afterId = decoded[1];
     }
-    const scope = installation.app_key === 'restaurante' ? '' : `AND (
+    // Assignment revocations are private notifications for the former driver.
+    // They share the outbox for reliable delivery, but are not canonical
+    // Restaurant records and must never enter the Restaurant projection.
+    const scope = installation.app_key === 'restaurante'
+      ? `AND o.payload->>'type' IS DISTINCT FROM 'CANONICAL_ASSIGNMENT_REVOKED'`
+      : `AND (
       o.recipient_driver_id=$4::uuid OR (o.recipient_driver_id IS NULL AND EXISTS (
         SELECT 1 FROM rotamoto.domain_records d
         WHERE d.company_id=o.company_id AND d.record_id::text=o.payload->>'entityId' AND d.entity_type=o.payload->>'entity' AND (
