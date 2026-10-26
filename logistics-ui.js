@@ -1,5 +1,6 @@
 (() => {
   'use strict';
+  let reportRequestGeneration=0,territorialRequestGeneration=0;
   const esc = value => String(value ?? '').replace(/[&<>"']/gu, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
   const territorialFailureMessage = error => {
     const code = String(error?.message || '');
@@ -313,6 +314,7 @@
   }
   async function renderReport() {
     const root = document.querySelector('#fulfillment-analytics'); if (!root) return;
+    const generation=++reportRequestGeneration;
     const targets = {
       capacity: document.querySelector('#capacity-analytics'),
       costs: document.querySelector('#logistics-cost-analytics'),
@@ -325,6 +327,7 @@
         api('/logistics/analytics'), api('/logistics/intelligence/analytics'),
         api('/logistics/intelligence/decision-quality'), api('/logistics/route-settings')
       ]);
+      if(generation!==reportRequestGeneration||!root.isConnected)return;
       const routeSettings = routeSettingsResult.settings || {};
       const integrationRows = (data.integrations || []).map(item => `<div class="report-row"><b>${esc(item.code)}</b><span>${item.quotesReceived}/${item.quoteRequests} cotações recebidas · ${item.dispatchConfirmed}/${item.dispatchRequested} envios confirmados · ${item.dispatchFailed} falhas</span><small>Contagens persistidas; uma resposta 202 permanece pendente até confirmação.</small></div>`).join('');
       const providerRows = (data.providers || []).map(provider => `<article class="report-row"><b>${esc(provider.displayName)}</b><span>${provider.class === 'internal_fleet' ? 'Frota própria' : provider.class === 'marketplace' ? 'Marketplace externo' : 'Parceiro externo'} · ${provider.allocations} entregas · ${provider.completed} concluídas</span><small>Custo estimado conhecido: ${moneyByCurrency(provider.estimatedCosts)} · cobertura ${provider.estimatedCostCount}/${provider.allocations}</small><small>Custo reconciliado conhecido: ${moneyByCurrency(provider.reconciledCosts)} · cobertura ${provider.reconciledCostCount}/${provider.allocations}</small></article>`).join('');
@@ -340,6 +343,7 @@
       if (targets.routeCoverage) targets.routeCoverage.innerHTML = `<h3>Cobertura da inteligência viária</h3><article class="report-row"><b>Avaliações com origem conhecida</b><span>${routeCoverage.originKnown||0} de ${routeCoverage.evaluated||0}</span><small>Rota integral calculada ${routeCoverage.fullRouteCalculated||0}/${routeCoverage.evaluated||0} (${routeCoverage.coverage==null?'sem base':`${(routeCoverage.coverage*100).toFixed(1)}%`}) · recomendações com custo marginal integral ${routeCoverage.marginalCostRecommendations||0}</small><small>${routeCoverage.routeAbstentions||0} avaliações sem cálculo; ${(routeCoverage.abstentionReasons||[]).map(item=>`${esc(item.reason)} (${item.count})`).join(' · ')||'sem motivo registrado'}. ${esc(routeCoverage.note||'Métricas baseadas em snapshots históricos.')}</small></article>`;
       if (targets.routeSettings) targets.routeSettings.innerHTML = `<h3>Início e retorno de rotas</h3><article class="report-row"><b>${routeSettings.origin?routeSettings.originMode==='custom'?'Origem personalizada':'Localização do estabelecimento':'Origem desconhecida'}</b><span>${routeSettings.origin?`${routeSettings.origin.latitude.toFixed(6)}, ${routeSettings.origin.longitude.toFixed(6)}`:'Cálculos que dependem da origem foram omitidos'} · ${routeSettings.returnToOrigin?'retorno à origem configurado':'rota termina na última entrega'}</span><small>Consulta somente leitura. A configuração é alterada em Ajustes → Logística/Frota.</small></article>`;
     } catch (error) {
+      if(generation!==reportRequestGeneration||!root.isConnected)return;
       const message = ['UNAUTHENTICATED','SESSION_REQUIRED','SESSION_EXPIRED'].includes(error?.message)
         ? 'Sua sessão terminou. Entre novamente para consultar estes indicadores.'
         : ['FORBIDDEN','PERMISSION_DENIED'].includes(error?.message)
@@ -352,7 +356,7 @@
   function reportQuery() {
     const state = currentState || {}, q = state.report || {};
     const params = new URLSearchParams({ period: String(q.period || 30), metric: q.territorialMetric || 'volume' });
-    for (const [key, value] of Object.entries({ status:q.status, source:q.source, type:q.type, mode:q.fulfillmentMode, providerId:q.providerId })) if (value) params.set(key, value);
+    for (const [key, value] of Object.entries({ fromDate:q.fromDate,toDate:q.toDate,status:q.status, source:q.source, type:q.type, mode:q.fulfillmentMode, providerId:q.providerId })) if (value) params.set(key, value);
     const selectedBike=(currentState?.bikes||[]).find(row=>row.name===q.bike || row.id===q.bike || row.canonicalId===q.bike);
     const driver = String(selectedBike?.sync?.canonicalId||selectedBike?.canonicalId||selectedBike?.id||'');
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(driver)) params.set('driverId', driver);
@@ -390,10 +394,11 @@
   }
   async function loadTerritorialReport() {
     const root=document.querySelector('#territorial-heatmap'); if(!root)return;
+    const generation=++territorialRequestGeneration,query=reportQuery();
     if(hasUnresolvedDriverFilter()) { root.innerHTML='<h2>Resumo por região</h2><p class="muted">O motoboy selecionado ainda não está disponível nos dados atualizados. Atualize os dados ou escolha outro; nenhum resultado sem esse filtro foi consultado.</p>'; return; }
     root.textContent='Carregando resumo por região…';
-    try { const data=await api(`/analytics/territorial?${reportQuery()}`); if(!document.querySelector('#territorial-heatmap'))return; root.innerHTML=heatmapMarkup(data); bindTerritorial(root); }
-    catch(error){ root.innerHTML=`<h2>Resumo por região</h2><p class="muted">${territorialFailureMessage(error)}</p>${destinationEntryMarkup()}`; bindTerritorial(root); }
+    try { const data=await api(`/analytics/territorial?${query}`); if(generation!==territorialRequestGeneration||!root.isConnected)return; root.innerHTML=heatmapMarkup(data); bindTerritorial(root); }
+    catch(error){ if(generation!==territorialRequestGeneration||!root.isConnected)return;root.innerHTML=`<h2>Resumo por região</h2><p class="muted">${territorialFailureMessage(error)}</p>${destinationEntryMarkup()}`; bindTerritorial(root); }
   }
   function bindTerritorial(root) {
     root.querySelector('[data-territorial-refresh]')?.addEventListener('click',loadTerritorialReport);

@@ -121,7 +121,7 @@ assert(identityAsset, 'identity UI bundle has a cache busting version');
 const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
 assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v\d+`/u, 'service worker uses a versioned cache');
 assert.ok(sw.includes(`'/${identityAsset}'`), 'current identity UI asset is included in the offline shell');
-assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v130`/u, 'service worker cache version advances with changed login assets');
+assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v131`/u, 'service worker cache version advances with changed login assets');
 assert.match(html, /identity-ui\.css\?v=0304-login\.10/u, 'updated recovery flow CSS is cache-busted');
 assert.match(html, /identity-ui\.js\?v=0304-login\.8/u, 'updated recovery navigation is cache-busted');
 assert.doesNotMatch(html, /<script[^>]+rotamoto-map-runtime/u, 'heavy cartography runtime is not loaded before authentication');
@@ -217,7 +217,9 @@ assert.doesNotMatch(source, /data-offline/u, 'unauthenticated users cannot bypas
 assert.match(source, /offlineMode = false;/u, 'local mode cannot authorize an operational session');
 assert.doesNotMatch(source, /localStorage\.(?:removeItem|setItem)\([^)]*local-mode/u, 'session changes do not mutate persisted local-mode preferences');
 assert.match(source, /if \(!sessionReadGuard\.isCurrent\(readVersion\)\) return current;/u, 'late session results cannot replace newer user intent');
-assert.match(html, /identity-session-guard\.js[\s\S]{0,300}identity-ui\.js/u, 'session read guard loads before identity UI');
+const sessionReadGuardIndex = html.indexOf('identity-session-guard.js');
+const identityUiIndex = html.indexOf('identity-ui.js');
+assert.ok(sessionReadGuardIndex >= 0 && identityUiIndex > sessionReadGuardIndex, 'session read guard loads before identity UI');
 assert.match(source, /clearSession/u, 'logout clears in-memory sync credentials');
 
 assert.doesNotMatch(source, /localStorage\.(?:setItem|getItem)\(['"](?:session|csrf|password|token)/iu);

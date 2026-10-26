@@ -53,7 +53,7 @@ async function fire(listener, event = {}) {
   assert(identityBundle, 'identity UI bundle is declared by the page');
   assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes(identityBundle)),
     'current shell stages the versioned identity UI');
-  assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('analytics-view.js?v=0254.1')), 'report renderer is versioned in the shell');
+  assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('analytics-view.js?v=0254.4')), 'report renderer is versioned in the shell');
   assert.equal([...healthy.stores.get(cacheName).keys()].some(url => url.includes('maplibre-gl-worker.js')), false,
     'missing optional cartography worker does not block or enter the shell');
 

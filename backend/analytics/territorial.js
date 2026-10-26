@@ -53,10 +53,15 @@ function zonedMidnight(key, zone) {
   return new Date(guess);
 }
 function normalizeFilters(query = {}, now = new Date(), timeZone = null) {
-  const allowed = new Set(['period','status','source','type','driverId','mode','providerId','metric']);
+  const allowed = new Set(['period','fromDate','toDate','status','source','type','driverId','mode','providerId','metric']);
   if (Object.keys(query).some(key => !allowed.has(key))) fail('Filtro não permitido.');
-  const period = query.period === undefined ? 30 : Number(query.period);
-  if (!PERIODS.has(period)) fail('Período inválido.');
+  const hasRange=Boolean(query.fromDate||query.toDate), dateKey=/^\d{4}-\d{2}-\d{2}$/u;
+  const validDate=value=>{if(typeof value!=='string'||!dateKey.test(value))return false;const date=new Date(`${value}T00:00:00.000Z`);return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value};
+  if(hasRange&&(!validDate(query.fromDate)||!validDate(query.toDate)||query.fromDate>query.toDate))fail('Intervalo de datas inválido.');
+  const rangeDays=hasRange?Math.floor((Date.parse(`${query.toDate}T00:00:00.000Z`)-Date.parse(`${query.fromDate}T00:00:00.000Z`))/86400000)+1:null;
+  if(rangeDays>3660){const error=new Error('Reduza o período.');error.code='RECORTE_LIMIT_EXCEEDED';throw error;}
+  const period = hasRange ? rangeDays : query.period === undefined ? 30 : Number(query.period);
+  if (!hasRange&&!PERIODS.has(period)) fail('Período inválido.');
   const status = query.status === undefined || query.status === '' ? null : ORDER_STATUS[String(query.status).trim().toUpperCase()] || String(query.status).trim().toUpperCase();
   if (status && !STATUSES.has(status)) fail('Status inválido.');
   const boundedText = (key, max) => {
@@ -74,9 +79,10 @@ function normalizeFilters(query = {}, now = new Date(), timeZone = null) {
   if (!['volume','delivery_fee','duration','actual_distance','estimated_distance'].includes(metric)) fail('Métrica inválida.');
   const end = new Date(now), zone=timezoneValid(timeZone)?timeZone:null;
   let start;
-  if(zone){const today=zonedParts(end,zone),key=`${today.year}-${today.month}-${today.day}`;start=zonedMidnight(shiftDate(key,-(period-1)),zone);}
+  if(hasRange){start=zone?zonedMidnight(query.fromDate,zone):new Date(`${query.fromDate}T00:00:00.000Z`);const rangeEnd=zone?zonedMidnight(shiftDate(query.toDate,1),zone):new Date(`${shiftDate(query.toDate,1)}T00:00:00.000Z`);end.setTime(Math.min(end.getTime(),rangeEnd.getTime()-1));}
+  else if(zone){const today=zonedParts(end,zone),key=`${today.year}-${today.month}-${today.day}`;start=zonedMidnight(shiftDate(key,-(period-1)),zone);}
   else start=new Date(end.getTime()-period*86400000);
-  return Object.freeze({ period, start, end, timeZone:zone, status, source, type, driverId, mode, providerId, metric });
+  return Object.freeze({ period, start, end, timeZone:zone, ...(hasRange?{fromDate:query.fromDate,toDate:query.toDate}:{}), status, source, type, driverId, mode, providerId, metric });
 }
 function timestamp(value) {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;

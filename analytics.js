@@ -22,6 +22,8 @@
     customerRecurrence: { name: 'Recorrência por cliente', source: 'Order.customer local', formula: 'contagem textual de pedidos por nome com espaços colapsados e caixa ignorada', unit: 'pedidos/clientes', states: 'Orders com nome presente', period: 'Order.createdAt', missing: 'nome ausente fica fora da recorrência; não substitui identidade canônica', limits: 'nomes iguais podem ser pessoas diferentes; dado pessoal exibido somente no relatório autorizado' },
     addressRecurrence: { name: 'Recorrência por endereço', source: 'Order.address local', formula: 'contagem textual com espaços colapsados e caixa ignorada', unit: 'pedidos/endereços', states: 'Orders com endereço presente', period: 'Order.createdAt', missing: 'endereço ausente fica fora do agrupamento', limits: 'não é região geográfica nem heatmap; grafias distintas não são conciliadas' },
     hourlyVolume: { name: 'Volume por hora local', source: 'Order.createdAt', formula: 'contagem por hora civil no timezone IANA da Company', unit: 'pedidos', states: 'todos os estados', period: 'coorte por Order.createdAt', missing: 'indisponível sem timezone operacional válido', limits: 'não inferir timezone do aparelho/servidor' },
+    deliveryDailyVolume: { name: 'Entregas por dia', source: 'Delivery distinto + Order.createdAt', formula: 'contagem de operações de entrega por data civil da Order associada', unit: 'entregas', states: 'todos os estados de Delivery; legado sem Delivery vira uma operação', period: 'coorte por Order.createdAt', missing: 'Orders com data inválida são excluídas; dias sem operação permanecem zero', limits: 'RETURN e REDELIVERY contam como Delivery separada; não representa data de conclusão' },
+    deliveryHourlyVolume: { name: 'Entregas por horário', source: 'Delivery distinto + Order.createdAt', formula: 'contagem de operações de entrega por hora civil da Order associada', unit: 'entregas', states: 'todos os estados de Delivery; legado sem Delivery vira uma operação', period: 'coorte por Order.createdAt', missing: 'indisponível sem timezone operacional válido', limits: 'não inferir timezone do aparelho/servidor; não representa hora de conclusão' },
     weekdayVolume: { name: 'Volume por dia da semana local', source: 'Order.createdAt', formula: 'contagem por dia civil no timezone IANA da Company', unit: 'pedidos', states: 'todos os estados', period: 'coorte por Order.createdAt', missing: 'indisponível sem timezone operacional válido', limits: 'não inferir timezone do aparelho/servidor' },
   });
 
@@ -72,6 +74,11 @@
   }
   function localDateKey(parts) { return `${parts.year}-${parts.month}-${parts.day}`; }
   function shiftDateKey(key, days) { const date = new Date(`${key}T00:00:00.000Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); }
+  function validDateKey(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }
   function eventTimestamp(events, delivery, types) {
     if (!delivery?.id) return null;
     const matches = (events || []).filter(e => (e.entityId === delivery.id || e.deliveryId === delivery.id) && types.includes(String(e.type || '').toUpperCase()));
@@ -84,7 +91,14 @@
     const periodDays = Number.isFinite(period) && period > 0 ? Math.min(3660, Math.floor(period)) : 30;
     const tz = validTimezone(options.timeZone) ? options.timeZone : null;
     const localToday = tz ? localDateKey(localParts(now, tz)) : null;
-    const localStartDate = tz && period !== null ? shiftDateKey(localToday, -(periodDays - 1)) : null;
+    const requestedFrom = options.fromDate || '';
+    const requestedTo = options.toDate || '';
+    const hasDateRange = Boolean(requestedFrom || requestedTo);
+    const validRange = !hasDateRange || validDateKey(requestedFrom) && validDateKey(requestedTo) && requestedFrom <= requestedTo;
+    const localStartDate = hasDateRange ? (validRange ? requestedFrom : null) : tz && period !== null ? shiftDateKey(localToday, -(periodDays - 1)) : null;
+    const localEndDate = hasDateRange ? (validRange ? requestedTo : null) : tz && period !== null ? localToday : null;
+    const utcStart = hasDateRange && validRange && !tz ? Date.parse(`${requestedFrom}T00:00:00.000Z`) : null;
+    const utcEnd = hasDateRange && validRange && !tz ? Date.parse(`${requestedTo}T23:59:59.999Z`) : null;
     const cutoff = period === null || tz ? null : now - periodDays * 86400000;
     const deliveries = input.deliveries || [];
     const events = input.deliveryEvents || [];
@@ -107,7 +121,10 @@
       if (createdAt === null || createdAt > now) { invalidCreatedAt++; continue; }
       const createdLocalParts = tz ? localParts(createdAt, tz) : null;
       const createdLocalDate = createdLocalParts ? localDateKey(createdLocalParts) : null;
-      if (localStartDate !== null && createdLocalDate < localStartDate || cutoff !== null && createdAt < cutoff) continue;
+      const dateKey = createdLocalDate || new Date(createdAt).toISOString().slice(0, 10);
+      if (!validRange || localStartDate !== null && dateKey < localStartDate || localEndDate !== null && dateKey > localEndDate
+        || utcStart !== null && createdAt < utcStart || utcEnd !== null && createdAt > utcEnd
+        || !hasDateRange && cutoff !== null && createdAt < cutoff) continue;
       const relatedDeliveries = deliveriesByOrder.get(order.id) || [];
       const delivery = deliveriesById.get(order.deliveryId) || relatedDeliveries.find(item => item.extensions?.x_rotamoto_delivery_type !== 'RETURN') || relatedDeliveries[0] || null;
       const status = canonicalStatus(delivery, order);
@@ -291,17 +308,34 @@
         if (row.driverName) group.drivers.add(row.driverName);
         addressGroups.set(key, group);
       }
-      if (tz) {
+      {
         const parts = row.createdLocalParts;
-        hourly[Number(parts.hour)]++;
-        weekdays[['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday)]++;
-        const dayKey = row.createdLocalDate;
+        if (tz) {
+          hourly[Number(parts.hour)]++;
+          weekdays[['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday)]++;
+        }
+        const dayKey = row.createdLocalDate || new Date(row.createdAt).toISOString().slice(0, 10);
         daily[dayKey] = (daily[dayKey] || 0) + 1;
       }
     }
-    const dailyVolume = tz ? (localStartDate !== null
-      ? Array.from({ length: periodDays }, (_, index) => { const date = shiftDateKey(localStartDate, index); return { date, count: daily[date] || 0 }; })
-      : Object.entries(daily).sort(([a],[b]) => a.localeCompare(b)).map(([date,count]) => ({ date, count }))) : null;
+    const dailyStart = localStartDate || (tz ? null : hasDateRange && validRange ? requestedFrom : null);
+    const dailyEnd = localEndDate || (tz ? null : hasDateRange && validRange ? requestedTo : null);
+    const boundedDays = dailyStart && dailyEnd ? Math.min(3660, Math.floor((Date.parse(`${dailyEnd}T00:00:00.000Z`) - Date.parse(`${dailyStart}T00:00:00.000Z`)) / 86400000) + 1) : 0;
+    const dailyVolume = dailyStart !== null && boundedDays > 0
+      ? Array.from({ length: boundedDays }, (_, index) => { const date = shiftDateKey(dailyStart, index); return { date, count: daily[date] || 0 }; })
+      : Object.entries(daily).sort(([a],[b]) => a.localeCompare(b)).map(([date,count]) => ({ date, count }));
+    const deliveryDaily = Object.create(null), deliveryHourly = Array(24).fill(0);
+    for (const operation of operations) {
+      const createdAt = timestamp(operation.order?.createdAt);
+      if (createdAt === null) continue;
+      const parts = tz ? localParts(createdAt, tz) : null;
+      const date = parts ? localDateKey(parts) : new Date(createdAt).toISOString().slice(0, 10);
+      deliveryDaily[date] = (deliveryDaily[date] || 0) + 1;
+      if (parts) deliveryHourly[Number(parts.hour)]++;
+    }
+    const deliveryDailyVolume = dailyStart !== null && boundedDays > 0
+      ? Array.from({ length: boundedDays }, (_, index) => { const date = shiftDateKey(dailyStart, index); return { date, count: deliveryDaily[date] || 0 }; })
+      : Object.entries(deliveryDaily).sort(([a],[b]) => a.localeCompare(b)).map(([date,count]) => ({ date, count }));
     for (const operation of operations) {
       const driverKey = operation.driverId || (operation.driverName !== 'Não atribuído' ? `legacy-name:${operation.driverName}` : 'unassigned');
       if (!driverCounts[driverKey]) driverCounts[driverKey] = { id: operation.driverId || null, name: operation.driverName, total: 0, completed: 0, cancelled: 0, failed: 0 };
@@ -320,6 +354,8 @@
     return {
       ...(options.includeExportRows ? { exportRows: filtered.map(row => ({ num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: requestedStatus || row.status, type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, moneyCurrency: row.money.currency || '', moneyCompleteness: row.money.kind, itemsSubtotalMinor: row.money.itemsSubtotalMinor ?? null, discountMinor: row.money.discountMinor ?? null, deliveryFeeMinor: row.money.deliveryFeeMinor ?? null, serviceFeeMinor: row.money.serviceFeeMinor ?? null, otherFeeMinor: row.money.otherFeeMinor ?? null, totalMinor: row.money.totalMinor ?? null, estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt })) } : {}),
       total: filtered.length, deliveryTotal: operations.length, invalidCreatedAt,
+      invalidDateRange: !validRange,
+      dateRange: validRange && hasDateRange ? { from: requestedFrom, to: requestedTo, timeZone: tz || 'UTC' } : null,
       completedCount,
       cancelledCount,
       failedCount,
@@ -328,9 +364,9 @@
       completionRate: knownStatusCount ? completedCount / knownStatusCount : null,
       knownStatusCount,
       statusCounts, deliveryStatusCounts, typeCounts, sourceCounts, driverCounts,
-      customerGroups: [...customerGroups.values()].sort((a, b) => b.count - a.count).slice(0, 5),
+      customerGroups: [...customerGroups.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'pt-BR')).slice(0, 5),
       distinctCustomerCount: customerGroups.size,
-      addressGroups: [...addressGroups.values()].sort((a, b) => b.count - a.count).map(group => ({ ...group, drivers: [...group.drivers] })),
+      addressGroups: [...addressGroups.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'pt-BR')).map(group => ({ ...group, drivers: [...group.drivers].sort((a, b) => a.localeCompare(b, 'pt-BR')) })),
       distinctAddressCount: addressGroups.size,
       coverage: {
         deliveryFee: { available: fee.count, total: completed.length, missing: feeMissing },
@@ -343,7 +379,7 @@
       deliveryFees: fee, orderTicket, moneyComponents, driverPayout: earnings,
       estimatedDistance, actualDistance, durations,
       hourlyVolume: tz ? hourly : null, weekdayVolume: tz ? weekdays : null,
-      dailyVolume,
+      dailyVolume, deliveryDailyVolume, deliveryHourlyVolume: tz ? deliveryHourly : null,
       timeZone: tz,
       cohort: 'Order.createdAt; configured period uses Company civil dates and timezone; unset timezone uses rolling UTC interval',
       freshness: options.freshness || 'local snapshot; freshness not proven',

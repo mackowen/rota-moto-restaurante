@@ -93,8 +93,8 @@ assert.equal(filteredReturn.exportRows[0].status,'RETURNED','the CSV reflects th
 assert.match(Analytics.csvRow([filteredReturn.exportRows[0].customer]),/^"'=HYPERLINK/u,'formula-leading customer values remain neutralized in CSV');
 assert.equal(filteredReturn.driverPayout.count,0,'combined filters do not infer payment for the RETURN');
 const returnHtml = View.render({ report:returnReport, filters:{period:'all',bike:'',status:'',type:'',source:''}, statusLabel:value=>({CANCELLED:'Cancelada',RETURNED:'Devolvida'})[value]||'Em andamento', typeLabel:()=>'Entrega', sources:{ifood:'iFood'}, bikes:[], types:['NORMAL'], freshNote:'fixture sintética' });
+assert.match(returnHtml,/report-metric-label">Entregas<\/span><strong class="report-metric-value">2</u,'the dashboard counts distinct delivery operations');
 assert.match(returnHtml,/Pedidos no período[\s\S]*>1</u,'the report retains one Order in the financial/commercial cohort');
-assert.match(returnHtml,/Operações de entrega[\s\S]*>2</u,'the report separately counts the original and RETURN deliveries');
 assert.match(returnHtml,/data-status-filter="RETURNED"/u,'RETURN status is available to the status chart filter');
 assert.match(returnHtml,/value="RETURNED"/u,'RETURN status is available in combined report filters');
 assert.match(returnHtml,/Devoluções recebidas/u,'the RETURN state is presented in Portuguese');
@@ -121,7 +121,7 @@ assert.equal(timezone.weekdayVolume[2], 1);
 assert.deepEqual(timezone.dailyVolume, [{ date: '2026-10-05', count: 1 }, { date: '2026-10-06', count: 1 }]);
 const invalidZone = Analytics.aggregate({ orders: [{ id: 'x', createdAt: now }] }, { now, period: 'all', timeZone: 'not-a-zone' });
 assert.equal(invalidZone.hourlyVolume, null);
-assert.equal(invalidZone.dailyVolume, null);
+assert.deepEqual(invalidZone.dailyVolume, [{ date: new Date(now).toISOString().slice(0, 10), count: 1 }], 'daily dates use UTC when the company has no valid timezone');
 assert.equal(Analytics.validTimezone('UTC'), true);
 assert.equal(Analytics.validTimezone('America/Manaus'), true);
 assert.equal(Analytics.validTimezone('+03:00'), false);
@@ -138,6 +138,18 @@ const civilWindow = Analytics.aggregate({ orders: [
 ] }, { now: Date.parse('2026-03-09T04:30:00Z'), period: '2', timeZone: 'America/New_York' });
 assert.equal(civilWindow.total, 2, 'periods use local dates across the DST-shortened day');
 assert.deepEqual(civilWindow.dailyVolume, [{ date: '2026-03-08', count: 1 }, { date: '2026-03-09', count: 1 }]);
+const explicitRange = Analytics.aggregate({ orders: [
+  { id: 'range-before', createdAt: Date.parse('2026-10-05T23:59:59Z') },
+  { id: 'range-first', createdAt: Date.parse('2026-10-06T03:00:00Z') },
+  { id: 'range-last', createdAt: Date.parse('2026-10-07T02:59:59Z') },
+  { id: 'range-after', createdAt: Date.parse('2026-10-07T03:00:00Z') },
+] }, { now: Date.parse('2026-10-08T12:00:00Z'), fromDate: '2026-10-06', toDate: '2026-10-06', timeZone: 'America/Sao_Paulo' });
+assert.equal(explicitRange.total, 2, 'explicit date ranges use inclusive company civil dates');
+assert.deepEqual(explicitRange.dailyVolume, [{ date: '2026-10-06', count: 2 }]);
+assert.equal(explicitRange.dateRange.timeZone, 'America/Sao_Paulo');
+const invalidRange = Analytics.aggregate({ orders: [{ id: 'range-invalid', createdAt: now }] }, { now, fromDate: '2026-10-07', toDate: '2026-10-06' });
+assert.equal(invalidRange.invalidDateRange, true);
+assert.equal(invalidRange.total, 0, 'reversed date ranges do not silently fall back');
 const dstFall = Analytics.aggregate({ orders: [{ id: 'fold1', createdAt: Date.parse('2026-11-01T05:30:00Z') }, { id: 'fold2', createdAt: Date.parse('2026-11-01T06:30:00Z') }] }, { now: Date.parse('2026-11-02T12:00:00Z'), period: 'all', timeZone: 'America/New_York' });
 assert.equal(dstFall.hourlyVolume[1], 2, 'repeated civil hour combines both valid instants');
 assert.deepEqual(dstFall.dailyVolume, [{ date: '2026-11-01', count: 2 }]);
@@ -149,6 +161,18 @@ assert.equal(partial.durations.assignedToCompleted.count, 0);
 assert.equal(partial.durations.assignedToCompleted.missing, 1);
 assert.equal(partial.estimatedDistance.average, null);
 assert.equal(Analytics.aggregate({}, { now, period: 'all' }).completionRate, null);
+const multiDeliveryCohort = Analytics.aggregate({
+  orders: [{ id: 'cohort-order', createdAt: '2026-10-06T09:00:00Z', status: 'FINALIZADA' }],
+  deliveries: [
+    { id: 'cohort-primary', orderId: 'cohort-order', status: 'DELIVERED' },
+    { id: 'cohort-return', orderId: 'cohort-order', status: 'RETURNED', extensions: { x_rotamoto_delivery_type: 'RETURN' } },
+  ],
+}, { now, fromDate: '2026-10-06', toDate: '2026-10-06', timeZone: 'America/Sao_Paulo' });
+assert.equal(multiDeliveryCohort.total, 1, 'order cohort remains distinct');
+assert.equal(multiDeliveryCohort.deliveryTotal, 2, 'return remains a separate delivery operation');
+assert.equal(multiDeliveryCohort.dailyVolume.reduce((sum, row) => sum + row.count, 0), 1, 'legacy daily order series remains order based');
+assert.equal(multiDeliveryCohort.deliveryDailyVolume.reduce((sum, row) => sum + row.count, 0), multiDeliveryCohort.deliveryTotal, 'delivery chart reconciles with delivery KPI');
+assert.equal(multiDeliveryCohort.deliveryHourlyVolume.reduce((sum, count) => sum + count, 0), multiDeliveryCohort.deliveryTotal, 'hourly delivery chart reconciles with delivery KPI');
 const unknown = Analytics.aggregate({ orders: [{ id: 'u', createdAt: now, status: '<unknown>', sourceId: '__proto__' }] }, { now, period: 'all' });
 assert.equal(unknown.openCount, 0);
 assert.equal(unknown.completionRate, null);
@@ -175,13 +199,13 @@ const statusPt = value => ({ DELIVERED: 'Concluída', CANCELLED: 'Cancelada', FA
 const typePt = value => value === 'RETORNO' ? 'Devolução' : 'Entrega';
 const html = View.render({ report, filters: { period: '30', bike: '', status: '', type: '', source: '' }, statusLabel: statusPt, typeLabel: typePt, sources: { ifood: 'iFood', manual: 'Manual', keeta: 'Keeta', unknown: 'Sem origem' }, bikes: [], types: ['NORMAL', 'RETORNO'], freshNote: '<sem freshness>' });
 assert.match(html, /report-dashboard/u, 'report renders the redesigned dashboard');
-for (const id of ['report-overview','report-deliveries','report-fleet','report-costs','report-intelligence','report-quality','report-territory','report-export']) assert.match(html, new RegExp(`id="${id}"`), `${id} section exists`);
+for (const id of ['report-overview','report-overview-details','report-deliveries','report-fleet','report-costs','report-intelligence','report-quality','report-territory','report-export']) assert.match(html, new RegExp(`id="${id}"`), `${id} section exists`);
 assert.match(html, /Pedidos no período[\s\S]*report-metric-value/u);
-assert.match(html, /Entregas por situação/u);
+assert.match(html, /Status das entregas/u);
 assert.match(html, /Pedidos por origem/u);
 assert.match(html, /Custos e repasses/u);
 assert.match(html, /Taxas de entrega/u);
-assert.match(html, /Pedidos por horário/u);
+assert.match(html, /Entregas por horário/u);
 assert.match(html, /fulfillment-analytics/u, 'canonical logistics report is embedded once');
 assert.match(html, /territorial-heatmap/u, 'canonical territory report is embedded once');
 assert.match(html, /capacity-analytics/u, 'capacity data is placed in the fleet section');
@@ -193,10 +217,10 @@ assert.equal((html.match(/id="territorial-heatmap"/gu)||[]).length,1);
 assert.match(fs.readFileSync(path.join(__dirname,'..','logistics-ui.js'),'utf8'), /if \(targets\.decisions\) targets\.decisions\.innerHTML = decisionQualityMarkup/u, 'canonical decision-quality renderer is mounted in its dedicated report section');
 assert.match(html, /Endereços diferentes/u);
 assert.match(html, /data-export-report/u);
-assert.match(html, /id="rp"[\s\S]*Últimos 30 dias/u);
+assert.match(html, /id="rfrom"[\s\S]*id="rto"[\s\S]*id="rb"/u, 'date and driver filters are present');
 assert.match(html, /&lt;sem freshness&gt;/u, 'dynamic freshness is escaped');
 const timezoneHtml = View.render({ report: timezone, filters: { period: '30', bike: '', status: '', type: '', source: '' }, statusLabel: statusPt, typeLabel: typePt, sources: { unknown: 'Sem origem registrada' }, bikes: [], types: [], freshNote: 'dados locais' });
-assert.match(timezoneHtml, /Pedidos por dia/u);
+assert.match(timezoneHtml, /Pedidos por dia|Entregas por dia/u);
 assert.match(timezoneHtml, /fuso horário/u);
 assert.match(timezoneHtml, /class="analytics-bars"/u, 'time charts use responsive semantic bars');
 assert.doesNotMatch(timezoneHtml, /unknown: 2/u);
