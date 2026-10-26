@@ -27,7 +27,10 @@ function validateInput(input){
 function createFinanceService({clock=()=>new Date() }={}){
   async function record(client,principal,raw){
     const input=validateInput(raw),companyId=principal.company_id;
-    const lockKeys=[`${companyId}:event:${input.eventId}`,`${companyId}:idempotency:${input.idempotencyKey}`].sort();
+    const targetKind=input.orderId?'order':'earning',targetId=input.orderId||input.earningId;
+    const normalizedReference=input.reference.trim().toLocaleLowerCase('en-US');
+    const lockKeys=[`${companyId}:event:${input.eventId}`,`${companyId}:idempotency:${input.idempotencyKey}`,
+      `${companyId}:reference:${input.kind}:${targetKind}:${targetId}:${normalizedReference}`].sort();
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended(lock_key, 92041)) FROM unnest($1::text[]) AS keys(lock_key) ORDER BY lock_key`,[lockKeys]);
     const existing=await client.query(`SELECT event_id::text,idempotency_key::text,event_kind,order_id::text,earning_id::text,
       related_event_id::text,amount_minor::text,currency,payment_method,reference,reason
@@ -42,6 +45,12 @@ function createFinanceService({clock=()=>new Date() }={}){
       if(!identical)fail('IDEMPOTENCY_CONFLICT','A chave de idempotência já identifica outro fato financeiro.');
       return {duplicate:true,event:existing.rows[0]};
     }
+    const sameReference=input.kind==='ADJUSTMENT'?{rowCount:0}:await client.query(`SELECT event_id::text FROM rotamoto.financial_events
+      WHERE company_id=$1 AND event_kind=$2
+        AND (CASE WHEN order_id IS NULL THEN 'earning' ELSE 'order' END)=$3
+        AND COALESCE(order_id,earning_id)=$4 AND lower(btrim(reference))=$5 LIMIT 1`,
+    [companyId,input.kind,targetKind,targetId,normalizedReference]);
+    if(sameReference.rowCount)fail('DUPLICATE_FINANCIAL_REFERENCE','A referência já identifica outro evento financeiro neste pedido ou repasse.');
     let order=null,deliveryId=null;
     if(input.kind!=='PAYOUT_SETTLED'){
       const result=await client.query(`SELECT payload,version FROM rotamoto.domain_records

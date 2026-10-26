@@ -300,8 +300,12 @@ assert.match(appSource, /function dashboardV2Model\(\)[\s\S]*?RotaMotoAnalytics\
 assert.match(appSource, /function dashboardV2Model\(\)[\s\S]*?analytics\.driverPayout/u, 'Command Center reports canonical payout coverage');
 assert.doesNotMatch(appSource, /kpi\('Faturamento hoje'/);
 assert.match(appSource, /Taxa de entrega conhecida \(BRL\)/, 'CSV names the known fee semantics explicitly');
-assert.match(appSource,/Valor bruto registrado \(minor units\)[\s\S]*Pagamento recebido \(sem fonte canônica\)/u,'financial export separates order billing from settled receipt');
-assert.match(appSource,/"Indisponível",row\.moneyCurrency/u,'CSV does not fabricate payment settlement');
+assert.match(appSource,/Valor bruto registrado \(minor units\)[\s\S]*Recebimentos confirmados no razão \(minor units\)[\s\S]*Estornos registrados \(minor units\)[\s\S]*Ajustes auditáveis \(minor units\)/u,'financial export separates commercial value, server-confirmed receipts, refunds and adjustments');
+assert.match(appSource,/financialEvents:ledgerAvailable\?state\.financialEvents:undefined/u,'CSV includes only events loaded from the confirmed server ledger');
+assert.match(appSource,/row\.paymentConfirmedMinor\?\?"Indisponível"/u,'CSV keeps unavailable payment evidence distinct from zero');
+assert.match(appSource,/function openFinancialOperation\([\s\S]*?window\.confirm\([\s\S]*?flushFinanceOutbox/u,'sensitive financial actions require explicit confirmation and server synchronization');
+assert.match(appSource,/data-record-finance-payout[\s\S]*?PAYOUT_SETTLED/u,'payout settlement UI references the canonical Earning and settlement event');
+assert.match(appSource,/saved\?\.status==='rejected'[\s\S]*?financeErrorMessage/u,'server rejections preserve the financial form and show an operation-specific error');
 assert.match(appSource, /function exportCSV\(\)\{[\s\S]*?RotaMotoAnalytics\.csvRow[\s\S]*?catch\(_\)[\s\S]*?Não foi possível exportar o relatório/u, 'CSV export reports a sanitized user-facing failure and still uses the safe canonical serializer');
 assert.doesNotMatch(appSource, /earning BRL|Route\.deliveryIds|Status canônico da entrega|Fulfillment logístico|QR seguro da Delivery/u, 'telas operacionais não expõem propriedades internas de entidades');
 assert.match(appSource, /const syncOperationLabel=value=>/u, 'delivery detail translates local and server sync states before showing them');

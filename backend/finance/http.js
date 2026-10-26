@@ -38,14 +38,14 @@ function createFinanceHttpHandler({identityService,financeService,rateLimiter=cr
       res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Pragma':'no-cache','X-Content-Type-Options':'nosniff','X-Request-ID':requestId,'Content-Length':Buffer.byteLength(body)});res.end(body);return true;
     }catch(error){
       errorCode=error?.code||'INTERNAL_ERROR';const codes={INVALID_INPUT:400,UNAUTHENTICATED:401,FORBIDDEN:403,MFA_REQUIRED:403,CSRF_INVALID:403,ORIGIN_INVALID:403,
-        NOT_FOUND:404,RATE_LIMITED:429,PAYLOAD_TOO_LARGE:413,IDEMPOTENCY_CONFLICT:409,PAYMENT_EXCEEDS_ORDER:409,REFUND_EXCEEDS_PAYMENT:409,
+        NOT_FOUND:404,RATE_LIMITED:429,PAYLOAD_TOO_LARGE:413,IDEMPOTENCY_CONFLICT:409,DUPLICATE_FINANCIAL_REFERENCE:409,PAYMENT_EXCEEDS_ORDER:409,REFUND_EXCEEDS_PAYMENT:409,
         REFUND_SOURCE_INVALID:409,ADJUSTMENT_SOURCE_INVALID:409,ORDER_CANCELLED:409,CURRENCY_MISMATCH:409,ORDER_VALUE_UNPROVEN:409,PAYOUT_EXCEEDS_EARNING:409};
       status=status===405?405:codes[errorCode]||500;const code=status>=500?'INTERNAL_ERROR':errorCode;
       const message=status===400?error.message:({UNAUTHENTICATED:'Sessão inválida ou expirada.',FORBIDDEN:'Operação não autorizada.',MFA_REQUIRED:'Confirme MFA antes da operação financeira.',CSRF_INVALID:'Validação CSRF inválida.',
         NOT_FOUND:'Recurso não encontrado.',RATE_LIMITED:'Limite de solicitações excedido.',ORDER_CANCELLED:'Pedido cancelado não aceita novo recebimento.',
         PAYMENT_EXCEEDS_ORDER:'O recebimento excede o saldo do pedido.',REFUND_EXCEEDS_PAYMENT:'O estorno excede o pagamento disponível.',
         ORDER_VALUE_UNPROVEN:'O pedido não possui valor canônico completo.',CURRENCY_MISMATCH:'A moeda não corresponde à fonte canônica.',
-        PAYOUT_EXCEEDS_EARNING:'A liquidação excede o repasse devido.',IDEMPOTENCY_CONFLICT:'A chave já foi usada com outro evento.',
+        PAYOUT_EXCEEDS_EARNING:'A liquidação excede o repasse devido.',IDEMPOTENCY_CONFLICT:'A chave já foi usada com outro evento.',DUPLICATE_FINANCIAL_REFERENCE:'Já existe evento financeiro com esta referência para este vínculo.',
         REFUND_SOURCE_INVALID:'O pagamento original não corresponde ao estorno.',ADJUSTMENT_SOURCE_INVALID:'O ajuste não referencia um fato compatível.'})[code]||'Falha interna ao processar o evento financeiro.';
       const body=JSON.stringify({error:{code,message},requestId});res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Request-ID':requestId,'Content-Length':Buffer.byteLength(body)});res.end(body);return true;
     }finally{try{logger({requestId,method:req.method,path:url.pathname,status,errorCode})}catch(_) {}}
