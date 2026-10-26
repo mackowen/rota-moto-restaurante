@@ -39,7 +39,7 @@ assert.match(html,/rm-global-header topbar rm-page-header dv2-header/u,'dashboar
 assert.match(html,/topbar-main[\s\S]*<h1 aria-label="Início">[\s\S]*Visão geral da operação, pedidos e indicadores\.[\s\S]*dv2-header-actions/u,'Home header uses the shared title/description/actions structure');
 assert.match(html,/<section class="dv2-greeting"[\s\S]*<h2>Olá,[\s\S]*Confira o que precisa de atenção hoje\./u,'operational greeting remains distinct from the page title and summary');
 assert.match(renderContext.renderHeader({title:'Pedidos',eyebrow:'Restaurante',subtitle:'Resumo',actions:'<button>Nova</button>'}),/rm-global-header topbar rm-page-header[\s\S]*RotaMoto[\s\S]*Pedidos[\s\S]*Nova/u,'other operational tabs use the same shared header renderer');
-assert.match(app,/function header\(title,sub,action=''\)\{[\s\S]*?canModule\('events'\)\?window\.RotaMotoDashboardV2\.renderNotificationAction\(\):''[\s\S]*?actions:notifications\+action/u,'all operational tabs reuse the notifications action only when Events is permitted');
+assert.match(app,/function header\(title,sub,action='',compactTitle=undefined\)\{[\s\S]*?canModule\('events'\)\?window\.RotaMotoDashboardV2\.renderNotificationAction\(\):''[\s\S]*?actions:notifications\+action/u,'all operational tabs reuse the notifications action only when Events is permitted');
 assert.match(app,/document\.querySelectorAll\('\[data-tab\]'\)\.forEach\(b=>b\.onclick=\(\)=>goTab\(b\.dataset\.tab\)\)/u,'notifications continue through the application navigation handler');
 assert.match(app,/function goTab\(tab\)\{[\s\S]*?if\(!tab\|\|!canModule\(tab\)\)return/u,'Events navigation checks the existing module permission before changing tabs');
 assert.doesNotMatch(app,/orders-v2-notifications/u,'Orders has no separate notifications implementation');
@@ -121,10 +121,10 @@ assert.match(ds,/nav-more-menu:not\(\[hidden\]\)[\s\S]*border-radius:20px 20px 0
 assert.match(ds,/nav-more-groups[\s\S]*overflow:auto/u,'More destinations scroll inside the available viewport');
 assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection state distinguishes active synchronization');
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
-assert.match(index,/dashboard-v2\.js\?v=0304\.8/u,'shared header component bundle uses the corrected campaign cache key');
+assert.match(index,/dashboard-v2\.js\?v=0304\.9/u,'shared header component bundle uses the corrected campaign cache key');
 assert.match(index,/dashboard-v2\.css\?v=0304\.8/u,'dashboard width/header CSS uses the current campaign cache key');
-assert.match(sw,/CACHE_PREFIX\}v132/u,'service worker shell cache is advanced for the current campaign');
-assert.match(index,/app\.js\?v=0304-login\.11/u,'official app script uses the current campaign cache key');
+assert.match(sw,/CACHE_PREFIX\}v135/u,'service worker shell cache is advanced for the current campaign');
+assert.match(index,/app\.js\?v=0304-login\.12/u,'official app script uses the current campaign cache key');
 assert.match(index,/orders-v2\.css\?v=0304\.8/u,'Orders V2 layout uses a fresh cache key');
 assert.match(index,/design-system\.css\?v=0304\.5/u,'shared header spacing uses a fresh cache key');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');

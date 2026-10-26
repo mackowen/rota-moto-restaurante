@@ -34,7 +34,7 @@
     const brand = `<div class="dv2-brand mobile-brand rm-header-brand"><img class="brand-logo" src="favicon.svg" alt="" width="36" height="36"><span><strong>RotaMoto</strong><small>Restaurante</small></span></div>`;
     const dashboardClass = variant === 'dashboard' ? ' dv2-header' : '';
     const actionClass = variant === 'dashboard' ? ' dv2-header-actions' : '';
-    return `<header class="rm-global-header topbar rm-page-header${dashboardClass}">${brand}<div class="topbar-main"><div class="eyebrow">${escapeHtml(eyebrow)}</div><h1 aria-label="${escapeHtml(title)}"><span class="topbar-title-full">${escapeHtml(title)}</span><span class="topbar-title-compact" aria-hidden="true">${escapeHtml(compactTitle || title)}</span></h1><p>${subtitle}</p></div><div class="top-actions${actionClass}">${actions}</div></header>`;
+    return `<header class="rm-global-header topbar rm-page-header${dashboardClass}">${brand}<div class="topbar-main"><div class="eyebrow">${escapeHtml(eyebrow)}</div><h1 aria-label="${escapeHtml(title)}"><span class="topbar-title-full">${escapeHtml(title)}</span>${compactTitle===false?'':`<span class="topbar-title-compact" aria-hidden="true">${escapeHtml(compactTitle || title)}</span>`}</h1><p>${subtitle}</p></div><div class="top-actions${actionClass}">${actions}</div></header>`;
   }
   function renderNotificationAction({available = true, showUnavailable = false} = {}) {
     if (!available && !showUnavailable) return '';
