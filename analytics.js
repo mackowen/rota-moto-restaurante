@@ -10,6 +10,7 @@
     orders: { name: 'Pedidos', source: 'Order.createdAt/status/type/source', formula: 'contagem de Orders no período de criação e filtros selecionados', unit: 'pedidos', states: 'todos os estados conhecidos; status ausente fica em “desconhecido”', period: 'Order.createdAt (datas civis da Company quando timezone configurado; intervalo UTC quando ausente)', missing: 'data inválida é excluída e contada como incompleta', limits: 'origem é comercial, não provider logístico' },
     deliveryFees: { name: 'Taxas de entrega', source: 'Order.deliveryFee; legado Order.value', formula: 'soma/média de uma taxa por Order cuja entrega principal foi concluída; Delivery RETURN não cria taxa', unit: 'BRL', currency: 'BRL', states: 'Delivery principal DELIVERED e taxa válida', period: 'coorte por Order.createdAt', missing: 'taxa ausente/inválida ou moeda desconhecida é excluída do denominador e reduz cobertura', limits: 'BRL legado só é reconhecido para canais locais conhecidos; não é faturamento de produtos nem valor integral do pedido' },
     orderTicket: { name: 'Ticket médio do pedido', source: 'Order.money.totalMinor + Order.money.currency', formula: 'média do total explicitamente mapeado em minor units, agrupado por moeda', unit: 'valor médio por pedido', currency: 'agrupado por ISO 4217; moedas nunca são somadas', states: 'Orders com total conhecido e moeda explícita no objeto monetário canônico', period: 'coorte por Order.createdAt', missing: 'legado amountMinor/value sem composição comprovada fica fora e reduz cobertura', limits: 'média de totais conhecidos não equivale a faturamento agregado; cobertura depende da origem' },
+    recordedOrderBilling: { name: 'Valores comerciais registrados', source: 'Order.money completo e validado', formula: 'bruto = subtotal + taxas; líquido registrado = totalMinor após desconto; soma por moeda e uma vez por Order', unit: 'unidade mínima monetária', currency: 'agrupado por ISO 4217; moedas nunca são somadas', states: 'Orders não cancelados com composição canônica completa; cancelados são reportados à parte', period: 'competência operacional por Order.createdAt no fuso da empresa', missing: 'somente composição completa e moeda válida entram; desconhecidos permanecem fora e reduzem cobertura', limits: 'valor registrado no pedido, não recebimento, receita liquidada nem faturamento fiscal; sem razão canônica não determina estornos/refundos' },
     orderMoneyComponents: { name: 'Componentes monetários do pedido', source: 'Order.money.components/provenance/completeness', formula: 'agregação de cada componente conhecido separada por ISO currency', unit: 'unidade mínima monetária', states: 'todos os Orders com componente válido', period: 'coorte por Order.createdAt', missing: 'componente ausente é desconhecido, nunca zero', limits: 'não calcula margem nem infere taxas omitidas' },
     driverPayout: { name: 'Repasse registrado', source: 'Earning.amountMinor/currency', formula: 'soma/média de Earnings BRL válidos associados às Deliveries elegíveis; RETURN excluída', unit: 'BRL', currency: 'BRL', states: 'Earning ligado a Delivery do recorte', period: 'coorte por Order.createdAt; não por data de pagamento', missing: 'Earning ausente não vira zero; cobertura por entregas associadas', limits: 'repasse ao Driver, não custo operacional integral' },
     estimatedDistance: { name: 'Distância estimada', source: 'Delivery.estimatedDistanceM; legado Order.km', formula: 'média e soma apenas de valores não negativos válidos', unit: 'km', states: 'Deliveries do recorte', period: 'coorte por Order.createdAt', missing: 'excluído e contado como indisponível', limits: 'Route ou estimativa local não é distância percorrida' },
@@ -214,6 +215,55 @@
     const moneyKinds = Object.create(null);
     for (const row of filtered) moneyKinds[row.money.kind] = (moneyKinds[row.money.kind] || 0) + 1;
 
+    const financialTotals = Object.create(null), financialDaily = Object.create(null);
+    let financialEligible = 0, financialAvailable = 0, financialCancelled = 0;
+    const addFinancial = (target, key, value) => {
+      const current = target[key] || 0;
+      const next = current + value;
+      if (!Number.isSafeInteger(next)) return false;
+      target[key] = next;
+      return true;
+    };
+    for (const row of filtered) {
+      const orderStatus = String(row.order.status || '').trim().toUpperCase();
+      const cancelled = ['CANCELADA','CANCELADO','CANCELLED','CANCELED'].includes(orderStatus);
+      if (cancelled) financialCancelled++;
+      else financialEligible++;
+      const money = row.money, currency = money.currency;
+      const complete = money.kind === 'canonical_complete' && validCurrency(currency) &&
+        ['itemsSubtotalMinor','discountMinor','deliveryFeeMinor','serviceFeeMinor','otherFeeMinor','totalMinor'].every(key => Number.isSafeInteger(money[key]) && money[key] >= 0);
+      if (!complete) continue;
+      if (Object.hasOwn(financialTotals,currency) && financialTotals[currency] === null) continue;
+      const grossMinor = money.itemsSubtotalMinor + money.deliveryFeeMinor + money.serviceFeeMinor + money.otherFeeMinor;
+      if (!Number.isSafeInteger(grossMinor)) continue;
+      if (cancelled) continue;
+      const totals = financialTotals[currency] || (financialTotals[currency] = { grossMinor: 0, discountMinor: 0, orderTotalMinor: 0, count: 0 });
+      const day = row.createdLocalDate || new Date(row.createdAt).toISOString().slice(0, 10);
+      const daily = (financialDaily[currency] ||= Object.create(null));
+      const current = daily[day] || { grossMinor: 0, discountMinor: 0, orderTotalMinor: 0, count: 0 };
+      const increments = [['grossMinor',grossMinor],['discountMinor',money.discountMinor],['orderTotalMinor',money.totalMinor],['count',1]];
+      const overflow = increments.some(([key,value]) => !Number.isSafeInteger(totals[key] + value) || !Number.isSafeInteger(current[key] + value));
+      if (overflow) {
+        // Unsafe totals are withheld rather than rounded into a false amount.
+        financialAvailable -= totals.count;
+        financialTotals[currency] = null;
+        delete financialDaily[currency];
+        continue;
+      }
+      for (const [key,value] of increments) { addFinancial(totals,key,value); addFinancial(current,key,value); }
+      daily[day] = current;
+      financialAvailable++;
+    }
+    const financial = {
+      basis: 'Order.money canonical_complete; Order.createdAt; company timezone',
+      totals: Object.fromEntries(Object.entries(financialTotals).map(([currency,value]) => [currency, value || { grossMinor: null, discountMinor: null, orderTotalMinor: null, count: 0 }])),
+      dailyByCurrency: Object.fromEntries(Object.entries(financialDaily).map(([currency, days]) => [currency,
+        Object.entries(days).sort(([a],[b])=>a.localeCompare(b)).map(([date,value])=>({ date, ...value }))])),
+      coverage: { available: financialAvailable, total: financialEligible, cancelled: financialCancelled, missing: Math.max(0, financialEligible - financialAvailable) },
+      received: { available: false, reason: 'Não existe evento canônico de liquidação de pagamento.' },
+      refunds: { available: false, reason: 'Não existe razão financeira canônica de estornos e ajustes.' },
+    };
+
     const earningsByDelivery = new Map();
     const deliveryAliases = new Map();
     for (const row of filtered) {
@@ -352,7 +402,7 @@
     const returnedCount = operations.filter(operation => operation.status === 'RETURNED').length;
     const open = operations.filter(operation => OPEN_STATUSES.has(operation.status)).length;
     return {
-      ...(options.includeExportRows ? { exportRows: filtered.map(row => ({ num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: requestedStatus || row.status, type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, moneyCurrency: row.money.currency || '', moneyCompleteness: row.money.kind, itemsSubtotalMinor: row.money.itemsSubtotalMinor ?? null, discountMinor: row.money.discountMinor ?? null, deliveryFeeMinor: row.money.deliveryFeeMinor ?? null, serviceFeeMinor: row.money.serviceFeeMinor ?? null, otherFeeMinor: row.money.otherFeeMinor ?? null, totalMinor: row.money.totalMinor ?? null, estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt })) } : {}),
+      ...(options.includeExportRows ? { exportRows: filtered.map(row => { const orderStatus=String(row.order.status||'').trim().toUpperCase(),cancelled=['CANCELADA','CANCELADO','CANCELLED','CANCELED'].includes(orderStatus),complete=row.money.kind==='canonical_complete'&&!cancelled;const gross=complete?row.money.itemsSubtotalMinor+row.money.deliveryFeeMinor+row.money.serviceFeeMinor+row.money.otherFeeMinor:null;return { num: row.order.num || row.order.number || '', customer: row.order.customer || '', driverName: row.driverName || 'Não atribuído', status: requestedStatus || row.status, orderStatus:row.order.status||'', type: row.order.type || '', source: row.source === 'unknown' ? 'Sem origem registrada' : row.source, deliveryFeeBRL: row.deliveryFeeBRL, moneyCurrency: row.money.currency || '', moneyCompleteness: row.money.kind, itemsSubtotalMinor: row.money.itemsSubtotalMinor ?? null, discountMinor: row.money.discountMinor ?? null, deliveryFeeMinor: row.money.deliveryFeeMinor ?? null, serviceFeeMinor: row.money.serviceFeeMinor ?? null, otherFeeMinor: row.money.otherFeeMinor ?? null, grossRecordedMinor:Number.isSafeInteger(gross)?gross:null, totalMinor: row.money.totalMinor ?? null, estimatedDistanceKm: row.estimatedDistanceKm, actualDistanceKm: row.actualDistanceKm, createdAt: row.createdAt }; }) } : {}),
       total: filtered.length, deliveryTotal: operations.length, invalidCreatedAt,
       invalidDateRange: !validRange,
       dateRange: validRange && hasDateRange ? { from: requestedFrom, to: requestedTo, timeZone: tz || 'UTC' } : null,
@@ -376,7 +426,7 @@
         estimatedDistance: { available: estimatedDistance.count, total: operations.length, missing: estimatedMissing },
         actualDistance: { available: actualDistance.count, total: operations.length, missing: actualMissing },
       },
-      deliveryFees: fee, orderTicket, moneyComponents, driverPayout: earnings,
+      deliveryFees: fee, orderTicket, moneyComponents, financial, driverPayout: earnings,
       estimatedDistance, actualDistance, durations,
       hourlyVolume: tz ? hourly : null, weekdayVolume: tz ? weekdays : null,
       dailyVolume, deliveryDailyVolume, deliveryHourlyVolume: tz ? deliveryHourly : null,

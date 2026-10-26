@@ -17,6 +17,7 @@ const { hashPassword } = require('../backend/identity/passwords');
 const { createAdminHttpHandler } = require('../backend/admin/http');
 const { createLogisticsService } = require('../backend/logistics/service');
 const { createLogisticsHttpHandler } = require('../backend/logistics/http');
+const Analytics = require('../analytics');
 
 function savepointPool(client) {
   let counter = 0;
@@ -196,7 +197,8 @@ async function main() {
       const packet = { protocol: 'rotamoto-sync', protocolVersion: 1, schemaVersion: 1,
         packetId: `pkt_${crypto.randomUUID()}`, deviceId: 'restaurant-test-device', companyId: crypto.randomUUID(),
         source: { app: 'RotaMoto Restaurante', deviceId: 'restaurant-test-device' }, createdAt: baseTime,
-        data: { orders: [{ id: 'order-local-1', createdAt: baseTime, updatedAt: baseTime, version: 1, status: 'CREATED', customer: 'Sintético' }],
+        data: { orders: [{ id: 'order-local-1', createdAt: baseTime, updatedAt: baseTime, version: 1, status: 'CREATED', sourceId:'manual', customer: 'Sintético',
+          money:{currency:'BRL',completeness:'complete',provenance:{kind:'manual'},components:{itemsSubtotalMinor:10000,discountMinor:1000,deliveryFeeMinor:1000,serviceFeeMinor:500,otherFeeMinor:0,totalMinor:10500}} }],
           deliveries: [{ id: 'delivery-local-1', orderId: 'order-local-1', status: 'ASSIGNED', operationNote: 'preserve me',
             createdAt: baseTime, updatedAt: baseTime, version: 1 }],
           drivers: [], routes: [], locationUpdates: [], deliveryEvents: [{ id: 'event-local-1', eventId: 'event-local-1',
@@ -263,6 +265,11 @@ async function main() {
       assert.equal(domainOrders.body.records.length, 1);
       assert.equal(domainOrders.body.records[0].id, orderId);
       assert.equal(domainOrders.body.records[0].version, 1);
+      assert.deepEqual(domainOrders.body.records[0].record.money,packet.data.orders[0].money,'canonical server read returns the exact validated financial source');
+      const serverFinance=Analytics.aggregate({orders:domainOrders.body.records.map(item=>({...item.record,id:item.id,version:item.version}))},{now:Date.now(),period:'all'}).financial;
+      assert.deepEqual(serverFinance.totals.BRL,{grossMinor:11500,discountMinor:1000,orderTotalMinor:10500,count:1},'server-read canonical records reconcile to the independent exact-cents expectation');
+      const duplicateOrders=await call('/api/domain/orders?limit=10');
+      assert.equal(duplicateOrders.body.records.filter(record=>record.id===orderId).length,1,'idempotent replay does not duplicate one Order in the server report projection');
       assert.match(domainOrders.headers.get('x-request-id'), /^[0-9a-f-]{36}$/iu);
       const ownDelivery = await call(`/api/domain/deliveries/${deliveryId}`);
       assert.equal(ownDelivery.status, 200);

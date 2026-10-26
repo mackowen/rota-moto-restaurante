@@ -48,6 +48,11 @@ assert.equal(report.moneyComponents['itemsSubtotalMinor:BRL'].total, 125);
 assert.equal(report.moneyComponents['deliveryFeeMinor:BRL'].total, 12);
 assert.equal(report.coverage.orderAmount.complete, 1);
 assert.equal(report.coverage.orderAmount.available, 1);
+assert.deepEqual(report.financial.totals.BRL,{grossMinor:13700,discountMinor:0,orderTotalMinor:13700,count:1});
+assert.deepEqual(report.financial.coverage,{available:1,total:3,cancelled:1,missing:2});
+assert.deepEqual(report.financial.dailyByCurrency.BRL,[{date:'2026-10-06',grossMinor:13700,discountMinor:0,orderTotalMinor:13700,count:1}]);
+assert.equal(report.financial.received.available,false,'Order total is not a payment receipt');
+assert.equal(report.financial.refunds.available,false,'order status does not prove refunds or adjustments');
 assert.deepEqual(report.driverPayout, { total: 12, average: 12, count: 1 });
 assert.equal(report.estimatedDistance.total, 7.5);
 assert.equal(report.estimatedDistance.count, 2);
@@ -92,6 +97,7 @@ assert.equal(filteredReturn.exportRows.length,1,'CSV projection does not duplica
 assert.equal(filteredReturn.exportRows[0].status,'RETURNED','the CSV reflects the operation status that matched the filter');
 assert.match(Analytics.csvRow([filteredReturn.exportRows[0].customer]),/^"'=HYPERLINK/u,'formula-leading customer values remain neutralized in CSV');
 assert.equal(filteredReturn.driverPayout.count,0,'combined filters do not infer payment for the RETURN');
+assert.equal(filteredReturn.financial.coverage.cancelled,1,'a re-delivery and return do not duplicate or monetize a cancelled Order');
 const returnHtml = View.render({ report:returnReport, filters:{period:'all',bike:'',status:'',type:'',source:''}, statusLabel:value=>({CANCELLED:'Cancelada',RETURNED:'Devolvida'})[value]||'Em andamento', typeLabel:()=>'Entrega', sources:{ifood:'iFood'}, bikes:[], types:['NORMAL'], freshNote:'fixture sintética' });
 assert.match(returnHtml,/report-metric-label">Entregas<\/span><strong class="report-metric-value">2</u,'the dashboard counts distinct delivery operations');
 assert.match(returnHtml,/Pedidos no período[\s\S]*>1</u,'the report retains one Order in the financial/commercial cohort');
@@ -108,6 +114,22 @@ assert.deepEqual(Object.keys(badMoney.orderTicket), [], 'ambiguous legacy amount
 assert.equal(badMoney.coverage.orderAmount.available, 0);
 assert.equal(badMoney.coverage.orderAmount.missing, 5);
 assert.deepEqual({ ...badMoney.coverage.orderAmount.kinds }, { legacy_delivery_fee: 1, legacy_ambiguous_total: 4 });
+
+const financialFixtureOrders = [
+  { id:'fin-paid-looking',createdAt:Date.parse('2026-10-06T02:30:00Z'),status:'FINALIZADA',payments:[{status:'PAID',amountMinor:9500}],money:{currency:'BRL',completeness:'complete',provenance:{kind:'manual'},components:{itemsSubtotalMinor:10000,discountMinor:1000,deliveryFeeMinor:1000,serviceFeeMinor:500,otherFeeMinor:0,totalMinor:10500}} },
+  { id:'fin-pending',createdAt:Date.parse('2026-10-06T04:00:00Z'),status:'AGUARDANDO',money:{currency:'BRL',completeness:'partial',provenance:{kind:'manual'},components:{itemsSubtotalMinor:3000}} },
+  { id:'fin-cancelled',createdAt:Date.parse('2026-10-06T05:00:00Z'),status:'CANCELADA',money:{currency:'BRL',completeness:'complete',provenance:{kind:'manual'},components:{itemsSubtotalMinor:2000,discountMinor:0,deliveryFeeMinor:0,serviceFeeMinor:0,otherFeeMinor:0,totalMinor:2000}} },
+];
+const financialFixture=Analytics.aggregate({orders:financialFixtureOrders,deliveries:[{id:'fin-delivery-1',orderId:'fin-paid-looking',status:'DELIVERED'},{id:'fin-delivery-return',orderId:'fin-paid-looking',status:'RETURNED',extensions:{x_rotamoto_delivery_type:'RETURN'}},{id:'fin-delivery-redelivery',orderId:'fin-paid-looking',status:'DELIVERED',extensions:{x_rotamoto_delivery_type:'REDELIVERY'}}]},{now,period:'all',timeZone:'America/Sao_Paulo',includeExportRows:true});
+assert.deepEqual(financialFixture.financial.totals.BRL,{grossMinor:11500,discountMinor:1000,orderTotalMinor:10500,count:1},'gross, discount, and recorded order total are exact integer cents');
+assert.deepEqual(financialFixture.financial.coverage,{available:1,total:2,cancelled:1,missing:1},'partial and cancelled orders do not become sales totals');
+assert.equal(financialFixture.financial.dailyByCurrency.BRL[0].date,'2026-10-05','financial cohort uses company civil date');
+assert.equal(financialFixture.financial.dailyByCurrency.BRL[0].count,1,'redelivery does not duplicate a single Order financial amount');
+assert.equal(financialFixture.financial.received.available,false,'unvalidated Order.payments are not treated as receipts');
+assert.equal(financialFixture.exportRows.find(row=>row.num==='').grossRecordedMinor,11500);
+const financialHtml=View.render({report:financialFixture,filters:{period:'all',bike:'',status:'',type:'',source:''},statusLabel:value=>value,typeLabel:value=>value,sources:{},bikes:[],types:[],freshNote:'fixture financeira'});
+assert.match(financialHtml,/Faturamento bruto registrado[\s\S]*R\$ 115,00/u,'the Executive presents the known gross order amount without labeling it received');
+assert.match(financialHtml,/Liquidação indisponível/u,'payment settlement is separately unavailable');
 
 const timezone = Analytics.aggregate({ orders: [
   { id: 'before', createdAt: Date.parse('2026-10-06T02:59:59Z') },
@@ -267,6 +289,8 @@ assert.match(appSource, /function dashboardV2Model\(\)[\s\S]*?RotaMotoAnalytics\
 assert.match(appSource, /function dashboardV2Model\(\)[\s\S]*?analytics\.driverPayout/u, 'Command Center reports canonical payout coverage');
 assert.doesNotMatch(appSource, /kpi\('Faturamento hoje'/);
 assert.match(appSource, /Taxa de entrega conhecida \(BRL\)/, 'CSV names the known fee semantics explicitly');
+assert.match(appSource,/Valor bruto registrado \(minor units\)[\s\S]*Pagamento recebido \(sem fonte canônica\)/u,'financial export separates order billing from settled receipt');
+assert.match(appSource,/"Indisponível",row\.moneyCurrency/u,'CSV does not fabricate payment settlement');
 assert.match(appSource, /function exportCSV\(\)\{[\s\S]*?RotaMotoAnalytics\.csvRow[\s\S]*?catch\(_\)[\s\S]*?Não foi possível exportar o relatório/u, 'CSV export reports a sanitized user-facing failure and still uses the safe canonical serializer');
 assert.doesNotMatch(appSource, /earning BRL|Route\.deliveryIds|Status canônico da entrega|Fulfillment logístico|QR seguro da Delivery/u, 'telas operacionais não expõem propriedades internas de entidades');
 assert.match(appSource, /const syncOperationLabel=value=>/u, 'delivery detail translates local and server sync states before showing them');

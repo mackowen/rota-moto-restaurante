@@ -36,6 +36,6 @@ assert.match(css, /\.modal-presence-qr\{[^}]*overflow:auto/u, 'modal permits ver
 assert.match(css, /@media\(max-height:520px\)[\s\S]*max-height:calc\(100dvh - 12px\)/u, 'short landscape view uses a viewport-aware dialog height');
 assert.match(html, /presence-qr\.css\?v=0304\.1/u, 'presence modal styles are loaded');
 assert.match(worker, /presence-qr\.css\?v=0304\.1/u, 'presence modal styles are available in the atomic offline shell');
-assert.match(worker, /CACHE_PREFIX\}v140/u, 'shell cache was advanced for the new stylesheet and script');
+assert.match(worker, /CACHE_PREFIX\}v141/u, 'shell cache was advanced for the new stylesheet and script');
 
 console.log('Presence QR modal server contract, responsive structure, expiry and accessibility hooks: PASS');

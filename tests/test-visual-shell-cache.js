@@ -9,7 +9,7 @@ const designSystem=fs.readFileSync(require.resolve('../design-system.css'),'utf8
 const styles=fs.readFileSync(require.resolve('../styles.css'),'utf8');
 assert.match(html,/identity-ui\.css\?v=0304-login\.10[\s\S]*design-system\.css\?v=0304\.5/u);
 assert.match(html,/styles\.css\?v=0304\.21[\s\S]*pilot-views\.css\?v=0299\.1[\s\S]*dashboard-v2\.css\?v=0304\.8[\s\S]*orders-v2\.css\?v=0304\.8[\s\S]*routes-v2\.css\?v=0304\.11[\s\S]*app\.js\?v=0304-login\.14/u,'the campaign shell cache keys the current visual modules and dashboard markup');
-assert.match(worker,/CACHE_PREFIX\}v140/u,'updated visual assets use a new atomic shell cache');
+assert.match(worker,/CACHE_PREFIX\}v141/u,'updated visual assets use a new atomic shell cache');
 assert.match(html,/rel="icon" type="image\/svg\+xml" href="favicon\.svg\?v=0140\.1"/u);
 assert.match(html,/rel="manifest" href="\/manifest\.json"/u);
 assert.match(html,/sizes="192x192" href="\/icons\/icon-192\.png"/u);
