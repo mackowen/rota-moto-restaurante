@@ -1,14 +1,14 @@
 'use strict';
 
 const CACHE_PREFIX = 'rotamoto-restaurante-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v137`;
+const CACHE_NAME = `${CACHE_PREFIX}v138`;
 const APP_SHELL = Object.freeze([
-  '/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/styles.css?v=0304.19', '/identity-ui.css?v=0304-login.10', '/presence-qr.css?v=0304.1', '/design-system.css?v=0304.5', '/pilot-views.css?v=0299.1', '/favicon.svg?v=0140.1', '/dashboard-v2.css?v=0304.8', '/orders-v2.css?v=0304.8', '/routes-v2.css?v=0304.11', '/dashboard-v2.js?v=0304.9',
+  '/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/styles.css?v=0304.20', '/identity-ui.css?v=0304-login.10', '/presence-qr.css?v=0304.1', '/design-system.css?v=0304.5', '/pilot-views.css?v=0299.1', '/favicon.svg?v=0140.1', '/dashboard-v2.css?v=0304.8', '/orders-v2.css?v=0304.8', '/routes-v2.css?v=0304.11', '/dashboard-v2.js?v=0304.9',
   '/qr-local.js', '/ifood-integration.js', '/keeta-integration.js', '/99food-integration.js',
   '/contract.js', '/backup-format.js?v=1', '/backup-center.css?v=0231.1', '/backup-destinations-ui.js?v=0231.1', '/sync-reconciliation.js?v=2',
   '/indexeddb-schema.js?v=2', '/order-money.js?v=1', '/ticket-renderer.js?v=0256d1.1',
   '/browser-printer-provider.js?v=1', '/restaurant-operations.js?v=2',
-  '/analytics.js?v=4', '/analytics-view.js?v=0254.8', '/logistics-ui.js?v=0254.4',
+  '/analytics.js?v=4', '/analytics-view.js?v=0254.9', '/logistics-ui.js?v=0254.5',
   '/identity-session-guard.js', '/server-update-coordinator.js?v=0253.1', '/company-settings-persistence.js?v=0286.1', '/app.js?v=0304-login.12', '/identity-ui.js?v=0304-login.8',
   '/vendor/leaflet/leaflet.css', '/vendor/maplibre/maplibre-gl.css?v=0139.1'
 ]);
