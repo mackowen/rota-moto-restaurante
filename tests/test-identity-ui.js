@@ -32,6 +32,23 @@ assert.match(source, /autocomplete="username"/u, 'email uses the username autoco
 assert.match(source, /name="companyId" autocomplete="off"[^>]*required/u, 'the server-validated company code remains required');
 assert.match(source, /data-recovery-request/u, 'the existing access recovery flow remains present');
 assert.match(source, /data-accept-invitation/u, 'the existing invitation flow remains present');
+assert.match(source, /data-recovery-choice="request-code"[\s\S]*data-recovery-choice="reset-password"[\s\S]*data-recovery-choice="recover-mfa"/u,
+  'recovery is presented as three mutually exclusive navigation options');
+assert.match(source, /function setRecoveryStep\(step[\s\S]*screen\.hidden = screen\.dataset\.recoveryScreen !== recoveryStep/u,
+  'only the selected recovery form screen is visible');
+assert.match(source, /function setAuthView\(view[\s\S]*authView !== 'login'[\s\S]*authView !== 'recovery'[\s\S]*authView !== 'invitation'/u,
+  'login, recovery and invitation are switched as exclusive authentication views');
+assert.match(source, /data-recovery-back[\s\S]*Voltar ao login/u, 'recovery provides a contextual back action to the login');
+assert.match(source, /data-invitation-back[\s\S]*Voltar ao login/u, 'invitation provides a contextual back action to the login');
+assert.doesNotMatch(source, /<details data-recovery>|<details data-invitation>|<details><summary>Perdi o autenticador/u,
+  'unauthenticated recovery and invitation do not use nested disclosure cards');
+assert.match(source, /setAuthView\('recovery',false\);setOpen\(true\)/u, 'email recovery links open the matching recovery view without changing token validation');
+assert.match(source, /setAuthView\('invitation',false\);setOpen\(true\)/u, 'invitation links open the single invitation view');
+assert.match(source, /working \|\| !form\.reportValidity\(\)/u, 'recovery and invitation submissions guard against duplicate requests');
+assert.match(source, /Se a conta puder ser recuperada, as instruções serão entregues ao email cadastrado\./u,
+  'password recovery retains a neutral response that does not reveal account existence');
+assert.match(styles, /\.rm-auth-flow \{[\s\S]*?border: 1px solid var\(--rm-id-border\)/u, 'secondary authentication flows use one outer surface');
+assert.match(styles, /\.rm-auth-flow-screen form \{[\s\S]*?padding: 0; border: 0/u, 'forms inside recovery do not create nested cards');
 assert.doesNotMatch(source, /name="rememberMe"|data-remember-me|localStorage\.setItem\([^\n]*password/iu, 'login does not introduce insecure remembered credentials');
 assert.match(styles, /#rmIdentityRoot\[data-gated="true"\][\s\S]*?grid-template-columns: minmax\(0, 1\.08fr\) minmax\(360px, \.92fr\)/u, 'desktop login uses a two-region composition');
 assert.match(styles, /@media \(max-width: 860px\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/u, 'tablet login stacks presentation and form only when the effective layout width cannot support both columns');
@@ -104,7 +121,9 @@ assert(identityAsset, 'identity UI bundle has a cache busting version');
 const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
 assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v\d+`/u, 'service worker uses a versioned cache');
 assert.ok(sw.includes(`'/${identityAsset}'`), 'current identity UI asset is included in the offline shell');
-assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v129`/u, 'service worker cache version advances with changed login assets');
+assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v130`/u, 'service worker cache version advances with changed login assets');
+assert.match(html, /identity-ui\.css\?v=0304-login\.10/u, 'updated recovery flow CSS is cache-busted');
+assert.match(html, /identity-ui\.js\?v=0304-login\.8/u, 'updated recovery navigation is cache-busted');
 assert.doesNotMatch(html, /<script[^>]+rotamoto-map-runtime/u, 'heavy cartography runtime is not loaded before authentication');
 assert.doesNotMatch(sw.split('const OPTIONAL_ASSETS')[0], /rotamoto-map-runtime|maplibre-gl-worker/u, 'large map runtime and worker are not precached with the login shell');
 assert.match(appSource, /function ensureMapRuntime\(\)[\s\S]*rotamoto-map-runtime\.js[\s\S]*?function initRouteMap\(\)[\s\S]*await ensureMapRuntime\(\)/u, 'map runtime loads on demand before route map initialization');

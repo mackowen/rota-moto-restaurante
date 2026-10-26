@@ -10,6 +10,9 @@
   const sessionReadGuard = window.RotaMotoSessionGuard.createSessionReadGuard();
   let working = false;
   let mfaStarting = false;
+  let authView = 'login';
+  let recoveryStep = 'recovery-menu';
+  let mfaRecoveryConfirmReady = false;
   let driverRows = [];
   let driverCursor = null;
   let marketplaceOrderCache = { orders: [], loaded: false, error: null };
@@ -58,7 +61,7 @@
       <header><div><strong id="rmIdentityTitle">Conta RotaMoto</strong><small data-identity-status>Verificando sua conta…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
       <div class="rm-identity-content">
         <div class="rm-login-mobile-brand" data-login-mobile-brand><img src="/favicon.svg?v=0140.1" alt=""><span>RotaMoto</span></div>
-        <form data-login novalidate><div class="rm-login-form-heading"><h2>Conta RotaMoto</h2><p>Entre para acessar sua conta.</p></div>
+        <form data-login novalidate><div class="rm-login-form-heading"><h2 tabindex="-1">Conta RotaMoto</h2><p>Entre para acessar sua conta.</p></div>
           <label>Email<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input name="email" type="email" autocomplete="username" required maxlength="320"></span></label>
           <label>Senha<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input name="password" type="password" autocomplete="current-password" required maxlength="1024"><button class="rm-password-toggle" type="button" data-toggle-password aria-label="Mostrar senha" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
           <label data-mfa-label hidden>Código de verificação ou recuperação<input name="mfaCode" autocomplete="one-time-code" minlength="6" maxlength="128"></label>
@@ -76,15 +79,24 @@
           <form data-switch><label>Trocar empresa<input name="companyId" autocomplete="off" spellcheck="false" required></label><button type="submit">Confirmar troca</button><p data-switch-error role="alert"></p></form>
           <button type="button" data-logout class="rm-secondary">Sair</button><p data-account-error role="alert" aria-live="polite"></p>
         </div>
-        <details data-recovery><summary>Recuperar acesso</summary><form data-recovery-request><label>Email<input name="email" type="email" autocomplete="email" required maxlength="320"></label><button type="submit">Solicitar recuperação</button><p role="status" data-recovery-status></p></form>
-          <form data-recovery-consume><label>Código recebido<input name="token" autocomplete="one-time-code" required maxlength="43"></label><label>Nova senha<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button type="submit">Alterar senha</button><p role="status" data-recovery-result></p></form>
-          <details><summary>Perdi o autenticador</summary><form data-mfa-recovery-request><p>A solicitação exige senha atual e confirmação pelo email verificado. Outro administrador deverá aprovar; para proprietário único, somente o operador local pode concluir.</p><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label><label>Senha atual<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código da empresa<input name="companyId" required maxlength="36" autocomplete="off"></label><button type="submit">Solicitar recuperação de MFA</button><p role="status" data-mfa-recovery-status></p></form><form data-mfa-recovery-confirm><label>Código recebido por email<input name="token" autocomplete="one-time-code" required maxlength="43"></label><button type="submit">Confirmar solicitação</button><p role="status" data-mfa-recovery-confirm-status></p></form></details></details>
-        <details data-invitation><summary>Aceitar convite</summary><form data-accept-invitation><label>Código do convite<input name="token" required maxlength="43" autocomplete="off"></label><label>Crie sua senha<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><button type="submit">Aceitar convite</button><p role="status" data-invitation-result></p></form></details>
+        <section class="rm-auth-flow" data-recovery data-auth-view="recovery" aria-labelledby="rmRecoveryTitle" hidden>
+          <header class="rm-auth-flow-heading"><div class="rm-auth-flow-heading__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.2c0 4.7 3.2 8.3 7.5 9.8 4.3-1.5 7.5-5.1 7.5-9.8V6L12 3Z"/><path d="M9 12h6M12 9v6"/></svg></div><div><h2 id="rmRecoveryTitle" data-recovery-title>Recuperar acesso</h2><p data-recovery-description>Escolha como deseja recuperar sua conta.</p></div><button class="rm-auth-back" type="button" data-recovery-back aria-label="Voltar ao login"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6M9 12h12"/></svg><span data-recovery-back-label>Voltar</span></button></header>
+          <nav class="rm-auth-recovery-menu" data-recovery-menu aria-label="Opções para recuperar acesso">
+            <button type="button" class="rm-auth-option" data-recovery-choice="request-code"><span class="rm-auth-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span><span><strong>Solicitar código</strong><small>Receba instruções no email cadastrado.</small></span><span class="rm-auth-option__arrow" aria-hidden="true">›</span></button>
+            <button type="button" class="rm-auth-option" data-recovery-choice="reset-password"><span class="rm-auth-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 2 2-3 3-2-2-2 2"/></svg></span><span><strong>Redefinir senha</strong><small>Use o código recebido para criar uma nova senha.</small></span><span class="rm-auth-option__arrow" aria-hidden="true">›</span></button>
+            <button type="button" class="rm-auth-option" data-recovery-choice="recover-mfa"><span class="rm-auth-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 7h6M10 17h4M3 9v6m18-6v6"/></svg></span><span><strong>Perdi o autenticador</strong><small>Inicie a recuperação segura da verificação em duas etapas.</small></span><span class="rm-auth-option__arrow" aria-hidden="true">›</span></button>
+          </nav>
+          <section class="rm-auth-flow-screen" data-recovery-screen="request-code" hidden><form data-recovery-request><label>Email<input name="email" type="email" autocomplete="email" required maxlength="320"></label><small>Se a conta puder ser recuperada, enviaremos instruções ao email cadastrado.</small><button class="rm-primary" type="submit">Solicitar recuperação</button><p role="status" aria-live="polite" data-recovery-status></p></form></section>
+          <section class="rm-auth-flow-screen" data-recovery-screen="reset-password" hidden><form data-recovery-consume><label>Código recebido<input name="token" autocomplete="one-time-code" required maxlength="43"></label><label>Nova senha<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button class="rm-primary" type="submit">Alterar senha</button><p role="status" aria-live="polite" data-recovery-result></p></form></section>
+          <section class="rm-auth-flow-screen" data-recovery-screen="recover-mfa" hidden><form data-mfa-recovery-request data-mfa-recovery-stage="request"><p class="rm-auth-flow-note">A solicitação exige sua senha atual e confirmação pelo email verificado. Outro administrador deverá aprová-la; para proprietário único, somente o operador local pode concluir.</p><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label><label>Senha atual<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código da empresa<input name="companyId" required maxlength="36" autocomplete="off"></label><button class="rm-primary" type="submit">Solicitar recuperação de MFA</button><p role="status" aria-live="polite" data-mfa-recovery-status></p></form><form data-mfa-recovery-confirm data-mfa-recovery-stage="confirm" hidden><label>Código recebido por email<input name="token" autocomplete="one-time-code" required maxlength="43"></label><button class="rm-primary" type="submit">Confirmar solicitação</button><p role="status" aria-live="polite" data-mfa-recovery-confirm-status></p></form></section>
+        </section>
+        <section class="rm-auth-flow rm-auth-invitation" data-invitation data-auth-view="invitation" aria-labelledby="rmInvitationTitle" hidden><header class="rm-auth-flow-heading"><div class="rm-auth-flow-heading__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.2c0 4.7 3.2 8.3 7.5 9.8 4.3-1.5 7.5-5.1 7.5-9.8V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></div><div><h2 id="rmInvitationTitle">Aceitar convite</h2><p>Informe o código recebido para ativar o vínculo autorizado.</p></div><button class="rm-auth-back" type="button" data-invitation-back aria-label="Voltar ao login"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6M9 12h12"/></svg><span>Voltar ao login</span></button></header><form data-accept-invitation><label>Código do convite<input name="token" required maxlength="43" autocomplete="off"></label><label>Crie sua senha<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><button class="rm-primary" type="submit">Aceitar convite</button><p role="status" aria-live="polite" data-invitation-result></p></form></section>
+        <nav class="rm-login-secondary" data-login-secondary aria-label="Ajuda para acessar sua conta"><button type="button" data-open-recovery>Recuperar acesso</button><span aria-hidden="true">·</span><button type="button" data-open-invitation>Aceitar convite</button></nav>
         <section data-admin hidden><h2>Administração da empresa</h2><p data-admin-error role="alert" aria-live="polite"></p><button type="button" data-refresh-admin>Atualizar usuários e perfis</button><form data-company-setup><h3>Configuração da empresa</h3><p>Informe os dados básicos. Contato e endereço são opcionais; o fuso horário é obrigatório para a operação.</p><label>Nome da empresa<input name="name" required maxlength="160" autocomplete="organization"></label><label>Telefone de contato (opcional)<input name="supportPhone" maxlength="40" autocomplete="tel"></label><label>Fuso horário<select name="timeZone" required><option value="America/Sao_Paulo">Brasília · America/Sao_Paulo</option><option value="America/Fortaleza">Fortaleza · America/Fortaleza</option><option value="America/Manaus">Manaus · America/Manaus</option><option value="America/Rio_Branco">Rio Branco · America/Rio_Branco</option><option value="UTC">UTC</option></select></label><label>Endereço operacional (opcional)<input name="address" maxlength="500" autocomplete="street-address"></label><button type="submit">Salvar configuração</button><p role="status" data-company-setup-status aria-live="polite"></p></form><section data-mfa-recovery-admin hidden><h3>Solicitações de recuperação MFA</h3><button type="button" data-refresh-mfa-recovery>Atualizar solicitações</button><div data-mfa-recovery-requests aria-live="polite"></div></section>
           <details class="rm-admin-form-disclosure"><summary>Convidar pessoa</summary><form data-invite><h3>Convidar funcionário ou motoboy</h3><p>O convite cria ou associa uma conta pelo email. Para liberar entregas, convide a pessoa, aguarde a ativação e depois vincule a conta ao cadastro operacional correto de motoboy. Não é criada uma segunda conta.</p><label>Email<input name="email" type="email" required maxlength="320" autocomplete="email"></label><label>Perfil de acesso<select name="roleId" required></select></label><button type="submit">Enviar convite</button><p role="status" data-invite-result></p></form></details>
           <section data-integrations hidden><h3>Integrações disponíveis</h3><div></div></section><section class="rm-admin-list-section"><h3>Usuários e convites</h3><div data-members aria-live="polite"></div></section><p data-members-note role="status" hidden>Seu perfil não permite consultar os usuários desta empresa.</p><p data-driver-access-note role="status" hidden>Para listar motoristas, sua sessão precisa da permissão de leitura de sync. A desassociação continua disponível.</p><details class="rm-admin-form-disclosure"><summary>Criar perfil</summary><form data-create-role><p>Escolha um nome e permissões que seu próprio perfil pode conceder. O código técnico é gerado automaticamente.</p><label>Nome do perfil<input name="name" required maxlength="100"></label><label>Descrição<input name="description" maxlength="240"></label><fieldset><legend>Permissões por função</legend><div data-permissions></div></fieldset><button type="submit">Criar perfil</button><p role="status" data-role-result></p></form></details><section data-roles-list><h3>Perfis de acesso</h3></section>
         </section>
-        <p class="rm-privacy">Use apenas seu email, senha e códigos de verificação. Não compartilhe esses dados.</p>
+        <p class="rm-privacy" data-login-privacy>Use apenas seu email, senha e códigos de verificação. Não compartilhe esses dados.</p>
       </div>
     </section>`;
   document.body.append(host);
@@ -272,11 +284,55 @@
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
   });
   function setStatus(text) { $('[data-identity-status]').textContent = text; }
-  function setBusy(form, busy) { form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); }
+  function setRecoveryStep(step, moveFocus = true) {
+    recoveryStep = ['recovery-menu', 'request-code', 'reset-password', 'recover-mfa'].includes(step) ? step : 'recovery-menu';
+    const menu = $('[data-recovery-menu]');
+    if (menu) menu.hidden = recoveryStep !== 'recovery-menu';
+    for (const screen of panel.querySelectorAll('[data-recovery-screen]')) screen.hidden = screen.dataset.recoveryScreen !== recoveryStep;
+    const title = $('[data-recovery-title]');
+    const description = $('[data-recovery-description]');
+    const copy = {
+      'recovery-menu': ['Recuperar acesso', 'Escolha como deseja recuperar sua conta.'],
+      'request-code': ['Solicitar código', 'Informe seu email para receber instruções de recuperação.'],
+      'reset-password': ['Redefinir senha', 'Use o código recebido para criar uma nova senha.'],
+      'recover-mfa': ['Perdi o autenticador', 'Inicie a recuperação segura da verificação em duas etapas.']
+    }[recoveryStep];
+    if (title) title.textContent = copy[0];
+    if (description) description.textContent = copy[1];
+    const back = $('[data-recovery-back]');
+    const backLabel = $('[data-recovery-back-label]');
+    if (back) back.setAttribute('aria-label', recoveryStep === 'recovery-menu' ? 'Voltar ao login' : 'Voltar às opções de recuperação');
+    if (backLabel) backLabel.textContent = 'Voltar';
+    const mfaRequest = $('[data-mfa-recovery-stage="request"]');
+    const mfaConfirm = $('[data-mfa-recovery-stage="confirm"]');
+    if (mfaRequest) mfaRequest.hidden = recoveryStep !== 'recover-mfa' || mfaRecoveryConfirmReady;
+    if (mfaConfirm) mfaConfirm.hidden = recoveryStep !== 'recover-mfa' || !mfaRecoveryConfirmReady;
+    if (moveFocus && recoveryStep !== 'recovery-menu') requestAnimationFrame(() => panel.querySelector(`[data-recovery-screen="${recoveryStep}"] input:not([disabled])`)?.focus());
+    else if (moveFocus) requestAnimationFrame(() => title?.focus());
+  }
+  function setAuthView(view, moveFocus = true) {
+    authView = ['login', 'recovery', 'invitation'].includes(view) ? view : 'login';
+    const authenticated = Boolean(current);
+    const login = $('[data-login]');
+    const secondary = $('[data-login-secondary]');
+    const privacy = $('[data-login-privacy]');
+    if (login) login.hidden = authenticated || authView !== 'login';
+    if (secondary) secondary.hidden = authenticated || authView !== 'login';
+    if (privacy) privacy.hidden = authenticated || authView !== 'login';
+    if (recoveryDetails) recoveryDetails.hidden = authView !== 'recovery' || (authenticated && !mfaLocked);
+    const invitation = $('[data-invitation]');
+    if (invitation) invitation.hidden = authView !== 'invitation' || authenticated || mfaLocked;
+    if (authView === 'recovery') setRecoveryStep(recoveryStep, false);
+    if (moveFocus) requestAnimationFrame(() => {
+      const target = authView === 'login' ? $('[data-login] h2') : authView === 'recovery' ? $('[data-recovery-title]') : $('#rmInvitationTitle');
+      target?.focus();
+    });
+  }
+  function setBusy(form, busy) { form.setAttribute('aria-busy', String(busy)); form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); }
   function showSession(session) {
     current = session;
     offlineMode = false;
-    $('[data-login]').hidden = Boolean(session);
+    if (session) authView = 'login';
     $('[data-recovery]').hidden = Boolean(session);
     $('[data-invitation]').hidden = Boolean(session);
     const inviteForm = $('[data-invite]');
@@ -300,8 +356,7 @@
     $('[data-close]').hidden = !session || mfaLocked;
     $('[data-accept-existing]').hidden = mfaLocked;
     $('[data-switch]').hidden = mfaLocked;
-    $('[data-recovery]').hidden = Boolean(session) && !mfaLocked;
-    $('[data-invitation]').hidden = mfaLocked || Boolean(session);
+    setAuthView(authView, false);
     trigger.hidden = true;
     placeTrigger();
     updateTriggerLabel();
@@ -362,8 +417,20 @@
     }
   }
   function hintedCompany() { try { return localStorage.getItem('rotaMoto.activeCompanyHint') || ''; } catch (_) { return ''; } }
-  function applyMailAction(){let params;try{params=new URLSearchParams(location.hash.slice(1))}catch(_){return}const action=params.get('action'),token=params.get('token');if(!token||token.length>43)return;if(action==='password_recovery'){$('[data-recovery-consume] [name=token]').value=token;$('[data-recovery]').open=true;setOpen(true)}else if(action==='mfa_recovery'){$('[data-mfa-recovery-confirm] [name=token]').value=token;$('[data-recovery]').open=true;$('[data-recovery] details').open=true;setOpen(true)}else if(['owner_invitation','membership_invitation'].includes(action)){invitationKind=action;$('[data-accept-invitation] [name=token]').value=token;$('[data-invitation]').open=true;setOpen(true)}if(action==='password_recovery'||action==='mfa_recovery'||['owner_invitation','membership_invitation'].includes(action))history.replaceState(null,'',location.pathname+location.search)}
+  function applyMailAction(){let params;try{params=new URLSearchParams(location.hash.slice(1))}catch(_){return}const action=params.get('action'),token=params.get('token');if(!token||token.length>43)return;if(action==='password_recovery'){$('[data-recovery-consume] [name=token]').value=token;setRecoveryStep('reset-password',false);setAuthView('recovery',false);setOpen(true)}else if(action==='mfa_recovery'){$('[data-mfa-recovery-confirm] [name=token]').value=token;mfaRecoveryConfirmReady=true;setRecoveryStep('recover-mfa',false);setAuthView('recovery',false);setOpen(true)}else if(['owner_invitation','membership_invitation'].includes(action)){invitationKind=action;$('[data-accept-invitation] [name=token]').value=token;setAuthView('invitation',false);setOpen(true)}if(action==='password_recovery'||action==='mfa_recovery'||['owner_invitation','membership_invitation'].includes(action))history.replaceState(null,'',location.pathname+location.search)}
   applyMailAction();
+  $('[data-open-recovery]').addEventListener('click', event => { recoveryStep='recovery-menu'; mfaRecoveryConfirmReady=false; setRecoveryStep('recovery-menu',false); setAuthView('recovery'); });
+  $('[data-open-invitation]').addEventListener('click', () => setAuthView('invitation'));
+  host.querySelectorAll('[data-recovery-choice]').forEach(button => button.addEventListener('click', () => {
+    const step = button.dataset.recoveryChoice;
+    mfaRecoveryConfirmReady = step === 'recover-mfa' && Boolean($('[data-mfa-recovery-confirm] [name="token"]').value);
+    setRecoveryStep(step);
+  }));
+  $('[data-recovery-back]').addEventListener('click', () => {
+    if (recoveryStep !== 'recovery-menu') setRecoveryStep('recovery-menu');
+    else setAuthView('login');
+  });
+  $('[data-invitation-back]').addEventListener('click', () => setAuthView('login'));
   $('[data-login] [name=companyId]').value = hintedCompany();
   $('[data-toggle-password]').addEventListener('click', event => {
     const button = event.currentTarget;
@@ -450,36 +517,36 @@
     finally { working = false; if (!current) { panel.hidden = false; setOpen(true); } }
   });
   $('[data-recovery-request]').addEventListener('submit', async event => {
-    event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return;
-    const email = form.elements.email.value.trim(); setBusy(form, true);
+    event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
+    working = true; const email = form.elements.email.value.trim(); setBusy(form, true);
     try { await request('/identity/recovery', { method: 'POST', body: JSON.stringify({ email }) }); $('[data-recovery-status]').textContent = 'Se a conta puder ser recuperada, as instruções serão entregues ao email cadastrado.'; }
     catch (error) { $('[data-recovery-status]').textContent = message(error); }
-    finally { setBusy(form, false); }
+    finally { working = false; setBusy(form, false); }
   });
   $('[data-mfa-recovery-request]').addEventListener('submit',async event=>{
-    event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;setBusy(form,true);
+    event.preventDefault();const form=event.currentTarget;if(working||!form.reportValidity())return;working=true;setBusy(form,true);
     try{await request('/identity/mfa/recovery/request',{method:'POST',body:JSON.stringify({email:form.elements.email.value.trim(),password:form.elements.password.value,companyId:form.elements.companyId.value.trim()})});form.elements.password.value='';$('[data-mfa-recovery-status]').textContent='Se a conta estiver elegível, as instruções serão enviadas ao email verificado.'}
-    catch(error){$('[data-mfa-recovery-status]').textContent=message(error)}finally{setBusy(form,false)}
+    catch(error){$('[data-mfa-recovery-status]').textContent=message(error)}finally{working=false;setBusy(form,false)}
   });
   $('[data-mfa-recovery-confirm]').addEventListener('submit',async event=>{
-    event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;setBusy(form,true);
+    event.preventDefault();const form=event.currentTarget;if(working||!form.reportValidity())return;working=true;setBusy(form,true);
     try{const result=await request('/identity/mfa/recovery/confirm',{method:'POST',body:JSON.stringify({token:form.elements.token.value.trim()})});form.reset();$('[data-mfa-recovery-confirm-status]').textContent=`Identidade confirmada. Solicitação ${result.requestId} aguarda outro administrador com MFA; proprietário único depende do operador local.`}
-    catch(error){$('[data-mfa-recovery-confirm-status]').textContent=message(error)}finally{setBusy(form,false)}
+    catch(error){$('[data-mfa-recovery-confirm-status]').textContent=message(error)}finally{working=false;setBusy(form,false)}
   });
   $('[data-recovery-consume]').addEventListener('submit', async event => {
-    event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return;
-    setBusy(form, true); const password = form.elements.password.value;
+    event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
+    working = true; setBusy(form, true); const password = form.elements.password.value;
     try { await request('/identity/recovery/consume', { method: 'POST', body: JSON.stringify({ token: form.elements.token.value.trim(), password }) }); form.reset(); $('[data-recovery-result]').textContent = 'Senha alterada. Entre novamente.'; }
     catch (error) { form.elements.password.value = ''; $('[data-recovery-result]').textContent = message(error); }
-    finally { setBusy(form, false); }
+    finally { working = false; setBusy(form, false); }
   });
   $('[data-accept-invitation]').addEventListener('submit', async event => {
-    event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return;
-    setBusy(form, true); const password = form.elements.password.value;
+    event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
+    working = true; setBusy(form, true); const password = form.elements.password.value;
     try { const result = await request(invitationKind==='owner_invitation'?'/identity/invitations/accept':'/identity/membership-invitations/accept', { method: 'POST', body: JSON.stringify({ token: form.elements.token.value.trim(), password }) });
       form.reset(); try { localStorage.setItem('rotaMoto.activeCompanyHint', result.companyId); } catch (_) {} $('[data-invitation-result]').textContent = 'Convite aceito. Agora entre com seu email e senha.'; $('[data-login] [name=companyId]').value = result.companyId; }
     catch (error) { form.elements.password.value = ''; $('[data-invitation-result]').textContent = message(error); }
-    finally { setBusy(form, false); }
+    finally { working = false; setBusy(form, false); }
   });
   $('[data-accept-existing]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true);
