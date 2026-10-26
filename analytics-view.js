@@ -74,6 +74,27 @@
   const coverageText = (available, total, subject) => total
     ? `${available} de ${total} ${subject} com informação válida (${Math.round(available / total * 100)}%)`
     : `Sem ${subject} neste período`;
+  function reportFreshness(sync = {}, { online = true, sessionActive = false, canSync = true, companyId = null, formatDate = value => new Date(value).toLocaleString('pt-BR') } = {}) {
+    const confirmedAt = Number(sync.lastServerConfirmedAt);
+    const hasTimestamp = Number.isFinite(confirmedAt) && confirmedAt > 0;
+    const hasConfirmation = hasTimestamp && (!companyId || sync.serverConfirmedCompanyId === companyId);
+    const lastConfirmation = hasConfirmation ? `Último ciclo confirmado pelo servidor: ${formatDate(confirmedAt)}.` : hasTimestamp ? 'Há confirmação anterior, mas ela não comprova a empresa ativa.' : 'Ainda não existe um ciclo de sincronização confirmado pelo servidor.';
+    const localCopy = 'O relatório é calculado sobre a cópia local do IndexedDB.';
+    const state = String(sync.state || '');
+    if (state === 'unauthenticated') return { label: 'Sessão encerrada', note: `A sessão do servidor expirou ou foi encerrada. ${lastConfirmation} ${localCopy}` };
+    if (!sessionActive) return { label: 'Não verificado', note: `Conta sem sessão ativa. ${lastConfirmation} ${localCopy}` };
+    if (!online || state === 'offline' || sync.transport === 'offline') return { label: 'Offline', note: `Sem conexão confirmada agora. ${lastConfirmation} ${localCopy}` };
+    if (!canSync) return { label: 'Sem permissão', note: `A conta atual não tem permissão para sincronizar. ${lastConfirmation} ${localCopy}` };
+    if (state === 'retry-wait' || state === 'error' || sync.transport === 'unavailable') return { label: 'Servidor indisponível', note: `A última tentativa não foi confirmada. ${lastConfirmation} ${localCopy}` };
+    if (state === 'syncing' || sync.hasMore) return { label: 'Atualizando', note: `A sincronização ainda está em andamento. ${lastConfirmation} ${localCopy}` };
+    if (!hasConfirmation || sync.transport !== 'connected' || state !== 'ready') return { label: 'Não verificado', note: `A sessão está ativa, mas este dispositivo ainda não confirmou um ciclo de sincronização nesta sessão. ${lastConfirmation} ${localCopy}` };
+    const pending = Math.max(0, Number(sync.pending) || 0), conflicts = Math.max(0, Number(sync.conflicts) || 0), rejected = Math.max(0, Number(sync.rejected) || 0);
+    if (pending || conflicts || rejected) {
+      const details = [pending && `${pending} alteração(ões) pendente(s)`, conflicts && `${conflicts} conflito(s)`, rejected && `${rejected} operação(ões) rejeitada(s)`].filter(Boolean).join('; ');
+      return { label: 'Atenção', note: `O servidor respondeu, mas há ${details}. ${lastConfirmation} ${localCopy}` };
+    }
+    return { label: 'Confirmado', note: `Sincronização confirmada pelo servidor em ${formatDate(confirmedAt)}. ${localCopy}` };
+  }
   function listRows(rows, emptyState, title, description) {
     return rows.length ? `<div class="report-list">${rows.join('')}</div>` : empty(emptyState, title, description);
   }
@@ -83,7 +104,7 @@
     return `<div class="report-card-grid"><section class="report-card" id="report-customers"><h3>Clientes recorrentes</h3><p>Agrupados pelo nome informado. Nomes iguais podem ser pessoas diferentes.</p>${listRows(customers, emptyState, 'Nenhum cliente neste período', 'Os dados aparecem após o registro de pedidos.')}</section><section class="report-card" id="report-addresses"><h3>Endereços mais recorrentes</h3><p>Endereços agrupados pela forma como foram escritos; não indicam proximidade no mapa.</p>${listRows(addresses.slice(0, 5), emptyState, 'Nenhum endereço neste período', 'Os dados aparecem após o registro de pedidos.')}${addresses.length > 5 ? `<details class="report-details"><summary>Ver mais ${addresses.length - 5} endereços</summary>${listRows(addresses.slice(5), null, '', '')}</details>` : ''}</section></div>`;
   }
 
-  function render({ report, filters, statusLabel, typeLabel, sources, bikes, types, freshNote, emptyState = null }) {
+  function render({ report, filters, statusLabel, typeLabel, sources, bikes, types, freshNote, freshnessLabel = 'Não verificado', emptyState = null }) {
     const q = filters;
     const mainView = q.mainView === 'operational' ? 'operational' : 'executive';
     const executiveCategory = ['overview','deliveries','finance','drivers','hours','customers','addresses'].includes(q.executiveCategory) ? q.executiveCategory : 'overview';
@@ -180,11 +201,11 @@
     const operationalPanels=reportOperationalSections.replace(/<section id="(report-overview-details|report-deliveries|report-fleet|report-costs|report-intelligence|report-quality|report-territory|report-export)" class="report-section"/gu,(opening,id)=>`${opening} data-report-operational-panel="${id}"${id===activeOperationalSection?'':' hidden'}`);
     const operationalNav=`<nav class="report-operational-index" aria-label="Índice do relatório operacional">${operationalSections.map(([id,label])=>`<a href="#${id}" data-report-operational-link="${id}" ${id===activeOperationalSection?'aria-current="location"':''}>${label}</a>`).join('')}</nav>`;
     return `<div class="report-dashboard report-dashboard-v2">
-      <header class="report-v2-heading"><div class="report-v2-heading-toolbar"><div class="report-main-tabs" role="tablist" aria-label="Área dos relatórios"><button type="button" role="tab" id="report-main-tab-executive" aria-controls="report-main-panel-executive" aria-selected="${mainView==='executive'}" tabindex="${mainView==='executive'?'0':'-1'}" data-report-main-view="executive">Executivo</button><button type="button" role="tab" id="report-main-tab-operational" aria-controls="report-main-panel-operational" aria-selected="${mainView==='operational'}" tabindex="${mainView==='operational'?'0':'-1'}" data-report-main-view="operational">Operacional detalhado</button></div><div class="report-sync-indicator" role="status" aria-label="${esc(freshNote)}"><span aria-hidden="true"></span>${freshNote.startsWith('Dados recebidos')?'Sincronizado':'Dados locais'}</div></div>${executiveFiltersMarkup}</header>
+      <header class="report-v2-heading"><div class="report-v2-heading-toolbar"><div class="report-main-tabs" role="tablist" aria-label="Área dos relatórios"><button type="button" role="tab" id="report-main-tab-executive" aria-controls="report-main-panel-executive" aria-selected="${mainView==='executive'}" tabindex="${mainView==='executive'?'0':'-1'}" data-report-main-view="executive">Executivo</button><button type="button" role="tab" id="report-main-tab-operational" aria-controls="report-main-panel-operational" aria-selected="${mainView==='operational'}" tabindex="${mainView==='operational'?'0':'-1'}" data-report-main-view="operational">Operacional detalhado</button></div><div class="report-sync-indicator" role="status" aria-label="${esc(freshNote)}"><span aria-hidden="true"></span>${esc(freshnessLabel)}</div></div>${executiveFiltersMarkup}</header>
       <section id="report-main-panel-executive" class="report-main-panel" role="tabpanel" aria-labelledby="report-main-tab-executive" data-report-main-panel="executive" ${mainView==='executive'?'':'hidden'}>${executiveNav}<div class="report-executive-panels">${executivePanels}</div></section>
       <section id="report-main-panel-operational" class="report-main-panel report-operational-panel" role="tabpanel" aria-labelledby="report-main-tab-operational" data-report-main-panel="operational" ${mainView==='operational'?'':'hidden'}><header class="report-operational-heading"><h2>Operacional detalhado</h2><p>Acesse uma seção para consultar análises, cobertura e exportações.</p></header>${operationalNav}<div class="report-operational-sections">${operationalPanels}</div></section>
     </div>`;
   }
 
-  return Object.freeze({ render });
+  return Object.freeze({ render, reportFreshness });
 });
