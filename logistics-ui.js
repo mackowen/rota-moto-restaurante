@@ -313,21 +313,25 @@
     return `<section class="decision-quality" aria-labelledby="decision-quality-heading"><h3 id="decision-quality-heading">Qualidade das decisões</h3><p>Aprendizado operacional descritivo: mede recomendação, escolha humana e resultado observado. Não estima causalidade nem atribui economia ao RotaMoto.</p><div class="report-row"><b>Aceite da recomendação</b><span>${esc(percent(approval.rate,approval.numerator,approval.denominator))}</span><small>Recomendações com decisão humana registrada no denominador.</small></div><div class="report-row"><b>Divergência humana</b><span>${esc(percent(divergence.rate,divergence.numerator,divergence.denominator))}</span><small>Alternativa aprovada diferente da recomendada, dividido pelas aprovações com recomendação conhecida.</small></div><div class="report-row"><b>Outcomes</b><span>${metrics.outcomes?.succeeded||0} concluídas · ${metrics.outcomes?.failed||0} falhas · ${metrics.outcomes?.cancelled||0} canceladas · ${metrics.outcomes?.unknown||0} desconhecidas · ${metrics.outcomes?.pending||0} pendentes</span><small>${metrics.outcomes?.total||0} execuções observáveis; status desconhecido não é sucesso nem falha.</small></div><div class="report-row"><b>Estimado × final reconciliado</b><span>${esc(errors)}</span><small>Cobertura ${metrics.estimatedVsFinalCost?.comparable||0}/${metrics.outcomes?.total||0}; somente mesma moeda. Valor reconciliado não significa pagamento.</small></div><div class="report-row"><b>ETA × duração observada</b><span>${metrics.etaVsObservedDuration?.averageAbsoluteErrorMs==null?'Sem pares semanticamente comparáveis':`${(metrics.etaVsObservedDuration.averageAbsoluteErrorMs/60000).toFixed(1)} min de erro absoluto médio`}</span><small>Cobertura ${metrics.etaVsObservedDuration?.comparable||0}/${metrics.outcomes?.total||0}; previsão e conclusão usam timestamps canônicos a partir da avaliação.</small></div><details class="report-row"><summary>Resultados por alternativa e política</summary><ul>${byAlternative||'<li>Sem execução observada.</li>'}${byPolicy}</ul></details><h4>Investigar decisão</h4>${rows||'<p>Nenhuma decisão registrada.</p>'}${report.sample?.truncated?'<p>Limite de 1.000 decisões recentes atingido; as métricas deste painel refletem esse recorte.</p>':''}<small>Cobertura usa somente registros conhecidos no snapshot original e outcomes ligados por fulfillment/tentativa. Diferença estimada entre alternativas no snapshot usa a mesma moeda e os dados disponíveis naquele instante; não é economia realizada.</small></section>`;
   }
   async function renderReport() {
-    const root = document.querySelector('#fulfillment-analytics'); if (!root) return;
     const generation=++reportRequestGeneration;
+    territorialRequestGeneration++;
+    const operationalPanel=document.querySelector('[data-report-main-panel="operational"]:not([hidden])');
+    const section=operationalPanel?.querySelector('[data-report-operational-panel]:not([hidden])');
+    if(!section)return;
     const targets = {
-      capacity: document.querySelector('#capacity-analytics'),
-      costs: document.querySelector('#logistics-cost-analytics'),
-      decisions: document.querySelector('#decision-quality-analytics'),
-      routeCoverage: document.querySelector('#route-coverage-analytics'),
-      routeSettings: document.querySelector('#route-settings-report')
+      capacity: section.querySelector('#capacity-analytics'),
+      costs: section.querySelector('#logistics-cost-analytics'),
+      decisions: section.querySelector('#decision-quality-analytics'),
+      routeCoverage: section.querySelector('#route-coverage-analytics'),
+      routeSettings: section.querySelector('#route-settings-report')
     };
+    const root=section.querySelector('#fulfillment-analytics')||Object.values(targets).find(Boolean);if(!root)return;
     try {
       const [data,economics,decisionQuality,routeSettingsResult] = await Promise.all([
         api('/logistics/analytics'), api('/logistics/intelligence/analytics'),
         api('/logistics/intelligence/decision-quality'), api('/logistics/route-settings')
       ]);
-      if(generation!==reportRequestGeneration||!root.isConnected)return;
+      if(generation!==reportRequestGeneration||!root.isConnected||section.closest('[hidden]'))return;
       const routeSettings = routeSettingsResult.settings || {};
       const integrationRows = (data.integrations || []).map(item => `<div class="report-row"><b>${esc(item.code)}</b><span>${item.quotesReceived}/${item.quoteRequests} cotações recebidas · ${item.dispatchConfirmed}/${item.dispatchRequested} envios confirmados · ${item.dispatchFailed} falhas</span><small>Contagens persistidas; uma resposta 202 permanece pendente até confirmação.</small></div>`).join('');
       const providerRows = (data.providers || []).map(provider => `<article class="report-row"><b>${esc(provider.displayName)}</b><span>${provider.class === 'internal_fleet' ? 'Frota própria' : provider.class === 'marketplace' ? 'Marketplace externo' : 'Parceiro externo'} · ${provider.allocations} entregas · ${provider.completed} concluídas</span><small>Custo estimado conhecido: ${moneyByCurrency(provider.estimatedCosts)} · cobertura ${provider.estimatedCostCount}/${provider.allocations}</small><small>Custo reconciliado conhecido: ${moneyByCurrency(provider.reconciledCosts)} · cobertura ${provider.reconciledCostCount}/${provider.allocations}</small></article>`).join('');
@@ -335,7 +339,7 @@
       const capacity = economics.capacity || {};
       const knownSlots = capacity.capacityStatus === 'known' ? `${Number(capacity.remainingSlots)} vagas livres na capacidade configurada` : 'Limite e carga incompletos; vagas livres desconhecidas';
       const capacitySummary = `<article class="report-row"><b>Capacidade interna observada</b><span>${Number(capacity.activeDrivers||0)} motoboys ativos · ${Number(capacity.assignedDeliveries||0)} entregas atribuídas · ${Number(capacity.inProgressDeliveries||0)} em andamento</span><small>Disponibilidade ${capacity.availability==='available'?'confirmada pelo servidor':capacity.availability==='unavailable'?'nenhum motoboy ativo':'desconhecida'} · ${knownSlots}. Ter cadastro não confirma disponibilidade.</small></article>`;
-      root.innerHTML = `<h3>Operação logística</h3>${providerRows || '<p class="report-empty" role="status"><strong>Sem entregas logísticas registradas</strong><span>Os dados aparecem após operações confirmadas pelo servidor.</span></p>'}<small>Valores conhecidos por moeda, sem conversão. Repasse ao motoboy e custo logístico são medidas diferentes.</small>${integrationRows ? `<details class="report-row"><summary>Detalhes técnicos das integrações</summary>${integrationRows}</details>` : ''}`;
+      if(section.querySelector('#fulfillment-analytics'))root.innerHTML = `<h3>Operação logística</h3>${providerRows || '<p class="report-empty" role="status"><strong>Sem entregas logísticas registradas</strong><span>Os dados aparecem após operações confirmadas pelo servidor.</span></p>'}<small>Valores conhecidos por moeda, sem conversão. Repasse ao motoboy e custo logístico são medidas diferentes.</small>${integrationRows ? `<details class="report-row"><summary>Detalhes técnicos das integrações</summary>${integrationRows}</details>` : ''}`;
       if (targets.capacity) targets.capacity.innerHTML = `<h3>Capacidade da equipe</h3>${capacitySummary}`;
       if (targets.costs) targets.costs.innerHTML = `<h3>Custos por modalidade</h3><p>Valores estimados e reconciliados, com cobertura explícita. Reconciliação não significa pagamento.</p>${renderMode('Frota própria',economics.ownFleet)}${renderMode('Externo',economics.external)}<article class="report-row"><b>Repasse ao motoboy</b><span>${economics.driverPayout.deliveriesWithEarning}/${economics.driverPayout.totalEligibleDeliveries} entregas próprias concluídas com repasse registrado${economics.driverPayout.coverage==null?'':` · ${(economics.driverPayout.coverage*100).toFixed(1)}%`}</span><small>${economics.driverPayout.byCurrency.map(row=>formatAggregateCost(row.currency,row.amountMinor)).join(' · ')||'Sem valores registrados'} · ${esc(economics.driverPayout.note)}</small></article><p>${esc(economics.comparisonNote)}</p>`;
       if (targets.decisions) targets.decisions.innerHTML = decisionQualityMarkup(decisionQuality);
@@ -343,7 +347,7 @@
       if (targets.routeCoverage) targets.routeCoverage.innerHTML = `<h3>Cobertura da inteligência viária</h3><article class="report-row"><b>Avaliações com origem conhecida</b><span>${routeCoverage.originKnown||0} de ${routeCoverage.evaluated||0}</span><small>Rota integral calculada ${routeCoverage.fullRouteCalculated||0}/${routeCoverage.evaluated||0} (${routeCoverage.coverage==null?'sem base':`${(routeCoverage.coverage*100).toFixed(1)}%`}) · recomendações com custo marginal integral ${routeCoverage.marginalCostRecommendations||0}</small><small>${routeCoverage.routeAbstentions||0} avaliações sem cálculo; ${(routeCoverage.abstentionReasons||[]).map(item=>`${esc(item.reason)} (${item.count})`).join(' · ')||'sem motivo registrado'}. ${esc(routeCoverage.note||'Métricas baseadas em snapshots históricos.')}</small></article>`;
       if (targets.routeSettings) targets.routeSettings.innerHTML = `<h3>Início e retorno de rotas</h3><article class="report-row"><b>${routeSettings.origin?routeSettings.originMode==='custom'?'Origem personalizada':'Localização do estabelecimento':'Origem desconhecida'}</b><span>${routeSettings.origin?`${routeSettings.origin.latitude.toFixed(6)}, ${routeSettings.origin.longitude.toFixed(6)}`:'Cálculos que dependem da origem foram omitidos'} · ${routeSettings.returnToOrigin?'retorno à origem configurado':'rota termina na última entrega'}</span><small>Consulta somente leitura. A configuração é alterada em Ajustes → Logística/Frota.</small></article>`;
     } catch (error) {
-      if(generation!==reportRequestGeneration||!root.isConnected)return;
+      if(generation!==reportRequestGeneration||!root.isConnected||section.closest('[hidden]'))return;
       const message = ['UNAUTHENTICATED','SESSION_REQUIRED','SESSION_EXPIRED'].includes(error?.message)
         ? 'Sua sessão terminou. Entre novamente para consultar estes indicadores.'
         : ['FORBIDDEN','PERMISSION_DENIED'].includes(error?.message)
@@ -351,7 +355,6 @@
           : 'Os indicadores logísticos não foram confirmados pelo servidor. Confira a conexão e tente atualizar.';
       for (const target of [root,...Object.values(targets)]) if (target) target.innerHTML = `<p class="report-unavailable" role="status"><strong>Indicador indisponível</strong><span>${message}</span></p>`;
     }
-    loadTerritorialReport();
   }
   function reportQuery() {
     const state = currentState || {}, q = state.report || {};
@@ -393,12 +396,13 @@
     return `<details class="territorial-location-entry"><summary>Registrar destino manualmente confirmado</summary><p>Use coordenadas obtidas e conferidas por operador autorizado. Não use GPS do motorista nem geocodifique endereço durante o relatório.</p><form data-destination-form class="formgrid"><label class="full">Entrega<select name="deliveryId" class="select" required>${options||'<option value="">Nenhuma Delivery canônica local</option>'}</select></label><input type="hidden" name="expectedVersion" value="0"><label>Latitude<input class="input" name="latitude" type="number" step="any" min="-90" max="90" required></label><label>Longitude<input class="input" name="longitude" type="number" step="any" min="-180" max="180" required></label><label>Precisão conhecida (m)<input class="input" name="accuracyM" type="number" min="0" max="100000" step="any"></label><label class="full"><span><input type="checkbox" name="confirmDestination" required> Confirmo que o ponto representa o destino desta entrega.</span></label><div class="actions full"><button class="btn primary" ${options?'':'disabled'}>Salvar snapshot de destino</button><span data-destination-status role="status"></span></div></form></details>`;
   }
   async function loadTerritorialReport() {
-    const root=document.querySelector('#territorial-heatmap'); if(!root)return;
-    const generation=++territorialRequestGeneration,query=reportQuery();
+    const generation=++territorialRequestGeneration,root=document.querySelector('#territorial-heatmap');
+    if(!root||root.closest('[hidden]'))return;
+    const query=reportQuery();
     if(hasUnresolvedDriverFilter()) { root.innerHTML='<h2>Resumo por região</h2><p class="muted">O motoboy selecionado ainda não está disponível nos dados atualizados. Atualize os dados ou escolha outro; nenhum resultado sem esse filtro foi consultado.</p>'; return; }
     root.textContent='Carregando resumo por região…';
-    try { const data=await api(`/analytics/territorial?${query}`); if(generation!==territorialRequestGeneration||!root.isConnected)return; root.innerHTML=heatmapMarkup(data); bindTerritorial(root); }
-    catch(error){ if(generation!==territorialRequestGeneration||!root.isConnected)return;root.innerHTML=`<h2>Resumo por região</h2><p class="muted">${territorialFailureMessage(error)}</p>${destinationEntryMarkup()}`; bindTerritorial(root); }
+    try { const data=await api(`/analytics/territorial?${query}`); if(generation!==territorialRequestGeneration||!root.isConnected||root.closest('[hidden]'))return; root.innerHTML=heatmapMarkup(data); bindTerritorial(root); }
+    catch(error){ if(generation!==territorialRequestGeneration||!root.isConnected||root.closest('[hidden]'))return;root.innerHTML=`<h2>Resumo por região</h2><p class="muted">${territorialFailureMessage(error)}</p>${destinationEntryMarkup()}`; bindTerritorial(root); }
   }
   function bindTerritorial(root) {
     root.querySelector('[data-territorial-refresh]')?.addEventListener('click',loadTerritorialReport);
@@ -501,7 +505,8 @@
     if (document.querySelector('#logistics-provider-list')) loadProviders();
     if (document.querySelector('#logistics-route-settings-root')) loadRouteSettings();
     if (document.querySelector('#logistics-intelligence-settings-root')) loadIntelligenceSettings();
-    if (document.querySelector('#fulfillment-analytics')) renderReport();
+    if (document.querySelector('[data-report-main-panel="operational"]:not([hidden])')) renderReport();
+    if (document.querySelector('#territorial-heatmap')) loadTerritorialReport();
   }
-  window.RotaMotoLogisticsUI = Object.freeze({ settingsPanel, bind, openDelivery });
+  window.RotaMotoLogisticsUI = Object.freeze({ settingsPanel, bind, openDelivery, refreshReport:renderReport, refreshTerritorialReport:loadTerritorialReport });
 })();

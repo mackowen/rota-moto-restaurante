@@ -199,6 +199,17 @@ const statusPt = value => ({ DELIVERED: 'Concluída', CANCELLED: 'Cancelada', FA
 const typePt = value => value === 'RETORNO' ? 'Devolução' : 'Entrega';
 const html = View.render({ report, filters: { period: '30', bike: '', status: '', type: '', source: '' }, statusLabel: statusPt, typeLabel: typePt, sources: { ifood: 'iFood', manual: 'Manual', keeta: 'Keeta', unknown: 'Sem origem' }, bikes: [], types: ['NORMAL', 'RETORNO'], freshNote: '<sem freshness>' });
 assert.match(html, /report-dashboard/u, 'report renders the redesigned dashboard');
+assert.match(html, /id="report-main-tab-executive"[^>]*aria-selected="true"/u, 'executive report opens by default');
+assert.match(html, /data-report-main-panel="operational"[^>]*hidden/u, 'operational details are not visible in the executive view');
+assert.match(html, /data-report-operational-panel="report-overview-details"[^>]*>/u, 'the selected operational section is available for direct navigation');
+for (const id of ['report-deliveries','report-fleet','report-costs','report-intelligence','report-quality','report-territory','report-export']) assert.match(html, new RegExp(`data-report-operational-panel="${id}"[^>]*hidden`), `${id} is collapsed while another operational section is selected`);
+assert.equal((html.match(/data-report-operational-panel=/gu)||[]).length,8,'the detailed tab contains each existing analytical section exactly once');
+assert.equal((html.match(/id="rfrom"/gu)||[]).length,1,'both report tabs share one start date control');
+assert.equal((html.match(/id="rb"/gu)||[]).length,1,'both report tabs share one driver filter');
+const operationalHtml = View.render({ report, filters: { period: '30', fromDate: '2026-10-01', toDate: '2026-10-06', bike: 'driver-1', status: '', type: '', source: '', mainView: 'operational', operationalSection: 'report-costs' }, statusLabel: statusPt, typeLabel: typePt, sources: {}, bikes: [], types: [], freshNote: 'dados locais' });
+assert.match(operationalHtml, /id="report-main-tab-operational"[^>]*aria-selected="true"/u, 'the requested primary tab is reflected in the renderer');
+assert.match(operationalHtml, /id="report-costs"[^>]*data-report-operational-panel="report-costs"(?! hidden)/u, 'the requested detailed section opens directly');
+assert.match(operationalHtml, /id="report-main-panel-executive"[^>]*hidden/u, 'the inactive executive panel is hidden from display and accessibility');
 for (const id of ['report-overview','report-overview-details','report-deliveries','report-fleet','report-costs','report-intelligence','report-quality','report-territory','report-export']) assert.match(html, new RegExp(`id="${id}"`), `${id} section exists`);
 assert.match(html, /Pedidos no período[\s\S]*report-metric-value/u);
 assert.match(html, /Status das entregas/u);
@@ -249,6 +260,9 @@ assert.doesNotMatch(html, /\bBRL\b/u, 'relatório apresenta nomes de moeda, não
 assert.match(html, /Tipos de entrega/);
 assert.match(html, /Endereços mais recorrentes/);
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+assert.match(appSource, /function activateReportMainView\([\s\S]*?state\.report\.mainView=selected/u, 'main tabs retain their selection in the shared report state');
+assert.match(appSource, /function activateReportOperationalSection\([\s\S]*?state\.report\.operationalSection=id/u, 'the selected operational section survives rerendering');
+assert.match(appSource, /function bindReportNavigation\([\s\S]*?ArrowLeft[\s\S]*?ArrowRight/u, 'report tabs support keyboard navigation');
 assert.match(appSource, /function dashboardV2Model\(\)[\s\S]*?RotaMotoAnalytics\.aggregate/u, 'Command Center reuses canonical analytics aggregation');
 assert.match(appSource, /function dashboardV2Model\(\)[\s\S]*?analytics\.driverPayout/u, 'Command Center reports canonical payout coverage');
 assert.doesNotMatch(appSource, /kpi\('Faturamento hoje'/);
