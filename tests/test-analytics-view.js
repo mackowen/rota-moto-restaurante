@@ -34,7 +34,7 @@ assert.doesNotMatch(zero.html,/<svg class="report-chart"/u,'zero deliveries show
 assert.match(zero.html,/Sem dados neste período/u);
 assert.match(zero.html,/Sem pedidos neste período/u);
 assert.match(zero.html,/Faturamento bruto registrado/u);
-assert.match(zero.html,/Nenhum evento financeiro carregado|Razão financeiro não consultado pelo servidor/u);
+assert.match(zero.html,/Registros financeiros ainda não consultados/u);
 assert.doesNotMatch(zero.html,/Faturamento bruto registrado[\s\S]*R\$ 0,00/u,'financial data absence never becomes revenue zero');
 assert.match(zero.html,/report-unavailable--compact[\s\S]*Entenda a limitação/u,'financial limitation stays compact with explanation on demand');
 assert.match(zero.html,/Canceladas e falhas[\s\S]*Canceladas[\s\S]*Com falha/u,'the operational overview retains both state counts in a balanced tile');
@@ -43,6 +43,7 @@ assert.equal((zero.html.match(/data-report-operational-panel=/gu)||[]).length,8,
 assert.match(zero.html,/<header class="report-v2-heading"><div class="report-v2-heading-toolbar">/u,'report subnavigation and sync state share a compact toolbar');
 assert.doesNotMatch(zero.html,/<h1>Relatórios<\/h1>/u,'report body does not duplicate the application page heading');
 assert.match(zero.html,/<details id="report-advanced-filters" class="report-advanced-filters"\s*>/u,'advanced filters start collapsed in either main area unless the user opened them');
+for(const match of zero.html.matchAll(/aria-labelledby="([^"]+)"/gu))for(const id of match[1].split(/\s+/u))assert(zero.html.includes(`id="${id}"`),`accessible report label ${id} refers to an existing heading or tab`);
 const expanded=renderFor(0,{mainView:'operational',advancedFiltersOpen:true}).html;
 assert.match(expanded,/<details id="report-advanced-filters" class="report-advanced-filters" open>/u,'advanced filter expansion persists across report renders');
 const app=fs.readFileSync(require.resolve('../app.js'),'utf8');
@@ -50,7 +51,7 @@ const reportStart=app.indexOf('function reports(){');
 const reportEnd=app.indexOf('function activateReportMainView(',reportStart);
 assert(reportStart>=0&&reportEnd>reportStart,'the reports screen factory remains available');
 assert.match(app.slice(reportStart,reportEnd),/return header\('Relatórios','Análises executivas e operacionais'\)/u,'reports uses the shared page-header component with a real title');
-assert.match(app.slice(reportStart,reportEnd),/RotaMotoAnalytics\.aggregate\(\{orders:state\.orders,deliveries:state\.deliveries,deliveryEvents:state\.deliveryEvents,earnings:state\.earnings,bikes:state\.bikes,financialEvents:financeLedgerStatus==='confirmed'\?tenantFinancialEvents:undefined/u,'reports aggregates the local IndexedDB projection and includes only tenant-scoped server-confirmed ledger events');
+assert.match(app.slice(reportStart,reportEnd),/RotaMotoAnalytics\.aggregate\(\{orders:state\.orders,deliveries:state\.deliveries,deliveryEvents:state\.deliveryEvents,earnings:state\.earnings,bikes:state\.bikes,financialEvents:financeLedgerStatus==='confirmed'&&canReadFinancialEvents\?tenantFinancialEvents:undefined/u,'reports aggregates the local IndexedDB projection and includes only tenant-scoped server-confirmed ledger events');
 assert.match(app.slice(reportStart,reportEnd),/reportFreshness\(sync,\{online:navigator\.onLine!==false,sessionActive:!!syncSession,[\s\S]*companyId:syncSession\?\.companyId/u,'report freshness is bound to the active tenant and live session');
 assert.match(app,/transport:'unverified'/u,'startup does not preserve a stale connected state as current confirmation');
 assert.match(app,/transport:'connected',lastSuccessAt:confirmedAt,[\s\S]*lastServerConfirmedAt:confirmedAt,serverConfirmedCompanyId:session\.companyId/u,'only a completed server sync cycle records a tenant-bound confirmation');
@@ -60,14 +61,14 @@ assert.match(filters,/report-period-control[\s\S]*report-driver-control[\s\S]*re
 const freshnessOptions={sessionActive:true,online:true,canSync:true,companyId:'tenant-a',formatDate:value=>`DATA-${value}`};
 const unverified=View.reportFreshness({state:'ready',transport:'unverified'},freshnessOptions);
 assert.equal(unverified.label,'Não verificado');
-assert.match(unverified.note,/cópia local do IndexedDB/u);
+assert.match(unverified.note,/dados salvos neste aparelho/u);
 const confirmed=View.reportFreshness({state:'ready',transport:'connected',lastServerConfirmedAt:123,serverConfirmedCompanyId:'tenant-a',pending:0,conflicts:0,rejected:0},freshnessOptions);
 assert.equal(confirmed.label,'Confirmado');
 assert.match(confirmed.note,/servidor em DATA-123/u);
-assert.match(confirmed.note,/cópia local do IndexedDB/u,'a server-confirmed sync still identifies IndexedDB as the report source');
+assert.match(confirmed.note,/dados salvos neste aparelho/u,'a server-confirmed sync still identifies IndexedDB as the report source');
 const partial=View.reportFreshness({state:'ready',transport:'connected',lastServerConfirmedAt:123,serverConfirmedCompanyId:'tenant-a',pending:2,conflicts:1,rejected:0},freshnessOptions);
 assert.equal(partial.label,'Atenção');
-assert.match(partial.note,/2 alteração\(ões\) pendente\(s\); 1 conflito\(s\)/u);
+assert.match(partial.note,/2 alterações pendentes; 1 conflito/u);
 assert.equal(View.reportFreshness({state:'offline',transport:'offline',lastServerConfirmedAt:123},{...freshnessOptions,online:false}).label,'Offline');
 assert.equal(View.reportFreshness({state:'unauthenticated',transport:'unauthenticated'},{...freshnessOptions,sessionActive:false}).label,'Sessão encerrada');
 assert.equal(View.reportFreshness({state:'error',transport:'unavailable',lastServerConfirmedAt:123},freshnessOptions).label,'Servidor indisponível');
@@ -78,3 +79,52 @@ const confirmedHtml=View.render({report:Analytics.aggregate({orders:[],deliverie
 assert.match(confirmedHtml,/class="report-sync-indicator" role="status" aria-label="Sincronização confirmada pelo servidor/u,'the compact badge remains accessible and carries the honest source explanation');
 assert.match(confirmedHtml,/report-sync-indicator[\s\S]*>Confirmado<\/div>/u);
 console.log('Analytics renderer point-count, axis accessibility, empty and unavailable states: PASS');
+
+// Unavailable, loading, failed and successfully empty consultations must differ.
+const renderFinancialState=(financialState,confirmed=false)=>View.render({report:Analytics.aggregate({orders:[],deliveries:[],...(confirmed?{financialEvents:[]}: {})},{now,period:'all',timeZone:'America/Sao_Paulo'}),filters:{},statusLabel:labelStatus,typeLabel:()=> 'Entrega',sources:{},bikes:[],types:[],freshNote:'Dados locais',financialState});
+for(const [state,title] of [['loading','Carregando os registros financeiros'],['offline','Sem conexão para consultar pagamentos'],['permission-unavailable','Acesso aos registros financeiros indisponível'],['session-required','Entre novamente para consultar pagamentos'],['FINANCE_READ_FAILED','Não foi possível consultar os registros financeiros']]){
+ const html=renderFinancialState(state);
+ assert(html.includes(title),`financial state ${state} has a clear user-facing explanation`);
+ if(state!=='loading')assert.match(html,/role="alert"/u,'a failed consultation is an alert, not an empty dataset');
+ assert.doesNotMatch(html,/Nenhum lançamento financeiro neste período/u,'unread data cannot be described as an empty ledger');
+}
+const confirmedEmpty=renderFinancialState('confirmed',true);
+assert.match(confirmedEmpty,/Nenhum lançamento financeiro neste período/u);
+assert.doesNotMatch(confirmedEmpty,/Não foi possível consultar os registros financeiros/u);
+const day=renderFor(1).html;
+const hourlyStart=day.indexOf('aria-label="Pedidos por hora"');
+assert(hourlyStart>=0);
+const hourlyDetails=day.slice(hourlyStart,day.indexOf('</section>',hourlyStart));
+assert.match(hourlyDetails,/23:00/u,'expanded hourly distribution includes the second half of the day');
+assert.equal((hourlyDetails.match(/class="analytics-bar-row"/gu)||[]).length,24,'all 24 hourly rows are available in the detailed distribution');
+assert.match(day,/report-chart-axis-measure/u,'axis reserves space for real formatted labels outside the plotted SVG');
+console.log('Report financial read states and complete hourly distribution: PASS');
+
+(async()=>{
+ const vm=require('node:vm');
+ const source=app.slice(app.indexOf('let financeLedgerFetchedAt='),app.indexOf('function reports(){'));
+ let calls=0,renders=0,fail=true,malformed=false;
+ const context={state:{tab:'reports'},syncSession:{companyId:'test-company',permissions:['finance.read']},navigator:{onLine:true},window:{},Date,setTimeout,
+  syncUrl:()=>'/api/finance/events',req:async()=>{},fetch:async()=>{calls++;return{ok:!fail,json:async()=>malformed?{}:fail?{error:{code:'FINANCE_READ_FAILED'}}:{events:[],coverage:{complete:false}}}},
+  render(){renders++;vm.runInContext('queueFinanceLedgerRead()',context)}};
+ vm.createContext(context);
+ vm.runInContext(source+';globalThis.probe={refresh:refreshFinanceLedger,status:()=>financeLedgerStatus};',context);
+ const pending=context.probe.refresh();
+ assert.equal(context.probe.status(),'loading','a real pending request is visibly loading');
+ assert.equal(await pending,false);
+ assert.equal(context.probe.status(),'FINANCE_READ_FAILED');
+ assert.equal(renders,1,'a failed financial query updates the visible report');
+ assert.equal(calls,1,'rendering the failure must not start an automatic request loop');
+ fail=false;
+ assert.equal(await context.probe.refresh({force:true}),true,'a subsequent explicit read can recover');
+ assert.equal(context.probe.status(),'confirmed');
+ assert.equal(calls,2,'a successful render reuses the confirmed read');
+ context.navigator.onLine=false;
+ assert.equal(await context.probe.refresh(),false);
+ assert.equal(context.probe.status(),'offline');
+ assert.equal(calls,2,'offline consultation never makes a request');
+ context.navigator.onLine=true;malformed=true;
+ assert.equal(await context.probe.refresh({force:true}),false);
+ assert.equal(context.probe.status(),'FINANCE_RESPONSE_INVALID','an invalid successful response cannot become an empty financial history');
+ console.log('Financial consultation loading, visible failure, retry, offline and invalid-response lifecycle: PASS');
+})().catch(error=>{console.error(error);process.exitCode=1});

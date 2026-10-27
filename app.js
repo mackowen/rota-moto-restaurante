@@ -411,7 +411,7 @@ let foregroundSyncCheckAt=0;
 async function resumeServerSync(){if(document.visibilityState==='hidden'||navigator.onLine===false||!syncBootstrapReady)return;const now=Date.now();if(now-foregroundSyncCheckAt<1500)return;foregroundSyncCheckAt=now;const session=await restoreSyncSession();if(session){const editing=!!document.querySelector('.modal-back,#main form[data-user-edited="true"]')||/^(INPUT|SELECT|TEXTAREA)$/u.test(document.activeElement?.tagName||'');if(!editing)render();scheduleServerSync(0)}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')resumeServerSync().catch(()=>{})});
 window.addEventListener('pageshow',()=>resumeServerSync().catch(()=>{}));
-window.addEventListener('online',()=>{resumeServerSync().catch(()=>{});flushFinanceOutbox().catch(()=>{});queueFinanceLedgerRead()});window.addEventListener('offline',()=>{updateSyncStatus({state:'offline'}).catch(()=>{});financeLedgerStatus='offline'});
+window.addEventListener('online',()=>{resumeServerSync().catch(()=>{});flushFinanceOutbox().catch(()=>{});queueFinanceLedgerRead()});window.addEventListener('offline',()=>{updateSyncStatus({state:'offline'}).catch(()=>{});financeLedgerStatus='offline';if(state.tab==='reports')render()});
 function downloadSyncPacket(packet){const blob=new Blob([JSON.stringify(packet,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`rotamoto-restaurante-sync-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 async function exportRestaurantSyncPacket(){const p=await buildRestaurantSyncPacket();downloadSyncPacket(p);toast(`Arquivo criado com ${p.data.deliveries.length} entrega(s).`,'success');return p}
 window.RotaMotoSync={version:1,protocolVersion:1,validate:validateMotoboyPacket,receive:receiveMotoboyData,buildPacket:buildRestaurantSyncPacket,exportPacket:exportRestaurantSyncPacket,setSession:csrfToken=>{syncCsrfToken=typeof csrfToken==='string'?csrfToken:null},loginToServer:loginToSyncServer,restoreSession:restoreSyncSession,clearSession:clearSyncSession,syncWithServer,syncNow:syncWithServer,getStatus:getSyncStatus,description:'Sincronização local-first bidirecional entre Restaurante e Rota Moto.'};
@@ -750,15 +750,17 @@ async function refreshFinanceLedger({force=false}={}){
  if(navigator.onLine===false){financeLedgerStatus='offline';return false}
  if(financeLedgerFetch)return financeLedgerFetch;
  if(!force&&Date.now()-financeLedgerFetchedAt<30000)return true;
+ financeLedgerStatus='loading';
  financeLedgerFetch=(async()=>{try{
   const response=await fetch(syncUrl(window.ROTA_MOTO_API_BASE||'/api','/finance/events'),{credentials:'include',cache:'no-store'});
   let body={};try{body=await response.json()}catch(_){}
   if(!response.ok)throw new Error(body.error?.code||'FINANCE_READ_FAILED');
-  const active=(body.events||[]).map(row=>({...row,id:row.event_id,companyId:syncSession.companyId,dataOrigin:'server-confirmed'}));
+  if(!Array.isArray(body.events)||body.events.some(row=>!row||typeof row!=='object'||Array.isArray(row)))throw new Error('FINANCE_RESPONSE_INVALID');
+  const active=body.events.map(row=>({...row,id:row.event_id,companyId:syncSession.companyId,dataOrigin:'server-confirmed'}));
   state.financialEvents=active;financeLedgerCoverage=body.coverage||null;financeLedgerStatus='confirmed';financeLedgerFetchedAt=Date.now();
   for(const row of active)await req('financialEvents','readwrite',store=>store.put(row));
   if(state.tab==='reports')render();return true;
- }catch(error){financeLedgerStatus=error.message||'FINANCE_READ_FAILED';return false}finally{financeLedgerFetch=null}})();
+ }catch(error){financeLedgerStatus=error.message||'FINANCE_READ_FAILED';if(state.tab==='reports')render();return false}finally{financeLedgerFetch=null}})();
  return financeLedgerFetch;
 }
 function queueFinanceLedgerRead(){if(!syncSession||!syncSession.permissions?.includes('finance.read'))return;refreshFinanceLedger().catch(()=>{})}
@@ -770,12 +772,13 @@ function reports(){
  if(!q.fromDate||!q.toDate){q.toDate=today;const start=new Date(`${today}T00:00:00.000Z`);start.setUTCDate(start.getUTCDate()-29);q.fromDate=start.toISOString().slice(0,10)}
  const period=q.fromDate&&q.toDate?Math.max(1,Math.min(3660,Math.floor((Date.parse(`${q.toDate}T00:00:00Z`)-Date.parse(`${q.fromDate}T00:00:00Z`))/86400000)+1)):30;
  q.period=String(period);
+ const canReadFinancialEvents=!!syncSession&&syncSession.permissions?.includes('finance.read')===true;
  const tenantFinancialEvents=syncSession?(state.financialEvents||[]).filter(row=>row.companyId===syncSession.companyId):[];
- const report=RotaMotoAnalytics.aggregate({orders:state.orders,deliveries:state.deliveries,deliveryEvents:state.deliveryEvents,earnings:state.earnings,bikes:state.bikes,financialEvents:financeLedgerStatus==='confirmed'?tenantFinancialEvents:undefined,financialLedgerCoverage:financeLedgerCoverage},{fromDate:q.fromDate,toDate:q.toDate,period:q.period,driver:q.bike,status:q.status,type:q.type,source:q.source,now:Date.now(),timeZone:state.companyTimeZone});
+ const report=RotaMotoAnalytics.aggregate({orders:state.orders,deliveries:state.deliveries,deliveryEvents:state.deliveryEvents,earnings:state.earnings,bikes:state.bikes,financialEvents:financeLedgerStatus==='confirmed'&&canReadFinancialEvents?tenantFinancialEvents:undefined,financialLedgerCoverage:financeLedgerCoverage},{fromDate:q.fromDate,toDate:q.toDate,period:q.period,driver:q.bike,status:q.status,type:q.type,source:q.source,now:Date.now(),timeZone:state.companyTimeZone});
  const sources=Object.fromEntries((state.settings.orders?.sources||[]).map(source=>[source.id,source.name]));sources.unknown="Sem origem registrada";
  const syncMeta=state.settings.global?.sync||{},savedSyncStatus=(state.syncState||[]).find(row=>row.id==='sync:status')?.value||{},sync={...savedSyncStatus,...syncMeta};
  const freshness=RotaMotoAnalyticsView.reportFreshness(sync,{online:navigator.onLine!==false,sessionActive:!!syncSession,canSync:window.RotaMotoSyncReconciliation?.hasSyncPushPermission(syncSession)===true,companyId:syncSession?.companyId||null,formatDate:dateFmt});
- return header('Relatórios','Análises executivas e operacionais')+RotaMotoAnalyticsView.render({report:report,filters:q,statusLabel:statusLabel,typeLabel:typeLabel,sources:sources,bikes:state.bikes,types:TYPES,freshNote:freshness.note,freshnessLabel:freshness.label,emptyState:emptyStateMarkup});
+ return header('Relatórios','Análises executivas e operacionais')+RotaMotoAnalyticsView.render({report:report,filters:q,statusLabel:statusLabel,typeLabel:typeLabel,sources:sources,bikes:state.bikes,types:TYPES,freshNote:freshness.note,freshnessLabel:freshness.label,financialState:!syncSession?'session-required':!syncSession.permissions?.includes('finance.read')?'permission-unavailable':navigator.onLine===false?'offline':financeLedgerStatus,emptyState:emptyStateMarkup});
 }
 function activateReportMainView(view,{focus=false}={}){
  const selected=view==='operational'?'operational':'executive';state.report.mainView=selected;

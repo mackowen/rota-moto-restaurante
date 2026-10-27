@@ -121,7 +121,7 @@ assert(identityAsset, 'identity UI bundle has a cache busting version');
 const sw = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf8');
 assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v\d+`/u, 'service worker uses a versioned cache');
 assert.ok(sw.includes(`'/${identityAsset}'`), 'current identity UI asset is included in the offline shell');
-assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v144`/u, 'service worker cache version advances with changed report assets');
+assert.match(sw, /CACHE_NAME = `\$\{CACHE_PREFIX\}v145`/u, 'service worker cache version advances with changed report assets');
 assert.match(html, /identity-ui\.css\?v=0304-login\.10/u, 'updated recovery flow CSS is cache-busted');
 assert.match(html, /identity-ui\.js\?v=0304-login\.8/u, 'updated recovery navigation is cache-busted');
 assert.doesNotMatch(html, /<script[^>]+rotamoto-map-runtime/u, 'heavy cartography runtime is not loaded before authentication');

@@ -140,7 +140,7 @@ assert.equal(ledgerFixture.financialLedger.totals.BRL.netReceivedMinor,6000);
 assert.equal(ledgerFixture.financialLedger.totals.BRL.adjustmentMinor,-100,'adjustments stay separate from received cash');
 const financialHtml=View.render({report:financialFixture,filters:{period:'all',bike:'',status:'',type:'',source:''},statusLabel:value=>value,typeLabel:value=>value,sources:{},bikes:[],types:[],freshNote:'fixture financeira'});
 assert.match(financialHtml,/Faturamento bruto registrado[\s\S]*R\$ 115,00/u,'the Executive presents the known gross order amount without labeling it received');
-assert.match(financialHtml,/Nenhum evento financeiro carregado|Razão financeiro não consultado pelo servidor/u,'settlement is unavailable until a server ledger is loaded');
+assert.match(financialHtml,/Registros financeiros ainda não consultados/u,'settlement is unavailable until a server ledger is loaded');
 
 const timezone = Analytics.aggregate({ orders: [
   { id: 'before', createdAt: Date.parse('2026-10-06T02:59:59Z') },
