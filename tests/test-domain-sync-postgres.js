@@ -58,15 +58,17 @@ function savepointPool(client) {
   } };
 }
 
-async function runAuthenticatedFinancialBrowser({base,sessionToken,orderId,companyId}){
+async function runAuthenticatedFinancialBrowser({base,sessionToken,orderId,earningOrderId,companyId}){
   const cdpPort=Number(process.env.E2E_BROWSER_CDP_PORT),cdpModule=process.env.E2E_CDP_MODULE_PATH;
   assert(Number.isInteger(cdpPort)&&cdpPort>0&&cdpModule,'authorized browser run requires explicit CDP port and module path');
   const CDP=require(cdpModule),target=await CDP.New({port:cdpPort,url:'about:blank'}),page=await CDP({port:cdpPort,target});
-  const browserErrors=[],httpErrors=[],dialogs=[],dialogDecisions=[];
+  const browserErrors=[],httpErrors=[],expectedHttpErrors=[],networkFailures=[],expectedNetworkFailures=[],dialogs=[],dialogDecisions=[];
+  let simulatingNetworkFailure=false,expectSessionExpiry=false;
   const evaluate=async expression=>{const result=await page.Runtime.evaluate({expression,returnByValue:true,awaitPromise:true,userGesture:true});if(result.exceptionDetails)throw new Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text);return result.result.value};
   const until=async(check,label,timeout=45000)=>{const started=Date.now();while(Date.now()-started<timeout){const result=await check();if(result)return result;await new Promise(resolve=>setTimeout(resolve,200))}throw new Error(`browser E2E timeout: ${label}`)};
   page.Runtime.exceptionThrown(({exceptionDetails})=>browserErrors.push(exceptionDetails?.text||'javascript exception'));
-  page.Network.responseReceived(({response})=>{if(response.status>=400)httpErrors.push({status:response.status,url:response.url})});
+  page.Network.responseReceived(({response})=>{if(response.status>=400){const row={status:response.status,url:response.url},pathname=new URL(response.url).pathname;if(response.status===409&&pathname==='/api/finance/events'||response.status===401&&expectSessionExpiry&&pathname==='/api/identity/session')expectedHttpErrors.push(row);else httpErrors.push(row)}});
+  page.Network.loadingFailed(({errorText,blockedReason})=>{const row={errorText,blockedReason};(simulatingNetworkFailure?expectedNetworkFailures:networkFailures).push(row)});
   page.Page.javascriptDialogOpening(({message})=>{dialogs.push(message);page.Page.handleJavaScriptDialog({accept:dialogDecisions.shift()??true}).catch(()=>{})});
   try{
     await Promise.all([page.Page.enable(),page.Runtime.enable(),page.Network.enable(),page.Network.setBypassServiceWorker({bypass:true})]);
@@ -80,13 +82,27 @@ async function runAuthenticatedFinancialBrowser({base,sessionToken,orderId,compa
     catch(error){const diagnostics=await evaluate(`new Promise(resolve=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onerror=()=>resolve({openError:String(r.error)});r.onsuccess=()=>{const db=r.result,tx=db.transaction(['orders','syncState'],'readonly'),orders=tx.objectStore('orders').getAll(),sync=tx.objectStore('syncState').getAll();tx.oncomplete=async()=>{resolve({orders:orders.result?.length||0,sync:sync.result?.map(x=>({id:x.id,status:x.status,lastErrorCode:x.lastErrorCode})),identity:window.RotaMotoIdentity?.getSession?.(),syncStatus:await window.RotaMotoSync?.getStatus?.(),appReady:window.RotaMotoAppReady,title:document.title});db.close()}}})`);error.message+=` diagnostics=${JSON.stringify({diagnostics,syncAttempt,httpErrors,browserErrors})}`;throw error}
     await evaluate("document.querySelector('[data-tab=orders]')?.click()");
     const localOrderId=await until(()=>evaluate(`(async()=>{const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});const rows=await new Promise((resolve,reject)=>{const q=db.transaction('orders').objectStore('orders').getAll();q.onsuccess=()=>resolve(q.result||[]);q.onerror=()=>reject(q.error)});db.close();return rows.find(x=>x.id===${JSON.stringify(orderId)}||x.sync?.canonicalId===${JSON.stringify(orderId)})?.id||false})()`),'local Order id');
-    await until(()=>evaluate(`!!document.querySelector('[data-detail="${localOrderId}"]')`),'Order detail action');
-    await evaluate(`document.querySelector('[data-detail="${localOrderId}"]').click()`);
+    await until(()=>evaluate(`!!document.querySelector('[data-orders-open="${localOrderId}"]')`),'Order V2 open action');
+    await evaluate(`document.querySelector('[data-orders-open="${localOrderId}"]').click()`);
     await until(()=>evaluate("!!document.querySelector('.financial-order-section [data-record-financial-order]')"),'financial order section');
     await evaluate("document.querySelector('.financial-order-section [data-record-financial-order]').click()");
     await until(()=>evaluate("!!document.querySelector('#financialReceiptForm')"),'manual receipt form');
+    await until(()=>evaluate("!!document.querySelector('.modal-back [role=dialog]')?.contains(document.activeElement)"),'keyboard focus enters the financial dialog');
+    await page.Input.dispatchKeyEvent({type:'keyDown',key:'Tab'});await page.Input.dispatchKeyEvent({type:'keyUp',key:'Tab'});
+    assert(await evaluate("!!document.querySelector('.modal-back [role=dialog]')?.contains(document.activeElement)"),'Tab keeps focus within the financial dialog');
+    const formLayouts=[];
+    for(const width of [320,390,430,768,980,1440])for(const theme of ['light','dark']){
+      await page.Emulation.setDeviceMetricsOverride({width,height:900,deviceScaleFactor:1,mobile:width<=430});
+      await evaluate(`(()=>{document.documentElement.dataset.theme=${JSON.stringify(theme)};document.documentElement.dataset.resolvedTheme=${JSON.stringify(theme)};document.documentElement.style.colorScheme=${JSON.stringify(theme)}})()`);
+      const metrics=await evaluate("(()=>{const dialog=document.querySelector('.modal-back [role=dialog]'),rect=dialog?.getBoundingClientRect(),overflow=[...document.body.querySelectorAll('*')].map(el=>({tag:el.tagName,id:el.id,className:typeof el.className==='string'?el.className:'',right:Math.round(el.getBoundingClientRect().right),width:Math.round(el.getBoundingClientRect().width)})).filter(x=>x.right>innerWidth+1).slice(0,8);return {width:innerWidth,scrollWidth:document.documentElement.scrollWidth,left:rect?.left,right:rect?.right,dialogScrollWidth:dialog?.scrollWidth,dialogClientWidth:dialog?.clientWidth,overflow}})()");
+      formLayouts.push({requestedWidth:width,theme,...metrics});
+      assert(metrics.dialogScrollWidth<=metrics.dialogClientWidth+1,`financial modal has no internal horizontal overflow at ${width}px ${theme}: ${JSON.stringify(metrics)}`);
+      assert(metrics.left>=0&&metrics.right<=metrics.width+1,`financial modal remains in the rendered viewport at ${width}px ${theme}`);
+    }
+    await page.Emulation.setDeviceMetricsOverride({width:1440,height:900,deviceScaleFactor:1,mobile:false});
+    await evaluate("(()=>{document.documentElement.dataset.theme='light';document.documentElement.dataset.resolvedTheme='light';document.documentElement.style.colorScheme='light'})()");
     const fillReceipt=async(reference,amount)=>evaluate(`(()=>{const f=document.querySelector('#financialReceiptForm');for(const [name,value] of Object.entries({amount:${JSON.stringify(String(amount))},reference:${JSON.stringify(reference)},reason:'browser authenticated fixture confirmation'})){const e=f.elements.namedItem(name);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}return true})()`);
-    const submitWithConfirmation=async({accept})=>{dialogDecisions.push(accept);await evaluate("document.querySelector('#financialReceiptForm').requestSubmit()");await until(()=>dialogs.length>0,'explicit receipt confirmation');await new Promise(resolve=>setTimeout(resolve,120))};
+    const submitWithConfirmation=async({accept,form='#financialReceiptForm'})=>{const dialogCount=dialogs.length;dialogDecisions.push(accept);await evaluate(`document.querySelector(${JSON.stringify(form)}).requestSubmit()`);await until(()=>dialogs.length===dialogCount+1,'new explicit financial confirmation');await new Promise(resolve=>setTimeout(resolve,120))};
     await fillReceipt('PIX-SYNTH-1',500);
     await submitWithConfirmation({accept:false});
     assert(await evaluate("!!document.querySelector('#financialReceiptForm')"),'canceling confirmation preserves the form');
@@ -95,26 +111,99 @@ async function runAuthenticatedFinancialBrowser({base,sessionToken,orderId,compa
     await until(()=>evaluate("document.querySelector('#financialReceiptForm [role=alert]')?.textContent.includes('Esta referência já foi registrada')"),'visible server duplicate-reference error');
     assert(await evaluate("!!document.querySelector('#financialReceiptForm')"),'server rejection preserves the form values');
     const acceptedReference=`BROWSER-${crypto.randomUUID()}`;
-    await fillReceipt(acceptedReference,1000);
+    await fillReceipt(acceptedReference,10);
     await submitWithConfirmation({accept:true});
-    await until(()=>evaluate("!document.querySelector('#financialReceiptForm')"),'server-confirmed receipt closes form');
+    try{await until(()=>evaluate("!document.querySelector('#financialReceiptForm')"),'server-confirmed receipt closes form')}
+    catch(error){const formState=await evaluate("JSON.stringify({alert:document.querySelector('#financialReceiptForm [role=alert]')?.textContent,amount:document.querySelector('#financialReceiptForm [name=amount]')?.value,reference:document.querySelector('#financialReceiptForm [name=reference]')?.value,buttonDisabled:document.querySelector('#financialReceiptForm [type=submit]')?.disabled,outbox:window.RotaMotoFinance?.getOutboxStatus?.()})");error.message+=` receiptFormDiagnostic=${formState}`;throw error}
     await until(()=>evaluate(`new Promise(resolve=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onsuccess=()=>{const db=r.result,q=db.transaction('financialEvents').objectStore('financialEvents').getAll();q.onsuccess=()=>{const ok=q.result.some(x=>x.dataOrigin==='server-confirmed'&&x.reference===${JSON.stringify(acceptedReference)});db.close();resolve(ok)}}})`),'confirmed event reconciled to IndexedDB');
+
+    const openFinanceDetail=async id=>{
+      await evaluate(`document.querySelector('[data-orders-open="${id}"]')?.click()`);
+      await until(()=>evaluate("!!document.querySelector('.financial-order-section')"),'financial order detail');
+    };
+    const fillOperation=async(amount,reference,reason)=>evaluate(`(()=>{const f=document.querySelector('#financialOperationForm');for(const [name,value] of Object.entries({amount:${JSON.stringify(String(amount))},reference:${JSON.stringify(reference)},reason:${JSON.stringify(reason)}})){const e=f.elements.namedItem(name);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}return true})()`);
+    await openFinanceDetail(localOrderId);
+    await evaluate("document.querySelector('[data-record-finance-order-op=REFUND]')?.click()");
+    await until(()=>evaluate("!!document.querySelector('#financialOperationForm[data-kind=REFUND]')"),'partial refund form');
+    const refundReference=`BROWSER-REFUND-${crypto.randomUUID()}`;
+    await fillOperation('1',refundReference,'Estorno parcial autenticado no navegador');
+    await submitWithConfirmation({accept:true,form:'#financialOperationForm'});
+    await until(()=>evaluate("!document.querySelector('#financialOperationForm')"),'server-confirmed partial refund');
+    await openFinanceDetail(localOrderId);
+    await evaluate("document.querySelector('[data-record-finance-order-op=ADJUSTMENT]')?.click()");
+    await until(()=>evaluate("!!document.querySelector('#financialOperationForm[data-kind=ADJUSTMENT]')"),'authorized adjustment form');
+    const adjustmentReference=`BROWSER-ADJUST-${crypto.randomUUID()}`;
+    await fillOperation('-1',adjustmentReference,'Ajuste negativo autorizado para E2E');
+    await submitWithConfirmation({accept:true,form:'#financialOperationForm'});
+    await until(()=>evaluate("!document.querySelector('#financialOperationForm')"),'server-confirmed adjustment');
+
+    await evaluate(`document.querySelector('[data-orders-open="${earningOrderId}"]')?.click()`);
+    await until(()=>evaluate("!!document.querySelector('.financial-order-section [data-record-finance-payout]')"),'canonical Earning settlement action');
+    await evaluate("document.querySelector('.financial-order-section [data-record-finance-payout]').click()");
+    await until(()=>evaluate("!!document.querySelector('#financialOperationForm[data-kind=PAYOUT_SETTLED]')"),'partial payout form');
+    const payoutReference=`BROWSER-PAYOUT-${crypto.randomUUID()}`;
+    await fillOperation('5',payoutReference,'Liquidação parcial de Earning autenticada no navegador');
+    await submitWithConfirmation({accept:true,form:'#financialOperationForm'});
+    await until(()=>evaluate("!document.querySelector('#financialOperationForm')"),'server-confirmed partial payout');
+
     await evaluate("document.querySelector('[data-tab=reports]')?.click()");
     await until(()=>evaluate("!!document.querySelector('[data-report-executive-category=finance]')"),'Relatórios V2');
     await evaluate("document.querySelector('[data-report-executive-category=finance]').click()");
-    await until(()=>evaluate("document.querySelector('[data-report-executive-panel=finance]')?.textContent.includes('Recebimentos confirmados no razão')"),'financial ledger in Executive report');
+    await until(()=>evaluate("document.querySelector('[data-report-executive-panel=finance]')?.textContent.includes('Pagamentos confirmados no razão')"),'financial ledger in Executive report');
     const reportText=await evaluate("document.querySelector('[data-report-executive-panel=finance]').innerText");
+    const reportDate=await evaluate("document.querySelector('#rto').value");
+    await evaluate(`(()=>{const from=document.querySelector('#rfrom'),to=document.querySelector('#rto');from.value=${JSON.stringify(reportDate)};to.value=${JSON.stringify(reportDate)};from.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
+    await until(()=>evaluate(`document.querySelector('#rfrom')?.value===${JSON.stringify(reportDate)}&&document.querySelector('#rto')?.value===${JSON.stringify(reportDate)}`),'single-day report filter');
+    assert(await evaluate("document.querySelector('[data-report-executive-panel=finance]')?.textContent.includes('Pagamentos confirmados no razão')"),'filtered Executive report retains confirmed payment data');
+    await evaluate("document.querySelector('[data-report-main-view=operational]').click()");
+    await until(()=>evaluate("!document.querySelector('[data-report-main-panel=operational]')?.hidden"),'Operational detailed report');
+    await evaluate("document.querySelector('[data-report-operational-link=report-costs]').click()");
+    await until(()=>evaluate("!document.querySelector('[data-report-operational-panel=report-costs]')?.hidden"),'cost and payout section');
+    const costsText=await evaluate("document.querySelector('[data-report-operational-panel=report-costs]').innerText");
+    assert(/Custos e repasses|Repasses/u.test(costsText),'Operational report shows logistics costs and payouts separately');
+    await evaluate("document.querySelector('[data-report-operational-link=report-export]').click()");
+    await until(()=>evaluate("!document.querySelector('[data-report-operational-panel=report-export]')?.hidden"),'operational export section');
+    const csv=await evaluate("new Promise(resolve=>{const original=URL.createObjectURL;URL.createObjectURL=function(blob){blob.text().then(text=>{URL.createObjectURL=original;resolve(text)});return original.call(URL,blob)};document.querySelector('[data-export-report]').click()})");
+    assert(csv.includes('Recebimentos confirmados no razão (minor units)'),'CSV includes the financial ledger column');
+    assert(csv.includes('10000')&&csv.includes('1600')&&csv.includes('-200'),'CSV reflects confirmed receipts, refunds and adjustments in minor units');
     const layouts=[];
     for(const width of [320,390,430,768,980,1440])for(const theme of ['light','dark']){
       await page.Emulation.setDeviceMetricsOverride({width,height:900,deviceScaleFactor:1,mobile:width<=430});
       await page.Emulation.setEmulatedMedia({features:[{name:'prefers-color-scheme',value:theme}]});
+      await evaluate(`(()=>{document.documentElement.dataset.theme=${JSON.stringify(theme)};document.documentElement.dataset.resolvedTheme=${JSON.stringify(theme)};document.documentElement.style.colorScheme=${JSON.stringify(theme)}})()`);
       await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
       const metrics=await evaluate("({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,theme:document.documentElement.dataset.resolvedTheme||getComputedStyle(document.documentElement).colorScheme,modal:!!document.querySelector('.modal-back')})");
       layouts.push({requestedWidth:width,theme,...metrics});assert(metrics.scrollWidth<=width,`no horizontal overflow at ${width}px ${theme}`);
+      if(process.env.E2E_BROWSER_EVIDENCE_DIR&&(width===390||width===1440)){
+        fs.mkdirSync(process.env.E2E_BROWSER_EVIDENCE_DIR,{recursive:true});
+        const shot=await page.Page.captureScreenshot({format:'png',captureBeyondViewport:false});
+        fs.writeFileSync(path.join(process.env.E2E_BROWSER_EVIDENCE_DIR,`operacional-${width}-${theme}.png`),Buffer.from(shot.data,'base64'));
+      }
     }
+    await evaluate("document.querySelector('[data-tab=orders]')?.click()");
+    await openFinanceDetail(localOrderId);
+    await evaluate("document.querySelector('.financial-order-section [data-record-financial-order]')?.click()");
+    await until(()=>evaluate("!!document.querySelector('#financialReceiptForm')"),'network recovery receipt form');
+    const networkReference=`BROWSER-NET-${crypto.randomUUID()}`;
+    await fillReceipt(networkReference,0.5);
+    simulatingNetworkFailure=true;
+    await page.Network.setBlockedURLs({urls:['*api/finance/events*']});
+    await submitWithConfirmation({accept:true});
+    await until(()=>evaluate("!document.querySelector('#financialReceiptForm')"),'offline receipt preserved locally');
+    await until(()=>evaluate(`new Promise(resolve=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onsuccess=()=>{const db=r.result,q=db.transaction('financeOutbox').objectStore('financeOutbox').getAll();q.onsuccess=()=>{const row=q.result.find(x=>x.input?.reference===${JSON.stringify(networkReference)});db.close();resolve(row?.status==='pending')}}})`),'network failure remains pending in IndexedDB');
+    await page.Network.setBlockedURLs({urls:[]});simulatingNetworkFailure=false;
+    await evaluate("window.dispatchEvent(new Event('online'))");
+    await until(()=>evaluate(`new Promise(resolve=>{const r=indexedDB.open('rota-moto-restaurante-local-v30');r.onsuccess=()=>{const db=r.result,tx=db.transaction(['financialEvents','financeOutbox'],'readonly'),events=tx.objectStore('financialEvents').getAll(),outbox=tx.objectStore('financeOutbox').getAll();tx.oncomplete=()=>{const confirmed=events.result.some(x=>x.dataOrigin==='server-confirmed'&&x.reference===${JSON.stringify(networkReference)}),pending=outbox.result.some(x=>x.input?.reference===${JSON.stringify(networkReference)});db.close();resolve(confirmed&&!pending)}}})`),'network recovery confirms queued receipt');
+    assert(expectedNetworkFailures.length>0,'browser observed the intentionally blocked finance request');
+    expectSessionExpiry=true;
+    await page.Network.setCookie({name:COOKIE_NAME,value:'x'.repeat(43),url:base,path:'/',secure:true,httpOnly:true,sameSite:'Lax'});
+    await page.Page.reload();
+    await until(()=>evaluate("!!document.querySelector('form[data-login]')&&!window.RotaMotoAppReady"),'expired browser session returns to login');
+    expectSessionExpiry=false;
     assert(httpErrors.length===0,JSON.stringify(httpErrors));assert(browserErrors.length===0,JSON.stringify(browserErrors));
-    return {authenticated:true,companyScoped:true,receiptConfirmationCancelled:true,duplicateReferenceErrorPreserved:true,receiptConfirmedAndReconciled:true,
-      reportContainsServerLedger:true,layouts,reportText:reportText.slice(0,1600),httpErrors,browserErrors,dialogCount:dialogs.length};
+    return {authenticated:true,companyScoped:true,receiptConfirmationCancelled:true,duplicateReferenceErrorPreserved:true,receiptConfirmedAndReconciled:true,acceptedReference,refundReference,adjustmentReference,payoutReference,
+      reportContainsServerLedger:true,dateFilterApplied:true,costsAndPayoutsVisible:true,csvIncludesConfirmedFinance:true,networkFailureRecovered:true,expiredSessionReturnedToLogin:true,
+      networkReference,layouts,formLayouts,reportText:reportText.slice(0,1600),costsText:costsText.slice(0,900),httpErrors,expectedHttpErrors,expectedNetworkFailures,networkFailures,browserErrors,dialogCount:dialogs.length};
   }finally{
     await page.close().catch(()=>{});await CDP.Close({port:cdpPort,id:target.id}).catch(()=>{});
   }
@@ -523,6 +612,7 @@ async function main() {
       const earningSetup=await call('/api/sync/push',{method:'POST',body:{...packet,packetId:`pkt_${crypto.randomUUID()}`,
         data:{...packet.data,orders:[earningOrder],deliveries:[earningDelivery],drivers:[],routes:[],locationUpdates:[],deliveryEvents:[],proofs:[],earnings:[],tombstones:[]}}});
       assert(earningSetup.body.operationResults.every(row=>row.status==='accepted'),JSON.stringify(earningSetup.body.operationResults));
+      const earningOrderId=earningSetup.body.aliases.find(row=>row.entity==='Order').canonicalId;
       const earningDeliveryId=earningSetup.body.aliases.find(row=>row.entity==='Delivery').canonicalId;
       const earningMotoDevice='moto-earning-test-device';
       const earningMotoInstall=await registerDevice('motoboy',earningMotoDevice,{cookie:`${COOKIE_NAME}=${readOnlyToken}`,csrf:readOnlyCsrf});
@@ -553,12 +643,6 @@ async function main() {
       assert.equal(payoutFirst.status,201,JSON.stringify(payoutFirst.body));
       assert.equal(payoutFirst.body.event.source_kind,'operator_declaration');
       const firstPayoutRead=await call('/api/finance/events?earningId='+earningId);assert.equal(firstPayoutRead.body.events.length,1);
-      const payoutSecond=await call('/api/finance/events',{method:'POST',body:{...payoutOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:750,reference:'PAYOUT-SYNTH-2'}});
-      assert.equal(payoutSecond.status,201,'partial payout settlements can complete the exact earning obligation');
-      const finalPayoutRead=await call('/api/finance/events?earningId='+earningId+'&kind=PAYOUT_SETTLED');
-      assert.equal(finalPayoutRead.body.events.reduce((sum,row)=>sum+Number(row.amount_minor),0),1250,'paid payout readback reconciles partial settlements to the Earning obligation');
-      const payoutExcess=await call('/api/finance/events',{method:'POST',body:{...payoutOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:1,reference:'PAYOUT-SYNTH-3'}});
-      assert.equal(payoutExcess.status,409);assert.equal(payoutExcess.body.error.code,'PAYOUT_EXCEEDS_EARNING');
       const storedEarning=await client.query(`SELECT payload->>'amountMinor' AS amount_minor,payload->>'currency' AS currency,payload->>'deliveryId' AS delivery_id,payload->>'ruleVersion' AS rule_version,payload->'components' AS components,related_record_id::text FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Earning'`,[companyId,earningId]);
       assert.equal(storedEarning.rows[0].amount_minor,'1250');assert.equal(storedEarning.rows[0].currency,'BRL');
       assert.equal(storedEarning.rows[0].rule_version,'fees-v1');assert.equal(storedEarning.rows[0].delivery_id,earningDeliveryId);
@@ -972,9 +1056,9 @@ async function main() {
 
       const restaurantInstallation=await client.query("SELECT id FROM rotamoto.sync_installations WHERE company_id=$1 AND app_key='restaurante' ORDER BY last_seen_at DESC LIMIT 1",[companyId]);
       assert.equal(restaurantInstallation.rowCount,1);
-      const originalReturnId=crypto.randomUUID(),peerOrderId=crypto.randomUUID(),peerDeliveryId=crypto.randomUUID(),
+      const originalReturnId=crypto.randomUUID(),originalReturnOrderId=crypto.randomUUID(),peerOrderId=crypto.randomUUID(),peerDeliveryId=crypto.randomUUID(),
         peer2OrderId=crypto.randomUUID(),peer2DeliveryId=crypto.randomUUID(),routeId=crypto.randomUUID(),returnNow=new Date().toISOString();
-      const originalReturnPayload={id:originalReturnId,companyId,orderId,driverId,status:'CANCELLED',pickedUpAt:returnNow,
+      const originalReturnPayload={id:originalReturnId,companyId,orderId:originalReturnOrderId,driverId,status:'CANCELLED',pickedUpAt:returnNow,
         createdAt:returnNow,updatedAt:returnNow,version:1,extensions:{x_rotamoto_custody_state:'DISPUTED',x_rotamoto_custody_route_id:routeId,
           x_rotamoto_custody_divergence:{state:'OPEN',reportedEventType:'DELIVERY_PICKED_UP',confirmedByServer:false,sourceEventId:'evt_offline_fixture'}}};
       const peerOrder={id:peerOrderId,companyId,number:'RETURN-ROUTE-PEER',status:'CREATED',customer:{name:'Pedido da rota'},
@@ -991,7 +1075,7 @@ async function main() {
           ($1,$11,'Order','restaurante',$3,NULL,NULL,$12::jsonb,1,$6,$6),
           ($1,$13,'Delivery','restaurante',$3,'Order',$11,$14::jsonb,1,$6,$6),
           ($1,$15,'Route','restaurante',$3,NULL,NULL,$16::jsonb,1,$6,$6)`,
-      [companyId,originalReturnId,restaurantInstallation.rows[0].id,orderId,JSON.stringify(originalReturnPayload),returnNow,
+      [companyId,originalReturnId,restaurantInstallation.rows[0].id,originalReturnOrderId,JSON.stringify(originalReturnPayload),returnNow,
         peerOrderId,JSON.stringify(peerOrder),peerDeliveryId,JSON.stringify(peerDelivery),peer2OrderId,JSON.stringify(peer2Order),
         peer2DeliveryId,JSON.stringify(peer2Delivery),routeId,JSON.stringify(routePayload)]);
       const returnDecisionKey=`return-${crypto.randomUUID()}`;
@@ -1154,6 +1238,10 @@ async function main() {
       assert.equal(returnCount.rows[0].count,1,'repeated cancellation cannot create a second return task');
       console.log('Cancellation PostgreSQL E2E: before assignment, before pickup, post-pickup automatic RETURN, route append, replay/idempotency PASS');
 
+      const financeBrowserOrder=await client.query("SELECT payload->>'status' AS status FROM rotamoto.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Order'",[companyId,orderId]);
+      assert.equal(financeBrowserOrder.rowCount,1,'synthetic finance Order remains present after logistics fixtures');
+      assert.equal(financeBrowserOrder.rows[0].status,'CREATED','return/cancellation fixtures must not mutate the financial Order used by browser validation');
+
       const unlink=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'DELETE'});
       assert.equal(unlink.status,200,JSON.stringify(unlink.body));assert.equal(unlink.body.driverId,null);assert.equal(unlink.body.changed,true);
       const unlinkRepeat=await call(`/api/admin/memberships/${membershipId}/driver`,{method:'DELETE'});
@@ -1191,11 +1279,29 @@ async function main() {
       } finally {
         await new Promise(resolve => limitedServer.close(resolve));
       }
+      let browserEvidence=null;
       if(process.env.E2E_BROWSER_CDP_PORT){
-        let browserEvidence;try{browserEvidence=await runAuthenticatedFinancialBrowser({base,sessionToken,orderId,companyId})}
+        try{browserEvidence=await runAuthenticatedFinancialBrowser({base,sessionToken,orderId,earningOrderId,companyId})}
         catch(error){const pull=await call('/api/sync/pull?deviceId=restaurant-test-device'),events=pull.body?.events||[],invalid=events.filter(row=>{try{SyncReconciliation.canonicalEvent(row,companyId);return false}catch(_){return true}}).map(row=>({eventId:row.eventId,entity:row.entity,entityId:row.entityId,type:row.type,protocolVersion:row.protocolVersion,payloadType:row.payload&&typeof row.payload,payloadId:row.payload?.id,payloadVersion:row.payload?.version}));error.message+=` pullDiagnostic=${JSON.stringify({status:pull.status,eventCount:events.length,invalid:invalid.slice(0,8)})}`;throw error}
         console.log(JSON.stringify({test:'finance-authenticated-browser-e2e',database:'rotamoto_e2e',...browserEvidence}));
+        const renewedSession=await call('/api/identity/session');
+        assert.equal(renewedSession.status,200,'browser authentication preserves the synthetic server session');
+        assert.equal(typeof renewedSession.body.csrfToken,'string');
+        csrfToken=renewedSession.body.csrfToken;
+        const browserFinanceRead=await call(`/api/finance/events?orderId=${orderId}`);
+        assert.equal(browserFinanceRead.status,200);
+        for(const reference of [browserEvidence.acceptedReference,browserEvidence.refundReference,browserEvidence.adjustmentReference,browserEvidence.networkReference])
+          assert(browserFinanceRead.body.events.some(row=>row.reference===reference),`browser-confirmed Order event ${reference} is persisted in PostgreSQL`);
+        const browserPayoutRead=await call(`/api/finance/events?earningId=${earningId}&kind=PAYOUT_SETTLED`);
+        assert(browserPayoutRead.body.events.some(row=>row.reference===browserEvidence.payoutReference&&Number(row.amount_minor)===500),
+          'browser-confirmed partial payout is persisted against the canonical Earning');
       }
+      const payoutSecond=await call('/api/finance/events',{method:'POST',body:{...payoutOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:browserEvidence?250:750,reference:'PAYOUT-SYNTH-2'}});
+      assert.equal(payoutSecond.status,201,`partial payout settlements can complete the exact earning obligation: ${JSON.stringify(payoutSecond.body)}`);
+      const finalPayoutRead=await call('/api/finance/events?earningId='+earningId+'&kind=PAYOUT_SETTLED');
+      assert.equal(finalPayoutRead.body.events.reduce((sum,row)=>sum+Number(row.amount_minor),0),1250,'paid payout readback reconciles partial settlements to the Earning obligation');
+      const payoutExcess=await call('/api/finance/events',{method:'POST',body:{...payoutOne,eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),amountMinor:1,reference:'PAYOUT-SYNTH-3'}});
+      assert.equal(payoutExcess.status,409);assert.equal(payoutExcess.body.error.code,'PAYOUT_EXCEEDS_EARNING');
     } finally {
       server.closeAllConnections?.();
       await new Promise(resolve => server.close(resolve));
