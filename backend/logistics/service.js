@@ -324,7 +324,7 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
       SELECT provider_id,count(*)::int AS received,count(*) FILTER(WHERE status='selected')::int AS selected,
         count(*) FILTER(WHERE expires_at<=now() AND status<>'selected')::int AS expired
       FROM rotamoto.provider_quotes WHERE company_id=$1 GROUP BY provider_id
-    ) SELECT p.provider_id,p.code,COALESCE(c.quote_requests,0)::int AS quote_requests,
+    ) SELECT p.provider_id,p.code,p.display_name,p.provider_class,COALESCE(c.quote_requests,0)::int AS quote_requests,
       COALESCE(q.received,0)::int AS quotes_received,COALESCE(q.selected,0)::int AS quotes_selected,COALESCE(q.expired,0)::int AS quotes_expired,
       COALESCE(c.dispatch_requested,0)::int AS dispatch_requested,COALESCE(c.dispatch_confirmed,0)::int AS dispatch_confirmed,
       COALESCE(c.dispatch_failed,0)::int AS dispatch_failed,COALESCE(c.dispatch_unknown,0)::int AS dispatch_unknown,
@@ -333,12 +333,29 @@ function createLogisticsService({ clock = () => new Date(), testProvider = null,
       COALESCE(c.operator_review,0)::int AS operator_review
       FROM rotamoto.logistics_providers p LEFT JOIN commands c USING(provider_id) LEFT JOIN quotes q USING(provider_id)
       WHERE p.company_id=$1 ORDER BY p.code`, [principal.company_id]);
-    return { providers: result.rows.map(row => ({ providerId: row.provider_id, code: row.code, displayName: row.display_name,
+    const coverageResult = await client.query(`SELECT
+      count(*) FILTER(WHERE d.entity_type='Delivery')::int AS canonical_deliveries,
+      count(*) FILTER(WHERE d.entity_type='Delivery' AND d.payload->>'status'='DELIVERED')::int AS completed_deliveries,
+      count(*) FILTER(WHERE d.entity_type='Delivery' AND NOT EXISTS (
+        SELECT 1 FROM rotamoto.delivery_fulfillments f WHERE f.company_id=d.company_id
+          AND f.delivery_id=d.record_id AND f.status<>'superseded'))::int AS deliveries_without_allocation,
+      count(*) FILTER(WHERE d.entity_type='Order' AND NOT EXISTS (
+        SELECT 1 FROM rotamoto.domain_records delivery WHERE delivery.company_id=d.company_id
+          AND delivery.entity_type='Delivery' AND delivery.deleted_at IS NULL
+          AND (delivery.related_record_id=d.record_id OR delivery.payload->>'orderId'=d.record_id::text)))::int AS orders_without_delivery
+      FROM rotamoto.domain_records d WHERE d.company_id=$1 AND d.deleted_at IS NULL
+        AND d.entity_type IN ('Order','Delivery')`, [principal.company_id]);
+    const counts = coverageResult.rows[0];
+    return { scope: { source: 'postgresql', basis: 'company-history', filtersApplied: false },
+      coverage: counts ? { canonicalDeliveries: counts.canonical_deliveries, completedDeliveries: counts.completed_deliveries,
+        deliveriesWithoutAllocation: counts.deliveries_without_allocation, ordersWithoutDelivery: counts.orders_without_delivery } : null,
+      providers: result.rows.map(row => ({ providerId: row.provider_id, code: row.code, displayName: row.display_name,
       class: row.provider_class, allocations: row.allocations, internal: row.internal_count, external: row.external_count,
       completed: row.completed_count, estimatedCostCount: row.estimated_cost_count, estimatedCostCoverage: row.allocations ? row.estimated_cost_count / row.allocations : null,
       estimatedCosts: row.estimated_costs, reconciledCostCount: row.reconciled_cost_count,
       reconciledCostCoverage: row.allocations ? row.reconciled_cost_count / row.allocations : null, reconciledCosts: row.reconciled_costs })),
-      integrations: integration.rows.map(row => ({ providerId: row.provider_id, code: row.code, quoteRequests: row.quote_requests,
+      integrations: integration.rows.map(row => ({ providerId: row.provider_id, code: row.code, displayName: row.display_name,
+        class: row.provider_class, quoteRequests: row.quote_requests,
         quotesReceived: row.quotes_received, quotesSelected: row.quotes_selected, quotesExpired: row.quotes_expired,
         dispatchRequested: row.dispatch_requested, dispatchConfirmed: row.dispatch_confirmed, dispatchFailed: row.dispatch_failed,
         dispatchUnknown: row.dispatch_unknown, cancellationRequests: row.cancellation_requests,

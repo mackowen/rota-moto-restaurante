@@ -218,6 +218,7 @@
 
     const financialTotals = Object.create(null), financialDaily = Object.create(null);
     let financialEligible = 0, financialAvailable = 0, financialCancelled = 0;
+    const financialDiagnostics = { reasons: {}, missingFields: {}, invalidFields: {} };
     const addFinancial = (target, key, value) => {
       const current = target[key] || 0;
       const next = current + value;
@@ -233,6 +234,12 @@
       const money = row.money, currency = money.currency;
       const complete = money.kind === 'canonical_complete' && validCurrency(currency) &&
         ['itemsSubtotalMinor','discountMinor','deliveryFeeMinor','serviceFeeMinor','otherFeeMinor','totalMinor'].every(key => Number.isSafeInteger(money[key]) && money[key] >= 0);
+      if (!cancelled && !complete && Money?.diagnoseOrderMoney) {
+        const diagnostic = Money.diagnoseOrderMoney(row.order);
+        financialDiagnostics.reasons[diagnostic.reason] = (financialDiagnostics.reasons[diagnostic.reason] || 0) + 1;
+        for (const field of diagnostic.missingFields) financialDiagnostics.missingFields[field] = (financialDiagnostics.missingFields[field] || 0) + 1;
+        for (const field of diagnostic.invalidFields) financialDiagnostics.invalidFields[field] = (financialDiagnostics.invalidFields[field] || 0) + 1;
+      }
       if (!complete) continue;
       if (Object.hasOwn(financialTotals,currency) && financialTotals[currency] === null) continue;
       const grossMinor = money.itemsSubtotalMinor + money.deliveryFeeMinor + money.serviceFeeMinor + money.otherFeeMinor;
@@ -261,6 +268,7 @@
       dailyByCurrency: Object.fromEntries(Object.entries(financialDaily).map(([currency, days]) => [currency,
         Object.entries(days).sort(([a],[b])=>a.localeCompare(b)).map(([date,value])=>({ date, ...value }))])),
       coverage: { available: financialAvailable, total: financialEligible, cancelled: financialCancelled, missing: Math.max(0, financialEligible - financialAvailable) },
+      diagnostics: financialDiagnostics,
       received: { available: false, reason: 'Nenhum razão financeiro confirmado pelo servidor foi consultado.' },
       refunds: { available: false, reason: 'Nenhum razão financeiro confirmado pelo servidor foi consultado.' },
     };

@@ -47,4 +47,12 @@ assert.equal(Money.canonicalComponents({ value: 12 }).currency, null, 'unknown l
 assert.equal(Money.canonicalComponents({ value: 12, sourceId: 'telefone' }).currency, 'BRL', 'known local/manual channel retains its documented BRL semantics');
 assert.equal(Money.canonicalComponents({ money: { ...partial, currency: 'ZZZ' } }).kind, 'invalid');
 assert.equal(Contract.validateEntity('Order', { id: 'o', companyId: 'c', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', version: 1, money: partial }).valid, true);
+assert.deepEqual(Money.diagnoseOrderMoney({}), { eligible: false, reason: 'missing-money', missingFields: ['money'], invalidFields: [] });
+assert.equal(Money.diagnoseOrderMoney({ money: partial }).eligible, false, 'a valid partial delivery fee is not treated as a complete sale');
+assert.equal(Money.diagnoseOrderMoney({ money: partial }).missingFields.length, 5, 'diagnostics list absent canonical components');
+assert.equal(Money.diagnoseOrderMoney({ money: complete }).eligible, true, 'canonical six-component commercial value is eligible');
+const invalidMoneyDiagnostic = Money.diagnoseOrderMoney({ money: { ...complete, currency: 'ZZZ', components: { ...complete.components, totalMinor: -1 } } });
+assert.equal(invalidMoneyDiagnostic.eligible, false);
+assert.ok(invalidMoneyDiagnostic.invalidFields.includes('money.currency'));
+assert.ok(invalidMoneyDiagnostic.invalidFields.includes('money.components.totalMinor'));
 console.log('Order money semantics, legacy projection and server validation passed.');

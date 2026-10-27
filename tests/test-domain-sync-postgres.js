@@ -149,12 +149,12 @@ async function runAuthenticatedFinancialBrowser({base,sessionToken,orderId,earni
     await evaluate("document.querySelector('[data-tab=reports]')?.click()");
     await until(()=>evaluate("!!document.querySelector('[data-report-executive-category=finance]')"),'Relatórios V2');
     await evaluate("document.querySelector('[data-report-executive-category=finance]').click()");
-    await until(()=>evaluate("document.querySelector('[data-report-executive-panel=finance]')?.textContent.includes('Pagamentos confirmados no razão')"),'financial ledger in Executive report');
+    await until(()=>evaluate("document.querySelector('[data-report-executive-panel=finance]')?.textContent.includes('Pagamentos registrados')"),'financial ledger in Executive report');
     const reportText=await evaluate("document.querySelector('[data-report-executive-panel=finance]').innerText");
     const reportDate=await evaluate("document.querySelector('#rto').value");
     await evaluate(`(()=>{const from=document.querySelector('#rfrom'),to=document.querySelector('#rto');from.value=${JSON.stringify(reportDate)};to.value=${JSON.stringify(reportDate)};from.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
     await until(()=>evaluate(`document.querySelector('#rfrom')?.value===${JSON.stringify(reportDate)}&&document.querySelector('#rto')?.value===${JSON.stringify(reportDate)}`),'single-day report filter');
-    assert(await evaluate("document.querySelector('[data-report-executive-panel=finance]')?.textContent.includes('Pagamentos confirmados no razão')"),'filtered Executive report retains confirmed payment data');
+    assert(await evaluate("document.querySelector('[data-report-executive-panel=finance]')?.textContent.includes('Pagamentos registrados')"),'filtered Executive report retains confirmed payment data');
     await evaluate("document.querySelector('[data-report-main-view=operational]').click()");
     await until(()=>evaluate("!document.querySelector('[data-report-main-panel=operational]')?.hidden"),'Operational detailed report');
     await evaluate("document.querySelector('[data-report-operational-link=report-costs]').click()");

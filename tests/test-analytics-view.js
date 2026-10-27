@@ -51,7 +51,7 @@ const reportStart=app.indexOf('function reports(){');
 const reportEnd=app.indexOf('function activateReportMainView(',reportStart);
 assert(reportStart>=0&&reportEnd>reportStart,'the reports screen factory remains available');
 assert.match(app.slice(reportStart,reportEnd),/return header\('Relatórios','Análises executivas e operacionais'\)/u,'reports uses the shared page-header component with a real title');
-assert.match(app.slice(reportStart,reportEnd),/RotaMotoAnalytics\.aggregate\(\{orders:state\.orders,deliveries:state\.deliveries,deliveryEvents:state\.deliveryEvents,earnings:state\.earnings,bikes:state\.bikes,financialEvents:financeLedgerStatus==='confirmed'&&canReadFinancialEvents\?tenantFinancialEvents:undefined/u,'reports aggregates the local IndexedDB projection and includes only tenant-scoped server-confirmed ledger events');
+assert.match(app.slice(reportStart,reportEnd),/RotaMotoAnalytics\.aggregate\(\{orders:state\.orders,deliveries:state\.deliveries,deliveryEvents:state\.deliveryEvents,earnings:state\.earnings,bikes:state\.bikes,financialEvents:financeLedgerStatus==='confirmed'&&canReadFinancialEvents&&sameFinanceContext\(financeLedgerOwner\)\?tenantFinancialEvents:undefined/u,'reports aggregates the local IndexedDB projection and includes only tenant-scoped server-confirmed ledger events');
 assert.match(app.slice(reportStart,reportEnd),/reportFreshness\(sync,\{online:navigator\.onLine!==false,sessionActive:!!syncSession,[\s\S]*companyId:syncSession\?\.companyId/u,'report freshness is bound to the active tenant and live session');
 assert.match(app,/transport:'unverified'/u,'startup does not preserve a stale connected state as current confirmation');
 assert.match(app,/transport:'connected',lastSuccessAt:confirmedAt,[\s\S]*lastServerConfirmedAt:confirmedAt,serverConfirmedCompanyId:session\.companyId/u,'only a completed server sync cycle records a tenant-bound confirmation');
@@ -81,8 +81,8 @@ assert.match(confirmedHtml,/report-sync-indicator[\s\S]*>Confirmado<\/div>/u);
 console.log('Analytics renderer point-count, axis accessibility, empty and unavailable states: PASS');
 
 // Unavailable, loading, failed and successfully empty consultations must differ.
-const renderFinancialState=(financialState,confirmed=false)=>View.render({report:Analytics.aggregate({orders:[],deliveries:[],...(confirmed?{financialEvents:[]}: {})},{now,period:'all',timeZone:'America/Sao_Paulo'}),filters:{},statusLabel:labelStatus,typeLabel:()=> 'Entrega',sources:{},bikes:[],types:[],freshNote:'Dados locais',financialState});
-for(const [state,title] of [['loading','Carregando os registros financeiros'],['offline','Sem conexão para consultar pagamentos'],['permission-unavailable','Acesso aos registros financeiros indisponível'],['session-required','Entre novamente para consultar pagamentos'],['FINANCE_READ_FAILED','Não foi possível consultar os registros financeiros']]){
+const renderFinancialState=(financialState,confirmed=false,financialDiagnostic)=>View.render({report:Analytics.aggregate({orders:[],deliveries:[],...(confirmed?{financialEvents:[]}: {})},{now,period:'all',timeZone:'America/Sao_Paulo'}),filters:{},statusLabel:labelStatus,typeLabel:()=> 'Entrega',sources:{},bikes:[],types:[],freshNote:'Dados locais',financialState,financialDiagnostic});
+for(const [state,title] of [['loading','Carregando os registros financeiros'],['offline','Sem conexão para consultar pagamentos'],['permission-unavailable','Seu perfil não permite consultar pagamentos'],['session-required','Entre novamente para consultar pagamentos'],['FORBIDDEN','Consulta financeira não autorizada pelo servidor'],['MFA_REQUIRED','Confirme a segurança da sua conta'],['FINANCE_READ_FAILED','Não foi possível consultar os registros financeiros']]){
  const html=renderFinancialState(state);
  assert(html.includes(title),`financial state ${state} has a clear user-facing explanation`);
  if(state!=='loading')assert.match(html,/role="alert"/u,'a failed consultation is an alert, not an empty dataset');
@@ -91,6 +91,8 @@ for(const [state,title] of [['loading','Carregando os registros financeiros'],['
 const confirmedEmpty=renderFinancialState('confirmed',true);
 assert.match(confirmedEmpty,/Nenhum lançamento financeiro neste período/u);
 assert.doesNotMatch(confirmedEmpty,/Não foi possível consultar os registros financeiros/u);
+const financeDiagnosticHtml=renderFinancialState('FORBIDDEN',false,{stage:'http',httpStatus:403,errorCode:'FORBIDDEN'});
+assert.match(financeDiagnosticHtml,/data-finance-stage="http" data-finance-http-status="403" data-finance-error-code="FORBIDDEN"/u,'sanitized HTTP diagnostics identify a real server denial');
 const day=renderFor(1).html;
 const hourlyStart=day.indexOf('aria-label="Pedidos por hora"');
 assert(hourlyStart>=0);
@@ -103,21 +105,23 @@ console.log('Report financial read states and complete hourly distribution: PASS
 (async()=>{
  const vm=require('node:vm');
  const source=app.slice(app.indexOf('let financeLedgerFetchedAt='),app.indexOf('function reports(){'));
- let calls=0,renders=0,fail=true,malformed=false;
- const context={state:{tab:'reports'},syncSession:{companyId:'test-company',permissions:['finance.read']},navigator:{onLine:true},window:{},Date,setTimeout,
-  syncUrl:()=>'/api/finance/events',req:async()=>{},fetch:async()=>{calls++;return{ok:!fail,json:async()=>malformed?{}:fail?{error:{code:'FINANCE_READ_FAILED'}}:{events:[],coverage:{complete:false}}}},
+ let calls=0,renders=0,fail=true,malformed=false,errorCode='FORBIDDEN';
+ const context={state:{tab:'reports'},syncSession:{userId:'test-user',companyId:'test-company',permissions:['finance.read']},navigator:{onLine:true},window:{},Date,setTimeout,
+  syncUrl:()=>'/api/finance/events',req:async()=>{},fetch:async()=>{calls++;return{ok:!fail,status:fail?403:200,json:async()=>malformed?{}:fail?{error:{code:errorCode}}:{events:[],coverage:{complete:false}}}},
   render(){renders++;vm.runInContext('queueFinanceLedgerRead()',context)}};
  vm.createContext(context);
- vm.runInContext(source+';globalThis.probe={refresh:refreshFinanceLedger,status:()=>financeLedgerStatus};',context);
+ vm.runInContext(source+';globalThis.probe={refresh:refreshFinanceLedger,status:()=>financeLedgerStatus,diagnostic:()=>financeLedgerDiagnostic,owner:()=>financeLedgerOwner};',context);
  const pending=context.probe.refresh();
  assert.equal(context.probe.status(),'loading','a real pending request is visibly loading');
  assert.equal(await pending,false);
- assert.equal(context.probe.status(),'FINANCE_READ_FAILED');
+ assert.equal(context.probe.status(),'FORBIDDEN');
+ assert.deepEqual(JSON.parse(JSON.stringify(context.probe.diagnostic())),{stage:'http',httpStatus:403,errorCode:'FORBIDDEN'},'a server denial preserves the exact safe HTTP diagnostic');
  assert.equal(renders,1,'a failed financial query updates the visible report');
  assert.equal(calls,1,'rendering the failure must not start an automatic request loop');
  fail=false;
  assert.equal(await context.probe.refresh({force:true}),true,'a subsequent explicit read can recover');
  assert.equal(context.probe.status(),'confirmed');
+ assert.equal(context.probe.owner().companyId,'test-company','confirmed ledger is bound to the authenticated tenant');
  assert.equal(calls,2,'a successful render reuses the confirmed read');
  context.navigator.onLine=false;
  assert.equal(await context.probe.refresh(),false);
@@ -126,5 +130,27 @@ console.log('Report financial read states and complete hourly distribution: PASS
  context.navigator.onLine=true;malformed=true;
  assert.equal(await context.probe.refresh({force:true}),false);
  assert.equal(context.probe.status(),'FINANCE_RESPONSE_INVALID','an invalid successful response cannot become an empty financial history');
+ errorCode='MFA_REQUIRED';fail=true;malformed=false;
+ assert.equal(await context.probe.refresh({force:true}),false);
+ assert.equal(context.probe.status(),'MFA_REQUIRED','server MFA requirements remain distinct from permission denials');
+ assert.equal(context.probe.diagnostic().errorCode,'MFA_REQUIRED');
+ context.syncSession={userId:'test-user',companyId:'test-company',permissions:[]};
+ const callsBeforePermissionGate=calls;
+ assert.equal(await context.probe.refresh({force:true}),false);
+ assert.equal(context.probe.status(),'permission-unavailable');
+ assert.equal(calls,callsBeforePermissionGate,'a client-known missing permission makes no HTTP request');
+
+ let releaseOldResponse;
+ const raceContext={...context,state:{tab:'reports'},syncSession:{userId:'user-a',companyId:'tenant-a',permissions:['finance.read']},navigator:{onLine:true},
+   fetch:()=>new Promise(resolve=>{releaseOldResponse=resolve}),render(){}};
+ vm.createContext(raceContext);
+ vm.runInContext(source+';globalThis.probe={refresh:refreshFinanceLedger,status:()=>financeLedgerStatus,owner:()=>financeLedgerOwner};',raceContext);
+ const staleRead=raceContext.probe.refresh();
+ await Promise.resolve();
+ raceContext.syncSession={userId:'user-b',companyId:'tenant-b',permissions:['finance.read']};
+ releaseOldResponse({ok:true,status:200,json:async()=>({events:[{event_id:'tenant-a-event'}],coverage:{}})});
+ assert.equal(await staleRead,false,'a response begun under the previous user/tenant is ignored');
+ assert.equal(raceContext.probe.owner(),null,'a stale response cannot confirm ownership for the newly active tenant');
+ assert.equal(raceContext.state.financialEvents,undefined,'a stale tenant ledger cannot be displayed');
  console.log('Financial consultation loading, visible failure, retry, offline and invalid-response lifecycle: PASS');
 })().catch(error=>{console.error(error);process.exitCode=1});

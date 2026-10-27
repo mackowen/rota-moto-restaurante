@@ -743,27 +743,33 @@ function openRouteEditor(routeId=null){
 }
 
 let financeLedgerFetchedAt=0,financeLedgerFetch=null,financeLedgerCoverage=null,financeLedgerStatus='unverified';
+let financeLedgerOwner=null,financeLedgerPendingOwner=null,financeLedgerDiagnostic=null;
+function sameFinanceContext(owner){return !!owner&&!!syncSession&&owner.companyId===syncSession.companyId&&owner.userId===syncSession.userId}
 let financeRetryTimer=null;
 function scheduleFinanceRetry(){if(financeRetryTimer||navigator.onLine===false)return;financeRetryTimer=setTimeout(()=>{financeRetryTimer=null;flushFinanceOutbox().catch(()=>{})},5000)}
 async function refreshFinanceLedger({force=false}={}){
- if(!syncSession||!syncSession.permissions?.includes('finance.read')){financeLedgerStatus='permission-unavailable';return false}
- if(navigator.onLine===false){financeLedgerStatus='offline';return false}
- if(financeLedgerFetch)return financeLedgerFetch;
- if(!force&&Date.now()-financeLedgerFetchedAt<30000)return true;
- financeLedgerStatus='loading';
+ if(!syncSession){financeLedgerStatus='session-required';financeLedgerDiagnostic={stage:'session',httpStatus:null,errorCode:'SESSION_REQUIRED'};return false}
+ if(!syncSession.permissions?.includes('finance.read')){financeLedgerStatus='permission-unavailable';financeLedgerDiagnostic={stage:'client-permissions',httpStatus:null,errorCode:'FINANCE_READ_PERMISSION_MISSING'};return false}
+ if(navigator.onLine===false){financeLedgerStatus='offline';financeLedgerDiagnostic={stage:'connection',httpStatus:null,errorCode:'OFFLINE'};return false}
+ if(financeLedgerFetch){if(sameFinanceContext(financeLedgerPendingOwner))return financeLedgerFetch;return financeLedgerFetch.then(()=>refreshFinanceLedger({force:true}))}
+ if(!force&&sameFinanceContext(financeLedgerOwner)&&financeLedgerStatus==='confirmed'&&Date.now()-financeLedgerFetchedAt<30000)return true;
+ const owner={userId:syncSession.userId,companyId:syncSession.companyId};
+ financeLedgerPendingOwner=owner;financeLedgerStatus='loading';financeLedgerDiagnostic={stage:'request',httpStatus:null,errorCode:null};
  financeLedgerFetch=(async()=>{try{
   const response=await fetch(syncUrl(window.ROTA_MOTO_API_BASE||'/api','/finance/events'),{credentials:'include',cache:'no-store'});
   let body={};try{body=await response.json()}catch(_){}
-  if(!response.ok)throw new Error(body.error?.code||'FINANCE_READ_FAILED');
+  if(!sameFinanceContext(owner))return false;
+  financeLedgerDiagnostic={stage:'http',httpStatus:response.status,errorCode:response.ok?null:body.error?.code||'FINANCE_READ_FAILED'};
+  if(!response.ok)throw new Error(financeLedgerDiagnostic.errorCode);
   if(!Array.isArray(body.events)||body.events.some(row=>!row||typeof row!=='object'||Array.isArray(row)))throw new Error('FINANCE_RESPONSE_INVALID');
-  const active=body.events.map(row=>({...row,id:row.event_id,companyId:syncSession.companyId,dataOrigin:'server-confirmed'}));
-  state.financialEvents=active;financeLedgerCoverage=body.coverage||null;financeLedgerStatus='confirmed';financeLedgerFetchedAt=Date.now();
+  const active=body.events.map(row=>({...row,id:row.event_id,companyId:owner.companyId,dataOrigin:'server-confirmed'}));
+  state.financialEvents=active;financeLedgerOwner=owner;financeLedgerCoverage=body.coverage||null;financeLedgerStatus='confirmed';financeLedgerFetchedAt=Date.now();
   for(const row of active)await req('financialEvents','readwrite',store=>store.put(row));
-  if(state.tab==='reports')render();return true;
- }catch(error){financeLedgerStatus=error.message||'FINANCE_READ_FAILED';if(state.tab==='reports')render();return false}finally{financeLedgerFetch=null}})();
+  if(sameFinanceContext(owner)&&state.tab==='reports')render();return true;
+ }catch(error){if(sameFinanceContext(owner)){financeLedgerStatus=error.message||'FINANCE_READ_FAILED';financeLedgerDiagnostic={stage:error?.name==='TypeError'?'connection':financeLedgerDiagnostic?.stage||'response',httpStatus:financeLedgerDiagnostic?.httpStatus||null,errorCode:financeLedgerStatus};if(state.tab==='reports')render()}return false}finally{financeLedgerFetch=null;financeLedgerPendingOwner=null}})();
  return financeLedgerFetch;
 }
-function queueFinanceLedgerRead(){if(!syncSession||!syncSession.permissions?.includes('finance.read'))return;refreshFinanceLedger().catch(()=>{})}
+function queueFinanceLedgerRead(){refreshFinanceLedger().catch(()=>{})}
 function reports(){
  queueFinanceLedgerRead();
  const q=state.report;
@@ -774,11 +780,11 @@ function reports(){
  q.period=String(period);
  const canReadFinancialEvents=!!syncSession&&syncSession.permissions?.includes('finance.read')===true;
  const tenantFinancialEvents=syncSession?(state.financialEvents||[]).filter(row=>row.companyId===syncSession.companyId):[];
- const report=RotaMotoAnalytics.aggregate({orders:state.orders,deliveries:state.deliveries,deliveryEvents:state.deliveryEvents,earnings:state.earnings,bikes:state.bikes,financialEvents:financeLedgerStatus==='confirmed'&&canReadFinancialEvents?tenantFinancialEvents:undefined,financialLedgerCoverage:financeLedgerCoverage},{fromDate:q.fromDate,toDate:q.toDate,period:q.period,driver:q.bike,status:q.status,type:q.type,source:q.source,now:Date.now(),timeZone:state.companyTimeZone});
+ const report=RotaMotoAnalytics.aggregate({orders:state.orders,deliveries:state.deliveries,deliveryEvents:state.deliveryEvents,earnings:state.earnings,bikes:state.bikes,financialEvents:financeLedgerStatus==='confirmed'&&canReadFinancialEvents&&sameFinanceContext(financeLedgerOwner)?tenantFinancialEvents:undefined,financialLedgerCoverage:financeLedgerCoverage},{fromDate:q.fromDate,toDate:q.toDate,period:q.period,driver:q.bike,status:q.status,type:q.type,source:q.source,now:Date.now(),timeZone:state.companyTimeZone});
  const sources=Object.fromEntries((state.settings.orders?.sources||[]).map(source=>[source.id,source.name]));sources.unknown="Sem origem registrada";
  const syncMeta=state.settings.global?.sync||{},savedSyncStatus=(state.syncState||[]).find(row=>row.id==='sync:status')?.value||{},sync={...savedSyncStatus,...syncMeta};
  const freshness=RotaMotoAnalyticsView.reportFreshness(sync,{online:navigator.onLine!==false,sessionActive:!!syncSession,canSync:window.RotaMotoSyncReconciliation?.hasSyncPushPermission(syncSession)===true,companyId:syncSession?.companyId||null,formatDate:dateFmt});
- return header('Relatórios','Análises executivas e operacionais')+RotaMotoAnalyticsView.render({report:report,filters:q,statusLabel:statusLabel,typeLabel:typeLabel,sources:sources,bikes:state.bikes,types:TYPES,freshNote:freshness.note,freshnessLabel:freshness.label,financialState:!syncSession?'session-required':!syncSession.permissions?.includes('finance.read')?'permission-unavailable':navigator.onLine===false?'offline':financeLedgerStatus,emptyState:emptyStateMarkup});
+ return header('Relatórios','Análises executivas e operacionais')+RotaMotoAnalyticsView.render({report:report,filters:q,statusLabel:statusLabel,typeLabel:typeLabel,sources:sources,bikes:state.bikes,types:TYPES,freshNote:freshness.note,freshnessLabel:freshness.label,financialState:!syncSession?'session-required':!syncSession.permissions?.includes('finance.read')?'permission-unavailable':navigator.onLine===false?'offline':financeLedgerStatus==='confirmed'&&!sameFinanceContext(financeLedgerOwner)?'unverified':financeLedgerStatus,financialDiagnostic:financeLedgerDiagnostic,emptyState:emptyStateMarkup});
 }
 function activateReportMainView(view,{focus=false}={}){
  const selected=view==='operational'?'operational':'executive';state.report.mainView=selected;

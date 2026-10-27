@@ -110,5 +110,22 @@
     return { kind: 'unknown', currency: null, scale: null };
   }
 
-  return Object.freeze({ MAX_MINOR, COMPONENTS, currencyScale, validateMoney, fromDecimal, completeManualOrder, withManualDeliveryFee, canonicalComponents });
+  function diagnoseOrderMoney(order) {
+    const money = order?.money;
+    if (!money || typeof money !== 'object' || Array.isArray(money))
+      return { eligible: false, reason: 'missing-money', missingFields: ['money'], invalidFields: [] };
+    const validation = validateMoney(money);
+    const components = money.components && typeof money.components === 'object' && !Array.isArray(money.components) ? money.components : {};
+    const missingFields = COMPONENTS.filter(key => !Object.hasOwn(components, key)).map(key => `money.components.${key}`);
+    const invalidFields = COMPONENTS.filter(key => Object.hasOwn(components, key) &&
+      (!Number.isSafeInteger(components[key]) || components[key] < 0 || components[key] > MAX_MINOR)).map(key => `money.components.${key}`);
+    const reasonField = { currency: 'money.currency', provenance: 'money.provenance', completeness: 'money.completeness',
+      components: 'money.components', 'unknown-field': 'money', 'total-mismatch': 'money.components.totalMinor' };
+    if (!validation.valid && reasonField[validation.reason]) invalidFields.push(reasonField[validation.reason]);
+    return { eligible: validation.valid && money.completeness === 'complete',
+      reason: validation.valid ? money.completeness : validation.reason,
+      missingFields, invalidFields: [...new Set(invalidFields)] };
+  }
+
+  return Object.freeze({ MAX_MINOR, COMPONENTS, currencyScale, validateMoney, fromDecimal, completeManualOrder, withManualDeliveryFee, canonicalComponents, diagnoseOrderMoney });
 });

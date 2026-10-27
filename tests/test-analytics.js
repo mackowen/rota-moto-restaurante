@@ -50,6 +50,15 @@ assert.equal(report.coverage.orderAmount.complete, 1);
 assert.equal(report.coverage.orderAmount.available, 1);
 assert.deepEqual(report.financial.totals.BRL,{grossMinor:13700,discountMinor:0,orderTotalMinor:13700,count:1});
 assert.deepEqual(report.financial.coverage,{available:1,total:3,cancelled:1,missing:2});
+assert.equal(report.financial.diagnostics.reasons['missing-money'], 2, 'legacy rows without Order.money are diagnosed separately from missing coverage');
+const financialDiagnosis = Analytics.aggregate({ orders: [
+  { id: 'partial-money', createdAt: now, status: 'NOVO', money: OrderMoney.fromDecimal(5, 'BRL', 'deliveryFeeMinor') },
+  { id: 'legacy-money', createdAt: now, status: 'NOVO', amountMinor: 500, currency: 'BRL' },
+] }, { now, period: '30' }).financial;
+assert.deepEqual(financialDiagnosis.coverage, { available: 0, total: 2, cancelled: 0, missing: 2 });
+assert.equal(financialDiagnosis.diagnostics.reasons.partial, 1);
+assert.equal(financialDiagnosis.diagnostics.reasons['missing-money'], 1);
+assert.equal(financialDiagnosis.diagnostics.missingFields['money.components.totalMinor'], 1);
 assert.deepEqual(report.financial.dailyByCurrency.BRL,[{date:'2026-10-06',grossMinor:13700,discountMinor:0,orderTotalMinor:13700,count:1}]);
 assert.equal(report.financial.received.available,false,'Order total is not a payment receipt');
 assert.equal(report.financial.refunds.available,false,'order status does not prove refunds or adjustments');
@@ -258,7 +267,7 @@ assert.match(html, /decision-quality-analytics/u, 'recommendation and ETA qualit
 assert.match(html, /route-settings-report/u, 'route start and return configuration is placed in the logistics section');
 assert.equal((html.match(/id="fulfillment-analytics"/gu)||[]).length,1);
 assert.equal((html.match(/id="territorial-heatmap"/gu)||[]).length,1);
-assert.match(fs.readFileSync(path.join(__dirname,'..','logistics-ui.js'),'utf8'), /if \(targets\.decisions\) targets\.decisions\.innerHTML = decisionQualityMarkup/u, 'canonical decision-quality renderer is mounted in its dedicated report section');
+assert.match(fs.readFileSync(path.join(__dirname,'..','logistics-ui.js'),'utf8'), /if \(targets\.decisions&&decisionQuality\) targets\.decisions\.innerHTML = historyNote\+decisionQualityMarkup\(decisionQuality\)/u, 'canonical decision-quality renderer is mounted in its dedicated report section');
 assert.match(html, /Endereços diferentes/u);
 assert.match(html, /data-export-report/u);
 assert.match(html, /id="rfrom"[\s\S]*id="rto"[\s\S]*id="rb"/u, 'date and driver filters are present');

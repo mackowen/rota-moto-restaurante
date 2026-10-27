@@ -41,6 +41,7 @@ function createFinanceHttpHandler({identityService,financeService,rateLimiter=cr
         NOT_FOUND:404,RATE_LIMITED:429,PAYLOAD_TOO_LARGE:413,IDEMPOTENCY_CONFLICT:409,DUPLICATE_FINANCIAL_REFERENCE:409,PAYMENT_EXCEEDS_ORDER:409,REFUND_EXCEEDS_PAYMENT:409,
         REFUND_SOURCE_INVALID:409,ADJUSTMENT_SOURCE_INVALID:409,ORDER_CANCELLED:409,CURRENCY_MISMATCH:409,ORDER_VALUE_UNPROVEN:409,PAYOUT_EXCEEDS_EARNING:409};
       status=status===405?405:codes[errorCode]||500;const code=status>=500?'INTERNAL_ERROR':errorCode;
+      req.apiErrorCode=code;
       const message=status===400?error.message:({UNAUTHENTICATED:'Sessão inválida ou expirada.',FORBIDDEN:'Operação não autorizada.',MFA_REQUIRED:'Confirme MFA antes da operação financeira.',CSRF_INVALID:'Validação CSRF inválida.',
         NOT_FOUND:'Recurso não encontrado.',RATE_LIMITED:'Limite de solicitações excedido.',ORDER_CANCELLED:'Pedido cancelado não aceita novo recebimento.',
         PAYMENT_EXCEEDS_ORDER:'O recebimento excede o saldo do pedido.',REFUND_EXCEEDS_PAYMENT:'O estorno excede o pagamento disponível.',
