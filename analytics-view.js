@@ -109,6 +109,7 @@
   function financialReadNotice(status) {
     if (status === 'loading') return { title: 'Carregando os registros financeiros', note: 'Aguarde a consulta dos pagamentos, estornos e ajustes.', error: false };
     if (status === 'offline') return { title: 'Sem conexão para consultar pagamentos', note: 'Os valores financeiros não foram atualizados. Confira a conexão e tente novamente.', error: true };
+    if (status === 'NETWORK_ERROR') return { title: 'Falha de conexão com o servidor', note: 'A consulta não chegou ao serviço financeiro. Confira a conexão e tente novamente; nenhum lançamento foi presumido.', error: true };
     if (['session-required','UNAUTHENTICATED','SESSION_EXPIRED','SESSION_REQUIRED'].includes(status)) return { title: 'Entre novamente para consultar pagamentos', note: 'A sessão não está ativa. Os valores não foram consultados.', error: true };
     if (status === 'permission-unavailable') return { title: 'Seu perfil não permite consultar pagamentos', note: 'A sessão atual não informa a permissão de consulta financeira. Nenhuma consulta de lançamentos foi enviada. Se o perfil foi atualizado, entre novamente para conferir o acesso.', error: true };
     if (status === 'MFA_REQUIRED') return { title: 'Confirme a segurança da sua conta', note: 'O servidor exige a confirmação de segurança antes da consulta financeira. Conclua a verificação em Conta e segurança.', error: true };

@@ -82,7 +82,7 @@ console.log('Analytics renderer point-count, axis accessibility, empty and unava
 
 // Unavailable, loading, failed and successfully empty consultations must differ.
 const renderFinancialState=(financialState,confirmed=false,financialDiagnostic)=>View.render({report:Analytics.aggregate({orders:[],deliveries:[],...(confirmed?{financialEvents:[]}: {})},{now,period:'all',timeZone:'America/Sao_Paulo'}),filters:{},statusLabel:labelStatus,typeLabel:()=> 'Entrega',sources:{},bikes:[],types:[],freshNote:'Dados locais',financialState,financialDiagnostic});
-for(const [state,title] of [['loading','Carregando os registros financeiros'],['offline','Sem conexão para consultar pagamentos'],['permission-unavailable','Seu perfil não permite consultar pagamentos'],['session-required','Entre novamente para consultar pagamentos'],['FORBIDDEN','Consulta financeira não autorizada pelo servidor'],['MFA_REQUIRED','Confirme a segurança da sua conta'],['FINANCE_READ_FAILED','Não foi possível consultar os registros financeiros']]){
+for(const [state,title] of [['loading','Carregando os registros financeiros'],['offline','Sem conexão para consultar pagamentos'],['NETWORK_ERROR','Falha de conexão com o servidor'],['permission-unavailable','Seu perfil não permite consultar pagamentos'],['session-required','Entre novamente para consultar pagamentos'],['FORBIDDEN','Consulta financeira não autorizada pelo servidor'],['MFA_REQUIRED','Confirme a segurança da sua conta'],['FINANCE_READ_FAILED','Não foi possível consultar os registros financeiros']]){
  const html=renderFinancialState(state);
  assert(html.includes(title),`financial state ${state} has a clear user-facing explanation`);
  if(state!=='loading')assert.match(html,/role="alert"/u,'a failed consultation is an alert, not an empty dataset');
@@ -105,9 +105,9 @@ console.log('Report financial read states and complete hourly distribution: PASS
 (async()=>{
  const vm=require('node:vm');
  const source=app.slice(app.indexOf('let financeLedgerFetchedAt='),app.indexOf('function reports(){'));
- let calls=0,renders=0,fail=true,malformed=false,errorCode='FORBIDDEN';
+ let calls=0,renders=0,fail=true,malformed=false,networkFail=false,errorCode='FORBIDDEN';
  const context={state:{tab:'reports'},syncSession:{userId:'test-user',companyId:'test-company',permissions:['finance.read']},navigator:{onLine:true},window:{},Date,setTimeout,
-  syncUrl:()=>'/api/finance/events',req:async()=>{},fetch:async()=>{calls++;return{ok:!fail,status:fail?403:200,json:async()=>malformed?{}:fail?{error:{code:errorCode}}:{events:[],coverage:{complete:false}}}},
+  syncUrl:()=>'/api/finance/events',req:async()=>{},fetch:async()=>{calls++;if(networkFail)throw new TypeError('Failed to fetch');return{ok:!fail,status:fail?403:200,json:async()=>malformed?{}:fail?{error:{code:errorCode}}:{events:[],coverage:{complete:false}}}},
   render(){renders++;vm.runInContext('queueFinanceLedgerRead()',context)}};
  vm.createContext(context);
  vm.runInContext(source+';globalThis.probe={refresh:refreshFinanceLedger,status:()=>financeLedgerStatus,diagnostic:()=>financeLedgerDiagnostic,owner:()=>financeLedgerOwner};',context);
@@ -127,7 +127,11 @@ console.log('Report financial read states and complete hourly distribution: PASS
  assert.equal(await context.probe.refresh(),false);
  assert.equal(context.probe.status(),'offline');
  assert.equal(calls,2,'offline consultation never makes a request');
- context.navigator.onLine=true;malformed=true;
+ context.navigator.onLine=true;networkFail=true;
+ assert.equal(await context.probe.refresh({force:true}),false);
+ assert.equal(context.probe.status(),'NETWORK_ERROR','a fetch failure has its own user-facing state');
+ assert.equal(context.probe.diagnostic().stage,'connection');
+ networkFail=false;malformed=true;
  assert.equal(await context.probe.refresh({force:true}),false);
  assert.equal(context.probe.status(),'FINANCE_RESPONSE_INVALID','an invalid successful response cannot become an empty financial history');
  errorCode='MFA_REQUIRED';fail=true;malformed=false;

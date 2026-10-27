@@ -766,7 +766,7 @@ async function refreshFinanceLedger({force=false}={}){
   state.financialEvents=active;financeLedgerOwner=owner;financeLedgerCoverage=body.coverage||null;financeLedgerStatus='confirmed';financeLedgerFetchedAt=Date.now();
   for(const row of active)await req('financialEvents','readwrite',store=>store.put(row));
   if(sameFinanceContext(owner)&&state.tab==='reports')render();return true;
- }catch(error){if(sameFinanceContext(owner)){financeLedgerStatus=error.message||'FINANCE_READ_FAILED';financeLedgerDiagnostic={stage:error?.name==='TypeError'?'connection':financeLedgerDiagnostic?.stage||'response',httpStatus:financeLedgerDiagnostic?.httpStatus||null,errorCode:financeLedgerStatus};if(state.tab==='reports')render()}return false}finally{financeLedgerFetch=null;financeLedgerPendingOwner=null}})();
+ }catch(error){if(sameFinanceContext(owner)){financeLedgerStatus=error?.name==='TypeError'?'NETWORK_ERROR':error.message||'FINANCE_READ_FAILED';financeLedgerDiagnostic={stage:error?.name==='TypeError'?'connection':financeLedgerDiagnostic?.stage||'response',httpStatus:financeLedgerDiagnostic?.httpStatus||null,errorCode:financeLedgerStatus};if(state.tab==='reports')render()}return false}finally{financeLedgerFetch=null;financeLedgerPendingOwner=null}})();
  return financeLedgerFetch;
 }
 function queueFinanceLedgerRead(){refreshFinanceLedger().catch(()=>{})}
