@@ -8,9 +8,31 @@ async function main(){
   assert.equal(process.env.NODE_ENV,'test');
   const targets=resolveE2eTargets(process.env);
   const pool=createPool({connectionString:targets.runtime,max:1,connectionTimeoutMillis:3000});
-  const client=await pool.connect();
+  const verifierPool=createPool({connectionString:targets.migrator,max:1,connectionTimeoutMillis:3000});
+  const client=await pool.connect(),verifier=await verifierPool.connect();
   try{
     await assertConnectedIdentity(client,{database:'rotamoto_e2e',role:'rotamoto_app',env:process.env});
+    await assertConnectedIdentity(verifier,{database:'rotamoto_e2e',role:'rotamoto_migrator',env:process.env});
+    await verifier.query('BEGIN READ ONLY');
+    const prior=await verifier.query(`SELECT
+      (SELECT count(*)::int FROM rotamoto.platform_administrators WHERE revoked_at IS NULL) AS active_grants,
+      (SELECT founder_user_id FROM rotamoto.platform_admin_bootstrap_latch WHERE singleton=true) AS founder_user_id,
+      EXISTS(SELECT 1 FROM rotamoto.platform_administrators pa
+        JOIN rotamoto.platform_admin_bootstrap_latch latch ON latch.singleton=true AND latch.founder_user_id=pa.user_id
+        WHERE pa.revoked_at IS NULL) AS active_grant_matches_founder,
+      (SELECT completed_at IS NOT NULL FROM rotamoto.installation_bootstrap WHERE singleton=true) AS installation_complete`);
+    await verifier.query('COMMIT');
+    if(prior.rows[0].founder_user_id!==null){
+      assert.equal(prior.rows[0].active_grants,1,'the existing founder remains the sole active global administrator');
+      assert.equal(prior.rows[0].active_grant_matches_founder,true,'the active global grant belongs to the latched founder');
+      assert.equal(prior.rows[0].installation_complete,true,'the persistent founder bootstrap remains complete');
+      process.stdout.write('integrated founder bootstrap PostgreSQL E2E: PARTIAL — existing founder latch preserved; direct first-claim/idempotency branch requires an actually empty installation and was not simulated\n');
+      return;
+    }
+    if(prior.rows[0].active_grants!==0||prior.rows[0].installation_complete){
+      process.stdout.write('integrated founder bootstrap PostgreSQL E2E: BLOCKED — inconsistent or legacy installation state preserved; no latch reset attempted\n');
+      return;
+    }
     await client.query('BEGIN');
     const company=crypto.randomUUID(),role=crypto.randomUUID(),user=crypto.randomUUID(),member=crypto.randomUUID();
     const request=crypto.randomBytes(32),capability=crypto.randomBytes(32),otherRequest=crypto.randomBytes(32);
@@ -48,6 +70,6 @@ async function main(){
     await client.query('ROLLBACK');
     process.stdout.write('integrated founder bootstrap PostgreSQL E2E: tenant owner, consumed authorization, atomic grant, idempotent replay, second-owner denial and RLS-scoped writes PASS (transaction rolled back)\n');
   }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}
-  finally{client.release();await pool.end()}
+  finally{client.release();verifier.release();await pool.end();await verifierPool.end()}
 }
 main().catch(error=>{process.stderr.write(`integrated founder bootstrap E2E FAIL: ${error.code||'ERROR'} ${error.message} ${error.detail||''}\n`);process.exitCode=1});

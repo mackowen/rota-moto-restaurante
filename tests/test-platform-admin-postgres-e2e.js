@@ -1,15 +1,59 @@
 'use strict';
 const assert=require('node:assert/strict');
 const {Pool}=require('pg');
+const {createClient}=require('../backend/postgres/connection');
+const {assertConnectedIdentity}=require('./e2e-support/guards');
 const connectionString=process.env.E2E_MIGRATOR_DATABASE_URL;
 if(process.env.NODE_ENV!=='test'||!connectionString||new URL(connectionString).pathname!=='/rotamoto_e2e'||new URL(connectionString).username!=='rotamoto_migrator'||new URL(connectionString).hostname!=='127.0.0.1')throw new Error('Requires explicit loopback E2E migrator connection.');
+async function founderSnapshot(client){
+ await client.query('BEGIN READ ONLY');
+ try{const result=await client.query(`SELECT
+  (SELECT count(*)::int FROM rotamoto.platform_administrators WHERE revoked_at IS NULL) AS active_grants,
+  (SELECT founder_user_id FROM rotamoto.platform_admin_bootstrap_latch WHERE singleton=true) AS founder_user_id,
+  EXISTS(SELECT 1 FROM rotamoto.platform_administrators pa
+   JOIN rotamoto.platform_admin_bootstrap_latch latch ON latch.singleton=true AND latch.founder_user_id=pa.user_id
+   WHERE pa.revoked_at IS NULL) AS active_grant_matches_founder,
+  (SELECT count(*)::int FROM rotamoto.platform_administrators) AS admin_history`);await client.query('COMMIT');return result.rows[0]}
+ catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}
+}
 async function main(){
  const pool=new Pool({connectionString,max:1,application_name:'campaign-0255-platform-admin-test'}),client=await pool.connect();let begun=false;
  try{
   const target=await client.query('SELECT current_database() AS database,session_user AS session_user,current_user AS current_user');
   assert.deepEqual(target.rows[0],{database:'rotamoto_e2e',session_user:'rotamoto_migrator',current_user:'rotamoto_migrator'});
   const existingGrants=await client.query('SELECT count(*)::int AS n FROM rotamoto.platform_administrators WHERE revoked_at IS NULL');
-  assert.equal(existingGrants.rows[0].n,0,'the E2E target has no pre-existing persistent global administrator');
+  if(existingGrants.rows[0].n>0){
+   const before=await founderSnapshot(client);
+   assert.equal(before.active_grants,1,'persistent E2E has one active global founder grant');
+   assert.notEqual(before.founder_user_id,null,'active global founder grant has a claimed founder latch');
+   assert.equal(before.active_grant_matches_founder,true,'the active global grant belongs to the latched founder');
+   assert.equal(before.admin_history,1,'persistent E2E has no unexpected global-administrator history');
+   const runtimeUrl=process.env.E2E_RUNTIME_DATABASE_URL;
+   if(!runtimeUrl||new URL(runtimeUrl).pathname!=='/rotamoto_e2e'||new URL(runtimeUrl).username!=='rotamoto_app'||new URL(runtimeUrl).hostname!=='127.0.0.1')
+    throw new Error('Persistent-founder denial branch requires the explicit loopback E2E runtime identity.');
+   const runtime=createClient({connectionString:runtimeUrl});
+   try{
+    await runtime.connect();
+    await assertConnectedIdentity(runtime,{database:'rotamoto_e2e',role:'rotamoto_app'});
+    await runtime.query('BEGIN');
+    try{
+     async function denied(sql,label){
+      await runtime.query('SAVEPOINT unauthenticated_platform_read');
+      try{await assert.rejects(runtime.query(sql),error=>error.code==='42501',label)}
+      finally{await runtime.query('ROLLBACK TO SAVEPOINT unauthenticated_platform_read');await runtime.query('RELEASE SAVEPOINT unauthenticated_platform_read')}
+     }
+     await denied('SELECT rotamoto.platform_admin_list_companies()','global administration is denied without a session-established platform actor');
+     await denied("SELECT rotamoto.platform_admin_read_company_financial_summary('00000000-0000-4000-8000-000000000001','2026-10-01','2026-10-02')",
+      'global financial summaries remain denied without an authenticated platform context');
+    }finally{await runtime.query('ROLLBACK').catch(()=>{})}
+   }finally{await runtime.end()}
+   const after=await founderSnapshot(client);
+   assert.equal(after.founder_user_id===before.founder_user_id&&after.active_grants===before.active_grants&&
+    after.active_grant_matches_founder===before.active_grant_matches_founder&&after.admin_history===before.admin_history,true,
+    'negative checks preserve the existing founder and global grant');
+   process.stdout.write('platform admin PostgreSQL E2E: PARTIAL — persistent founder preserved; unauthenticated global/financial denial PASS; positive MFA-authorized administration requires an authenticated session and was not impersonated\n');
+   return;
+  }
   await client.query('BEGIN');begun=true;
   async function rejected(sql,values,code){await client.query('SAVEPOINT expected_rejection');try{await assert.rejects(client.query(sql,values),error=>error.code===code)}finally{await client.query('ROLLBACK TO SAVEPOINT expected_rejection');await client.query('RELEASE SAVEPOINT expected_rejection')}}
   await rejected('SELECT rotamoto.platform_admin_list_companies()',[], '42501');

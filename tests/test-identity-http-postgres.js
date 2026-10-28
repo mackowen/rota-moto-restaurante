@@ -46,11 +46,32 @@ async function listen(handler) {
   return { server, base: `http://127.0.0.1:${address.port}`, close: () => new Promise(resolve => server.close(resolve)) };
 }
 
+async function readFounderBootstrapState(client) {
+  await assertConnectedIdentity(client, { database: 'rotamoto_e2e', role: 'rotamoto_migrator' });
+  await client.query('BEGIN READ ONLY');
+  try {
+    const result = await client.query(`SELECT
+      (SELECT count(*)::int FROM rotamoto.platform_administrators WHERE revoked_at IS NULL) AS active_admins,
+      (SELECT founder_user_id FROM rotamoto.platform_admin_bootstrap_latch WHERE singleton=true) AS founder_user_id,
+      EXISTS(SELECT 1 FROM rotamoto.platform_administrators pa
+        JOIN rotamoto.platform_admin_bootstrap_latch latch ON latch.singleton=true AND latch.founder_user_id=pa.user_id
+        WHERE pa.revoked_at IS NULL) AS active_grant_matches_founder,
+      (SELECT count(*)::int FROM rotamoto.platform_administrators) AS admin_history,
+      (SELECT completed_at IS NOT NULL FROM rotamoto.installation_bootstrap WHERE singleton=true) AS installation_complete`);
+    await client.query('COMMIT');
+    return result.rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  }
+}
+
 async function main() {
   assert.equal(process.env.NODE_ENV,'test','HTTP PostgreSQL integration fixtures require NODE_ENV=test');
   const clients=createE2eClients(process.env);
   const client=clients.runtime;
   await client.connect();
+  await clients.migrator.connect();
   await assertConnectedIdentity(client,{database:'rotamoto_e2e',role:'rotamoto_app'});
   await client.query('BEGIN');
   const pool = savepointPool(client);
@@ -564,9 +585,21 @@ async function main() {
       assert.ok(Number(limited.headers.get('retry-after')) > 0);
     } finally { await rateHost.close(); }
 
+    const bootstrapState = await readFounderBootstrapState(clients.migrator);
     const bootstrapToken = crypto.randomBytes(32).toString('base64url');
     const bootstrapDigest = crypto.createHash('sha256').update(bootstrapToken).digest();
-    await client.query(`UPDATE rotamoto.installation_bootstrap SET completed_at=NULL,request_digest=NULL WHERE singleton=true`);
+    assert.equal(bootstrapState.active_admins === 0, bootstrapState.founder_user_id === null,
+      'active global administration and the founder latch must agree before bootstrap testing');
+    if (bootstrapState.founder_user_id !== null) {
+      assert.equal(bootstrapState.active_admins, 1, 'the persistent E2E founder is the only active global administrator');
+      assert.equal(bootstrapState.active_grant_matches_founder, true, 'the active global grant belongs to the latched founder');
+    }
+    if (bootstrapState.founder_user_id === null && bootstrapState.admin_history > 0) {
+      throw new Error('E2E founder history exists without a claimed founder; preserve state and investigate before testing bootstrap.');
+    }
+    if (bootstrapState.founder_user_id === null && bootstrapState.installation_complete) {
+      throw new Error('E2E installation latch is already complete without a provable founder; preserve state and investigate before testing bootstrap.');
+    }
     await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
       VALUES($1,'rotamoto',now()+interval '10 minutes')`, [bootstrapDigest]);
     const bootstrapProvider = createEmailDeliveryProvider(async message => { delivered.push(message); return { accepted: true }; });
@@ -588,16 +621,32 @@ async function main() {
         idempotencyKey: `bootstrap-${crypto.randomUUID()}` };
       assert.equal((await bootstrapCall(null, firstBootstrapRequest)).status, 403, 'bootstrap has no unauthenticated public path');
       const initialized = await bootstrapCall(bootstrapToken, firstBootstrapRequest);
-      assert.equal(initialized.status, 202);
-      assert.equal((await bootstrapCall(bootstrapToken, firstBootstrapRequest)).body.replayed, true,
-        'same idempotency key can safely recover delivery after single-use authorization');
-      const secondToken = crypto.randomBytes(32).toString('base64url');
-      await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
-        VALUES($1,'rotamoto',now()+interval '10 minutes')`, [crypto.createHash('sha256').update(secondToken).digest()]);
-      const secondBootstrap = await bootstrapCall(secondToken, { ...firstBootstrapRequest,
-        email: `second-${crypto.randomUUID()}@example.invalid`, idempotencyKey: `bootstrap-${crypto.randomUUID()}` });
-      assert.equal(secondBootstrap.status, 403, 'installation latch prevents a second initial owner');
-    } finally { await bootstrapHost.close(); bootstrapDigest.fill(0); }
+      if (bootstrapState.founder_user_id !== null) {
+        assert.equal(initialized.status, 403, 'a persistent founder latch rejects a new bootstrap without being reset');
+        assert.equal(initialized.body?.error?.code, 'PROVISIONER_UNAUTHORIZED');
+      } else {
+        assert.equal(initialized.status, 202, 'only an actually empty installation accepts its first authorized bootstrap');
+        assert.equal((await bootstrapCall(bootstrapToken, firstBootstrapRequest)).body.replayed, true,
+          'same idempotency key can safely recover delivery after single-use authorization');
+        const secondToken = crypto.randomBytes(32).toString('base64url');
+        await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
+          VALUES($1,'rotamoto',now()+interval '10 minutes')`, [crypto.createHash('sha256').update(secondToken).digest()]);
+        const secondBootstrap = await bootstrapCall(secondToken, { ...firstBootstrapRequest,
+          email: `second-${crypto.randomUUID()}@example.invalid`, idempotencyKey: `bootstrap-${crypto.randomUUID()}` });
+        assert.equal(secondBootstrap.status, 403, 'installation latch prevents a second initial owner');
+      }
+    } finally {
+      await bootstrapHost.close();
+      bootstrapDigest.fill(0);
+      if (bootstrapState.founder_user_id !== null) {
+        const after = await readFounderBootstrapState(clients.migrator);
+        assert.equal(after.founder_user_id === bootstrapState.founder_user_id &&
+          after.active_admins === bootstrapState.active_admins && after.admin_history === bootstrapState.admin_history &&
+          after.active_grant_matches_founder === bootstrapState.active_grant_matches_founder &&
+          after.installation_complete === bootstrapState.installation_complete, true,
+        'failed bootstrap attempt leaves persistent founder, grant count and latches unchanged');
+      }
+    }
 
     console.log('identity HTTP API, session, CSRF, tenant/RLS, MFA recovery, permission, invite, rate and error tests: OK');
   } finally {
@@ -605,6 +654,7 @@ async function main() {
     await client.query('ROLLBACK').catch(() => {});
     const remaining = await client.query('SELECT count(*)::int AS count FROM rotamoto.users WHERE email=$1', [email]).catch(() => ({ rows: [{ count: -1 }] }));
     await client.end();
+    await clients.migrator.end().catch(() => {});
     assert.equal(remaining.rows[0].count, 0, 'all synthetic users, tenants and audit rows were rolled back');
   }
 }

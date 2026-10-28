@@ -34,11 +34,12 @@ async function setTenant(client, id) {
 async function main() {
   const created = [];
   let completed = false;
-  const manifest = await createFixtureManifest({ campaign, evidence: [
+  const schemaOnly = process.env.ROTAMOTO_RLS_SCHEMA_ONLY === '1';
+  const manifest = schemaOnly ? null : await createFixtureManifest({ campaign, evidence: [
     { kind: 'test', name: 'tenant-rls-isolation-e2e' },
     { kind: 'retention', reason: 'Synthetic tenant rows and audit events are retained; destructive cleanup is prohibited.' }
   ] });
-  await manifest.update({ status: 'RUNNING', tenants: tenantIds.map(id => ({ id, counts: { companies: 1, roles: 1, role_permissions: 1 } })),
+  if (manifest) await manifest.update({ status: 'RUNNING', tenants: tenantIds.map(id => ({ id, counts: { companies: 1, roles: 1, role_permissions: 1 } })),
     records: { companies: tenantIds, roles: roleIds, schema: 'rotamoto' } });
   try {
     await Promise.all([runtime.connect(), migrator.connect()]);
@@ -55,7 +56,7 @@ async function main() {
           AND a.attnum>0 AND NOT a.attisdropped) has_id
       FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='rotamoto' AND c.relkind IN ('r','p') ORDER BY c.relname`)).rows;
-    assert.equal(relations.length, 54, 'the audit baseline includes platform administration migrations through 0049');
+    assert.equal(relations.length, 55, 'the audit baseline includes the financial ledger and platform administration migrations through 0061');
     const expectedWithoutRls = new Set(['credentials','identity_tokens','marketplace_account_routes',
       'bootstrap_authorizations','installation_bootstrap','mfa_recovery_challenges','platform_administrators',
       'platform_admin_bootstrap_latch','platform_admin_audit_log','permissions',
@@ -63,11 +64,13 @@ async function main() {
     assert.deepEqual(new Set(relations.filter(row => !row.relrowsecurity).map(row => row.relname)), expectedWithoutRls);
     assert(relations.filter(row => row.relrowsecurity).every(row => row.relforcerowsecurity),
       'every RLS table must also FORCE RLS');
-    assert.equal(relations.filter(row => row.relrowsecurity).length, 39);
+    assert.equal(relations.filter(row => row.relrowsecurity).length, 40);
+    assert(relations.some(row => row.relname === 'financial_events' && row.relrowsecurity && row.relforcerowsecurity),
+      'financial ledger rows remain protected by forced tenant RLS');
 
     const policies = (await migrator.query(`SELECT tablename,policyname,permissive,roles,cmd,qual,with_check
       FROM pg_policies WHERE schemaname='rotamoto' ORDER BY tablename,policyname`)).rows;
-    assert.equal(policies.length, 42, 'tenant policies remain alongside the three explicit platform-admin policies');
+    assert.equal(policies.length, 43, 'financial tenant policy remains alongside the three explicit platform-admin policies');
     for (const relation of relations.filter(row => row.relrowsecurity)) {
       const tablePolicies = policies.filter(policy => policy.tablename === relation.relname);
       if (relation.relname === 'marketplace_99food_rate_limits') {
@@ -110,6 +113,12 @@ async function main() {
       has_table_privilege('rotamoto_app','rotamoto.marketplace_account_routes','INSERT') AS app_insert,
       has_table_privilege('rotamoto_provider_worker','rotamoto.marketplace_account_routes','SELECT') AS worker_select`)).rows[0];
     assert.deepEqual(internalAccess, { app_insert: false, worker_select: false });
+
+    if (schemaOnly) {
+      console.log('Tenant RLS schema audit: PASS (55-table catalog through migration 0061, 40 forced-RLS tables, financial-event tenant policy, platform policies and runtime/internal ACLs); data-plane fixtures skipped to preserve E2E state.');
+      completed = true;
+      return;
+    }
 
     for (let index = 0; index < tenantIds.length; index += 1) {
       await transaction(migrator, async () => {
@@ -172,11 +181,11 @@ async function main() {
         error => error.code === '42501');
     });
 
-    console.log('Tenant RLS E2E: PASS (54-table catalog, 39 forced tenant policies plus three explicit platform policies, two-tenant isolation and runtime/internal ACLs)');
+    console.log('Tenant RLS E2E: PASS (55-table catalog through migration 0061, 40 forced-RLS tables, financial-event tenant policy, three explicit platform policies, two-tenant isolation and runtime/internal ACLs)');
     completed = true;
   } finally {
     await Promise.all([runtime.end().catch(() => {}), migrator.end().catch(() => {})]);
-    await manifest.update({ status: created.length ? 'RETAINED' : 'FAILED', databaseCommitted: created.length > 0,
+    if (manifest) await manifest.update({ status: created.length ? 'RETAINED' : 'FAILED', databaseCommitted: created.length > 0,
       retentionReason: created.length ? 'Synthetic tenant rows and append-only audit records retained; no fixture cleanup is authorized.' : null,
       evidence: [{ kind: 'test_result', result: completed ? 'PASS' : created.length ? 'FAILED_OR_INTERRUPTED' : 'NO_COMMIT' }],
       lastError: completed || !created.length ? null : 'Runner failed after fixture commit; rows remain retained for inspection.',
