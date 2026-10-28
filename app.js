@@ -619,7 +619,7 @@ function ensureMapRuntime(){
   const finish=()=>{if(window.L&&window.RotaMotoMapTheme){resolve(true);return}script.remove();reject(new Error('MAP_RUNTIME_UNAVAILABLE'))};
   script.addEventListener('load',finish,{once:true});
   script.addEventListener('error',()=>{script.remove();reject(new Error('MAP_RUNTIME_UNAVAILABLE'))},{once:true});
-  if(!existing){script.src='/vendor/maplibre/rotamoto-map-runtime.js?v=0140.11';script.dataset.mapRuntime='true';document.head.append(script)}
+  if(!existing){script.src='/vendor/maplibre/rotamoto-map-runtime.js?v=ab6b7bedb73928ae';script.dataset.mapRuntime='true';document.head.append(script)}
  }).catch(error=>{mapRuntimePromise=null;throw error});
  return mapRuntimePromise;
 }

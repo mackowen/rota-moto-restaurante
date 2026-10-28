@@ -6,7 +6,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const appRoot = path.resolve(__dirname, '..');
-const siblingRoot = path.resolve(appRoot, '..', 'rota-moto');
+const siblingRoot = ['rota-moto', 'rota-moto-restaurante']
+  .map(name => path.resolve(appRoot, '..', name))
+  .find(root => root !== appRoot && fs.existsSync(path.join(root, 'contract.js')));
+assert.ok(siblingRoot, `checkout do outro aplicativo não encontrado: ${appRoot}`);
 
 function loadContract(root) {
   const source = fs.readFileSync(path.join(root, 'contract.js'), 'utf8');
@@ -77,9 +80,20 @@ const sibling = loadContract(siblingRoot);
 const currentDocs = fs.readFileSync(path.join(appRoot, 'CONTRACT.md'), 'utf8');
 const siblingDocs = fs.readFileSync(path.join(siblingRoot, 'CONTRACT.md'), 'utf8');
 
-assert.equal(currentDocs, siblingDocs, 'CONTRACT.md deve permanecer sincronizado entre os apps');
-for (const requiredClause of ['protocol=\'rotamoto-sync\'', 'protocolVersion=1', 'schemaVersion=1', 'packetId', 'eventId', 'baseVersion', 'canonicalVersion', 'operationResults', 'outbox', 'inbox', 'tombstones']) {
-  assert.ok(currentDocs.includes(requiredClause), `CONTRACT.md não documenta ${requiredClause}`);
+const sharedDocs = [currentDocs, siblingDocs];
+const requiredSections = ['## Princípios', '## Identidade', '## Entidades', '## Estados de Delivery', '## Propriedade',
+  '## Sincronização', '## Exclusão', '## Compatibilidade', '## Autoridade de escrita e leitura'];
+const requiredClauses = ['protocol=\'rotamoto-sync\'', 'protocolVersion=1', 'schemaVersion=1', 'packetId', 'eventId',
+  'baseVersion', 'canonicalVersion', 'operationResults', 'outbox', 'inbox', 'tombstones'];
+for (const [index, docs] of sharedDocs.entries()) {
+  for (const section of requiredSections) assert.ok(docs.includes(section), `CONTRACT.md ${index + 1} não documenta a seção compartilhada ${section}`);
+  for (const requiredClause of requiredClauses) assert.ok(docs.includes(requiredClause), `CONTRACT.md ${index + 1} não documenta ${requiredClause}`);
+  assert.doesNotMatch(docs, /GET \/api\/logistics\/analytics/u, 'endpoints exclusivos do Restaurante não pertencem ao contrato interoperável');
+}
+const restaurantRoot = path.basename(appRoot) === 'rota-moto-restaurante' ? appRoot : siblingRoot;
+const restaurantAnalyticsDocs = fs.readFileSync(path.join(restaurantRoot, 'docs', 'relatorios-analytics.md'), 'utf8');
+for (const clause of ['GET /api/logistics/analytics', 'company-history', 'scope.filtersApplied', 'internal_fleet', 'financial.diagnostics']) {
+  assert.ok(restaurantAnalyticsDocs.includes(clause), `documentação local do Restaurante não descreve ${clause}`);
 }
 
 assert.equal(current.PROTOCOL_VERSION, 1);

@@ -2,6 +2,8 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const path = require('node:path');
+const assetManifest = require('./helpers/asset-manifest').readAssetManifest();
 const html = fs.readFileSync(require.resolve('../index.html'), 'utf8');
 const stylesheetAsset = html.match(/styles\.css\?v=[^"']+/u)?.[0];
 assert(stylesheetAsset, 'index declares a versioned stylesheet');
@@ -32,7 +34,9 @@ async function createWorker(options = {}) {
       return new Response(`asset:${url.pathname}${url.search}`, { status: 200 });
     }
   };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../sw.js'), 'utf8'), context, { filename: 'sw.js' });
+  context.importScripts = () => vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'asset-manifest.js'), 'utf8'), context);
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(require.resolve('../sw.js'), 'utf8'), context, { filename: 'sw.js' });
   return { listeners, stores, origin };
 }
 
@@ -44,27 +48,28 @@ async function fire(listener, event = {}) {
 }
 
 (async () => {
-  const healthy = await createWorker({ failUrl: 'https://restaurante.test/vendor/maplibre/maplibre-gl-worker.js?v=0139.1' });
+  const workerAsset = assetManifest.optional.find(asset => asset.includes('maplibre-gl-worker.js'));
+  const healthy = await createWorker({ failUrl: new URL(workerAsset, 'https://restaurante.test/').href });
   await fire(healthy.listeners.get('install'));
   assert.equal(healthy.stores.size, 1, 'one complete versioned cache is staged');
   const [cacheName] = [...healthy.stores.keys()];
-  assert.match(cacheName, /^rotamoto-restaurante-shell-v\d+$/u);
+  assert.equal(cacheName, assetManifest.cacheName);
   const identityBundle = html.match(/<script[^>]+src=["'](identity-ui\.js(?:\?v=[^"']+)?)['"]/u)?.[1];
   assert(identityBundle, 'identity UI bundle is declared by the page');
   assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes(identityBundle)),
     'current shell stages the versioned identity UI');
-  assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('analytics-view.js?v=0304-n.2')), 'report renderer is versioned in the shell');
+  assert([...healthy.stores.get(cacheName).keys()].some(url => url.includes('analytics-view.js?v=')), 'report renderer is content-versioned in the shell');
   assert.equal([...healthy.stores.get(cacheName).keys()].some(url => url.includes('maplibre-gl-worker.js')), false,
     'missing optional cartography worker does not block or enter the shell');
 
   const appBundle = [...healthy.stores.get(cacheName).keys()].find(url => new URL(url).pathname === '/app.js');
   assert.ok(appBundle, 'the current app bundle is part of the staged shell');
   const failed = await createWorker({ failUrl: appBundle });
-  failed.stores.set('rotamoto-restaurante-shell-v17', new Map([['sentinel', new Response('old-shell')]]));
+  failed.stores.set(`${assetManifest.cachePrefix}old-build`, new Map([['sentinel', new Response('old-shell')]]));
   await assert.rejects(fire(failed.listeners.get('install')), /required shell assets unavailable/u);
-  assert.deepEqual([...failed.stores.keys()], ['rotamoto-restaurante-shell-v17'], 'failed update removes only its staged cache and retains the active shell');
+  assert.deepEqual([...failed.stores.keys()], [`${assetManifest.cachePrefix}old-build`], 'failed update removes only its staged cache and retains the active shell');
 
-  const fetchEvent = { request: new Request('https://restaurante.test/styles.css?v=0140.99'), respondWith() { throw new Error('unmanifested URL was intercepted'); } };
+  const fetchEvent = { request: new Request('https://restaurante.test/styles.css?v=not-the-build-hash'), respondWith() { throw new Error('unmanifested URL was intercepted'); } };
   await fire(healthy.listeners.get('fetch'), fetchEvent);
   const exactEvent = { request: new Request(`https://restaurante.test/${stylesheetAsset}`), response: null, respondWith(promise) { exactEvent.response = promise; } };
   await fire(healthy.listeners.get('fetch'), exactEvent);

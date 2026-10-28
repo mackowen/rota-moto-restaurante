@@ -34,8 +34,8 @@ assert.match(css, /@media\(min-width:520px\)[\s\S]*\.presence-qr-actions\{grid-t
 assert.match(css, /@media\(max-width:430px\)[\s\S]*\.modal-presence-qr/u, 'phone modal uses compact responsive spacing');
 assert.match(css, /\.modal-presence-qr\{[^}]*overflow:auto/u, 'modal permits vertical scrolling when viewport height is insufficient');
 assert.match(css, /@media\(max-height:520px\)[\s\S]*max-height:calc\(100dvh - 12px\)/u, 'short landscape view uses a viewport-aware dialog height');
-assert.match(html, /presence-qr\.css\?v=0304\.1/u, 'presence modal styles are loaded');
-assert.match(worker, /presence-qr\.css\?v=0304\.1/u, 'presence modal styles are available in the atomic offline shell');
-assert.match(worker, /CACHE_PREFIX\}v148/u, 'shell cache matches the current stylesheet and script');
+assert.match(html, /presence-qr\.css\?v=[a-f0-9]{16}/u, 'presence modal styles use a content revision');
+assert.match(worker, /self\.RotaMotoAssetManifest\.assets/u, 'presence styles are available in the generated atomic offline shell');
+assert.match(worker, /self\.RotaMotoAssetManifest\.cacheName/u, 'shell cache matches the current stylesheet and script');
 
 console.log('Presence QR modal server contract, responsive structure, expiry and accessibility hooks: PASS');

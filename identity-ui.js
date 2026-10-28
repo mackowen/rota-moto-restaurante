@@ -587,9 +587,9 @@
       form.reset(); $('[data-existing-invitation-result]').textContent = `Convite aceito para a empresa ${result.companyId}. Confirme a troca para ativar o vínculo.`; $('[data-switch] [name=companyId]').value = result.companyId; }
     catch (error) { $('[data-existing-invitation-result]').textContent = message(error); } finally { setBusy(form, false); }
   });
-  function appendPermissionOptions(container, permissions, selectedKeys = []) {
+  function appendPermissionOptions(container, permissions, selectedKeys = [], actorPermissions = [], { readOnly = false } = {}) {
     const groups = new Map();
-    const groupNames = { company: 'Empresa', members: 'Equipe', orders: 'Pedidos', deliveries: 'Entregas', driver: 'Entregas', integrations: 'Integrações', sync: 'Sincronização', finance: 'Financeiro', backup: 'Cópias e recuperação', identity: 'Identidade e segurança' };
+    const groupNames = { company: 'Empresa', members: 'Equipe', orders: 'Pedidos', deliveries: 'Entregas', delivery: 'Entregas', driver: 'Entregas', integrations: 'Integrações', sync: 'Sincronização', finance: 'Financeiro', backup: 'Cópias e recuperação', identity: 'Identidade e segurança' };
     const descriptions = { 'sync.pull': 'Consultar alterações autorizadas desta empresa.', 'sync.push': 'Enviar alterações autorizadas deste dispositivo para a empresa.',
       'finance.read': 'Consultar relatórios e registros financeiros da empresa.', 'finance.manage': 'Gerenciar operações financeiras da empresa.' };
     for (const permission of permissions) {
@@ -614,13 +614,28 @@
         input.value = permission.key;
         input.checked = selectedKeys.includes(permission.key);
         input.dataset.permissionKey = permission.key;
+        const delegable = actorPermissions.includes(permission.key);
+        input.disabled = readOnly || !delegable;
         const description = descriptions[permission.key] || String(permission.description || '').trim() || 'Permissão específica da empresa';
-        label.append(input, document.createTextNode(` ${description}`));
+        const copy = document.createElement('span');
+        copy.className = 'rm-permission-copy';
+        const detail = document.createElement('span');
+        detail.textContent = description;
+        const state = document.createElement('small');
+        state.className = 'rm-permission-state';
+        state.textContent = input.checked ? 'Concedida neste perfil' : delegable ? 'Não concedida' : 'Não delegável pelo seu perfil';
+        label.classList.toggle('is-not-delegable', !delegable || readOnly);
+        copy.append(detail, state);
+        label.append(input, copy);
         options.append(label);
       }
       fieldset.append(options);
       container.append(fieldset);
     }
+    const scopeNote = document.createElement('p');
+    scopeNote.className = 'rm-permission-scope-note';
+    scopeNote.textContent = 'Super ADM Global é um acesso da plataforma, fora das permissões desta empresa; não pode ser concedido por este editor.';
+    container.append(scopeNote);
   }
 
   let adminLoadGeneration=0;
@@ -807,8 +822,8 @@
     const assignableRoles = roles.roles.filter(role => role.permissions.every(permission => current.permissions.includes(permission)));
     assignableRoles.forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; roleSelect.append(option); });
     const permissionBox = $('[data-permissions]'); permissionBox.replaceChildren();
-    const grantablePermissions = permissionResult.permissions.filter(permission => current.permissions.includes(permission.key));
-    appendPermissionOptions(permissionBox, grantablePermissions);
+    const grantablePermissionKeys = current.permissions;
+    appendPermissionOptions(permissionBox, permissionResult.permissions, [], grantablePermissionKeys);
     const roleList = $('[data-roles-list]'); roleList.replaceChildren();
     const roleHeading = document.createElement('h3'); roleHeading.textContent = 'Perfis existentes'; roleList.append(roleHeading);
     roles.roles.forEach(role => {
@@ -835,13 +850,13 @@
         roleList.append(card); return;
       }
       if (role.id === current.activeRoleId) { const note = document.createElement('span'); note.textContent = 'Perfil atualmente associado à sua sessão; não pode ser alterado por você.'; card.append(note); roleList.append(card); return; }
-      if (!role.permissions.every(permission => current.permissions.includes(permission))) { const note = document.createElement('span'); note.textContent = 'Este perfil excede suas permissões; somente um perfil de nível suficiente pode alterá-lo.'; card.append(note); roleList.append(card); return; }
+      if (!role.permissions.every(permission => current.permissions.includes(permission))) { const note = document.createElement('span'); note.textContent = 'Este perfil contém acessos acima dos seus; você pode consultar, mas somente um administrador com nível suficiente pode alterá-lo.'; card.append(note); appendPermissionOptions(card, permissionResult.permissions, role.permissions, current.permissions, { readOnly: true }); roleList.append(card); return; }
       const disclosure=document.createElement('details');disclosure.className='rm-admin-form-disclosure';const summary=document.createElement('summary');summary.textContent='Editar perfil';disclosure.append(summary);
       const nameLabel = document.createElement('label'); nameLabel.textContent = 'Nome do perfil'; const nameInput = document.createElement('input'); nameInput.name = 'name'; nameInput.required = true; nameInput.maxLength = 100; nameInput.value = role.name; nameLabel.append(nameInput); disclosure.append(nameLabel);
       const descriptionLabel=document.createElement('label');descriptionLabel.textContent='Descrição';const descriptionInput=document.createElement('input');descriptionInput.name='description';descriptionInput.maxLength=240;descriptionInput.value=role.description||'';descriptionLabel.append(descriptionInput);disclosure.append(descriptionLabel);
       const fieldset = document.createElement('fieldset'); const legend = document.createElement('legend'); legend.textContent = 'Permissões'; fieldset.append(legend);
       const checks = document.createElement('div'); checks.className = 'rm-role-permissions';
-      appendPermissionOptions(checks, grantablePermissions, role.permissions);
+      appendPermissionOptions(checks, permissionResult.permissions, role.permissions, grantablePermissionKeys);
       fieldset.append(checks); disclosure.append(fieldset);
       const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Salvar perfil'; const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); disclosure.append(save, feedback);card.append(disclosure);
       save.addEventListener('click', async () => { if (!card.querySelector('input[name="name"]').reportValidity()) return; save.disabled = true;

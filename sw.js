@@ -1,20 +1,10 @@
 'use strict';
 
-const CACHE_PREFIX = 'rotamoto-restaurante-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v148`;
-const APP_SHELL = Object.freeze([
-  '/', '/index.html', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/styles.css?v=0304.22', '/identity-ui.css?v=0304-login.10', '/presence-qr.css?v=0304.1', '/design-system.css?v=0304.5', '/pilot-views.css?v=0299.1', '/favicon.svg?v=0140.1', '/dashboard-v2.css?v=0304.8', '/orders-v2.css?v=0304.8', '/routes-v2.css?v=0304.11', '/dashboard-v2.js?v=0304.9',
-  '/qr-local.js', '/ifood-integration.js', '/keeta-integration.js', '/99food-integration.js',
-  '/contract.js', '/backup-format.js?v=1', '/backup-center.css?v=0231.1', '/backup-destinations-ui.js?v=0231.1', '/sync-reconciliation.js?v=2',
-  '/indexeddb-schema.js?v=3', '/order-money.js?v=2', '/ticket-renderer.js?v=0256d1.1',
-  '/browser-printer-provider.js?v=1', '/restaurant-operations.js?v=2',
-  '/analytics.js?v=7', '/analytics-view.js?v=0304-n.2', '/logistics-ui.js?v=0304-n.1',
-  '/identity-session-guard.js', '/server-update-coordinator.js?v=0253.1', '/company-settings-persistence.js?v=0286.1', '/app.js?v=0304-reports-n.2', '/identity-ui.js?v=0304-login.9',
-  '/vendor/leaflet/leaflet.css', '/vendor/maplibre/maplibre-gl.css?v=0139.1'
-]);
-const OPTIONAL_ASSETS = new Set([
-  '/vendor/maplibre/maplibre-gl.css?v=0139.1'
-]);
+importScripts('/asset-manifest.js');
+const CACHE_PREFIX = self.RotaMotoAssetManifest.cachePrefix;
+const CACHE_NAME = self.RotaMotoAssetManifest.cacheName;
+const APP_SHELL = Object.freeze(self.RotaMotoAssetManifest.assets);
+const OPTIONAL_ASSETS = new Set(self.RotaMotoAssetManifest.optional);
 const shellURLs = new Set(APP_SHELL.map(path => new URL(path, self.location.origin).href));
 const optionalURLs = new Set([...OPTIONAL_ASSETS].map(path => new URL(path, self.location.origin).href));
 

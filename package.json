@@ -7,6 +7,9 @@
     "node": ">=24.7.0"
   },
   "scripts": {
+    "assets:sync": "node scripts/sync-asset-manifest.js",
+    "assets:check": "node scripts/sync-asset-manifest.js --check",
+    "pretest": "npm run assets:check",
     "start": "node server.js",
     "start:provider-worker": "node scripts/provider-worker.js",
     "test:worker-metrics": "node tests/test-worker-metrics.js && node tests/test-queue-metrics-http.js && node tests/test-provider-worker.js && node tests/test-marketplace-worker.js",

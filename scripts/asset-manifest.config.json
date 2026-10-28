@@ -1,0 +1,7 @@
+{
+  "appId": "restaurante",
+  "cachePrefix": "rotamoto-restaurante-shell-",
+  "referenceFiles": ["app.js", "vendor/maplibre/rotamoto-map-runtime.js"],
+  "extraAssets": ["vendor/maplibre/maplibre-gl-worker.js"],
+  "optionalAssets": ["vendor/maplibre/maplibre-gl.css", "vendor/maplibre/maplibre-gl-worker.js"]
+}

@@ -32,12 +32,6 @@ Transições inválidas devem ser rejeitadas. Eventos não devem ser apagados pa
 - Motoboy: LocationPoint, DeliveryProof e eventos de execução.
 - Delivery é compartilhada, mas cada aplicativo altera somente os campos permitidos pelo domínio.
 
-## Relatórios operacionais e financeiros
-- `GET /api/logistics/analytics` é uma leitura PostgreSQL restrita à empresa autenticada e representa o histórico da empresa; não aplica período, status, origem, modalidade ou filtro de motoboy. A resposta informa `scope.filtersApplied: false` para que a interface não apresente esses contadores como filtrados.
-- `scope.basis` identifica `company-history`. `coverage` separa entregas canônicas, entregas concluídas, entregas sem alocação e pedidos sem entrega canônica. Contadores de integração descrevem solicitações/cotações e podem ser zero mesmo quando há entregas.
-- `integrations[].code` e `providerId` são identificadores internos estáveis. `integrations[].displayName` é o nome de apresentação; a interface não deve expor códigos internos como `internal_fleet`.
-- `financial.diagnostics` no relatório agrega apenas contagens de motivos e campos ausentes/inválidos de `Order.money` nos pedidos não cancelados. Não contém valores por pedido, não altera `financial.coverage` nem completa valores ausentes. Só a composição canônica válida, moeda e proveniência do contrato qualifica um valor comercial; isso não confirma recebimento ou liquidação bancária.
-
 ## Sincronização
 Pacotes usam `protocol='rotamoto-sync'`, `protocolVersion=1`, `schemaVersion=1`, `packetId` único e `deviceId`.
 Cada aplicativo mantém `outbox`, `inbox`, `tombstones` e `syncState`.

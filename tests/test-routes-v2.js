@@ -59,6 +59,6 @@ assert.match(styles,/\.routes-v2 \.real-map\{height:clamp\(240px,36dvh,360px\);m
 assert.match(styles,/\.shell:has\(#main\[data-module="routes"\]\)>\.main\{min-width:0;padding:10px 12px calc\(100px \+ env\(safe-area-inset-bottom\)\)\}/u,'mobile route content reserves bottom navigation and device safe-area space');
 assert.match(styles,/\.shell:has\(#main\[data-module="routes"\]\)/u,'tablet sidebar adaptation is limited to the Routes page');
 assert.match(styles,/@media\(max-width:599px\)/,'mobile map first layout breakpoint exists');
-assert.match(html,/routes-v2\.css\?v=0304\.11/,'route styles are loaded with an updated campaign cache key');
-assert.match(fs.readFileSync('sw.js','utf8'),/routes-v2\.css\?v=0304\.11/,'route styles are included in the local-first application shell');
+assert.match(html,/routes-v2\.css\?v=[a-f0-9]{16}/,'route styles use a generated content revision');
+assert.match(fs.readFileSync('sw.js','utf8'),/RotaMotoAssetManifest\.assets/,'route styles are included in the generated local-first shell manifest');
 console.log('Routes V2 layout, coordinate validation and no implicit geocoding: PASS');

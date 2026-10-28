@@ -5,5 +5,7 @@ for(const title of ['Primeiros passos','Configurar empresa','Localização do es
 assert.match(app,/function help\(\)/u);assert.match(app,/helpSearch.*addEventListener\("input"/u);assert.match(app,/canModule\(tab\).*tab==='help'/u);
 const appBundle=html.match(/<script[^>]+src=["'](app\.js(?:\?v=[^"']+)?)['"]/u)?.[1];
 assert.ok(appBundle,'index.html declares the current app bundle');
-assert.ok(sw.includes(`'/${appBundle}'`),`current app bundle ${appBundle} is in offline shell`);
+const assetManifest=require('./helpers/asset-manifest').readAssetManifest();
+assert(assetManifest.assets.some(asset=>asset.endsWith(`/${appBundle}`)),`current app bundle ${appBundle} is in offline shell`);
+assert.match(sw,/RotaMotoAssetManifest\.assets/u,'offline shell is generated from the content-addressed manifest');
 console.log('Restaurant local Help Center content/search/offline contract: PASS');

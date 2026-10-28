@@ -121,12 +121,12 @@ assert.match(ds,/nav-more-menu:not\(\[hidden\]\)[\s\S]*border-radius:20px 20px 0
 assert.match(ds,/nav-more-groups[\s\S]*overflow:auto/u,'More destinations scroll inside the available viewport');
 assert.match(css,/dv2-connection-panel\[data-state="syncing"\]/u,'connection state distinguishes active synchronization');
 assert.match(css,/dv2-connection-panel\[data-state="offline"\]/u,'connection state distinguishes offline service');
-assert.match(index,/dashboard-v2\.js\?v=0304\.9/u,'shared header component bundle uses the corrected campaign cache key');
-assert.match(index,/dashboard-v2\.css\?v=0304\.8/u,'dashboard width/header CSS uses the current campaign cache key');
-assert.match(sw,/CACHE_PREFIX\}v148/u,'service worker shell cache refreshes the current identity bundle');
-assert.match(index,/app\.js\?v=0304-reports-n\.2/u,'official app script uses the current campaign cache key');
-assert.match(index,/orders-v2\.css\?v=0304\.8/u,'Orders V2 layout uses a fresh cache key');
-assert.match(index,/design-system\.css\?v=0304\.5/u,'shared header spacing uses a fresh cache key');
+assert.match(index,/dashboard-v2\.js\?v=[a-f0-9]{16}/u,'shared header bundle uses its content revision');
+assert.match(index,/dashboard-v2\.css\?v=[a-f0-9]{16}/u,'dashboard CSS uses its content revision');
+assert.match(sw,/self\.RotaMotoAssetManifest\.cacheName/u,'service worker shell key is derived from all asset revisions');
+assert.match(index,/app\.js\?v=[a-f0-9]{16}/u,'official app script uses its content revision');
+assert.match(index,/orders-v2\.css\?v=[a-f0-9]{16}/u,'Orders V2 layout uses a content revision');
+assert.match(index,/design-system\.css\?v=[a-f0-9]{16}/u,'shared header spacing uses a content revision');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
 
 assert.match(app,/const session=await restoreSyncSession\(\);if\(session\)\{const editing=[\s\S]*?if\(!editing\)render\(\);scheduleServerSync\(0\);queueFinanceLedgerRead\(\);flushFinanceOutbox\(\)\.catch\(\(\)=>\{\}\)\}/u,'authenticated startup reprojects local state, reads finance ledger and resumes its outbox after restoring the tenant');

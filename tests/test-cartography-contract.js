@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const read=name=>fs.readFileSync(path.join(__dirname,'..',name),'utf8');
 const app=read('app.js'),html=read('index.html'),server=read('server.js'),sw=read('sw.js'),logisticsUI=read('logistics-ui.js'),mapRuntime=read('map-runtime.js');
-assert.match(html,/vendor\/leaflet\/leaflet\.css/u,'Leaflet styles load locally');assert.match(app,/function ensureMapRuntime\(\)[\s\S]*vendor\/maplibre\/rotamoto-map-runtime\.js\?v=0140\.11[\s\S]*await ensureMapRuntime\(\)/u,'bundled Leaflet and vector renderer load on demand before map initialization');assert.doesNotMatch(html,/rotamoto-map-runtime/u,'the login page does not eagerly request the bundled map renderer');
+assert.match(html,/vendor\/leaflet\/leaflet\.css/u,'Leaflet styles load locally');assert.match(app,/function ensureMapRuntime\(\)[\s\S]*vendor\/maplibre\/rotamoto-map-runtime\.js\?v=[a-f0-9]{16}[\s\S]*await ensureMapRuntime\(\)/u,'bundled Leaflet and vector renderer load on demand with generated content revisions before map initialization');assert.doesNotMatch(html,/rotamoto-map-runtime/u,'the login page does not eagerly request the bundled map renderer');
 assert.match(read('vendor/leaflet/LICENSE'),/BSD 2-Clause/u,'Leaflet license accompanies the vendored renderer');
 assert.equal((mapRuntime.match(/L\.tileLayer\(/gu)||[]).length,1,'unsupported WebGL browsers use one shared OSM fallback layer');
 assert.match(mapRuntime,/https:\/\/tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png/u,'fallback uses standard HTTPS raster tiles without an embedded key');
