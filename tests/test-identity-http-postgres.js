@@ -226,6 +226,8 @@ async function main() {
     assert.equal(roles.status, 200);
     const ownerRole = roles.body.roles.find(role => role.key === 'owner');
     assert(ownerRole, 'owner role exists in the active tenant');
+    assert(ownerRole.permissions.includes('finance.read') && ownerRole.permissions.includes('finance.manage'),
+      'current bootstrap grants tenant finance access to the company owner explicitly');
     const ownerPrincipal = await service.resolveSession(client, sessionCookie.slice(sessionCookie.indexOf('=') + 1));
     await client.query(`DELETE FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2
       AND permission_key=ANY($3::text[])`, [companyId, ownerRole.id, ['finance.read','finance.manage']]);
