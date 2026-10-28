@@ -42,7 +42,7 @@ assert.match(routes,/aria-label="Planejamento de rotas"[\s\S]*Rotas planejadas[\
 assert.doesNotMatch(routes,/Route\.deliveryIds|cada Delivery/u,'internal entity names are not shown in route copy');
 assert.match(routes,/id="routeMapEmpty" class="map-empty-inline" role="status" hidden/u,
   'empty map feedback is placed in document flow rather than floating over the map');
-assert.match(source,/let activeToastTimer=null;function toast[\s\S]*data-app-toast/u,
+assert.match(source,/function toast\(msg,type='success'\)\{[^\n]*d=document.querySelector\('\[data-app-toast\]'\)/u,
   'toasts use one accessible surface instead of stacking duplicate notifications');
 assert.doesNotMatch(source,/shortcutButtons\(|class="shortcutbar"/u,'the duplicate navigation strip is removed from the header');
 assert.doesNotMatch(styles,/\.shortcutbar/u,'obsolete duplicate shortcut strip styling is removed');
