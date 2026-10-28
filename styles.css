@@ -564,7 +564,7 @@ body{background:var(--bg);color:var(--text)}
 /* Mobile: composição própria, sem tentar encolher a versão desktop. */
 @media (max-width:1100px){
   .shell{display:block;min-height:100dvh}
-  .sidebar{display:none!important}
+  .sidebar{display:none}
   .main{padding:0 12px calc(92px + env(safe-area-inset-bottom));}
   .topbar{position:sticky;top:0;z-index:800;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;margin:0 -12px 14px;padding:10px 12px;background:color-mix(in srgb,var(--surface) 96%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
   .mobile-brand{display:flex;align-items:center;gap:7px}

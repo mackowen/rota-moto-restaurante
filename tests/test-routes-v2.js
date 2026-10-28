@@ -5,6 +5,7 @@ const vm=require('node:vm');
 
 const app=fs.readFileSync(require.resolve('../app.js'),'utf8');
 const styles=fs.readFileSync(require.resolve('../routes-v2.css'),'utf8');
+const shellStyles=fs.readFileSync(require.resolve('../styles.css'),'utf8');
 const html=fs.readFileSync(require.resolve('../index.html'),'utf8');
 const mapStart=app.indexOf('async function initRouteMap(){');
 const mapEnd=app.indexOf('\nfunction orderPlanningStatus',mapStart);
@@ -53,6 +54,12 @@ assert.doesNotMatch(routesView,/Number\(order\.km\|\|0\)/,'missing distance is n
 assert.match(styles,/@media\(min-width:600px\) and \(max-width:759px\)/,'tablet portrait receives a route-scoped compact sidebar and map-first flow');
 assert.match(styles,/@media\(min-width:760px\) and \(max-width:1023px\)/,'tablet landscape has separate route, map and detail areas');
 assert.match(styles,/@media\(min-width:600px\) and \(max-width:850px\) and \(orientation:portrait\)/,'tablet portrait stacks panels and gives the map the dominant width');
+assert.doesNotMatch(shellStyles,/\.sidebar\{display:none!important\}/u,'global mobile sidebar hiding must not block the route-scoped tablet navigation rail');
+assert.match(styles,/\.shell:has\(#main\[data-module="routes"\]\)>\.sidebar\{display:flex/u,'tablet Routes sidebar is restored by the route shell rule');
+assert.doesNotMatch(routesView,/data-route-filter|data-routes-filter|role="dialog"[^>]*filter/iu,'Routes V2 has no separate advanced filter dialog');
+assert.match(shellStyles,/\.topbar\{[^}]*position:sticky/u,'mobile headers remain in document flow and stick without a fixed-position jump');
+assert.match(shellStyles,/\.bottom-nav\{[^}]*padding[^}]*env\(safe-area-inset-bottom\)/u,'bottom navigation reserves device safe area');
+assert.match(shellStyles,/\.toast\{[^}]*bottom:calc\([^}]*safe-area-inset-bottom/u,'notifications clear the mobile navigation and device safe area');
 assert.match(styles,/@media\(min-width:1180px\)/,'desktop planning station has route, map and detail panels');
 assert.match(styles,/grid-template-columns:minmax\(200px,\.8fr\) minmax\(460px,2\.35fr\) minmax\(245px,1fr\)/u,'wide desktop reserves more width for the central map');
 assert.match(styles,/@media\(max-width:599px\)\{[\s\S]*?\.routes-v2-filterbar\{display:grid;grid-template-columns:repeat\(5,minmax\(0,1fr\)\);gap:4px\}/u,'all mobile map controls have compact equal tracks');
@@ -74,3 +81,13 @@ assert.deepEqual(buttons.map(button=>button.pressed),[null,null,null,null],'rend
 for(const mode of modes){const button=buttons.find(item=>item.dataset.mapMode===mode);button.click();assert.equal(context.window.__rotaMapMode,mode);assert.deepEqual(buttons.filter(item=>item.active).map(item=>item.dataset.mapMode),[mode],'map modes are mutually exclusive');assert.deepEqual(buttons.filter(item=>item.pressed==='true').map(item=>item.dataset.mapMode),[mode],'ARIA state follows the active map layer');assert.equal(rendered.at(-1),mode,'each filter causes a real map-layer rerender')}
 buttons[1].disabled=true;buttons[1].click();assert.equal(context.window.__rotaMapMode,'route','disabled filter cannot change map mode');buttons[1].disabled=false;buttons[0].click();assert.equal(context.window.__rotaMapMode,'all','Todos restores all map layers');overview.click();assert.equal(fits,1,'the fifth control invokes map fit-to-overview');assert.equal(context.window.__rotaMapMode,'all','fit preserves the selected map filter');
 console.log('Routes V2 DOM map filters and fit button: PASS');
+const selectionStart=app.indexOf('function bindRoutesV2Selection('),selectionEnd=app.indexOf('\nfunction routes()',selectionStart);
+assert(selectionStart>=0&&selectionEnd>selectionStart,'route selection binding is a separately testable production component');
+const viewButtons=[{dataset:{routesView:'routes'},pressed:null,setAttribute(name,value){if(name==='aria-pressed')this.pressed=value}},{dataset:{routesView:'deliveries'},pressed:null,setAttribute(name,value){if(name==='aria-pressed')this.pressed=value}}];
+const routeButtons=[{dataset:{routeSelect:'route-a'},pressed:'false',setAttribute(name,value){if(name==='aria-pressed')this.pressed=value}},{dataset:{routeSelect:'route-b'},pressed:'false',setAttribute(name,value){if(name==='aria-pressed')this.pressed=value}}];
+const routeRoot={dataset:{view:'routes'},querySelectorAll(){return viewButtons}},detailsPanel={innerHTML:''};let delegatedClick;
+const selectionContext={window:{__routesV2SelectionBound:false,routesV2SelectedId:null},state:{routes:[{id:'route-a'},{id:'route-b'}]},routeDetailsV2(route){return `details:${route.id}`},document:{addEventListener(name,handler){assert.equal(name,'click');delegatedClick=handler},querySelector(selector){return selector==='.routes-v2'?routeRoot:selector==='#routesV2Selected'?detailsPanel:null},querySelectorAll(selector){return selector==='[data-route-select]'?routeButtons:[]}}};
+vm.createContext(selectionContext);vm.runInContext(`${app.slice(selectionStart,selectionEnd)}\nthis.bind=bindRoutesV2Selection;`,selectionContext);selectionContext.bind();
+delegatedClick({target:{closest(selector){return selector==='[data-routes-view]'?viewButtons[1]:null}}});assert.equal(routeRoot.dataset.view,'deliveries');assert.deepEqual(viewButtons.map(button=>button.pressed),['false','true'],'list/map subview switch updates the visible state');
+delegatedClick({target:{closest(selector){return selector==='[data-routes-view]'?null:selector==='[data-route-select]'?routeButtons[1]:null}}});assert.equal(selectionContext.window.routesV2SelectedId,'route-b');assert.deepEqual(routeButtons.map(button=>button.pressed),['false','true'],'selected route is announced accessibly');assert.equal(detailsPanel.innerHTML,'details:route-b','selecting a route updates the details panel');
+console.log('Routes V2 selection and details DOM activation: PASS');
