@@ -32,5 +32,5 @@ assert.match(css,/\.modal \.detail-form-actions\{[^}]*position:static/u,'detail 
 assert.match(css,/\.detail-retry-actions #retryDetailSync\[hidden\]\{display:none\}/u,'retry stays hidden after a successful canonical save even though button styles define display');
 assert.match(html,/styles\.css\?v=0304\.22/u,'the edited stylesheet is cache-busted');
 assert.match(html,/app\.js\?v=0304-reports-n\.2/u,'the application script uses the current campaign cache key');
-assert.match(sw,/CACHE_PREFIX\}v147/u);
+assert.match(sw,/CACHE_PREFIX\}v148/u);
 console.log('dispatch assignment UI regression tests passed');
