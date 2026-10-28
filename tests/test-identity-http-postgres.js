@@ -239,6 +239,8 @@ async function main() {
     await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=NULL WHERE id=$1', [ownerPrincipal.session_id]);
     const pendingAdminRead=await call('/api/admin/roles',{cookie:sessionCookie});
     assert.equal(pendingAdminRead.status,403,'a stale session with configured MFA but no verified MFA marker cannot read protected administration data');
+    await assert.rejects(service.withAuthenticatedTenant(sessionCookie.slice(sessionCookie.indexOf('=') + 1), async () => true, 'finance.manage'),
+      error => error.code === 'MFA_REQUIRED', 'finance.manage remains unavailable when the session MFA proof is not verified');
     const pendingAdminWrite=await call('/api/admin/roles',{method:'POST',cookie:sessionCookie,csrf:session.body.csrfToken,
       body:{key:'pending_mfa_write',name:'Pending MFA Write',permissions:['orders.read']}});
     assert.equal(pendingAdminWrite.status,403,'a stale session with no MFA marker cannot write protected administration data');
@@ -261,6 +263,7 @@ async function main() {
     assert.equal(ownerAfterFinanceRestore.body.permissions.includes('finance.read'), true);
     assert.equal(ownerAfterFinanceRestore.body.permissions.includes('finance.manage'), true);
     await service.withAuthenticatedTenant(sessionCookie.slice(sessionCookie.indexOf('=') + 1), async () => true, 'finance.read');
+    await service.withAuthenticatedTenant(sessionCookie.slice(sessionCookie.indexOf('=') + 1), async () => true, 'finance.manage');
     const permissions = await call('/api/admin/permissions', { cookie: sessionCookie });
     assert.equal(permissions.status, 200);
     assert(permissions.body.permissions.some(permission => permission.key === 'orders.read'));
