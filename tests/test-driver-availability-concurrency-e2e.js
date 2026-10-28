@@ -399,6 +399,10 @@ async function fetchJson(origin, path, session, { method = 'GET', body } = {}) {
   } catch (error) { return { status: 0, body: { transportError: error.cause?.code || error.name } }; }
 }
 
+function readAvailabilityResponse(body, driverId) {
+  return body?.availability || body?.records?.find(row => row.driverId === driverId);
+}
+
 async function waitForBlockedRequest(observer, applicationName, expectedBlockerPid, expectedCount = 1) {
   const deadline = Date.now() + 6000;
   while (Date.now() < deadline) {
@@ -617,7 +621,8 @@ async function main() {
     for (const session of sessions) {
       const authenticated = await fetchJson(origin, '/api/driver-availability', session);
       assert.equal(authenticated.status, 200, JSON.stringify(authenticated.body));
-      assert.equal(authenticated.body.availability.effectiveStatus, 'online');
+      const fleetDriver=authenticated.body.records?.find(row=>row.driverId===f.driverId);
+      assert.equal(fleetDriver?.effectiveStatus,'online',`fleet response must include the authenticated tenant's canonical Driver: ${JSON.stringify(authenticated.body)}`);
     }
     markLocal('two authenticated sessions resolve to the same Driver');
 
@@ -799,7 +804,7 @@ async function main() {
     const automaticAgain=await fetchJson(origin,'/api/restaurant-driver-queue/settings',sessions[0],{method:'POST',body:{mode:'automatic',expectedRevision:manualMode.body.settings.revision}});
     assert.equal(automaticAgain.status,200);
     canonical=await fetchJson(origin,'/api/driver-availability',sessions[0]);
-    const returnedOnline=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:canonical.body.availability.revision,commandId:UUID()}});
+    const returnedOnline=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:readAvailabilityResponse(canonical.body,f.driverId).revision,commandId:UUID()}});
     assert.equal(returnedOnline.status,200);const noStalePresence=await fetchJson(origin,'/api/restaurant-driver-queue',sessions[0]);assert.equal(noStalePresence.body.presence.present,false);
     const returningQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
     const returningCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:returningQr.body.token}});
@@ -838,7 +843,7 @@ async function main() {
     const retryOfflineRedelivery=await fetchJson(origin,'/api/sync/push',sessions[1],{method:'POST',body:offlineFirstPacket});
     assert.equal(retryOfflineRedelivery.status,200);assert.equal(retryOfflineRedelivery.body.duplicate,true);
     canonical=await fetchJson(origin,'/api/driver-availability',sessions[0]);
-    const onlineAfterRedeliveryOffline=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:canonical.body.availability.revision,commandId:UUID()}});
+    const onlineAfterRedeliveryOffline=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:readAvailabilityResponse(canonical.body,f.driverId).revision,commandId:UUID()}});
     assert.equal(onlineAfterRedeliveryOffline.status,200,JSON.stringify(onlineAfterRedeliveryOffline.body));
     const redeliveryReturnQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
     const redeliveryReturnCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:redeliveryReturnQr.body.token}});
@@ -855,7 +860,7 @@ async function main() {
     const assignedRedeliveryOpen=await assignmentFirstTx.client.query(`SELECT payload FROM ${schema}.domain_records WHERE company_id=$1 AND record_id=$2 AND entity_type='Delivery'`,[f.companyId,assignedRedeliveryId]);
     assert.equal(assignedRedeliveryOpen.rows[0].payload.status,'ASSIGNED');assert.equal(assignedRedeliveryOpen.rows[0].payload.driverId,f.driverId);
     canonical=await fetchJson(origin,'/api/driver-availability',sessions[1]);
-    const offlineAfterRedeliveryPromise=fetchJson(origin,'/api/driver-availability/commands',sessions[1],{method:'POST',body:{desiredStatus:'offline',expectedRevision:canonical.body.availability.revision,commandId:UUID()}});
+    const offlineAfterRedeliveryPromise=fetchJson(origin,'/api/driver-availability/commands',sessions[1],{method:'POST',body:{desiredStatus:'offline',expectedRevision:readAvailabilityResponse(canonical.body,f.driverId).revision,commandId:UUID()}});
     await waitForBlockedRequest(observer,'campaign-0112-api',assignmentFirstPid);
     await assignmentFirstTx.client.query('COMMIT');await endRuntimeClient(assignmentFirstTx.raw);
     const offlineAfterRedelivery=await offlineAfterRedeliveryPromise;
@@ -874,7 +879,7 @@ async function main() {
       assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.operationResults[0].status,'accepted',JSON.stringify(result.body));
     }
     canonical=await fetchJson(origin,'/api/driver-availability',sessions[0]);
-    const onlineAfterRedeliveryAssignment=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:canonical.body.availability.revision,commandId:UUID()}});
+    const onlineAfterRedeliveryAssignment=await fetchJson(origin,'/api/driver-availability/commands',sessions[0],{method:'POST',body:{desiredStatus:'online',expectedRevision:readAvailabilityResponse(canonical.body,f.driverId).revision,commandId:UUID()}});
     assert.equal(onlineAfterRedeliveryAssignment.status,200);
     const finalRedeliveryQr=await fetchJson(origin,'/api/restaurant-driver-queue/qr',sessions[0],{method:'POST',body:{}});
     const finalRedeliveryCheckIn=await fetchJson(origin,'/api/restaurant-driver-queue/qr-check-in',sessions[0],{method:'POST',body:{token:finalRedeliveryQr.body.token}});
@@ -933,7 +938,7 @@ async function main() {
     assert.equal(assignedWhileOpen.rows[0]?.status,'ASSIGNED',`real automatic dispatch must assign before the race barrier: ${JSON.stringify(assignedWhileOpen.rows[0])}`);
     assert.equal(assignedWhileOpen.rows[0]?.driver_id,f.driverId);
     const availabilityBeforeAutoOffline=await fetchJson(origin,'/api/driver-availability',sessions[1]);
-    const racingOffline=fetchJson(origin,'/api/driver-availability/commands',sessions[1],{method:'POST',body:{desiredStatus:'offline',expectedRevision:availabilityBeforeAutoOffline.body.availability.revision,commandId:UUID()}});
+    const racingOffline=fetchJson(origin,'/api/driver-availability/commands',sessions[1],{method:'POST',body:{desiredStatus:'offline',expectedRevision:readAvailabilityResponse(availabilityBeforeAutoOffline.body,f.driverId).revision,commandId:UUID()}});
     let autoBlockedPids;
     try{autoBlockedPids=await waitForBlockedRequest(observer,'campaign-0112-api',autoAssignmentPid)}catch(error){const response=await racingOffline;throw new Error(`${error.message}; offline response=${JSON.stringify(response)}`)}
     assert.equal(autoBlockedPids.length,1);await autoAssignmentTx.client.query('COMMIT');await endRuntimeClient(autoAssignmentTx.raw);
@@ -986,7 +991,7 @@ async function main() {
     // Return to Online through the authenticated route before scenario B.
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     const online = await fetchJson(origin, '/api/driver-availability/commands', sessions[0], { method: 'POST', body: {
-      desiredStatus: 'online', expectedRevision: canonical.body.availability.revision, commandId: UUID() } });
+      desiredStatus: 'online', expectedRevision: readAvailabilityResponse(canonical.body,f.driverId).revision, commandId: UUID() } });
     assert.equal(online.status, 200, JSON.stringify(online.body));
     markLocal('A: restored Online through authenticated endpoint');
 
@@ -1004,7 +1009,7 @@ async function main() {
     const availabilityBStart = await fetchJson(origin, '/api/driver-availability', sessions[1]);
     markLocal('B: second authenticated session read availability', `http=${availabilityBStart.status}`);
     const offlineBPromise = fetchJson(origin, '/api/driver-availability/commands', sessions[1], { method: 'POST', body: {
-      desiredStatus: 'offline', expectedRevision: availabilityBStart.body.availability.revision, commandId: UUID() } });
+      desiredStatus: 'offline', expectedRevision: readAvailabilityResponse(availabilityBStart.body,f.driverId).revision, commandId: UUID() } });
     const blockedByB = await waitForBlockedRequest(observer, 'campaign-0112-api', pidB);
     markLocal('B: assignment holds Driver lock; second-session Offline waits independently', `blockedPids=${blockedByB.length}`);
     await operationB.client.query('COMMIT'); await endRuntimeClient(operationB.raw);
@@ -1032,11 +1037,11 @@ async function main() {
     // Offline won first; the failed state and immutable history event survive.
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     const onlineForRedelivery = await fetchJson(origin, '/api/driver-availability/commands', sessions[0], { method: 'POST', body: {
-      desiredStatus: 'online', expectedRevision: canonical.body.availability.revision, commandId: UUID() } });
+      desiredStatus: 'online', expectedRevision: readAvailabilityResponse(canonical.body,f.driverId).revision, commandId: UUID() } });
     assert.equal(onlineForRedelivery.status, 200);
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     const offlineForRedelivery = await fetchJson(origin, '/api/driver-availability/commands', sessions[0], { method: 'POST', body: {
-      desiredStatus: 'offline', expectedRevision: canonical.body.availability.revision, commandId: UUID() } });
+      desiredStatus: 'offline', expectedRevision: readAvailabilityResponse(canonical.body,f.driverId).revision, commandId: UUID() } });
     assert.equal(offlineForRedelivery.status, 200);
     const rejectedRedeliveryPacket = assignmentPacket(f, 2, { status: 'REDELIVERY' });
     const rejectedRedelivery = await fetchJson(origin, '/api/sync/push', sessions[0], { method: 'POST', body: rejectedRedeliveryPacket });
@@ -1056,7 +1061,7 @@ async function main() {
     // request waits, and committed REDELIVERY/history remain coherent.
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     const onlineForRedelivery2 = await fetchJson(origin, '/api/driver-availability/commands', sessions[0], { method: 'POST', body: {
-      desiredStatus: 'online', expectedRevision: canonical.body.availability.revision, commandId: UUID() } });
+      desiredStatus: 'online', expectedRevision: readAvailabilityResponse(canonical.body,f.driverId).revision, commandId: UUID() } });
     assert.equal(onlineForRedelivery2.status, 200);
     const operationD2 = await connectOperation('campaign-0112-redelivery-d2');
     const redeliveryPacket = assignmentPacket(f, 3, { status: 'REDELIVERY' });
@@ -1065,7 +1070,7 @@ async function main() {
     assert.equal(redeliveryResult.operationResults[0].status, 'accepted', JSON.stringify(redeliveryResult));
     const availabilityD2Start = await fetchJson(origin, '/api/driver-availability', sessions[1]);
     const offlineD2Promise = fetchJson(origin, '/api/driver-availability/commands', sessions[1], { method: 'POST', body: {
-      desiredStatus: 'offline', expectedRevision: availabilityD2Start.body.availability.revision, commandId: UUID() } });
+      desiredStatus: 'offline', expectedRevision: readAvailabilityResponse(availabilityD2Start.body,f.driverId).revision, commandId: UUID() } });
     const blockedByD2 = await waitForBlockedRequest(observer, 'campaign-0112-api', pidD2);
     markLocal('D2: redelivery holds Driver lock; Offline waits in independent transaction', `blockedPids=${blockedByD2.length}`);
     await operationD2.client.query('COMMIT'); await endRuntimeClient(operationD2.raw);
@@ -1093,10 +1098,10 @@ async function main() {
     // expected revision while a barrier holds both behind the Driver row.
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     const onlineBeforeRace = await fetchJson(origin, '/api/driver-availability/commands', sessions[1], { method: 'POST', body: {
-      desiredStatus: 'online', expectedRevision: canonical.body.availability.revision, commandId: UUID() } });
+      desiredStatus: 'online', expectedRevision: readAvailabilityResponse(canonical.body,f.driverId).revision, commandId: UUID() } });
     assert.equal(onlineBeforeRace.status, 200);
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
-    const raceRevision = canonical.body.availability.revision;
+    const raceRevision = readAvailabilityResponse(canonical.body,f.driverId).revision;
     const barrier = await connectOperation('campaign-0112-session-barrier');
     await barrier.client.query('BEGIN');
     await barrier.client.query("SELECT set_config('app.tenant_id',$1,true)", [f.companyId]);
@@ -1131,8 +1136,8 @@ async function main() {
         'the Offline transition advances the revision exactly once');
     }
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
-    assert.equal(canonical.body.availability.revision, raceRevision + 1);
-    assert.equal(canonical.body.availability.effectiveStatus,'offline',
+    assert.equal(readAvailabilityResponse(canonical.body,f.driverId).revision, raceRevision + 1);
+    assert.equal(readAvailabilityResponse(canonical.body,f.driverId).effectiveStatus,'offline',
       'the terminal canonical state is Offline in either valid lock interleaving');
     markLocal('E: revision and lease semantics verified for both valid command interleavings');
 
@@ -1145,9 +1150,9 @@ async function main() {
       AND entity_type='Driver' FOR UPDATE`, [f.companyId, f.driverId]);
     const duplicateBarrierPid = (await duplicateBarrier.client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
     const duplicateCommandId = UUID();
-    const duplicateDesired = canonical.body.availability.effectiveStatus;
+    const duplicateDesired = readAvailabilityResponse(canonical.body,f.driverId).effectiveStatus;
     const duplicateRequests = sessions.map(session => fetchJson(origin, '/api/driver-availability/commands', session, { method: 'POST', body: {
-      desiredStatus: duplicateDesired, expectedRevision: canonical.body.availability.revision, commandId: duplicateCommandId } }));
+      desiredStatus: duplicateDesired, expectedRevision: readAvailabilityResponse(canonical.body,f.driverId).revision, commandId: duplicateCommandId } }));
     await waitForBlockedRequest(observer, 'campaign-0112-api', duplicateBarrierPid, 2);
     await duplicateBarrier.client.query('COMMIT'); await endRuntimeClient(duplicateBarrier.raw);
     const duplicateResults = await Promise.all(duplicateRequests);
@@ -1161,17 +1166,17 @@ async function main() {
 
     // Non-owner heartbeat cannot extend the current session's lease.
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
-    if (canonical.body.availability.effectiveStatus !== 'online' || canonical.body.availability.leaseSessionId !== sessions[0].id) {
+    if (readAvailabilityResponse(canonical.body,f.driverId).effectiveStatus !== 'online' || readAvailabilityResponse(canonical.body,f.driverId).leaseSessionId !== sessions[0].id) {
       const ownerOnline = await fetchJson(origin, '/api/driver-availability/commands', sessions[0], { method: 'POST', body: {
-        desiredStatus: 'online', expectedRevision: canonical.body.availability.revision, commandId: UUID() } });
+        desiredStatus: 'online', expectedRevision: readAvailabilityResponse(canonical.body,f.driverId).revision, commandId: UUID() } });
       assert.equal(ownerOnline.status, 200);
       canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     }
     const nonOwnerHeartbeat = await fetchJson(origin, '/api/driver-availability/heartbeat', sessions[1], { method: 'POST', body: {
-      revision: canonical.body.availability.revision } });
+      revision: readAvailabilityResponse(canonical.body,f.driverId).revision } });
     assert.equal(nonOwnerHeartbeat.status, 200); assert.equal(nonOwnerHeartbeat.body.renewed, false);
     const ownerHeartbeat = await fetchJson(origin, '/api/driver-availability/heartbeat', sessions[0], { method: 'POST', body: {
-      revision: canonical.body.availability.revision } });
+      revision: readAvailabilityResponse(canonical.body,f.driverId).revision } });
     assert.equal(ownerHeartbeat.status, 200); assert.equal(ownerHeartbeat.body.renewed, true);
     markLocal('E: non-owner heartbeat rejected; lease owner heartbeat renewed');
 
@@ -1191,25 +1196,25 @@ async function main() {
     assert.equal(expiredAssignment.status, 200);
     assert.equal(expiredAssignment.body.operationResults[0].error.code, 'DRIVER_NOT_AVAILABLE');
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
-    assert.equal(canonical.body.availability.effectiveStatus, 'offline');
-    assert.equal(canonical.body.availability.reason, 'lease_expired');
+    assert.equal(readAvailabilityResponse(canonical.body,f.driverId).effectiveStatus, 'offline');
+    assert.equal(readAvailabilityResponse(canonical.body,f.driverId).reason, 'lease_expired');
     markLocal('E: lease expires under contention; assignment observes expired lease and rejects');
 
     // F. Rollback releases locks and reverts Offline command; the following
     // real assignment is accepted. Tenant B is invisible under Tenant A RLS.
     const restoreOnline = await fetchJson(origin, '/api/driver-availability/commands', sessions[0], { method: 'POST', body: {
-      desiredStatus: 'online', expectedRevision: canonical.body.availability.revision, commandId: UUID() } });
+      desiredStatus: 'online', expectedRevision: readAvailabilityResponse(canonical.body,f.driverId).revision, commandId: UUID() } });
     assert.equal(restoreOnline.status, 200);
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
     const rollbackTx = await connectOperation('campaign-0112-rollback');
     await rollbackTx.client.query('BEGIN');
     await rollbackTx.client.query("SELECT set_config('app.tenant_id',$1,true)", [f.companyId]);
     const rollbackCommandId = UUID();
-    const rollbackCommand = await runDirectCommand(rollbackTx.client, sessions[0], 'offline', canonical.body.availability.revision, rollbackCommandId);
+    const rollbackCommand = await runDirectCommand(rollbackTx.client, sessions[0], 'offline', readAvailabilityResponse(canonical.body,f.driverId).revision, rollbackCommandId);
     assert.equal(rollbackCommand.availability.effectiveStatus, 'offline');
     await rollbackTx.client.query('ROLLBACK'); await endRuntimeClient(rollbackTx.raw);
     canonical = await fetchJson(origin, '/api/driver-availability', sessions[0]);
-    assert.equal(canonical.body.availability.effectiveStatus, 'online');
+    assert.equal(readAvailabilityResponse(canonical.body,f.driverId).effectiveStatus, 'online');
     const rollbackCheck = await openRuntimeClient({ schema, tenantId: f.companyId, applicationName: 'campaign-0112-check-rollback' });
     const rollbackReceipt = await rollbackCheck.client.query(`SELECT count(*)::int AS n FROM ${schema}.driver_availability_commands
       WHERE company_id=$1 AND driver_id=$2 AND command_id=$3`, [f.companyId, f.driverId, rollbackCommandId]);

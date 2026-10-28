@@ -1,6 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
+const vm=require('node:vm');
 
 const app=fs.readFileSync(require.resolve('../app.js'),'utf8');
 const styles=fs.readFileSync(require.resolve('../routes-v2.css'),'utf8');
@@ -31,7 +32,7 @@ assert.match(routesView,/data-routes-view="routes" aria-pressed="true">Rotas<\/b
 assert.match(styles,/@media\(max-width:599px\)[\s\S]*?\.routes-v2-filterbar\{display:grid;grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/u,'all five mobile map controls share a compact row');
 assert.doesNotMatch(styles,/\.routes-v2-filterbar \.routes-v2-fit\{[^}]*grid-column:1\/-1/u,'map overview action cannot occupy a lone full-width row');
 assert.match(app,/event\.target\.closest\('\[data-routes-view\]'\)/u,'route and delivery view switch is connected to application behavior');
-assert.match(app,/const active=b\.dataset\.mapMode===mode;b\.classList\.toggle\('active',active\);b\.setAttribute\('aria-pressed',String\(active\)\)/u,'map filter state updates both rendered layer and accessible pressed state');
+assert.match(app,/const active=button\.dataset\.mapMode===mode;button\.classList\.toggle\('active',active\);button\.setAttribute\('aria-pressed',String\(active\)\)/u,'map filter state updates both rendered layer and accessible pressed state');
 assert.match(routesView,/id="routeMap"[^]*class="routes-v2-map-information"[^]*id="mapState"[^]*id="routeMapEmpty"[^]*class="map-legend"/u,'map status, empty state, and legend use their own flow area below the canvas');
 assert.match(routeMap,/stateEl\.hidden=!locatedDeliveries&&!locatedBikes&&!routeStatus/u,'empty maps do not show a second redundant zero-count status line');
 assert.match(routeMap,/noPoints&&!data\.restaurant\?`\$\{message\} A localização do restaurante também precisa de confirmação\.`:message/u,'missing origin and empty map context are combined into one readable message');
@@ -62,3 +63,14 @@ assert.match(styles,/@media\(max-width:599px\)/,'mobile map first layout breakpo
 assert.match(html,/routes-v2\.css\?v=[a-f0-9]{16}/,'route styles use a generated content revision');
 assert.match(fs.readFileSync('sw.js','utf8'),/RotaMotoAssetManifest\.assets/,'route styles are included in the generated local-first shell manifest');
 console.log('Routes V2 layout, coordinate validation and no implicit geocoding: PASS');
+const controlStart=app.indexOf('function bindRouteMapControls('),controlEnd=app.indexOf('\nasync function initRouteMap',controlStart);
+assert(controlStart>=0&&controlEnd>controlStart,'map control binding is a separately testable production component');
+const context={window:{__rotaMapMode:'all'}},rendered=[];vm.createContext(context);
+const controlSource=app.slice(controlStart,controlEnd);vm.runInContext(`${controlSource}\nthis.bind=bindRouteMapControls;`,context);
+const makeButton=mode=>({dataset:{mapMode:mode},disabled:false,pressed:null,active:false,onclick:null,classList:{toggle(name,value){if(name==='active')this.owner.active=value},owner:null},setAttribute(name,value){if(name==='aria-pressed')this.pressed=value},click(){if(!this.disabled)this.onclick?.()}});
+const modes=['all','delivery','bike','route'],buttons=modes.map(makeButton);buttons.forEach(button=>button.classList.owner=button);let fits=0;const overview={handler:null,addEventListener(name,handler){assert.equal(name,'click');this.handler=handler},click(){this.handler?.()}};
+context.bind(buttons,overview,()=>fits++,()=>rendered.push(context.window.__rotaMapMode));
+assert.deepEqual(buttons.map(button=>button.pressed),[null,null,null,null],'render starts from the existing All HTML state before a user action');
+for(const mode of modes){const button=buttons.find(item=>item.dataset.mapMode===mode);button.click();assert.equal(context.window.__rotaMapMode,mode);assert.deepEqual(buttons.filter(item=>item.active).map(item=>item.dataset.mapMode),[mode],'map modes are mutually exclusive');assert.deepEqual(buttons.filter(item=>item.pressed==='true').map(item=>item.dataset.mapMode),[mode],'ARIA state follows the active map layer');assert.equal(rendered.at(-1),mode,'each filter causes a real map-layer rerender')}
+buttons[1].disabled=true;buttons[1].click();assert.equal(context.window.__rotaMapMode,'route','disabled filter cannot change map mode');buttons[1].disabled=false;buttons[0].click();assert.equal(context.window.__rotaMapMode,'all','Todos restores all map layers');overview.click();assert.equal(fits,1,'the fifth control invokes map fit-to-overview');assert.equal(context.window.__rotaMapMode,'all','fit preserves the selected map filter');
+console.log('Routes V2 DOM map filters and fit button: PASS');

@@ -2,6 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const vm=require('node:vm');
 const app=fs.readFileSync(path.join(__dirname,'..','app.js'),'utf8');
 const css=fs.readFileSync(path.join(__dirname,'..','styles.css'),'utf8');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
@@ -10,7 +11,7 @@ assert.match(app,/async function openAssignment\(preselectBikeId,preselectOrderI
 assert.match(app,/async function refreshOperationalAvailability\([\s\S]*?AbortController\(\)[\s\S]*?setTimeout\(\(\)=>controller\.abort\(\),12000\)[\s\S]*?return confirmed/u,'availability read has a bounded timeout and cannot treat stale roster data as confirmed');
 assert.match(app,/preselectOrderId===o\.id\?'checked':''/u,'opening distribution from a delivery preselects that eligible delivery');
 assert.match(app,/Não há entregas elegíveis sem motoboy neste momento/u,'empty dispatch state explains that there are no eligible deliveries');
-assert.match(app,/Abrindo seleção…[\s\S]*?closeModal\(\);openAssignment\(b\.id\)/u,'Distribuir mais corridas visibly reacts and opens the selection workflow');
+assert.match(app,/bindBikeAssignmentButton\(distributeMore,\{driverId:b\.id,closeCurrentModal:true\}\)/u,'the race-history Distribuir mais corridas control uses the guarded shared workflow and closes its modal');
 assert.match(app,/order\.bike\|\|order\.driverId\|\|order\.assignment\?\.motoboyId[\s\S]*?\['CREATED','REDELIVERY'\]\.includes\(status\)/u,'only unassigned CREATED or REDELIVERY orders can be offered for distribution');
 assert.match(app,/effectiveStatus==='online'&&Date\.parse\(availability\.leaseExpiresAt\|\|''\)>Date\.now\(\)/u,'assignment candidates require a valid online lease');
 assert.match(app,/await window\.RotaMotoSync\.syncNow\(\)[\s\S]*?confirmDispatch\(syncResult,assignments/u,'assignment waits for server sync before confirming');
@@ -34,3 +35,22 @@ assert.match(html,/styles\.css\?v=[a-f0-9]{16}/u,'the edited stylesheet uses its
 assert.match(html,/app\.js\?v=[a-f0-9]{16}/u,'the application script uses its content revision');
 assert.match(sw,/self\.RotaMotoAssetManifest\.cacheName/u);
 console.log('dispatch assignment UI regression tests passed');
+
+const bindingSource=app.match(/function bindBikeAssignmentButton\(button,[\s\S]*?(?=function openBikeRaces\()/u)?.[0];
+assert(bindingSource,'assignment button binder is a production helper');
+const pending=[];const opened=[],closed=[],toasts=[];const bindingContext={assignmentLoading:false,openAssignment(id){opened.push(id);return new Promise(resolve=>pending.push(resolve))},closeModal(){closed.push(true)},toast(message,type){toasts.push({message,type})}};
+vm.runInNewContext(`${bindingSource}\nthis.bindAll=bindBikeAssignmentButtons;this.bindOne=bindBikeAssignmentButton;`,bindingContext);
+const makeButton=id=>({dataset:{bikeassign:id},disabled:false,textContent:'Distribuir',isConnected:true,onclick:null,click(){if(!this.disabled)return this.onclick?.()}});
+(async()=>{
+ const cardButton=makeButton('driver-canonical-a'),queueButton=makeButton('driver-canonical-b');
+ bindingContext.bindAll({querySelectorAll(selector){assert.equal(selector,'[data-bikeassign]');return [cardButton,queueButton]}});
+ const first=cardButton.click();cardButton.click();assert.deepEqual(opened,['driver-canonical-a'],'rapid double activation is locked while the real assignment workflow is opening');
+ pending.shift()();await first;assert.equal(cardButton.disabled,false,'the entry control is restored after the assignment dialog is presented');
+ const second=queueButton.click();assert.deepEqual(opened,['driver-canonical-a','driver-canonical-b'],'queue and driver card preserve the selected canonical driver');pending.shift()();await second;
+ const modalButton=makeButton('driver-modal-c');const modalClick=bindingContext.bindOne(modalButton,{driverId:'driver-modal-c',closeCurrentModal:true});assert.equal(modalClick,undefined);const third=modalButton.click();assert.equal(closed.length,1,'race history modal closes before opening distribution');assert.deepEqual(opened,['driver-canonical-a','driver-canonical-b','driver-modal-c']);pending.shift()();await third;
+ assert.match(app,/bindBikeAssignmentButtons\(\);bindBikeAssignmentButton\(document\.querySelector\('\[data-distribute\]'\)\)/u,'main Motoboys and distribution controls use the shared guarded binder');
+ assert.match(app,/const distributeMore=document\.querySelector\('\[data-bikeassign\]'\);bindBikeAssignmentButton\(distributeMore,\{driverId:b\.id,closeCurrentModal:true\}\)/u,'race modal action uses the binder with its selected courier and closes the modal');
+ const timeoutButton=makeButton('driver-timeout');bindingContext.openAssignment=async()=>{throw Object.assign(new Error('timeout'),{code:'TIMEOUT'})};bindingContext.bindOne(timeoutButton);await timeoutButton.click();assert.equal(timeoutButton.disabled,false,'failed or timed out distribution restores the control');assert.equal(toasts.length,1,'failed or timed out distribution gives user feedback');assert.equal(toasts[0].type,'error');
+ const queueBinder=app.match(/function bindQueueControls\(\)\{[^\n]+\}/u)?.[0]||'';assert.doesNotMatch(queueBinder,/data-bikeassign/u,'canonical queue controls are not double-bound by a second listener');
+ console.log('dispatch button DOM activation, canonical driver payload and duplicate-submit guard: PASS');
+})().catch(error=>{console.error(error);process.exitCode=1});
