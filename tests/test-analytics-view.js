@@ -81,7 +81,7 @@ assert.match(confirmedHtml,/report-sync-indicator[\s\S]*>Confirmado<\/div>/u);
 console.log('Analytics renderer point-count, axis accessibility, empty and unavailable states: PASS');
 
 // Unavailable, loading, failed and successfully empty consultations must differ.
-const renderFinancialState=(financialState,confirmed=false,financialDiagnostic)=>View.render({report:Analytics.aggregate({orders:[],deliveries:[],...(confirmed?{financialEvents:[]}: {})},{now,period:'all',timeZone:'America/Sao_Paulo'}),filters:{},statusLabel:labelStatus,typeLabel:()=> 'Entrega',sources:{},bikes:[],types:[],freshNote:'Dados locais',financialState,financialDiagnostic});
+const renderFinancialState=(financialState,confirmed=false,financialDiagnostic,filters={})=>View.render({report:Analytics.aggregate({orders:[],deliveries:[],...(confirmed?{financialEvents:[]}: {})},{now,period:'all',timeZone:'America/Sao_Paulo'}),filters:{mainView:'executive',executiveCategory:'finance',...filters},statusLabel:labelStatus,typeLabel:()=> 'Entrega',sources:{},bikes:[],types:[],freshNote:'Dados locais',financialState,financialDiagnostic});
 for(const [state,title] of [['loading','Carregando os registros financeiros'],['offline','Sem conexão para consultar pagamentos'],['NETWORK_ERROR','Falha de conexão com o servidor'],['permission-unavailable','Seu perfil não permite consultar pagamentos'],['session-required','Entre novamente para consultar pagamentos'],['FORBIDDEN','Consulta financeira não autorizada pelo servidor'],['MFA_REQUIRED','Confirme a segurança da sua conta'],['FINANCE_READ_FAILED','Não foi possível consultar os registros financeiros']]){
  const html=renderFinancialState(state);
  assert(html.includes(title),`financial state ${state} has a clear user-facing explanation`);
@@ -93,6 +93,13 @@ assert.match(confirmedEmpty,/Nenhum lançamento financeiro neste período/u);
 assert.doesNotMatch(confirmedEmpty,/Não foi possível consultar os registros financeiros/u);
 const financeDiagnosticHtml=renderFinancialState('FORBIDDEN',false,{stage:'http',httpStatus:403,errorCode:'FORBIDDEN'});
 assert.match(financeDiagnosticHtml,/data-finance-stage="http" data-finance-http-status="403" data-finance-error-code="FORBIDDEN"/u,'sanitized HTTP diagnostics identify a real server denial');
+const executiveFinance=financeDiagnosticHtml.slice(financeDiagnosticHtml.indexOf('data-report-executive-panel="finance"'),financeDiagnosticHtml.indexOf('data-report-executive-panel="drivers"'));
+assert.equal((executiveFinance.match(/Consulta financeira não autorizada pelo servidor/gu)||[]).length,1,
+  'executive financial panel presents one denial notice without repeating its title and explanation below');
+const operationalFinance=renderFinancialState('permission-unavailable',false,null,{mainView:'operational',operationalSection:'report-costs'});
+const costsPanel=operationalFinance.slice(operationalFinance.indexOf('data-report-operational-panel="report-costs"'),operationalFinance.indexOf('data-report-operational-panel="report-intelligence"'));
+assert.equal((costsPanel.match(/Seu perfil não permite consultar pagamentos/gu)||[]).length,1,
+  'detailed costs panel presents one permission notice instead of duplicating it in a status metric');
 const day=renderFor(1).html;
 const hourlyStart=day.indexOf('aria-label="Pedidos por hora"');
 assert(hourlyStart>=0);

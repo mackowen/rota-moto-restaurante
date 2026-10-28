@@ -277,6 +277,11 @@ async function main() {
     const ownerMembers = await call('/api/admin/memberships?limit=100', { cookie: sessionCookie });
     const ownerMember = ownerMembers.body.members.find(member => member.userId === accepted.body.userId);
     assert(ownerMember);
+    assert.equal(ownerMember.status, 'active', 'company membership stays active independently of an operational Driver association');
+    assert.equal(ownerMember.roleKey, 'owner', 'the first provisioned identity is a company owner');
+    assert.equal(ownerMember.driverId, null, 'owner identity is not a Motoboy Driver association by default');
+    assert(ownerMember.permissions.includes('sync.pull') && ownerMember.permissions.includes('sync.push'),
+      'sync permissions do not themselves imply a Motoboy Driver link');
     const selfChange = await call(`/api/admin/memberships/${ownerMember.membershipId}`, { method: 'PATCH', cookie: sessionCookie,
       csrf: session.body.csrfToken, body: { roleId: createdRole.body.id } });
     assert.equal(selfChange.status, 403, 'users cannot alter their own membership role');

@@ -160,7 +160,10 @@ assert.match(source, /normalize\('NFD'\)[\s\S]*?authorizedDriverStatuses\.has\(d
 assert.match(source, /\['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED'[\s\S]*?'OFFLINE','UNAVAILABLE','INDISPONIVEL','BUSY','OCUPADO','PAUSED','PAUSADO'\]/u,
   'Driver UI authorization status vocabulary stays aligned with the backend access allowlist');
 assert.match(source, /Convite pendente/u, 'membership invitation state is presented in plain language');
-assert.match(source, /Aguardando vínculo operacional/u, 'an activated identity without an operational Driver binding is clearly distinguished');
+assert.match(source, /Permissões de sincronização ativas; sem cadastro de motoboy vinculado/u, 'sync-enabled identities without a Driver link are distinguished from company membership');
+assert.match(source, /Cadastro de motoboy vinculado; estado não consultado pelo seu perfil/u, 'a linked Driver hidden by authorization is not presented as an absent company membership');
+assert.match(source, /Vínculo informado, mas cadastro de motoboy não localizado nesta empresa/u, 'an unresolved operational Driver reference is not collapsed into a generic pending label');
+assert.doesNotMatch(source, /Aguardando vínculo operacional/u, 'identity UI no longer implies that an owner company membership is an awaiting operational association');
 assert.match(appSource, /company-admin-team[\s\S]*?company-admin-drivers[\s\S]*?company-admin-integrations/u, 'team, drivers and integrations are first-class Ajustes categories');
 assert.match(source, /Acesso e funções de pessoas vinculadas à empresa/u, 'team page has its own heading and contextual description');
 assert.doesNotMatch(source, /data-admin-close|data-platform-close/u, 'administrative pages do not add redundant return-to-settings controls');

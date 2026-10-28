@@ -831,7 +831,16 @@
       const card = document.createElement('article'); card.className = 'rm-member';
       const title = document.createElement('strong'); title.textContent = member.email; card.append(title);
       const linkedDriver = driverRows.find(row => row.id === member.driverId);
-      const meta = document.createElement('span'); meta.textContent = `${member.roleName} · ${member.status === 'invited' ? (member.userId ? 'Aguardando ativação' : 'Convite pendente') : member.status === 'suspended' || member.status === 'revoked' || member.disabled ? 'Suspenso' : member.driverId ? (!canReadDrivers || !linkedDriver ? 'Vínculo a confirmar' : linkedDriver.record?.status === 'active' ? 'Ativo' : 'Suspenso') : member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push') ? 'Aguardando vínculo operacional' : 'Sem convite'}`; card.append(meta);
+      const memberStatus = member.status === 'invited' ? (member.userId ? 'Aguardando ativação' : 'Convite pendente')
+        : member.status === 'suspended' || member.status === 'revoked' || member.disabled ? 'Suspenso'
+          : member.driverId ? !canReadDrivers
+            ? 'Cadastro de motoboy vinculado; estado não consultado pelo seu perfil'
+            : !linkedDriver ? 'Vínculo informado, mas cadastro de motoboy não localizado nesta empresa'
+              : linkedDriver.record?.status === 'active' ? 'Motoboy vinculado · ativo' : 'Motoboy vinculado · inativo'
+            : member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push')
+              ? 'Permissões de sincronização ativas; sem cadastro de motoboy vinculado'
+              : 'Sem cadastro de motoboy vinculado';
+      const meta = document.createElement('span'); meta.textContent = `${member.roleName} · ${memberStatus}`; card.append(meta);
       if (member.userId !== current.userId) {
         const currentRole = roles.roles.find(role => role.id === member.roleId);
         const canReassignCurrent = currentRole?.permissions.every(permission => current.permissions.includes(permission)) ?? false;
