@@ -1,7 +1,7 @@
 'use strict';
 
 // Security regression against the isolated E2E database and runtime role.
-// Synthetic fixtures are manifested and retained; teardown never deletes rows.
+// Synthetic fixtures are manifested, isolated by generated IDs and removed at teardown.
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const { createE2eClients, assertConnectedIdentity } = require('./e2e-support/guards');
@@ -31,13 +31,40 @@ async function setTenant(client, id) {
   await client.query("SELECT set_config('app.tenant_id',$1,true)", [id]);
 }
 
+async function removeSyntheticTenant(client, index) {
+  const companyId = tenantIds[index], roleId = roleIds[index];
+  await transaction(client, async () => {
+    await setTenant(client, companyId);
+    const company = await client.query('SELECT name FROM rotamoto.companies WHERE id=$1 FOR UPDATE', [companyId]);
+    if (!company.rowCount) return;
+    const originalName = fixtureNames[index];
+    assert([originalName, `${originalName}_updated`].includes(company.rows[0].name),
+      'cleanup may remove only the uniquely named synthetic tenant created by this test');
+    const permissions = await client.query('DELETE FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2', [companyId, roleId]);
+    assert.equal(permissions.rowCount, 1, 'cleanup removes only the synthetic role permission');
+    const role = await client.query("DELETE FROM rotamoto.roles WHERE id=$1 AND company_id=$2 AND role_key='audit' AND display_name='Security fixture'", [roleId, companyId]);
+    assert.equal(role.rowCount, 1, 'cleanup removes only the synthetic role');
+    const removed = await client.query('DELETE FROM rotamoto.companies WHERE id=$1', [companyId]);
+    assert.equal(removed.rowCount, 1, 'cleanup removes only the synthetic company created by this test');
+  });
+  await transaction(client, async () => {
+    await setTenant(client, companyId);
+    const residual = await client.query(`SELECT
+      (SELECT count(*)::int FROM rotamoto.companies WHERE id=$1) AS companies,
+      (SELECT count(*)::int FROM rotamoto.roles WHERE id=$2 AND company_id=$1) AS roles,
+      (SELECT count(*)::int FROM rotamoto.role_permissions WHERE role_id=$2 AND company_id=$1) AS permissions`, [companyId, roleId]);
+    assert.deepEqual(residual.rows[0], { companies: 0, roles: 0, permissions: 0 }, 'synthetic tenant cleanup leaves no database rows');
+  });
+}
+
 async function main() {
   const created = [];
   let completed = false;
+  let cleanupComplete = true, cleanupError = null;
   const schemaOnly = process.env.ROTAMOTO_RLS_SCHEMA_ONLY === '1';
   const manifest = schemaOnly ? null : await createFixtureManifest({ campaign, evidence: [
     { kind: 'test', name: 'tenant-rls-isolation-e2e' },
-    { kind: 'retention', reason: 'Synthetic tenant rows and audit events are retained; destructive cleanup is prohibited.' }
+    { kind: 'cleanup', reason: 'Generated synthetic identifiers are verified absent before setup and removed by exact ID after tests.' }
   ] });
   if (manifest) await manifest.update({ status: 'RUNNING', tenants: tenantIds.map(id => ({ id, counts: { companies: 1, roles: 1, role_permissions: 1 } })),
     records: { companies: tenantIds, roles: roleIds, schema: 'rotamoto' } });
@@ -121,6 +148,11 @@ async function main() {
     }
 
     for (let index = 0; index < tenantIds.length; index += 1) {
+      const collision = await migrator.query(`SELECT
+        EXISTS(SELECT 1 FROM rotamoto.companies WHERE id=$1) AS company_exists,
+        EXISTS(SELECT 1 FROM rotamoto.roles WHERE id=$2) AS role_exists`, [tenantIds[index], roleIds[index]]);
+      assert.equal(collision.rows[0].company_exists || collision.rows[0].role_exists, false,
+        'generated fixture identifiers must be absent before insertion');
       await transaction(migrator, async () => {
         await setTenant(migrator, tenantIds[index]);
         await migrator.query('INSERT INTO rotamoto.companies(id,name,status) VALUES($1,$2,\'active\')',
@@ -131,6 +163,7 @@ async function main() {
           VALUES($1,$2,'orders.read',1)`, [tenantIds[index], roleIds[index]]);
       });
       created.push(index);
+      cleanupComplete = false;
     }
 
     await transaction(runtime, async () => {
@@ -181,16 +214,24 @@ async function main() {
         error => error.code === '42501');
     });
 
-    console.log('Tenant RLS E2E: PASS (55-table catalog through migration 0061, 40 forced-RLS tables, financial-event tenant policy, three explicit platform policies, two-tenant isolation and runtime/internal ACLs)');
     completed = true;
   } finally {
+    if (created.length && !schemaOnly) {
+      try {
+        for (const index of created) await removeSyntheticTenant(migrator, index);
+        cleanupComplete = true;
+      } catch (error) { cleanupError = error; }
+    }
     await Promise.all([runtime.end().catch(() => {}), migrator.end().catch(() => {})]);
-    if (manifest) await manifest.update({ status: created.length ? 'RETAINED' : 'FAILED', databaseCommitted: created.length > 0,
-      retentionReason: created.length ? 'Synthetic tenant rows and append-only audit records retained; no fixture cleanup is authorized.' : null,
-      evidence: [{ kind: 'test_result', result: completed ? 'PASS' : created.length ? 'FAILED_OR_INTERRUPTED' : 'NO_COMMIT' }],
-      lastError: completed || !created.length ? null : 'Runner failed after fixture commit; rows remain retained for inspection.',
-      counts: { companies: created.length, roles: created.length, role_permissions: created.length } });
+    if (manifest) await manifest.update({ status: completed && cleanupComplete ? 'COMPLETED' : cleanupError ? 'RETAINED' : 'FAILED',
+      databaseCommitted: Boolean(created.length && !cleanupComplete),
+      retentionReason: cleanupError ? 'Cleanup of an exact synthetic fixture failed; inspect the manifest before any manual action.' : null,
+      evidence: [{ kind: 'test_result', result: completed && cleanupComplete ? 'PASS_ROLLED_BACK' : cleanupError ? 'CLEANUP_FAILED' : 'FAILED_NO_RESIDUALS' }],
+      lastError: cleanupError ? 'Exact synthetic tenant cleanup failed; no automatic broader cleanup was attempted.' : null,
+      counts: { companies: cleanupComplete ? 0 : created.length, roles: cleanupComplete ? 0 : created.length, role_permissions: cleanupComplete ? 0 : created.length } });
+    if (cleanupError) throw cleanupError;
   }
+  if (completed && cleanupComplete && !schemaOnly) console.log('Tenant RLS E2E: PASS (55-table catalog through migration 0061, 40 forced-RLS tables, financial-event tenant policy, three explicit platform policies, two-tenant isolation and runtime/internal ACLs; synthetic fixtures removed and absence verified)');
 }
 
 main().catch(error => {

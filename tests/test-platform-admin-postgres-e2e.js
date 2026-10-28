@@ -51,7 +51,7 @@ async function main(){
    assert.equal(after.founder_user_id===before.founder_user_id&&after.active_grants===before.active_grants&&
     after.active_grant_matches_founder===before.active_grant_matches_founder&&after.admin_history===before.admin_history,true,
     'negative checks preserve the existing founder and global grant');
-   process.stdout.write('platform admin PostgreSQL E2E: PARTIAL — persistent founder preserved; unauthenticated global/financial denial PASS; positive MFA-authorized administration requires an authenticated session and was not impersonated\n');
+   process.stdout.write('platform admin PostgreSQL E2E: PARTIAL — persistent-founder safety and unauthenticated global/financial denial PASS; positive MFA-authenticated administration NOT EXECUTED (no legitimate session available)\n');
    return;
   }
   await client.query('BEGIN');begun=true;

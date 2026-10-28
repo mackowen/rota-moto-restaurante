@@ -648,7 +648,7 @@ async function main() {
       }
     }
 
-    console.log('identity HTTP API, session, CSRF, tenant/RLS, MFA recovery, permission, invite, rate and error tests: OK');
+    console.log(`identity HTTP API, session, CSRF, tenant/RLS, MFA recovery, permission, invite, rate and error tests: PASS; first-install bootstrap/idempotency branch: ${bootstrapState.founder_user_id === null ? 'PASS' : 'NOT EXECUTED (persistent founder preserved)'}`);
   } finally {
     await host.close();
     await client.query('ROLLBACK').catch(() => {});

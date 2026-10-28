@@ -26,7 +26,7 @@ async function main(){
    assert.equal(prior.rows[0].active_grants,1,'the existing founder remains the sole active global administrator');
    assert.equal(prior.rows[0].active_grant_matches_founder,true,'the active global grant belongs to the latched founder');
    assert.equal(prior.rows[0].installation_complete,true,'the persistent founder bootstrap remains complete');
-   process.stdout.write('integrated founder bootstrap service E2E: PARTIAL — founder preserved; first-bootstrap/idempotent-delivery branch requires an actually empty installation and was not simulated\n');
+   process.stdout.write('integrated founder bootstrap service E2E: NOT EXECUTED — first-bootstrap/idempotent-delivery branch requires an actually empty installation; persistent-founder safety preflight PASS and no state reset attempted\n');
    return;
   }
   if(prior.rows[0].active_grants!==0||prior.rows[0].installation_complete){
