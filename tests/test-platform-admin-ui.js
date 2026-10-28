@@ -2,6 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const source=fs.readFileSync(require('node:path').join(__dirname,'..','identity-ui.js'),'utf8');
+const appSource=fs.readFileSync(require('node:path').join(__dirname,'..','app.js'),'utf8');
 assert.match(source,/platformBoolean\(row,'email_verified','emailVerified'\)/u,'backend snake_case email verification is mapped explicitly');
 assert.match(source,/platformBoolean\(row,'platform_admin','platformAdmin'\)/u,'platform privilege status comes from the active admin relation');
 assert.match(source,/role_key.*protected/u,'owner protection follows the backend role key');
@@ -12,7 +13,34 @@ assert.match(source,/founder_claimed.*Registro de fundador existente/u,'founder 
 assert.match(source,/não comprova, por si só, qual usuário possui hoje o privilégio Super ADM Global/u,'founder latch does not imply current Super ADM membership');
 assert.match(source,/platform_admin_read_company_financial_summary|financial-summary/u,'financial read is tied to a selected company and explicit period');
 assert.match(source,/result\.companyId!==companyId/u,'financial totals reject a response for a different company');
+assert.match(source,/function renderPlatformFinancePanel\(box,companies\)/u,'finance query is rendered once per section rather than inside each company card');
+assert.doesNotMatch(source,/if\(kind==='finance'\)\{const form=document\.createElement\('form'\)/u,'company-card rendering no longer creates one financial form per company');
+assert.match(source,/platformFinanceRequests\.cancel\(\)/u,'changing financial context cancels and invalidates the previous result');
+assert.match(source,/platformFinanceRequests\.cancel\(\);form\.removeAttribute\('aria-busy'\)/u,'changing financial context ends the previous loading state immediately');
+assert.match(source,/select\.value!==companyId\|\|start\.value!==fromDate\|\|end\.value!==toDate/u,'financial response is ignored when its company or period is obsolete');
+assert.match(source,/platformAdminRequests\.begin\(\)/u,'switching admin sections cancels the prior section read through the shared request controller');
+assert.match(source,/if\(!card\.isConnected\|\|platformAdminPage\.querySelector\('\[data-platform-list\]\[aria-pressed="true"\]'\)\?\.dataset\.platformList!=='roles'\)return/u,'late role responses are discarded after leaving that section');
+assert.match(source,/finally\{if\(requestState\.isCurrent\(\)\)\{box\.setAttribute\('aria-busy','false'\);refresh\.disabled=false/u,'only the active request clears loading and reenables refresh');
 assert.match(source,/Estado da empresa atualizado e confirmado na lista/u,'company status feedback follows an explicit reread');
 assert.match(source,/Perfil protegido|essenciais deste perfil são protegidas/u,'protected profiles are visibly locked');
 assert.doesNotMatch(source,/\$\{row\.status\}|\$\{.*memberCount.*undefined/u,'raw status and undefined counters are not rendered');
+const css=fs.readFileSync(require('node:path').join(__dirname,'..','identity-ui.css'),'utf8');
+assert.match(css,/#rmPlatformAdminPage \.rm-platform-card\{[^}]*background:var\(--surface,[^}]*color:var\(--text-primary/u,'global admin cards explicitly use semantic surface and foreground tokens');
+assert.doesNotMatch(css,/--surface-muted|--surface-2/u,'global admin cards do not fall back to undefined light surfaces in dark mode');
+assert.match(css,/\.rm-platform-fact\{[^}]*background:var\(--surface-soft,var\(--surface,#fff\)\)/u,'internal fact cards use the existing theme-aware surface token');
+assert.match(css,/#rmPlatformAdminPage \.rm-admin-nav\{[^}]*display:flex/u,'global admin navigation is compact and responsive');
+assert.match(appSource,/BACKUP_ADMIN_NOT_CONFIGURED[\s\S]{0,180}não está conectada a esta API[\s\S]{0,120}não verifica se existem scripts ou cópias locais/u,'backup API configuration is distinguished from local Termux backup artifacts');
+assert.match(appSource,/data\.code==='BACKUP_ADMIN_NOT_CONFIGURED'[\s\S]{0,200}A exportação Local-First do aparelho é separada/u,'backup UI explains the independent local-first export without claiming local backups are absent');
 console.log('Super ADM interface DTO, permission, founder-state and financial scope contracts: PASS');
+async function testAsyncRequestState(){
+  const {createLatestRequestState}=require('../identity-request-state');
+  const sections=createLatestRequestState(),finance=createLatestRequestState();
+  let resolveOld,resolveCurrent;const oldValue=new Promise(resolve=>{resolveOld=resolve}),currentValue=new Promise(resolve=>{resolveCurrent=resolve});
+  const oldRequest=sections.begin(),currentRequest=sections.begin();assert.equal(oldRequest.signal.aborted,true,'section switch aborts previous request');
+  const committed=[];const commit=async(state,promise)=>{const value=await promise;if(state.isCurrent())committed.push(value)};
+  const oldCommit=commit(oldRequest,oldValue),currentCommit=commit(currentRequest,currentValue);resolveOld('Empresas antigas');resolveCurrent('Usuários atuais');await Promise.all([oldCommit,currentCommit]);assert.deepEqual(committed,['Usuários atuais'],'out-of-order section response cannot overwrite current section');
+  const financeRequest=finance.begin();finance.cancel();assert.equal(financeRequest.signal.aborted,true,'leaving financial context cancels the pending request');assert.equal(financeRequest.isCurrent(),false);
+  const nextFinance=finance.begin();assert.equal(nextFinance.isCurrent(),true,'new financial context is current after cancellation');
+  console.log('Super ADM async request cancellation/out-of-order contract: PASS');
+}
+testAsyncRequestState().catch(error=>{console.error(error);process.exitCode=1});
