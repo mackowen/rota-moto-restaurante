@@ -110,6 +110,9 @@ assert.doesNotMatch(source, /await syncAfterAuthentication\(\);setOpen\(false\)/
   'closing the login panel is not coupled to completion of the entire synchronization');
 assert.match(source, /document\.addEventListener\('rotamoto:settings-page',[\s\S]*?loadAdmin\(\)/u, 'each company settings page loads its server snapshot from the single navigation');
 assert.match(appSource, /settings-cards[\s\S]*?settings-card/u, 'all Ajustes categories render as selectable cards on mobile and desktop');
+assert.match(appSource,/identitySession\)cats\.push\(\['platform-admin',platformAdmin\?'Super ADM Global'/u,'authenticated server identity sees a clear global-admin status separate from company settings');
+assert.match(appSource,/Sem acesso de Super ADM Global[\s\S]*?administração empresarial não concede privilégios globais/u,'company ownership is not presented as global administration');
+assert.match(source,/<strong>Super ADM Global<\/strong><small>Administração global com MFA, escopo empresarial explícito e auditoria/u,'global admin console identifies its distinct platform scope');
 assert.match(appSource, /data-settings-back/u, 'each Ajustes category page has a clear return to the card grid');
 assert.match(appStyles, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/u, 'the mobile Ajustes card grid uses two columns when space permits');
 assert.doesNotMatch(source, /adminParent = app\?\.querySelector\('\.top-actions'\)/u, 'company administration is never injected into the top bar');

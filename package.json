@@ -65,7 +65,7 @@
     "test:backup-center": "node tests/test-backup-control.js && node tests/test-backup-remote-provider.js && node tests/test-backup-storage-providers.js && node tests/test-backup-admin-audit.js && node tests/test-backup-admin-http.js && node tests/test-backup-executor.js && node tests/test-backup-process-guard.js && node tests/test-backup-executor-health.js",
     "test:backup-disposable-postgres": "NODE_ENV=test ROTAMOTO_DISPOSABLE_CAMPAIGN=0228 node tests/test-backup-disposable-postgres.js",
     "test:platform-admin": "node tests/test-platform-admin-http.js",
-    "test:e2e-platform-admin": "NODE_ENV=test E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-platform-admin-postgres-e2e.js"
+    "test:e2e-platform-admin": "NODE_ENV=test E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-platform-admin-postgres-e2e.js && NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-integrated-founder-bootstrap-postgres.js && NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-integrated-founder-bootstrap-service-postgres.js"
   },
   "dependencies": {
     "@maplibre/maplibre-gl-leaflet": "^0.1.4",

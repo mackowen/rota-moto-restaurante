@@ -14,12 +14,41 @@ async function main(){
   async function rejected(sql,values,code){await client.query('SAVEPOINT expected_rejection');try{await assert.rejects(client.query(sql,values),error=>error.code===code)}finally{await client.query('ROLLBACK TO SAVEPOINT expected_rejection');await client.query('RELEASE SAVEPOINT expected_rejection')}}
   await rejected('SELECT rotamoto.platform_admin_list_companies()',[], '42501');
   const id='02550000-0000-4000-8000-000000000001',email='campaign0255-founder-fixture@example.invalid';
-  await client.query('INSERT INTO rotamoto.users(id,email,email_verified_at) VALUES($1,$2,now())',[id,email]);
+  const company='02550000-0000-4000-8000-000000000010',role='02550000-0000-4000-8000-000000000011',membership='02550000-0000-4000-8000-000000000012';
+  const delegatedRole='02550000-0000-4000-8000-000000000013';
+  const request=Buffer.alloc(32,0x25);
+  await client.query("UPDATE rotamoto.installation_bootstrap SET completed_at=now(),request_digest=$1 WHERE singleton=true",[request]);
+  await client.query("SELECT set_config('app.tenant_id',$1,true)",[company]);
+  await client.query("INSERT INTO rotamoto.companies(id,name,status) VALUES($1,'Synthetic founder company','active')",[company]);
+  await client.query("INSERT INTO rotamoto.roles(id,company_id,role_key,display_name) VALUES($1,$2,'owner','Proprietário')",[role,company]);
+  await client.query("INSERT INTO rotamoto.roles(id,company_id,role_key,display_name) VALUES($1,$2,'finance_reader','Leitura financeira')",[delegatedRole,company]);
+  await client.query("INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version) VALUES($1,$2,'orders.read',1)",[company,delegatedRole]);
+  await client.query("INSERT INTO rotamoto.users(id,email,email_verified_at) VALUES($1,$2,now())",[id,email]);
+  await client.query("INSERT INTO rotamoto.memberships(id,company_id,user_id,role_id,status,activated_at) VALUES($1,$2,$3,$4,'active',now())",[membership,company,id,role]);
+  await client.query("INSERT INTO rotamoto.provisioning_requests(idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES($1,$2,$3,$4,'sent')",[request,Buffer.alloc(32,0x26),company,id]);
   let grant=await client.query('SELECT rotamoto.platform_admin_bootstrap_founder($1)::text AS id',[email]);assert.equal(grant.rows[0].id,id);
   grant=await client.query('SELECT rotamoto.platform_admin_bootstrap_founder($1)::text AS id',[email]);assert.equal(grant.rows[0].id,id,'same founder bootstrap is idempotent');
   await client.query("INSERT INTO rotamoto.users(id,email,email_verified_at) VALUES('02550000-0000-4000-8000-000000000002','campaign0255-second-founder@example.invalid',now())");
-  await rejected("SELECT rotamoto.platform_admin_bootstrap_founder('campaign0255-second-founder@example.invalid')",[], '55000');
+  await rejected("SELECT rotamoto.platform_admin_bootstrap_founder('campaign0255-second-founder@example.invalid')",[], '42501');
   await client.query("SELECT set_config('app.platform_admin_user_id',$1,true)",[id]);
+  const settings=await client.query('SELECT rotamoto.platform_admin_get_safe_settings() AS item');
+  assert.equal(settings.rows[0].item.platform_admin_mfa_required,true,'platform configuration reports the MFA policy without exposing deployment secrets');
+  assert.equal(settings.rows[0].item.tenant_isolation,'company_scoped');
+  const roleList=await client.query('SELECT rotamoto.platform_admin_list_company_roles($1) AS items',[company]);
+  assert.equal(roleList.rows[0].items.length,2);
+  assert.equal(roleList.rows[0].items.find(item=>item.role_key==='owner').protected,true,'owner role is marked as protected');
+  await rejected('SELECT rotamoto.platform_admin_set_company_role_permissions($1,$2,$3,$4)',
+    [company,role,['orders.read'],'platform_policy'],'42501');
+  const assigned=await client.query('SELECT rotamoto.platform_admin_set_company_role_permissions($1,$2,$3,$4) AS item',
+    [company,delegatedRole,['finance.read','finance.manage'],'platform_policy']);
+  assert.deepEqual(assigned.rows[0].item.permissions,['finance.read','finance.manage'],'global admin can delegate finance grants only to an explicitly selected non-owner role');
+  await rejected('SELECT rotamoto.platform_admin_set_company_role_permissions($1,$2,$3,$4)',
+    [company,delegatedRole,['finance.manage'],'platform_policy'],'22023');
+  await rejected('SELECT rotamoto.platform_admin_set_company_role_permissions($1,$2,$3,$4)',
+    [company,delegatedRole,['finance.read'],null],'22023');
+  const financial=await client.query("SELECT rotamoto.platform_admin_read_company_financial_summary($1,'2026-10-01T00:00:00Z','2026-10-29T00:00:00Z') AS item",[company]);
+  assert.equal(financial.rows[0].item.scope,'aggregate_only');assert.equal(financial.rows[0].item.bank_settlement_verified,false);
+  await rejected("SELECT rotamoto.platform_admin_read_company_financial_summary($1,'2026-10-01T00:00:00Z','2027-10-03T00:00:00Z')",[company],'22023');
   const disabled=await client.query("SELECT rotamoto.platform_admin_set_user_disabled('02550000-0000-4000-8000-000000000002',true,'security_review') AS item");
   assert.equal(disabled.rows[0].item.disabled,true,'an authenticated global actor can disable a different user through the audited function');
   await rejected("SELECT rotamoto.platform_admin_set_user_disabled($1,true,'security_review')",[id],'42501');

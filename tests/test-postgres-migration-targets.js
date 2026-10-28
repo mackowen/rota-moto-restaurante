@@ -59,7 +59,7 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.deepEqual(migrations.slice(-14).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update','0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference','0055_financial_reference_uniqueness'], 'financial ledger migrations append after immutable identity migrations');
+assert.deepEqual(migrations.slice(-20).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update','0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference','0055_financial_reference_uniqueness','0056_integrated_founder_bootstrap','0057_founder_bootstrap_proof_guard','0058_bootstrap_founder_guard_alignment','0059_platform_admin_scoped_company_controls','0060_platform_admin_permission_reason_guard','0061_platform_admin_permission_reason_null_guard'], 'founder integration appends without rewriting the migration ledger');
 const financeMigration=migrations.find(migration=>migration.id==='0052_financial_ledger');
 assert.match(financeMigration.up,/CREATE TABLE rotamoto\.financial_events/u);
 assert.match(financeMigration.up,/ENABLE ROW LEVEL SECURITY[\s\S]*FORCE ROW LEVEL SECURITY[\s\S]*current_tenant_id/u);
@@ -104,6 +104,14 @@ assert.match(migration0048.down,/rollback blocked/u);
 const migration0049=migrations.find(migration=>migration.id==='0049_platform_administration_hardening');
 assert.match(migration0049.up,/actor_kind,action,resource_type/u);
 assert.match(migration0049.down,/rollback 0049 blocked/u);
+const migration0056=migrations.find(migration=>migration.id==='0056_integrated_founder_bootstrap');
+assert.ok(migration0056,'founder bootstrap integration is additive and does not rewrite prior migrations');
+assert.match(migration0056.up,/platform_admin_complete_initial_bootstrap/u);
+assert.match(migration0056.up,/consumed_at IS NOT NULL/u,'global bootstrap grant requires consumed operator authorization');
+assert.match(migration0056.up,/provisioning_requests/u,'global bootstrap grant is tied to the original owner provisioning request');
+assert.match(migration0056.up,/founder identity is not provable from the original bootstrap record/u,'legacy regularization fails closed without provenance');
+assert.match(migration0056.up,/REVOKE ALL ON FUNCTION rotamoto\.platform_admin_complete_initial_bootstrap[\s\S]*?GRANT EXECUTE[\s\S]*?TO rotamoto_app/u);
+assert.match(migration0056.down,/rollback blocked/u,'founder-grant semantics cannot be rolled back automatically');
 assert.equal(checksumMatches(migration0048,'ac8d0896daa6b5b75b98c15c79d2ade03943d0f6e5cfc93525d5d026d745e547'),true,
   'the original 0048 content matches its recorded E2E digest');
 assert.equal(checksumMatches(migration0048,'0'.repeat(64)),false,'unknown checksum changes remain rejected');

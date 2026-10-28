@@ -6,9 +6,9 @@ const {Pool}=require('pg');
 
 function resolveTarget(env=process.env){
  let value,database;
- if(env.NODE_ENV==='test'&&env.ROTAMOTO_E2E_CAMPAIGN==='0255'){
+ if(env.NODE_ENV==='test'&&env.ROTAMOTO_E2E_CAMPAIGN==='0304Q'){
   value=env.E2E_MIGRATOR_DATABASE_URL;database='rotamoto_e2e';
- }else if(env.NODE_ENV==='production'&&env.ROTAMOTO_PLATFORM_FOUNDER_BOOTSTRAP==='0255'&&env.ROTAMOTO_PLATFORM_CONFIRM_DATABASE==='rotamoto'){
+ }else if(env.NODE_ENV==='production'&&env.ROTAMOTO_PLATFORM_FOUNDER_BOOTSTRAP==='0304Q'&&env.ROTAMOTO_PLATFORM_CONFIRM_DATABASE==='rotamoto'){
   value=env.MIGRATOR_DATABASE_URL;database='rotamoto';
  }else throw new Error('Bootstrap fundador exige contexto explícito de E2E ou autorização operacional de produção.');
  let parsed;try{parsed=new URL(value)}catch(_){throw new Error('URL local do operador inválida.')}

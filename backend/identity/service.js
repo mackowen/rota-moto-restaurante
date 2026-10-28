@@ -232,6 +232,8 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
             (idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES ($1,$2,$3,$4,'pending')`,
           [keyDigest, requestDigest, companyId, userId]);
         }
+        if (bootstrapCapabilityDigest) await client.query(`SELECT rotamoto.platform_admin_complete_initial_bootstrap($1,$2,$3,$4)`,
+          [userId, companyId, keyDigest, bootstrapCapabilityDigest]);
         if (bootstrapCapabilityDigest) await client.query(`UPDATE rotamoto.installation_bootstrap
           SET completed_at=coalesce(completed_at,now()),request_digest=coalesce(request_digest,$1)
           WHERE singleton=true`, [keyDigest]);

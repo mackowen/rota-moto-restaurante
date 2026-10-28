@@ -15,10 +15,17 @@ function createPlatformAdminHttpHandler({identityService,allowedOrigin=[],logger
    const companyList=url.pathname==='/api/platform-admin/companies'&&req.method==='GET';
    const userList=url.pathname==='/api/platform-admin/users'&&req.method==='GET';
    const membershipList=url.pathname==='/api/platform-admin/memberships'&&req.method==='GET';
+   const safeSettings=url.pathname==='/api/platform-admin/settings'&&req.method==='GET';
+   const companyRoles=/^\/api\/platform-admin\/companies\/([0-9a-f-]{36})\/roles$/iu.exec(url.pathname);
+   const companyRolePermissions=/^\/api\/platform-admin\/companies\/([0-9a-f-]{36})\/roles\/([0-9a-f-]{36})\/permissions$/iu.exec(url.pathname);
+   const financialSummary=/^\/api\/platform-admin\/companies\/([0-9a-f-]{36})\/financial-summary$/iu.exec(url.pathname);
    const companyChange=/^\/api\/platform-admin\/companies\/([0-9a-f-]{36})$/iu.exec(url.pathname);
    const userChange=/^\/api\/platform-admin\/users\/([0-9a-f-]{36})$/iu.exec(url.pathname);
-   if(!companyList&&!userList&&!membershipList&&!companyChange&&!userChange){status=404;code='NOT_FOUND';throw Object.assign(new Error(),{code});}
-   const method=(companyList||userList||membershipList)?'GET':'PATCH';if(req.method!==method){status=405;code='METHOD_NOT_ALLOWED';throw Object.assign(new Error(),{code});}
+   const getFinancial=Boolean(financialSummary);
+   const getRolePermissions=Boolean(companyRoles);
+   const patchRolePermissions=Boolean(companyRolePermissions);
+   if(!companyList&&!userList&&!membershipList&&!safeSettings&&!companyRoles&&!companyRolePermissions&&!financialSummary&&!companyChange&&!userChange){status=404;code='NOT_FOUND';throw Object.assign(new Error(),{code});}
+   const method=(companyList||userList||membershipList||safeSettings||companyRoles||financialSummary)?'GET':'PATCH';if(req.method!==method){status=405;code='METHOD_NOT_ALLOWED';throw Object.assign(new Error(),{code});}
    const rate=rateLimiter.consume(`${req.clientIp||req.socket.remoteAddress||'unknown'}:${url.pathname}`);if(!rate.allowed){status=429;code='RATE_LIMITED';throw Object.assign(new Error(),{code})}
    const parts=String(req.headers.cookie||'').split(';').map(v=>v.trim()).filter(v=>v.startsWith(COOKIE));const token=parts.length===1?parts[0].slice(COOKIE.length):'';
    if(!/^[A-Za-z0-9_-]{43}$/u.test(token)){status=401;code='UNAUTHENTICATED';throw Object.assign(new Error(),{code});}
@@ -42,12 +49,16 @@ function createPlatformAdminHttpHandler({identityService,allowedOrigin=[],logger
     if(companyList)return (await client.query('SELECT rotamoto.platform_admin_list_companies() AS items')).rows[0].items;
     if(userList)return (await client.query('SELECT rotamoto.platform_admin_list_users() AS items')).rows[0].items;
     if(membershipList)return (await client.query('SELECT rotamoto.platform_admin_list_memberships() AS items')).rows[0].items;
+    if(safeSettings)return (await client.query('SELECT rotamoto.platform_admin_get_safe_settings() AS item')).rows[0].item;
+    if(getRolePermissions){if(!UUID.test(companyRoles[1])){status=400;code='INVALID_INPUT';throw Object.assign(new Error(),{code});}return (await client.query('SELECT rotamoto.platform_admin_list_company_roles($1) AS items',[companyRoles[1]])).rows[0].items}
+    if(getFinancial){if(!UUID.test(financialSummary[1])){status=400;code='INVALID_INPUT';throw Object.assign(new Error(),{code})}const start=url.searchParams.get('from'),end=url.searchParams.get('to');const startDate=new Date(start||''),endDate=new Date(end||'');if(!start||!end||!Number.isFinite(startDate.getTime())||!Number.isFinite(endDate.getTime())||url.searchParams.size!==2){status=400;code='INVALID_INPUT';throw Object.assign(new Error(),{code})}return (await client.query('SELECT rotamoto.platform_admin_read_company_financial_summary($1,$2::timestamptz,$3::timestamptz) AS item',[financialSummary[1],startDate.toISOString(),endDate.toISOString()])).rows[0].item}
     if(companyChange){if(!UUID.test(companyChange[1])||Object.keys(body).sort().join(',')!=='reason,status'||!['active','suspended'].includes(body.status)||!['business_review','security_review','owner_request'].includes(body.reason)){status=400;code='INVALID_INPUT';throw Object.assign(new Error(),{code})}return (await client.query('SELECT rotamoto.platform_admin_set_company_status($1,$2,$3) AS item',[companyChange[1],body.status,body.reason])).rows[0].item}
+    if(patchRolePermissions){if(!UUID.test(companyRolePermissions[1])||!UUID.test(companyRolePermissions[2])||Object.keys(body).sort().join(',')!=='permissionKeys,reason'||!Array.isArray(body.permissionKeys)||body.permissionKeys.some(value=>typeof value!=='string')||!['owner_request','security_review','platform_policy'].includes(body.reason)){status=400;code='INVALID_INPUT';throw Object.assign(new Error(),{code})}return (await client.query('SELECT rotamoto.platform_admin_set_company_role_permissions($1,$2,$3::text[],$4) AS item',[companyRolePermissions[1],companyRolePermissions[2],body.permissionKeys,body.reason])).rows[0].item}
     if(!UUID.test(userChange[1])||Object.keys(body).sort().join(',')!=='disabled,reason'||typeof body.disabled!=='boolean'||!['security_review','owner_request'].includes(body.reason)){status=400;code='INVALID_INPUT';throw Object.assign(new Error(),{code})}
     return (await client.query('SELECT rotamoto.platform_admin_set_user_disabled($1,$2,$3) AS item',[userChange[1],body.disabled,body.reason])).rows[0].item;
    });
    status=200;code='OK';send(res,status,{items:Array.isArray(result)?result:undefined,item:Array.isArray(result)?undefined:result,requestId});return true;
-  }catch(error){code=error?.code||code;if(!status||status===500){status=code==='UNAUTHENTICATED'?401:code==='FORBIDDEN'||code==='MFA_REQUIRED'||code==='CSRF_INVALID'?403:code==='NOT_FOUND'?404:code==='METHOD_NOT_ALLOWED'?405:code==='INVALID_INPUT'?400:500}try{logger({event:'platform_admin_request',requestId,method:req.method,path:url.pathname,status,errorCode:code})}catch(_){}send(res,status,{error:{code,message:status>=500?'Serviço administrativo indisponível.':'A solicitação não foi autorizada ou não pôde ser concluída.'},requestId});return true}
+  }catch(error){code=error?.code||code;if(!status||status===500){status=code==='UNAUTHENTICATED'?401:code==='FORBIDDEN'||code==='42501'||code==='MFA_REQUIRED'||code==='CSRF_INVALID'?403:code==='NOT_FOUND'||code==='P0002'?404:code==='METHOD_NOT_ALLOWED'?405:code==='INVALID_INPUT'||code==='22023'?400:code==='55000'?409:500}try{logger({event:'platform_admin_request',requestId,method:req.method,path:url.pathname,status,errorCode:code})}catch(_){}send(res,status,{error:{code,message:status>=500?'Serviço administrativo indisponível.':'A solicitação não foi autorizada ou não pôde ser concluída.'},requestId});return true}
  }
 }
 module.exports={createPlatformAdminHttpHandler};
