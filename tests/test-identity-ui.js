@@ -190,7 +190,7 @@ assert.match(source, /Gerenciar operações financeiras da empresa/u, 'financial
 assert.match(source, /roles\/owner\/restore-finance/u, 'only the active owner receives an explicit tenant-scoped recovery action for missing finance permissions');
 assert.match(source, /Perfil de proprietário protegido contra edição/u, 'essential owner permissions remain protected from generic role edits');
 assert.match(source, /Atualizar situação no RotaMoto/u, 'provider state refresh is distinct from an external connection test');
-assert.match(source, /window\.confirm\('Desconectar esta loja do RotaMoto/u, 'local provider disconnection requires explicit confirmation and explains portal authorization remains separate');
+assert.match(source, /RotaMotoDialog\.confirm\(\{title:'Desconectar loja\?',message:'O recebimento de pedidos será interrompido\. Esta ação não revoga a autorização no portal da plataforma\.'/u, 'provider disconnection uses the accessible custom confirmation and keeps the portal authorization boundary explicit');
 assert.match(styles, /\.rm-provider-nav/u, 'provider navigation remains touch friendly and horizontally scrollable');
 assert.match(source, /sections\.get\('drivers'\)[\s\S]*?driverMembers/u, 'driver links have a dedicated administration page');
 assert.match(source, /rotamoto:settings-page/u, 'company administration is reached through the existing settings navigation');

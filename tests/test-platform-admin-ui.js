@@ -1,0 +1,18 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const source=fs.readFileSync(require('node:path').join(__dirname,'..','identity-ui.js'),'utf8');
+assert.match(source,/platformBoolean\(row,'email_verified','emailVerified'\)/u,'backend snake_case email verification is mapped explicitly');
+assert.match(source,/platformBoolean\(row,'platform_admin','platformAdmin'\)/u,'platform privilege status comes from the active admin relation');
+assert.match(source,/role_key.*protected/u,'owner protection follows the backend role key');
+assert.match(source,/permissions\.some\(key=>!keys\.has\(key\)\)/u,'a grant missing from the catalog fails closed');
+assert.match(source,/permissionGroups=new Map\(\)/u,'permissions are organized into functional domains');
+assert.match(source,/permissões herdadas ou temporárias da sessão não são fornecidas/u,'unknown effective/inherited grants are not fabricated');
+assert.match(source,/founder_claimed.*Registro de fundador existente/u,'founder bootstrap latch is displayed separately from current account privilege');
+assert.match(source,/não comprova, por si só, qual usuário possui hoje o privilégio Super ADM Global/u,'founder latch does not imply current Super ADM membership');
+assert.match(source,/platform_admin_read_company_financial_summary|financial-summary/u,'financial read is tied to a selected company and explicit period');
+assert.match(source,/result\.companyId!==companyId/u,'financial totals reject a response for a different company');
+assert.match(source,/Estado da empresa atualizado e confirmado na lista/u,'company status feedback follows an explicit reread');
+assert.match(source,/Perfil protegido|essenciais deste perfil são protegidas/u,'protected profiles are visibly locked');
+assert.doesNotMatch(source,/\$\{row\.status\}|\$\{.*memberCount.*undefined/u,'raw status and undefined counters are not rendered');
+console.log('Super ADM interface DTO, permission, founder-state and financial scope contracts: PASS');
