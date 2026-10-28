@@ -172,6 +172,11 @@ assert.match(source, /A atualização não foi concluída\. Tente novamente ou p
 assert.match(source, /summary\.textContent='Código para suporte'/u, 'technical provider error identifiers stay in an optional disclosure');
 assert.doesNotMatch(source, /\$\{order\.lastErrorCode\?` \(\$\{order\.lastErrorCode\}\)`/u, 'raw provider error codes are not included in ordinary status text');
 assert.match(source, /function appendPermissionOptions\([\s\S]*groupNames[\s\S]*permission\.description/u, 'role permissions are grouped and described in plain language while retaining internal keys');
+assert.match(source, /finance: 'Financeiro'/u, 'financial permissions have a dedicated category in role settings');
+assert.match(source, /Consultar relatórios e registros financeiros da empresa/u, 'financial read access is described in restaurant language');
+assert.match(source, /Gerenciar operações financeiras da empresa/u, 'financial management access is described in restaurant language');
+assert.match(source, /roles\/owner\/restore-finance/u, 'only the active owner receives an explicit tenant-scoped recovery action for missing finance permissions');
+assert.match(source, /Perfil de proprietário protegido contra edição/u, 'essential owner permissions remain protected from generic role edits');
 assert.match(source, /Atualizar situação no RotaMoto/u, 'provider state refresh is distinct from an external connection test');
 assert.match(source, /window\.confirm\('Desconectar esta loja do RotaMoto/u, 'local provider disconnection requires explicit confirmation and explains portal authorization remains separate');
 assert.match(styles, /\.rm-provider-nav/u, 'provider navigation remains touch friendly and horizontally scrollable');

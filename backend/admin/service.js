@@ -30,6 +30,7 @@ function createAdminService({ repository }) {
     permissions: client => repository.permissions(client),
     createRole(client, principal, input) { return repository.createRole(client, principal, input); },
     updateRole(client, principal, roleId, input) { return repository.updateRole(client, principal, roleId, input); },
+    restoreOwnerFinancePermissions(client, principal) { return repository.restoreOwnerFinancePermissions(client, principal); },
     updateMembership(client, principal, membershipId, input) {
       return repository.updateMembership(client, principal, membershipId, input);
     },

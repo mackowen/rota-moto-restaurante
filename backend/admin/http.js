@@ -70,6 +70,7 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
           ? { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyTimeZone' }
           : ROUTES[url.pathname]; let match;
       if (!config && (match = /^\/api\/admin\/roles\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateRole', id: match[1] };
+      if (!config && url.pathname === '/api/admin/roles/owner/restore-finance') config = { method: 'POST', permission: 'company.manage', operation: 'restoreOwnerFinancePermissions' };
       if (!config && (match = /^\/api\/admin\/memberships\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateMembership', id: match[1] };
       if (!config && (match = /^\/api\/admin\/memberships\/([0-9a-f-]{36})\/driver$/iu.exec(url.pathname)))
         config = { method: req.method === 'DELETE' ? 'DELETE' : 'PUT', permission: 'company.manage',
@@ -136,6 +137,7 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
           case 'disableIntegrationAccount': exact(body,[]); return adminService.disableIntegrationAccount(client,principal,config.provider,config.id);
           case 'createRole': return adminService.createRole(client, principal, validateRole(body, true));
           case 'updateRole': return adminService.updateRole(client, principal, config.id, validateRole(body, false));
+          case 'restoreOwnerFinancePermissions': exact(body, []); return adminService.restoreOwnerFinancePermissions(client, principal);
           case 'updateMembership': return adminService.updateMembership(client, principal, config.id, validateMembership(body));
           case 'associateMembershipDriver': return adminService.associateMembershipDriver(client, principal, config.id, validateDriverLink(body));
           case 'disassociateMembershipDriver': return adminService.disassociateMembershipDriver(client, principal, config.id);
@@ -150,13 +152,15 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
         REVISION_CONFLICT: 409, UNAUTHENTICATED: 401, FORBIDDEN: 403, MFA_REQUIRED: 403,
         CSRF_INVALID: 403, ORIGIN_INVALID: 403, NOT_FOUND: 404, RATE_LIMITED: 429,
         PAYLOAD_TOO_LARGE: 413, UNSUPPORTED_MEDIA_TYPE: 415, DEPENDENCY_UNAVAILABLE: 503,
-        DRIVER_MEMBERSHIP_INELIGIBLE: 409, DRIVER_NOT_FOUND: 404, DRIVER_ALREADY_LINKED: 409, MEMBERSHIP_DRIVER_CONFLICT: 409 };
+        DRIVER_MEMBERSHIP_INELIGIBLE: 409, DRIVER_NOT_FOUND: 404, DRIVER_ALREADY_LINKED: 409, MEMBERSHIP_DRIVER_CONFLICT: 409,
+        FINANCE_PERMISSION_CATALOG_UNAVAILABLE: 409 };
       status = map[errorCode] || 500;
       const messages = { INVALID_INPUT: 'Dados inválidos.', INVALID_STATE_TRANSITION: 'Transição de conta inválida.',
         LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um owner ativo.', UNAUTHENTICATED: 'Sessão inválida ou expirada.',
         DRIVER_MEMBERSHIP_INELIGIBLE: 'A associação não está apta para sincronização Motoboy.',
         DRIVER_NOT_FOUND: 'Motorista canônico não encontrado nesta empresa.',
         DRIVER_ALREADY_LINKED: 'Este motorista já está vinculado a outra associação.',
+        FINANCE_PERMISSION_CATALOG_UNAVAILABLE: 'As permissões financeiras não estão disponíveis no catálogo desta empresa.',
         MEMBERSHIP_DRIVER_CONFLICT: 'Remova o vínculo atual antes de associar outro motorista.',
         FORBIDDEN: 'Operação não autorizada.', MFA_REQUIRED: 'Esta operação exige MFA verificado.',
         CSRF_INVALID: 'Validação da solicitação inválida.', ORIGIN_INVALID: 'Origem não permitida.',

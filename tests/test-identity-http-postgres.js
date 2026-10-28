@@ -227,23 +227,47 @@ async function main() {
     const ownerRole = roles.body.roles.find(role => role.key === 'owner');
     assert(ownerRole, 'owner role exists in the active tenant');
     const ownerPrincipal = await service.resolveSession(client, sessionCookie.slice(sessionCookie.indexOf('=') + 1));
+    await client.query(`DELETE FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2
+      AND permission_key=ANY($3::text[])`, [companyId, ownerRole.id, ['finance.read','finance.manage']]);
+    const ownerBeforeFinanceRestore = await call('/api/identity/session', { cookie: sessionCookie });
+    assert.equal(ownerBeforeFinanceRestore.body.permissions.includes('finance.read'), false, 'tenant owner does not inherit financial access from platform or owner label');
+    assert.equal(ownerBeforeFinanceRestore.body.platformAdmin, false, 'tenant owner is distinct from platform administration');
+    await assert.rejects(service.withAuthenticatedTenant(sessionCookie.slice(sessionCookie.indexOf('=') + 1), async () => true, 'finance.read'),
+      error => error.code === 'FORBIDDEN', 'finance.read requires an explicit tenant role grant');
     await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=NULL WHERE id=$1', [ownerPrincipal.session_id]);
     const pendingAdminRead=await call('/api/admin/roles',{cookie:sessionCookie});
     assert.equal(pendingAdminRead.status,403,'a stale session with configured MFA but no verified MFA marker cannot read protected administration data');
     const pendingAdminWrite=await call('/api/admin/roles',{method:'POST',cookie:sessionCookie,csrf:session.body.csrfToken,
       body:{key:'pending_mfa_write',name:'Pending MFA Write',permissions:['orders.read']}});
     assert.equal(pendingAdminWrite.status,403,'a stale session with no MFA marker cannot write protected administration data');
+    const restoreWhileMfaPending = await call('/api/admin/roles/owner/restore-finance', { method: 'POST', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: {} });
+    assert.equal(restoreWhileMfaPending.body.error.code, 'MFA_REQUIRED', 'financial permission restoration remains MFA-gated');
     const noProviderService = createIdentityService({ pool });
     await assert.rejects(noProviderService.inviteMembershipWithSession(sessionCookie.slice(sessionCookie.indexOf('=') + 1),
       session.body.csrfToken, { email: `mfa-gate-${crypto.randomUUID()}@example.invalid`, roleId: ownerRole.id }),
     error => error.code === 'MFA_REQUIRED', 'membership invitation cannot bypass session MFA when its provider is unavailable');
     await client.query('UPDATE rotamoto.sessions SET mfa_verified_at=now() WHERE id=$1', [ownerPrincipal.session_id]);
+    const restoreFinance = await call('/api/admin/roles/owner/restore-finance', { method: 'POST', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: {} });
+    assert.equal(restoreFinance.status, 200, 'active tenant owner can explicitly restore only its canonical finance permissions after MFA');
+    assert.deepEqual(restoreFinance.body.permissions, ['finance.manage','finance.read']);
+    assert.equal(restoreFinance.body.addedPermissionCount, 2);
+    assert.equal((await call('/api/admin/roles/owner/restore-finance', { method: 'POST', cookie: sessionCookie,
+      csrf: session.body.csrfToken, body: {} })).body.addedPermissionCount, 0, 'restoration is idempotent');
+    const ownerAfterFinanceRestore = await call('/api/identity/session', { cookie: sessionCookie });
+    assert.equal(ownerAfterFinanceRestore.body.permissions.includes('finance.read'), true);
+    assert.equal(ownerAfterFinanceRestore.body.permissions.includes('finance.manage'), true);
+    await service.withAuthenticatedTenant(sessionCookie.slice(sessionCookie.indexOf('=') + 1), async () => true, 'finance.read');
     const permissions = await call('/api/admin/permissions', { cookie: sessionCookie });
     assert.equal(permissions.status, 200);
     assert(permissions.body.permissions.some(permission => permission.key === 'orders.read'));
     const createdRole = await call('/api/admin/roles', { method: 'POST', cookie: sessionCookie, csrf: session.body.csrfToken,
       body: { key: 'qa_reader', name: 'Leitura QA', permissions: ['orders.read'] } });
     assert.equal(createdRole.status, 201);
+    await assert.rejects(createAdminRepository().restoreOwnerFinancePermissions(client,
+      { ...ownerPrincipal, role_id: createdRole.body.id }), error => error.code === 'FORBIDDEN',
+    'a non-owner role cannot use the owner-only finance restoration');
     assert.match(createdRole.headers.get('x-request-id'), /^[0-9a-f-]{36}$/iu, 'administrative responses carry a correlation ID');
     const ownerMembers = await call('/api/admin/memberships?limit=100', { cookie: sessionCookie });
     const ownerMember = ownerMembers.body.members.find(member => member.userId === accepted.body.userId);
@@ -255,6 +279,8 @@ async function main() {
     const systemRoleEdit = await call(`/api/admin/roles/${ownerRole.id}`, { method: 'PATCH', cookie: sessionCookie,
       csrf: session.body.csrfToken, body: { name: 'Owner', permissions: ['orders.read'] } });
     assert.equal(systemRoleEdit.status, 403, 'owner system role is immutable');
+    const restoreWithoutCsrf = await call('/api/admin/roles/owner/restore-finance', { method: 'POST', cookie: sessionCookie, body: {} });
+    assert.equal(restoreWithoutCsrf.body.error.code, 'CSRF_INVALID');
     const noAdminCsrf = await call('/api/admin/roles', { method: 'POST', cookie: sessionCookie,
       body: { key: 'no_csrf', name: 'Sem CSRF', permissions: [] } });
     assert.equal(noAdminCsrf.status, 403, 'administrative mutations require CSRF');

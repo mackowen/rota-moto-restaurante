@@ -556,8 +556,9 @@
   });
   function appendPermissionOptions(container, permissions, selectedKeys = []) {
     const groups = new Map();
-    const groupNames = { company: 'Empresa', members: 'Equipe', orders: 'Pedidos', deliveries: 'Entregas', driver: 'Entregas', integrations: 'Integrações', sync: 'Sincronização', backup: 'Cópias e recuperação', identity: 'Identidade e segurança' };
-    const descriptions = { 'sync.pull': 'Consultar alterações autorizadas desta empresa.', 'sync.push': 'Enviar alterações autorizadas deste dispositivo para a empresa.' };
+    const groupNames = { company: 'Empresa', members: 'Equipe', orders: 'Pedidos', deliveries: 'Entregas', driver: 'Entregas', integrations: 'Integrações', sync: 'Sincronização', finance: 'Financeiro', backup: 'Cópias e recuperação', identity: 'Identidade e segurança' };
+    const descriptions = { 'sync.pull': 'Consultar alterações autorizadas desta empresa.', 'sync.push': 'Enviar alterações autorizadas deste dispositivo para a empresa.',
+      'finance.read': 'Consultar relatórios e registros financeiros da empresa.', 'finance.manage': 'Gerenciar operações financeiras da empresa.' };
     for (const permission of permissions) {
       const key = String(permission.key || '');
       const category = key.split('.', 1)[0] || 'other';
@@ -781,7 +782,25 @@
       const card = document.createElement('article'); card.className = 'rm-member rm-role-card';
       const heading = document.createElement('strong'); heading.textContent = role.name; card.append(heading);
       if(role.description){const description=document.createElement('p');description.textContent=role.description;card.append(description)}
-      if (role.key === 'owner' || role.systemTemplate) { const note = document.createElement('span'); note.textContent = 'Perfil de sistema protegido.'; card.append(note); roleList.append(card); return; }
+      if (role.key === 'owner' || role.systemTemplate) {
+        const note = document.createElement('span'); note.textContent = 'Perfil de proprietário protegido contra edição para manter os acessos essenciais.'; card.append(note);
+        if (role.key === 'owner' && role.id === current.activeRoleId && current.permissions.includes('company.manage')) {
+          const financeKeys = ['finance.read', 'finance.manage'];
+          const missingFinance = financeKeys.filter(key => !role.permissions.includes(key));
+          if (missingFinance.length) {
+            const help = document.createElement('p'); help.textContent = 'Faltam acessos financeiros neste perfil. Você pode restaurar somente as permissões financeiras do proprietário desta empresa.'; card.append(help);
+            const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = 'Restaurar acessos financeiros do proprietário';
+            const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); card.append(restore, feedback);
+            restore.addEventListener('click', async () => {
+              if (!window.confirm('Adicionar ao perfil protegido desta empresa somente “Consultar relatórios e registros financeiros” e “Gerenciar operações financeiras”?')) return;
+              restore.disabled = true;
+              try { await request('/admin/roles/owner/restore-finance', { method: 'POST', body: JSON.stringify({}) }); feedback.textContent = 'Acessos financeiros restaurados. Atualizando a sessão…'; window.location.reload(); }
+              catch (error) { feedback.textContent = message(error); restore.disabled = false; }
+            });
+          } else { const complete = document.createElement('span'); complete.textContent = 'Acessos financeiros essenciais já estão configurados.'; card.append(complete); }
+        }
+        roleList.append(card); return;
+      }
       if (role.id === current.activeRoleId) { const note = document.createElement('span'); note.textContent = 'Perfil atualmente associado à sua sessão; não pode ser alterado por você.'; card.append(note); roleList.append(card); return; }
       if (!role.permissions.every(permission => current.permissions.includes(permission))) { const note = document.createElement('span'); note.textContent = 'Este perfil excede suas permissões; somente um perfil de nível suficiente pode alterá-lo.'; card.append(note); roleList.append(card); return; }
       const disclosure=document.createElement('details');disclosure.className='rm-admin-form-disclosure';const summary=document.createElement('summary');summary.textContent='Editar perfil';disclosure.append(summary);

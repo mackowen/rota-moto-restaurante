@@ -119,6 +119,23 @@ function createAdminRepository() {
     await writeAudit(client, principal, 'role.permissions_changed', 'role', roleId, { permissionCount: input.permissions.length });
     return { id: roleId, permissions: input.permissions };
   }
+  async function restoreOwnerFinancePermissions(client, principal) {
+    const owner = await client.query(`SELECT id FROM rotamoto.roles
+      WHERE company_id=$1 AND id=$2 AND role_key='owner' FOR UPDATE`, [principal.company_id, principal.role_id]);
+    if (!owner.rowCount) { const error = new Error('Somente o proprietário desta empresa pode restaurar estas permissões.'); error.code = 'FORBIDDEN'; throw error; }
+    const result = await client.query(`INSERT INTO rotamoto.role_permissions(company_id,role_id,permission_key,catalog_version)
+      SELECT $1,$2,p.permission_key,1 FROM rotamoto.permissions p
+      WHERE p.catalog_version=1 AND p.permission_key=ANY($3::text[])
+      ON CONFLICT (role_id,permission_key,catalog_version) DO NOTHING
+      RETURNING permission_key`, [principal.company_id, principal.role_id, ['finance.read','finance.manage']]);
+    const present = await client.query(`SELECT permission_key FROM rotamoto.role_permissions
+      WHERE company_id=$1 AND role_id=$2 AND catalog_version=1
+        AND permission_key=ANY($3::text[])`, [principal.company_id, principal.role_id, ['finance.read','finance.manage']]);
+    if (present.rowCount !== 2) { const error = new Error('Catálogo financeiro indisponível para esta empresa.'); error.code = 'FINANCE_PERMISSION_CATALOG_UNAVAILABLE'; throw error; }
+    await writeAudit(client, principal, 'owner.finance_permissions_restored', 'role', principal.role_id,
+      { addedPermissionCount: result.rowCount });
+    return { addedPermissionCount: result.rowCount, permissions: present.rows.map(row => row.permission_key).sort() };
+  }
   async function updateMembership(client, principal, membershipId, input) {
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))`, [principal.company_id]);
     const current = await client.query(`SELECT m.id::text,m.user_id::text,m.role_id::text,m.status,r.role_key,
@@ -365,7 +382,8 @@ function createAdminRepository() {
         AND status IN ('queued','leased','pending','unknown_outcome')`,[companyId,accountId]);
     return {account:{id:result.rows[0].id,status:result.rows[0].account_status,lastSyncAt:result.rows[0].last_sync_at}};
   }
-  return Object.freeze({ company, memberships, roles, integrations, disableIntegrationAccount, permissions, createRole, updateRole, updateMembership,
+  return Object.freeze({ company, memberships, roles, integrations, disableIntegrationAccount, permissions, createRole, updateRole,
+    restoreOwnerFinancePermissions, updateMembership,
     updateCompanyTimeZone, updateCompanyLocation, updateCompanyProfile, updateCompanyRouteGrouping, associateMembershipDriver, disassociateMembershipDriver });
 }
 
