@@ -132,11 +132,12 @@
   adminPage.id = 'rmCompanyAdminPage';
   adminPage.className = 'rm-company-admin-page';
   adminPage.hidden = true;
-  adminPage.setAttribute('aria-labelledby', 'rmCompanyAdminTitle');
-  adminPage.innerHTML = '<header><div><strong id="rmCompanyAdminTitle">Configurações da empresa</strong><small data-admin-page-context>Empresa ativa</small></div></header><p data-admin-load-status role="status" aria-live="polite"></p><div class="rm-company-admin-content"></div>';
+  adminPage.setAttribute('aria-label', 'Configurações da empresa');
+  adminPage.innerHTML = '<p data-admin-load-status role="status" aria-live="polite"></p><div class="rm-company-admin-content"></div>';
   host.append(adminPage);
   const platformAdminPage=document.createElement('section');platformAdminPage.id='rmPlatformAdminPage';platformAdminPage.className='rm-company-admin-page';platformAdminPage.hidden=true;
-  platformAdminPage.innerHTML='<header><div><strong>Super ADM Global</strong><small>Administração global com MFA, escopo empresarial explícito e auditoria</small></div></header><nav class="rm-admin-nav" aria-label="Administração global" aria-describedby="rmPlatformNavHint"><button type="button" aria-pressed="true" data-platform-list="companies">Empresas</button><button type="button" aria-pressed="false" data-platform-list="users">Usuários</button><button type="button" aria-pressed="false" data-platform-list="memberships">Vínculos</button><button type="button" aria-pressed="false" data-platform-list="roles">Perfis e permissões</button><button type="button" aria-pressed="false" data-platform-list="finance">Resumo financeiro</button><button type="button" aria-pressed="false" data-platform-list="settings">Configuração da plataforma</button></nav><p id="rmPlatformNavHint" class="rm-platform-nav-hint">No celular, deslize para acessar as seis seções.</p><p data-platform-error role="alert" aria-live="polite"></p><p data-platform-feedback role="status" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite" aria-busy="false"></div>';
+  platformAdminPage.setAttribute('aria-label', 'Administração global');
+  platformAdminPage.innerHTML='<nav class="rm-admin-nav" aria-label="Administração global" aria-describedby="rmPlatformNavHint"><button type="button" aria-pressed="true" data-platform-list="companies">Empresas</button><button type="button" aria-pressed="false" data-platform-list="users">Usuários</button><button type="button" aria-pressed="false" data-platform-list="memberships">Vínculos</button><button type="button" aria-pressed="false" data-platform-list="roles">Perfis e permissões</button><button type="button" aria-pressed="false" data-platform-list="finance">Resumo financeiro</button><button type="button" aria-pressed="false" data-platform-list="settings">Configuração da plataforma</button></nav><p id="rmPlatformNavHint" class="rm-platform-nav-hint">No celular, deslize para acessar as seis seções.</p><p data-platform-error role="alert" aria-live="polite"></p><p data-platform-feedback role="status" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite" aria-busy="false"></div>';
   host.append(platformAdminPage);
   let platformDisclosureSequence=0,platformFinanceCompanyId='';const platformAdminRequests=window.RotaMotoIdentityRequestState.createLatestRequestState(),platformFinanceRequests=window.RotaMotoIdentityRequestState.createLatestRequestState();
   function platformSchemaError(){return Object.assign(new Error('A resposta da administração está incompleta ou incompatível.'),{code:'INVALID_RESPONSE'})}
@@ -309,9 +310,11 @@
     }
     const company = $('[data-company-setup]',companyAdminSection), recovery = $('[data-mfa-recovery-admin]',companyAdminSection), adminError = $('[data-admin-error]',companyAdminSection), adminRefresh = $('[data-refresh-admin]',companyAdminSection);
     const invite = $('[data-invite]',companyAdminSection), members = $('[data-members]',companyAdminSection), memberNote = $('[data-members-note]',companyAdminSection), roles = $('[data-roles-list]',companyAdminSection), createRole = $('[data-create-role]',companyAdminSection), driverNote = $('[data-driver-access-note]',companyAdminSection), integrations = $('[data-integrations]',companyAdminSection);
-    const teamIntro=document.createElement('div');teamIntro.className='rm-admin-team-intro';teamIntro.innerHTML='<h2>Equipe e permissões</h2><p>Consulte quem tem acesso à empresa, acompanhe convites e defina funções com permissões limitadas ao seu próprio nível.</p>';sections.get('team').prepend(teamIntro);
+    const teamIntro=document.createElement('div');teamIntro.className='rm-admin-team-intro';teamIntro.innerHTML='<p>Consulte quem tem acesso à empresa, acompanhe convites e defina funções dentro do seu nível de autorização.</p><p data-team-feedback role="status" aria-live="polite"></p>';sections.get('team').prepend(teamIntro);
     for (const node of [adminError,adminRefresh,recovery]) if(node) sections.get('team').append(node);
     for (const node of [invite?.closest('details')||invite,members,memberNote,roles,createRole?.closest('details')||createRole]) if(node) sections.get('team').append(node);
+    if(invite)window.RotaMotoAdminFormDialog.create({source:invite.closest('details'),form:invite,title:'Convidar pessoa',description:'Envie um convite para criar ou associar a conta pelo email. Para liberar entregas, vincule depois a conta ativa ao cadastro operacional correto do motoboy.',triggerLabel:'Convidar pessoa',submitButton:invite.querySelector('[type="submit"]')});
+    if(createRole)window.RotaMotoAdminFormDialog.create({source:createRole.closest('details'),form:createRole,title:'Criar perfil',description:'Escolha um nome e somente as permissões que seu perfil pode delegar. O servidor valida e registra a alteração.',triggerLabel:'Criar perfil',submitButton:createRole.querySelector('[type="submit"]')});
     const driverMembers = document.createElement('div'); driverMembers.dataset.driverMembers=''; driverMembers.setAttribute('aria-live','polite');
     const driverIntro=document.createElement('p'); driverIntro.className='rm-driver-flow-note'; driverIntro.textContent='O cadastro do motorista é operacional e não cria uma conta. Para liberar o aplicativo, convide o endereço de email da pessoa, aguarde a ativação e vincule a conta ativa ao cadastro correto.'; sections.get('drivers').append(driverIntro);
     sections.get('drivers').append(driverMembers);
@@ -319,7 +322,7 @@
     if(integrations) sections.get('integrations').append(integrations);
     for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.setAttribute('aria-busy','true');const submit=form.querySelector('[type="submit"]');if(submit)submit.disabled=true;}
     companyAdminSection.remove();
-    function showAdminPage(id) { if(!sections.has(id))return;for(const [key,section] of sections)section.hidden=key!==id;adminPage.dataset.activePage=id;const title=adminPage.querySelector('#rmCompanyAdminTitle'),context=adminPage.querySelector('[data-admin-page-context]');title.textContent=({team:'Equipe e permissões',drivers:'Motoboys',integrations:'Integrações'})[id];context.textContent=({team:'Acesso e funções de pessoas vinculadas à empresa',drivers:'Cadastros e vínculos operacionais',integrations:'Estado informado pelos serviços do RotaMoto'})[id]; }
+    function showAdminPage(id) { if(!sections.has(id))return;for(const [key,section] of sections)section.hidden=key!==id;adminPage.dataset.activePage=id; }
     adminPage.showPage = showAdminPage;
     showAdminPage('team');
   }
@@ -476,7 +479,9 @@
       target?.focus();
     });
   }
-  function setBusy(form, busy) { form.setAttribute('aria-busy', String(busy)); form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); }
+  function setBusy(form, busy) { form.setAttribute('aria-busy', String(busy)); form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); if(form.id)document.querySelectorAll(`[form="${form.id}"]`).forEach(button=>{button.disabled=busy});const dialog=form.closest('dialog'); if(dialog)dialog.dataset.busy=String(busy); }
+  function markAdminFormSaved(form){form.dataset.dialogDirty='';const dialog=form.closest('dialog');if(dialog?.open)dialog.close()}
+
   function showSession(session) {
     current = session;
     offlineMode = false;
@@ -486,7 +491,10 @@
     const inviteForm = $('[data-invite]');
     const membersList = $('[data-members]');
     const membersNote = $('[data-members-note]');
-    if (inviteForm) inviteForm.hidden = !session?.permissions?.includes('members.invite');
+    const canInvite = Boolean(session?.permissions?.includes('members.invite'));
+    if (inviteForm) inviteForm.hidden = !canInvite;
+    const inviteTrigger = inviteForm?.closest('dialog')?.previousElementSibling;
+    if (inviteTrigger instanceof HTMLButtonElement) inviteTrigger.hidden = !canInvite;
     if (membersList) membersList.hidden = !session?.permissions?.includes('members.read');
     if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
     mfaLocked = Boolean(session && (session.mfaEnrollmentRequired || (session.mfaRequired && !session.mfaVerified)));
@@ -966,18 +974,19 @@
       }
       if (role.id === current.activeRoleId) { const note = document.createElement('span'); note.textContent = 'Perfil atualmente associado à sua sessão; não pode ser alterado por você.'; card.append(note); roleList.append(card); return; }
       if (!role.permissions.every(permission => current.permissions.includes(permission))) { const note = document.createElement('span'); note.textContent = 'Este perfil contém acessos acima dos seus; você pode consultar, mas somente um administrador com nível suficiente pode alterá-lo.'; card.append(note); appendPermissionOptions(card, permissionResult.permissions, role.permissions, current.permissions, { readOnly: true }); roleList.append(card); return; }
-      const disclosure=document.createElement('details');disclosure.className='rm-admin-form-disclosure';const summary=document.createElement('summary');summary.textContent='Editar perfil';disclosure.append(summary);
-      const nameLabel = document.createElement('label'); nameLabel.textContent = 'Nome do perfil'; const nameInput = document.createElement('input'); nameInput.name = 'name'; nameInput.required = true; nameInput.maxLength = 100; nameInput.value = role.name; nameLabel.append(nameInput); disclosure.append(nameLabel);
-      const descriptionLabel=document.createElement('label');descriptionLabel.textContent='Descrição';const descriptionInput=document.createElement('input');descriptionInput.name='description';descriptionInput.maxLength=240;descriptionInput.value=role.description||'';descriptionLabel.append(descriptionInput);disclosure.append(descriptionLabel);
+      const disclosure=document.createElement('div');disclosure.className='rm-admin-role-editor-source';
+      const nameLabel = document.createElement('label'); nameLabel.textContent = 'Nome do perfil'; const nameInput = document.createElement('input'); nameInput.name = 'name'; nameInput.required = true; nameInput.maxLength = 100; nameInput.value = role.name; nameLabel.append(nameInput);
+      const descriptionLabel=document.createElement('label');descriptionLabel.textContent='Descrição';const descriptionInput=document.createElement('input');descriptionInput.name='description';descriptionInput.maxLength=240;descriptionInput.value=role.description||'';descriptionLabel.append(descriptionInput);
       const fieldset = document.createElement('fieldset'); const legend = document.createElement('legend'); legend.textContent = 'Permissões'; fieldset.append(legend);
       const checks = document.createElement('div'); checks.className = 'rm-role-permissions';
       appendPermissionOptions(checks, permissionResult.permissions, role.permissions, grantablePermissionKeys);
-      fieldset.append(checks); disclosure.append(fieldset);
-      const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Salvar perfil'; const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); disclosure.append(save, feedback);card.append(disclosure);
-      save.addEventListener('click', async () => { if (!card.querySelector('input[name="name"]').reportValidity()) return; save.disabled = true;
+      fieldset.append(checks);const editForm=document.createElement('form');editForm.append(nameLabel,descriptionLabel,fieldset);
+      const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Salvar perfil'; const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); editForm.append(feedback);card.append(disclosure);
+      const dialog=window.RotaMotoAdminFormDialog.create({source:disclosure,form:editForm,title:`Editar perfil: ${role.name}`,description:'As permissões disponíveis são limitadas pelo seu nível de acesso e confirmadas pelo servidor.',triggerLabel:'Editar perfil',submitButton:save});
+      editForm.addEventListener('submit', async event => { event.preventDefault(); if (!nameInput.reportValidity()||save.disabled) return; setBusy(editForm,true);let persisted=false;
         const permissions = [...checks.querySelectorAll('input:checked')].map(input => input.value);
-        try { await request(`/admin/roles/${role.id}`, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value.trim(), description:descriptionInput.value.trim(), permissions }) }); feedback.textContent = 'Perfil atualizado.'; await loadAdmin(); }
-        catch (error) { feedback.textContent = message(error); } finally { save.disabled = false; }
+        try { await request(`/admin/roles/${encodeURIComponent(role.id)}`, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value.trim(), description:descriptionInput.value.trim(), permissions }) }); persisted=true;dialog.markSaved();await loadAdmin();const teamFeedback=adminPage.querySelector('[data-team-feedback]');if(teamFeedback)teamFeedback.textContent='Perfil atualizado e relido do servidor.'; }
+        catch (error) { if(persisted){const teamFeedback=adminPage.querySelector('[data-team-feedback]');if(teamFeedback)teamFeedback.textContent=`Perfil salvo, mas a lista não pôde ser atualizada: ${message(error)}`}else{feedback.textContent = message(error);feedback.hidden=false} } finally { setBusy(editForm,false); }
       }); roleList.append(card);
     });
     const list = $('[data-members]'); list.replaceChildren();
@@ -1116,13 +1125,17 @@
   });
   $('[data-company-setup]')?.addEventListener('input',event=>{if(event.target?.form===event.currentTarget)event.currentTarget.dataset.dirty='true'});
   $('[data-company-setup]')?.addEventListener('change',event=>{if(event.target?.form===event.currentTarget)event.currentTarget.dataset.dirty='true'});
-  $('[data-invite]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true);
-    try { await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: form.elements.email.value.trim(), roleId: form.elements.roleId.value }) }); form.reset(); $('[data-invite-result]').textContent = 'Convite enviado.'; await loadAdmin(); }
-    catch (error) { $('[data-invite-result]').textContent = message(error); } finally { setBusy(form, false); }
+  $('[data-invite]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()||form.dataset.submitting==='true') return; setBusy(form, true);form.dataset.submitting='true';
+    const result=$('[data-invite-result]'),feedback=adminPage.querySelector('[data-team-feedback]');let saved=false;
+    try { await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: form.elements.email.value.trim(), roleId: form.elements.roleId.value }) }); saved=true;form.reset();if(feedback)feedback.textContent='Convite enviado e confirmado pelo servidor.'; }
+    catch (error) { result.hidden=false;result.textContent = message(error); }
+    finally { setBusy(form, false);delete form.dataset.submitting;if(saved){result.textContent='';result.hidden=true;markAdminFormSaved(form);await loadAdmin().catch(error=>{if(feedback)feedback.textContent=`Convite enviado. A lista não pôde ser atualizada: ${message(error)}`})} }
   });
-  $('[data-create-role]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true);
-    try { const permissions = [...form.querySelectorAll('[data-permissions] input:checked')].map(input => input.value); await request('/admin/roles', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value.trim(), description:form.elements.description.value.trim(), permissions }) }); form.reset(); $('[data-role-result]').textContent = 'Perfil criado.'; await loadAdmin(); }
-    catch (error) { $('[data-role-result]').textContent = message(error); } finally { setBusy(form, false); }
+  $('[data-create-role]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()||form.dataset.submitting==='true') return; setBusy(form, true);form.dataset.submitting='true';
+    const result=$('[data-role-result]'),feedback=adminPage.querySelector('[data-team-feedback]');let saved=false;
+    try { const permissions = [...form.querySelectorAll('[data-permissions] input:checked')].map(input => input.value); await request('/admin/roles', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value.trim(), description:form.elements.description.value.trim(), permissions }) }); saved=true;form.reset();if(feedback)feedback.textContent='Perfil criado e confirmado pelo servidor.'; }
+    catch (error) { result.hidden=false;result.textContent = message(error); }
+    finally { setBusy(form, false);delete form.dataset.submitting;if(saved){result.textContent='';result.hidden=true;markAdminFormSaved(form);await loadAdmin().catch(error=>{if(feedback)feedback.textContent=`Perfil criado. A lista não pôde ser atualizada: ${message(error)}`})} }
   });
   window.addEventListener('online', async () => { if (!current && !offlineMode) { const session = await restore(); if (session) await syncAfterAuthentication(); } else if (current) await syncAfterAuthentication(); });
   document.addEventListener('visibilitychange', async () => {
