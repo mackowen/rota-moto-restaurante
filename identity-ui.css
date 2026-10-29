@@ -708,71 +708,87 @@ body[data-mfa-locked="true"] .rm-identity-panel {
   #rmIdentityRoot[data-gated="true"] .rm-identity-content > form[data-login] { gap: 9px; padding: 14px 18px; }
 }
 
-/* Console global: hierarchy shared with the company administration pages. */
-#rmPlatformAdminPage [data-platform-results]{display:grid;gap:10px;min-width:0}
-#rmPlatformAdminPage .rm-platform-card{display:grid;gap:9px;min-width:0;padding:12px clamp(12px,1.5vw,16px);border:1px solid var(--border-subtle,#dbe3ed);border-radius:var(--radius-card,16px);background:var(--surface,#fff);color:var(--text-primary,#172033)}
+/* Super ADM: compact hierarchy using the application semantic design tokens. */
+#rmPlatformAdminPage{--platform-gap:var(--space-3,12px);min-width:0}
+#rmPlatformAdminPage>header{gap:var(--space-3,12px);padding:8px 0 10px;border-bottom:0}
+#rmPlatformAdminPage>header strong{font-size:1.15rem;line-height:1.3;color:var(--text-primary,#172033)}
+#rmPlatformAdminPage>header small{margin-top:3px;color:var(--text-secondary,#475569);line-height:1.4}
+#rmPlatformAdminPage [data-platform-results]{display:grid;gap:var(--space-2,8px);min-width:0}
+#rmPlatformAdminPage .rm-platform-card{display:grid;gap:var(--space-2,8px);min-width:0;padding:var(--space-3,12px);border:1px solid var(--border-subtle,#dbe3ed);border-radius:var(--radius-lg,18px);background:var(--surface,#fff);color:var(--text-primary,#172033);box-shadow:var(--elevation-1,none)}
 #rmPlatformAdminPage .rm-platform-card :is(h2,h3,h4,h5,strong,legend){color:var(--text-primary,#172033)}
 #rmPlatformAdminPage .rm-platform-card :is(p,small,.rm-platform-help,.rm-platform-data-note,.rm-platform-protected-note){color:var(--text-secondary,#475569)}
-#rmPlatformAdminPage .rm-platform-fact{background:var(--surface-soft,#edf2f8);color:var(--text-primary,#172033)}
-#rmPlatformAdminPage .rm-platform-fact span,#rmPlatformAdminPage .rm-platform-permission small,#rmPlatformAdminPage .rm-platform-permission-group h5{color:var(--text-secondary,#475569)}
-#rmPlatformAdminPage .rm-admin-nav{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%;margin:8px 0 2px;scroll-behavior:smooth;scroll-snap-type:x proximity}
-#rmPlatformAdminPage .rm-admin-nav button{min-height:44px;flex:0 1 auto;padding:8px 12px;border-color:var(--border-subtle,#dbe3ed);border-radius:999px;background:var(--surface,#fff);color:var(--text-primary,#172033);font-size:.9rem;font-weight:650;white-space:nowrap}
-#rmPlatformAdminPage .rm-admin-nav button[aria-pressed="true"]{border-color:var(--accent,#2563eb);background:var(--accent-soft,#e8efff);color:var(--text-primary,#172033);outline:2px solid color-mix(in srgb,var(--accent,#2563eb) 35%,transparent);outline-offset:1px}
-#rmPlatformAdminPage [data-platform-refresh]{min-height:44px;margin:4px 0 12px;padding:8px 14px;border:1px solid var(--border-subtle,#dbe3ed);border-radius:10px;background:var(--surface,#fff);color:var(--text-primary,#172033)}
+#rmPlatformAdminPage .rm-admin-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));align-items:stretch;gap:var(--space-2,8px);width:100%;margin:4px 0 6px;min-width:0}
+#rmPlatformAdminPage .rm-admin-nav button{box-sizing:border-box;display:flex;min-width:0;min-height:var(--control-h,44px);align-items:center;justify-content:center;padding:8px 10px;border:1px solid var(--border-subtle,#dbe3ed);border-radius:var(--radius-md,12px);background:var(--surface,#fff);color:var(--text-primary,#172033);font:inherit;font-size:.9rem;font-weight:650;line-height:1.25;text-align:center;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+#rmPlatformAdminPage .rm-admin-nav button[aria-pressed="true"]{border-color:var(--accent,#2563eb);background:var(--accent-soft,#e8efff);outline:2px solid color-mix(in srgb,var(--accent,#2563eb) 30%,transparent);outline-offset:1px}
+#rmPlatformAdminPage .rm-admin-nav button:focus-visible,#rmPlatformAdminPage button:focus-visible,#rmPlatformAdminPage summary:focus-visible{outline:3px solid var(--accent,#2563eb);outline-offset:2px}
+#rmPlatformAdminPage .rm-platform-nav-hint{display:none;margin:0 0 3px;color:var(--text-secondary,#475569);font-size:.82rem}
+#rmPlatformAdminPage [data-platform-error]:empty,#rmPlatformAdminPage [data-platform-feedback]:empty{display:none}
+#rmPlatformAdminPage [data-platform-refresh]{display:inline-flex;min-height:var(--control-h,44px);align-items:center;justify-content:center;margin:2px 0 var(--space-2,8px);padding:8px 14px;border:1px solid var(--border-subtle,#dbe3ed);border-radius:var(--radius-md,12px);background:var(--surface,#fff);color:var(--text-primary,#172033);font:inherit;font-weight:650}
 #rmPlatformAdminPage [data-platform-refresh]:disabled{cursor:progress;opacity:.75}
-#rmPlatformAdminPage .rm-platform-loading,#rmPlatformAdminPage .rm-platform-empty{margin:0;padding:14px;border:1px solid var(--border-subtle,#dbe3ed);border-radius:12px;background:var(--surface-soft,#edf2f8);color:var(--text-primary,#172033)}
-#rmPlatformAdminPage .rm-platform-card-head,#rmPlatformAdminPage .rm-platform-role-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0}
-#rmPlatformAdminPage .rm-platform-card-head h3,#rmPlatformAdminPage .rm-platform-role-head h4{min-width:0;margin:0;overflow-wrap:anywhere}
-#rmPlatformAdminPage .rm-platform-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:7px}
+#rmPlatformAdminPage .rm-platform-loading,#rmPlatformAdminPage .rm-platform-empty{margin:0;padding:var(--space-3,12px);border:1px solid var(--border-subtle,#dbe3ed);border-radius:var(--radius-md,12px);background:var(--surface-soft,#edf2f8);color:var(--text-primary,#172033)}
+#rmPlatformAdminPage .rm-platform-card-head,#rmPlatformAdminPage .rm-platform-role-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2,8px);min-width:0}
+#rmPlatformAdminPage .rm-platform-card-head h3,#rmPlatformAdminPage .rm-platform-role-head h4{min-width:0;margin:0;overflow-wrap:anywhere;line-height:1.3}
+#rmPlatformAdminPage .rm-platform-card-head h3{font-size:1rem}
+#rmPlatformAdminPage .rm-platform-company-meta{margin:0;color:var(--text-secondary,#475569);font-size:.9rem;line-height:1.4}
+#rmPlatformAdminPage .rm-platform-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:var(--space-2,8px)}
 #rmPlatformAdminPage .rm-platform-settings-grid{display:grid;gap:0}
-#rmPlatformAdminPage .rm-platform-fact{display:grid;gap:3px;min-width:0;padding:8px 10px;border:1px solid var(--border-subtle,var(--line,#d8dee8));border-radius:10px;background:var(--surface-soft,var(--surface,#fff))}
-#rmPlatformAdminPage .rm-platform-settings-grid .rm-platform-fact{grid-template-columns:minmax(150px,.8fr) minmax(0,1.4fr);align-items:center;border-width:0 0 1px;border-radius:0;background:transparent}
+#rmPlatformAdminPage .rm-platform-fact{display:grid;gap:2px;min-width:0;padding:7px 0;border:0;border-bottom:1px solid var(--border-subtle,#dbe3ed);border-radius:0;background:transparent}
+#rmPlatformAdminPage .rm-platform-settings-grid .rm-platform-fact{grid-template-columns:minmax(125px,.8fr) minmax(0,1.2fr);align-items:center}
 #rmPlatformAdminPage .rm-platform-settings-grid .rm-platform-fact:last-child{border-bottom:0}
-#rmPlatformAdminPage .rm-platform-fact span,#rmPlatformAdminPage .rm-platform-permission small{color:var(--text-secondary,var(--muted,#596579));font-size:.82rem}
+#rmPlatformAdminPage .rm-platform-fact span,#rmPlatformAdminPage .rm-platform-permission-state{color:var(--text-secondary,#475569);font-size:.82rem}
 #rmPlatformAdminPage .rm-platform-fact strong{overflow-wrap:anywhere}
-#rmPlatformAdminPage .rm-platform-status{display:inline-flex;flex:0 0 auto;align-items:center;min-height:28px;padding:4px 9px;border:1px solid var(--border-subtle,#dbe3ed);border-radius:999px;background:var(--surface-soft,#edf2f8);color:var(--text-primary,#172033);font-size:.8rem;font-weight:700}
-#rmPlatformAdminPage .rm-platform-status--active{color:var(--success,#16734a);background:color-mix(in srgb,var(--success,#16734a) 10%,var(--surface,#fff))}
-#rmPlatformAdminPage .rm-platform-status--suspended{color:var(--danger,#a32130);background:color-mix(in srgb,var(--danger,#a32130) 9%,var(--surface,#fff))}
+#rmPlatformAdminPage .rm-platform-status{display:inline-flex;flex:0 0 auto;align-items:center;min-height:28px;padding:4px 9px;border:1px solid var(--border-subtle,#dbe3ed);border-radius:999px;background:var(--surface-soft,#edf2f8);color:var(--text-primary,#172033);font-size:.8rem;font-weight:700;line-height:1.25}
+#rmPlatformAdminPage .rm-platform-status--active{color:var(--success,#16734a);background:var(--success-soft,#e7f7ef)}
+#rmPlatformAdminPage .rm-platform-status--suspended{color:var(--danger,#a32130);background:var(--danger-soft,#fff0f0)}
 #rmPlatformAdminPage .rm-platform-status--protected{color:var(--accent,#2563eb)}
-#rmPlatformAdminPage .rm-platform-data-note,#rmPlatformAdminPage .rm-platform-protected-note{display:grid;gap:4px;margin:0;padding:7px 9px;border:1px solid var(--border-subtle,#dbe3ed);border-radius:9px;background:var(--surface-soft,#edf2f8);color:var(--text-secondary,#475569);line-height:1.4;font-size:.88rem}
-#rmPlatformAdminPage .rm-platform-technical-name{overflow-wrap:anywhere;font-size:.82rem;font-weight:500}
-#rmPlatformAdminPage .rm-platform-role-list{display:grid;gap:10px;margin-top:10px}
-#rmPlatformAdminPage .rm-platform-role{display:grid;gap:9px;min-width:0;padding:11px;border:1px solid var(--border-subtle,var(--line,#d8dee8));border-radius:12px;background:var(--surface,var(--card,#fff))}
-#rmPlatformAdminPage .rm-platform-help{margin:0;color:var(--text-secondary,var(--muted,#596579));line-height:1.5}
+#rmPlatformAdminPage .rm-platform-company-actions{display:flex;flex-wrap:wrap;gap:var(--space-2,8px);align-items:center}
+#rmPlatformAdminPage .rm-platform-company-actions>.btn,#rmPlatformAdminPage .rm-platform-company-toggle,#rmPlatformAdminPage .rm-platform-role-toggle{min-height:var(--control-h,44px);max-width:100%;padding:8px 12px;white-space:normal;text-align:left}
+#rmPlatformAdminPage .rm-platform-company-meta{display:flex;gap:6px;align-items:center}
+#rmPlatformAdminPage .rm-platform-company-technical{min-width:0;border-top:1px solid var(--border-subtle,#dbe3ed);padding-top:4px}
+#rmPlatformAdminPage .rm-platform-company-technical summary,#rmPlatformAdminPage .rm-platform-permission-description summary{min-height:40px;display:flex;align-items:center;width:max-content;max-width:100%;color:var(--text-secondary,#475569);font-size:.84rem;font-weight:600;cursor:pointer}
+#rmPlatformAdminPage .rm-platform-company-technical p{margin:2px 0;color:var(--text-secondary,#475569);font-size:.84rem}
+#rmPlatformAdminPage .rm-platform-technical-name{display:block;overflow-wrap:anywhere;color:var(--text-secondary,#475569);font-size:.8rem;font-weight:500}
+#rmPlatformAdminPage .rm-platform-role-list{display:grid;gap:var(--space-2,8px);min-width:0;margin-top:var(--space-2,8px)}
+#rmPlatformAdminPage .rm-platform-role{display:grid;gap:var(--space-2,8px);min-width:0;padding:10px;border:1px solid var(--border-subtle,#dbe3ed);border-radius:var(--radius-md,12px);background:var(--surface,#fff)}
+#rmPlatformAdminPage .rm-platform-help{margin:0;color:var(--text-secondary,#475569);font-size:.88rem;line-height:1.45}
 #rmPlatformAdminPage .rm-platform-permission-form fieldset{min-width:0;margin:0;padding:0;border:0}
-#rmPlatformAdminPage .rm-platform-permission-form legend{margin-bottom:10px;font-weight:700}
-#rmPlatformAdminPage .rm-platform-permission-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px}
-#rmPlatformAdminPage .rm-platform-permission{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:10px;border:1px solid var(--border-subtle,var(--line,#d8dee8));border-radius:11px}
-#rmPlatformAdminPage .rm-platform-permission input{flex:0 0 18px;width:18px;height:18px;margin:2px 0 0;accent-color:var(--accent,#2563eb)}
-#rmPlatformAdminPage .rm-platform-permission-copy{display:grid;gap:3px;min-width:0;overflow-wrap:anywhere}
-#rmPlatformAdminPage .rm-platform-permission-copy strong{font-size:.92rem}
-#rmPlatformAdminPage .rm-platform-role-actions{display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}
-#rmPlatformAdminPage .rm-platform-inline-status,#rmPlatformAdminPage [data-platform-feedback]{min-height:1.4em;margin:0;color:var(--text-secondary,var(--muted,#596579))}
-#rmPlatformAdminPage .rm-platform-finance-query{display:grid;gap:12px;max-width:760px}
-#rmPlatformAdminPage .rm-platform-finance-query>label,#rmPlatformAdminPage .rm-platform-period label{display:grid;gap:6px;font-weight:600}
-#rmPlatformAdminPage .rm-platform-period{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-#rmPlatformAdminPage .rm-platform-field{box-sizing:border-box;width:100%;min-height:44px;min-width:0;padding:9px 11px;border:1px solid var(--border-strong,var(--line,#c6d0dd));border-radius:10px;background:var(--surface,var(--card,#fff));color:var(--text-primary,var(--ink,#172033));font:inherit}
-#rmPlatformAdminPage .rm-platform-finance-result{display:grid;gap:12px;min-width:0;overflow-wrap:anywhere}
-#rmPlatformAdminPage .rm-platform-finance-events{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:10px}
-#rmPlatformAdminPage .rm-platform-finance-event{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px;border:1px solid var(--border-subtle,var(--line,#d8dee8));border-radius:12px}
-#rmPlatformAdminPage [data-platform-list][aria-pressed="true"]{outline:2px solid var(--accent,#2563eb);outline-offset:1px}
-#rmPlatformAdminPage button{min-height:42px;max-width:100%}
-@media(max-width:600px){#rmPlatformAdminPage .rm-admin-nav{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;padding:2px 2px 8px;scrollbar-width:thin}#rmPlatformAdminPage .rm-admin-nav button{flex:0 0 auto}#rmPlatformAdminPage .rm-platform-card-head,#rmPlatformAdminPage .rm-platform-role-head{align-items:flex-start}#rmPlatformAdminPage .rm-platform-period{grid-template-columns:1fr}#rmPlatformAdminPage .rm-platform-role-actions{display:grid;grid-template-columns:1fr}#rmPlatformAdminPage .rm-platform-role-actions button{width:100%}#rmPlatformAdminPage .rm-platform-finance-event{grid-template-columns:1fr}}
-#rmPlatformAdminPage .rm-platform-permission-groups{display:grid;gap:14px}
+#rmPlatformAdminPage .rm-platform-permission-form legend{margin-bottom:var(--space-2,8px);font-weight:700}
+#rmPlatformAdminPage .rm-platform-permission-groups{display:grid;gap:var(--space-3,12px)}
 #rmPlatformAdminPage .rm-platform-permission-group{min-width:0}
-#rmPlatformAdminPage .rm-platform-permission-group h5{margin:0 0 8px;color:var(--text-secondary,var(--muted,#596579));font-size:.86rem;letter-spacing:.02em}
-#rmPlatformAdminPage .rm-platform-nav-hint{display:none;margin:0 0 5px;color:var(--text-secondary,var(--muted,#596579));font-size:.8rem}
-@media(max-width:600px){#rmPlatformAdminPage .rm-admin-nav{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;padding:3px 3px 8px;scrollbar-width:thin}#rmPlatformAdminPage .rm-admin-nav button{scroll-snap-align:start}#rmPlatformAdminPage .rm-platform-nav-hint{display:block}#rmPlatformAdminPage .rm-platform-settings-grid .rm-platform-fact{grid-template-columns:minmax(105px,.8fr) minmax(0,1.2fr)}}
-
-/* Expandable Super ADM panels must honor the native hidden state despite grid layout. */
-#rmPlatformAdminPage .rm-platform-role-list[hidden],
-#rmPlatformAdminPage .rm-platform-role-content[hidden]{display:none!important}
-#rmPlatformAdminPage .rm-platform-company-toggle,
-#rmPlatformAdminPage .rm-platform-role-toggle{min-height:44px;justify-self:start;text-align:left;white-space:normal}
-#rmPlatformAdminPage .rm-platform-company-toggle[aria-expanded="true"],
-#rmPlatformAdminPage .rm-platform-role-toggle[aria-expanded="true"]{border-color:var(--accent,#2563eb);outline:2px solid color-mix(in srgb,var(--accent,#2563eb) 30%,transparent);outline-offset:1px}
-#rmPlatformAdminPage .rm-platform-role-content{min-width:0;padding-top:3px}
-#rmPlatformAdminPage .rm-platform-role-head{align-items:center}
-#rmPlatformAdminPage .rm-platform-role{gap:8px;padding:10px}
-#rmPlatformAdminPage .rm-platform-permission-groups{gap:10px}
-#rmPlatformAdminPage .rm-platform-permission{min-height:44px;padding:9px}
+#rmPlatformAdminPage .rm-platform-permission-group h5{margin:0 0 4px;padding-bottom:4px;border-bottom:1px solid var(--border-subtle,#dbe3ed);color:var(--text-secondary,#475569);font-size:.86rem;letter-spacing:.02em}
+#rmPlatformAdminPage .rm-platform-permission-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:0}
+#rmPlatformAdminPage .rm-platform-permission-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 8px;min-width:0;padding:3px 0;border-bottom:1px solid var(--border-subtle,#dbe3ed)}
+#rmPlatformAdminPage .rm-platform-permission{display:flex;align-items:center;gap:9px;min-width:0;min-height:var(--control-h,44px);padding:4px 2px;cursor:pointer}
+#rmPlatformAdminPage .rm-platform-permission input{flex:0 0 20px;width:20px;height:20px;margin:0;accent-color:var(--accent,#2563eb)}
+#rmPlatformAdminPage .rm-platform-permission-copy{display:grid;gap:1px;min-width:0;overflow-wrap:anywhere}
+#rmPlatformAdminPage .rm-platform-permission-copy strong{font-size:.9rem;line-height:1.3}
+#rmPlatformAdminPage .rm-platform-permission-description summary{min-height:var(--control-h,44px);white-space:nowrap}
+#rmPlatformAdminPage .rm-platform-permission-description p{grid-column:1/-1;margin:0;padding:3px 0 8px;color:var(--text-secondary,#475569);font-size:.85rem;line-height:1.45}
+#rmPlatformAdminPage .rm-platform-permission-description code{display:block;overflow-wrap:anywhere;color:var(--text-secondary,#475569);font-size:.8rem}
+#rmPlatformAdminPage .rm-platform-role-actions{display:flex;justify-content:flex-end;gap:var(--space-2,8px);flex-wrap:wrap}
+#rmPlatformAdminPage .rm-platform-role-actions button{min-height:var(--control-h,44px);padding:8px 12px}
+#rmPlatformAdminPage .rm-platform-inline-status,#rmPlatformAdminPage [data-platform-feedback]{margin:0;color:var(--text-secondary,#475569);font-size:.88rem;line-height:1.4}
+#rmPlatformAdminPage .rm-platform-inline-status:empty{display:none}
+#rmPlatformAdminPage .rm-platform-finance-query{display:grid;gap:var(--space-2,8px);max-width:760px}
+#rmPlatformAdminPage .rm-platform-finance-query>label,#rmPlatformAdminPage .rm-platform-period label{display:grid;gap:5px;font-weight:600}
+#rmPlatformAdminPage .rm-platform-period{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3,12px)}
+#rmPlatformAdminPage .rm-platform-field{box-sizing:border-box;width:100%;min-height:var(--control-h,44px);min-width:0;padding:8px 10px;border:1px solid var(--border-strong,#bdc9d8);border-radius:var(--radius-md,12px);background:var(--surface-raised,#fff);color:var(--text-primary,#172033);font:inherit}
+#rmPlatformAdminPage .rm-platform-finance-result{display:grid;gap:var(--space-2,8px);min-width:0;overflow-wrap:anywhere}
+#rmPlatformAdminPage .rm-platform-finance-events{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:var(--space-2,8px)}
+#rmPlatformAdminPage .rm-platform-finance-event{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-2,8px);padding:var(--space-3,12px);border:1px solid var(--border-subtle,#dbe3ed);border-radius:var(--radius-md,12px)}
+#rmPlatformAdminPage [data-platform-list][aria-pressed="true"]{outline:2px solid var(--accent,#2563eb);outline-offset:1px}
+#rmPlatformAdminPage button{box-sizing:border-box;min-height:var(--control-h,44px);max-width:100%;font:inherit}
+#rmPlatformAdminPage .rm-platform-role-list[hidden],#rmPlatformAdminPage .rm-platform-role-content[hidden]{display:none!important}
+#rmPlatformAdminPage .rm-platform-company-toggle[aria-expanded="true"],#rmPlatformAdminPage .rm-platform-role-toggle[aria-expanded="true"]{border-color:var(--accent,#2563eb);outline:2px solid color-mix(in srgb,var(--accent,#2563eb) 30%,transparent);outline-offset:1px}
+@media(min-width:600px) and (max-width:1199px){#rmPlatformAdminPage .rm-admin-nav{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1200px){#rmPlatformAdminPage .rm-admin-nav{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:599px){#rmPlatformAdminPage .rm-admin-nav{display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin;scrollbar-color:var(--border-strong,#bdc9d8) transparent;scroll-snap-type:x proximity;padding:2px 3px 7px;margin:2px 0 4px}
+#rmPlatformAdminPage .rm-admin-nav button{flex:0 0 auto;max-width:min(76vw,220px);scroll-snap-align:start}
+#rmPlatformAdminPage .rm-platform-nav-hint{display:block}
+#rmPlatformAdminPage .rm-platform-settings-grid .rm-platform-fact{grid-template-columns:minmax(105px,.8fr) minmax(0,1.2fr)}
+#rmPlatformAdminPage .rm-platform-card-head,#rmPlatformAdminPage .rm-platform-role-head{align-items:flex-start}
+#rmPlatformAdminPage .rm-platform-company-actions{display:grid;grid-template-columns:minmax(0,1fr)}
+#rmPlatformAdminPage .rm-platform-company-actions>.btn,#rmPlatformAdminPage .rm-platform-company-toggle{width:100%}
+#rmPlatformAdminPage .rm-platform-period,#rmPlatformAdminPage .rm-platform-finance-event{grid-template-columns:minmax(0,1fr)}
+#rmPlatformAdminPage .rm-platform-role-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr))}
+}
