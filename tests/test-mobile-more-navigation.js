@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
@@ -30,7 +31,7 @@ assert.match(app, /function navigationGroups\(items\)[\s\S]*Operação[\s\S]*Ges
   'the desktop navigation uses clear operational and management groups');
 assert.match(app, /data-sidebar-toggle[\s\S]*sidebar-collapsed[\s\S]*rotamoto\.sidebar\.collapsed/u,
   'tablet and desktop navigation can collapse and expand with a persisted preference');
-assert.match(app, /function goTab\(tab\)[\s\S]*pushState[\s\S]*state\.tab=tab/u,
+assert.match(app, /function goTab\(requestedTab\)[\s\S]*pushState[\s\S]*state\.tab=tab/u,
   'navigation preserves the existing history/deep-link state flow');
 assert.match(designSystem, /@media\(min-width:600px\) and \(max-width:1023px\)[\s\S]*\.sidebar\{display:flex/u,
   'the tablet sidebar remains visible after narrow phone rules');
@@ -50,7 +51,38 @@ assert.match(app, /panel\?\.addEventListener\('keydown',[\s\S]*event\.key==='Esc
   'the dialog supports Escape and keeps keyboard focus inside while open');
 assert.match(app, /event\.target===overlay\)closeMoreMenu\(\)/u,
   'tapping outside the sheet closes it and returns focus to the trigger');
-assert.match(app,/const modules=MODULES\.filter\(x=>canModule\(x\[0\]\)\),allowed=modules,destinations=orderedDestinations\(allowed\)/u,'all permitted modules remain available in the desktop sidebar');
+assert.match(app,/function navigationModules\(items\)\{return items\.filter\(\(\[id\]\)=>id!==\x27admin\x27\)\}/u,'local System is retained as a module capability but excluded from navigation destinations');
+assert.match(app,/const modules=MODULES\.filter\(x=>canModule\(x\[0\]\)\),allowed=navigationModules\(modules\),destinations=orderedDestinations\(allowed\)/u,'sidebar and More render only approved navigation destinations');
+const navStart=app.indexOf('function navigationModules('),navEnd=app.indexOf('\n',navStart);
+const navContext={};vm.runInNewContext(`${app.slice(navStart,navEnd)}\nthis.filter=navigationModules;`,navContext);
+const renderedDestinations=navContext.filter(destinations.map(id=>[id,'icon',id]));
+assert(!renderedDestinations.some(([id])=>id==='admin'),'System local is absent from the More destination list');
+assert(destinations.includes('admin'),'the local administration capability remains registered for permissions');
+assert.match(app,/if\(tab===\x27admin\x27\)\{tab=\x27settings\x27;targetSettingsOpen=\x27system-admin\x27\}/u,'legacy internal admin navigation resolves into Settings');
+assert.match(app,/if\(state\.tab===\x27admin\x27\)\{state\.tab=\x27settings\x27;state\.settingsOpen=\x27system-admin\x27\}/u,'a restored legacy history entry resolves into Settings');
+assert.match(app,/function goTab\(requestedTab\)[\s\S]*history\.pushState\(\{rotamotoView:true,tab,settingsOpen:targetSettingsOpen\}/u,'navigation history preserves the destination section for back/forward restoration');
+assert.match(app,/kpi\('Usuários locais ativos'/u,'local user count is named explicitly as local');
+assert.match(app,/kpi\('Erros locais'/u,'technical log count is named explicitly as local');
+assert.match(app,/kpi\('Pedidos em aberto'/u,'open local orders are not ambiguously labelled as all pending deliveries');
+assert.match(app,/function settingsSectionOwnsHeader\(section\)\{return \[\x27system-admin\x27,\x27platform-admin\x27,\x27integration-lab\x27\]\.includes\(section\)\}/u,'nested Settings sections that render their own page header are identified');
+assert.match(app,/function settingsPageChrome\(section\)\{if\(settingsSectionOwnsHeader\(section\)\)return \x27\x27/u,'an embedded page with its own title does not also render the Ajustes header');
+const chromeStart=app.indexOf('function settingsSectionOwnsHeader('),chromeEnd=app.indexOf('\n',app.indexOf('function settingsPageChrome(',chromeStart)),chromeContext={header:()=>'<h1>Ajustes</h1>'};
+vm.runInNewContext(`${app.slice(chromeStart,chromeEnd)}\nthis.chrome=settingsPageChrome;`,chromeContext);
+assert.equal(chromeContext.chrome('system-admin'),'','System local renders no outer Ajustes header');
+assert.match(chromeContext.chrome(''),/Ajustes/u,'Settings root retains its single page header');
+assert.match(app,/if\(can\(\x27admin\x27\)\)cats\.push\(\[\x27security-audit\x27[\s\S]*?\[\x27system-admin\x27,\x27Sistema local\x27/u,'System local remains reachable from the Settings categories for authorized local administrators');
+const syncStart=app.indexOf('function pendingSyncSummary('),syncEnd=app.indexOf('\nasync function getSyncStatus()',syncStart);
+const syncContext={syncOperationKey:(entity,{id})=>`operation:${entity}:${id}`,isLocallyDirtyForSync:record=>record?.sync?.state==='local'||!record?.sync?.canonicalId,localVersion:record=>Number(record?.sync?.version||record?.version||1)};
+vm.runInNewContext(`${app.slice(syncStart,syncEnd)}\nthis.summary=pendingSyncSummary;`,syncContext);
+const localSummary=syncContext.summary({users:[{id:'local-user'}],profiles:[{id:'local-profile'}],logs:[{id:'local-log'}],events:[{id:'local-event'}],orders:[{id:'local-order',sync:{state:'local',version:1}}],deliveries:[{id:'remote-delivery',sync:{state:'synced',canonicalId:'canonical-delivery',version:1}}],bikes:[],routes:[],earnings:[]},[]);
+assert.equal(localSummary.pending,1,'only a local business record without server confirmation is counted for sync');
+assert.equal(localSummary.pendingKinds.Order,1,'pending sync summary identifies its entity without counting users, profiles, logs, or events');
+assert.match(app,/const DB_NAME='rota-moto-restaurante-local-v30'/u,'local app state is stored in the restaurant IndexedDB database');
+const adminStart=app.indexOf('function admin(){'),adminEnd=app.indexOf('\nfunction eventRow',adminStart),adminSource=app.slice(adminStart,adminEnd);
+assert.match(adminSource,/state\.users[\s\S]*state\.profiles[\s\S]*IndexedDB/u,'System local presents records from local application state with an explicit IndexedDB scope');
+assert.match(adminSource,/não são contas autenticadas nem permissões empresariais do servidor/u,'local users and profiles are explicitly distinguished from server identity and RBAC');
+assert.match(adminSource,/conflitos e rejeições ficam separados/u,'sync queue KPI does not hide the separate conflict and rejection states');
+assert.doesNotMatch(adminSource,/identity\/session|platform-admin\/companies/u,'the local administration panel does not imply it queried server identities');
 assert.match(designSystem, /#121a25/u, 'the approved dark canvas token is defined');
 assert.match(designSystem, /#202c3a/u, 'the approved dark card token is defined');
 assert.match(designSystem, /--success:#16a36a/u, 'the approved green token is defined');

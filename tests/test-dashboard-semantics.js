@@ -26,7 +26,8 @@ assert.match(source,/data-label="Pedido"/u,'delivery rows expose semantic labels
 assert.match(styles,/\.table thead\{display:none\}/u,'responsive tables hide desktop headings when rows become cards');
 assert.doesNotMatch(styles,/\.table thead\{display:table-header-group\}/u,'no later mobile rule restores squeezed desktop table headings');
 assert.match(source,/function orderedDestinations\(items\)\{const configured=new Set\(state\.settings\.navigation\?\.shortcuts/u,'one preference-driven ordering function serves desktop and mobile destinations');
-assert.match(source,/function layout\(\)[\s\S]*?const modules=MODULES\.filter\(x=>canModule\(x\[0\]\)\),allowed=modules/u,'navigation keeps every permitted RBAC module available in the sidebar and More panel');
+assert.match(source,/function layout\(\)[\s\S]*?const modules=MODULES\.filter\(x=>canModule\(x\[0\]\)\),allowed=navigationModules\(modules\)/u,'navigation filters internal System local from destinations while retaining its registered module capability');
+assert.match(source,/function navigationModules\(items\)\{return items\.filter\(\(\[id\]\)=>id!==\x27admin\x27\)\}/u,'System local is opened within Settings rather than from More or the sidebar');
 assert.match(source,/function navGroupMarkup\(group,context=''\)[\s\S]*orderedDestinations\(group\.items\)/u,'configured shortcuts reorder destinations within their semantic navigation group');
 assert.match(dashboard,/header\('Início'/u,'Home uses the same header component as the other tabs');
 assert.match(source,/class="brandmark brand-symbol" src="favicon\.svg"/u,'desktop brand uses the same simple route symbol as the mobile header');
