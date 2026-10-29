@@ -62,6 +62,9 @@ assert.match(css,/#rmPlatformAdminPage \.rm-platform-card\{[^}]*gap:var\(--space
 assert.match(css,/#rmPlatformAdminPage \.rm-platform-settings-grid \.rm-platform-fact\{[^}]*grid-template-columns/u,'platform policy facts are displayed as compact label/value rows');
 assert.match(css,/#rmPlatformAdminPage \.rm-platform-nav-hint\{display:none/u,'navigation hint is hidden outside the narrow-screen layout');
 assert.match(css,/\.rm-platform-permission-row\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/u,'permission rows replace one-card-per-permission presentation');
+assert.match(css,/#rmPlatformAdminPage \.rm-platform-permission-group:last-child \.rm-platform-permission-row:last-child\{border-bottom:0\}/u,'the final permission row does not draw a divider against the action buttons');
+assert.match(css,/\.rm-platform-role-actions\{[^}]*margin-top:var\(--space-2,8px\)/u,'permission actions have consistent separation after the final row');
+assert.match(css,/\.rm-platform-permission-row\{[^}]*border-bottom:1px solid/u,'dividers remain between permission rows');
 assert.match(css,/min-height:var\(--control-h,44px\)/u,'interactive Super ADM controls follow the shared 44px minimum');
 assert.match(css,/@media\(min-width:1200px\)\{#rmPlatformAdminPage \.rm-admin-nav\{grid-template-columns:repeat\(6/u,'desktop navigation uses six adaptive columns');
 assert.match(css,/\.rm-platform-role-list\[hidden\],\s*#rmPlatformAdminPage \.rm-platform-role-content\[hidden\]\{display:none!important\}/u,'closed panels remain hidden despite explicit grid display rules');

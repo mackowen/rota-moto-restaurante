@@ -758,6 +758,7 @@ body[data-mfa-locked="true"] .rm-identity-panel {
 #rmPlatformAdminPage .rm-platform-permission-group h5{margin:0 0 4px;padding-bottom:4px;border-bottom:1px solid var(--border-subtle,#dbe3ed);color:var(--text-secondary,#475569);font-size:.86rem;letter-spacing:.02em}
 #rmPlatformAdminPage .rm-platform-permission-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:0}
 #rmPlatformAdminPage .rm-platform-permission-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 8px;min-width:0;padding:3px 0;border-bottom:1px solid var(--border-subtle,#dbe3ed)}
+#rmPlatformAdminPage .rm-platform-permission-group:last-child .rm-platform-permission-row:last-child{border-bottom:0}
 #rmPlatformAdminPage .rm-platform-permission{display:flex;align-items:center;gap:9px;min-width:0;min-height:var(--control-h,44px);padding:4px 2px;cursor:pointer}
 #rmPlatformAdminPage .rm-platform-permission input{flex:0 0 20px;width:20px;height:20px;margin:0;accent-color:var(--accent,#2563eb)}
 #rmPlatformAdminPage .rm-platform-permission-copy{display:grid;gap:1px;min-width:0;overflow-wrap:anywhere}
@@ -765,7 +766,7 @@ body[data-mfa-locked="true"] .rm-identity-panel {
 #rmPlatformAdminPage .rm-platform-permission-description summary{min-height:var(--control-h,44px);white-space:nowrap}
 #rmPlatformAdminPage .rm-platform-permission-description p{grid-column:1/-1;margin:0;padding:3px 0 8px;color:var(--text-secondary,#475569);font-size:.85rem;line-height:1.45}
 #rmPlatformAdminPage .rm-platform-permission-description code{display:block;overflow-wrap:anywhere;color:var(--text-secondary,#475569);font-size:.8rem}
-#rmPlatformAdminPage .rm-platform-role-actions{display:flex;justify-content:flex-end;gap:var(--space-2,8px);flex-wrap:wrap}
+#rmPlatformAdminPage .rm-platform-role-actions{display:flex;justify-content:flex-end;gap:var(--space-2,8px);flex-wrap:wrap;margin-top:var(--space-2,8px)}
 #rmPlatformAdminPage .rm-platform-role-actions button{min-height:var(--control-h,44px);padding:8px 12px}
 #rmPlatformAdminPage .rm-platform-inline-status,#rmPlatformAdminPage [data-platform-feedback]{margin:0;color:var(--text-secondary,#475569);font-size:.88rem;line-height:1.4}
 #rmPlatformAdminPage .rm-platform-inline-status:empty{display:none}
