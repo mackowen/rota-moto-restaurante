@@ -9,8 +9,9 @@ assert.match(source,/platformBoolean\(row,'email_verified','emailVerified'\)/u,'
 assert.match(source,/platformBoolean\(row,'platform_admin','platformAdmin'\)/u,'platform privilege status comes from the active admin relation');
 assert.match(source,/role_key.*protected/u,'owner protection follows the backend role key');
 assert.match(source,/permissions\.some\(key=>!keys\.has\(key\)\)/u,'a grant missing from the catalog fails closed');
-assert.match(source,/permissionGroups=new Map\(\)/u,'permissions are organized into functional domains');
-assert.match(source,/permissões herdadas ou temporárias da sessão não são fornecidas/u,'unknown effective/inherited grants are not fabricated');
+assert.match(source,/rm-platform-permission-groups/u,'permissions are organized into functional domains');
+assert.match(source,/RotaMotoPlatformPermissionCatalog\.present\(key\)/u,'permission presentation uses the centralized localized catalog');
+assert.match(source,/permissões temporárias da sessão não são incluídas/u,'unknown effective/inherited grants are not fabricated');
 assert.match(source,/founder_claimed.*Registro de fundador existente/u,'founder bootstrap latch is displayed separately from current account privilege');
 assert.match(source,/não comprova, por si só, qual usuário possui hoje o privilégio Super ADM Global/u,'founder latch does not imply current Super ADM membership');
 assert.match(source,/platform_admin_read_company_financial_summary|financial-summary/u,'financial read is tied to a selected company and explicit period');
@@ -23,7 +24,15 @@ assert.match(source,/select\.value!==companyId\|\|start\.value!==fromDate\|\|end
 assert.match(source,/platformAdminRequests\.begin\(\)/u,'switching admin sections cancels the prior section read through the shared request controller');
 assert.match(source,/if\(!card\.isConnected\|\|platformAdminPage\.querySelector\('\[data-platform-list\]\[aria-pressed="true"\]'\)\?\.dataset\.platformList!=='roles'\)return/u,'late role responses are discarded after leaving that section');
 assert.match(source,/finally\{if\(requestState\.isCurrent\(\)\)\{box\.setAttribute\('aria-busy','false'\);refresh\.disabled=false/u,'only the active request clears loading and reenables refresh');
-assert.match(source,/if\(kind==='companies'\|\|kind==='roles'\|\|kind==='finance'\)\{result=raw\.map\(platformCompany\);[\s\S]*?else if\(kind==='users'\)\{result=raw\.map\(platformUser\);renderPlatformUsers\(box,result\)\}else\{result=raw\.map\(platformMembership\);renderPlatformMemberships\(box,result\)\}/u,'each list response is validated against its own DTO rather than first being parsed as a company');
+assert.match(source,/loading\.remove\(\);box\.dataset\.state=raw\.length\?'success':'empty'/u,'successful and empty results remove the loading node and record an explicit state');
+assert.match(source,/box\.dataset\.state='loading'/u,'each section enters an explicit loading state');
+assert.match(source,/box\.dataset\.state='error'/u,'failed responses end in an explicit error state');
+assert.match(source,/box\.replaceChildren\(\);box\.dataset\.state='error'/u,'failed requests remove stale loading content');
+assert.match(source,/window\.RotaMotoPlatformAdminDisclosure\.create\(toggle,content/u,'each profile permission panel uses the accessible disclosure controller');
+assert.match(source,/beforeCollapse:\(\)=>confirmRoleDraftDiscard\(form\)/u,'dirty profile changes are protected before collapse');
+assert.match(source,/expandedLabel:'Recolher perfis',collapsedLabel:'Consultar perfis e permissões'/u,'company profile queries have a visible collapse action');
+assert.match(source,/if\(kind==='companies'\|\|kind==='roles'\|\|kind==='finance'\)\{result=raw\.map\(platformCompany\);?\}else if\(kind==='users'\)\{result=raw\.map\(platformUser\);?\}else\{result=raw\.map\(platformMembership\);?\}/u,'each list response is validated against its own DTO rather than first being parsed as a company');
+assert.match(source,/else if\(kind==='users'\)renderPlatformUsers\(box,result\);else renderPlatformMemberships\(box,result\)/u,'validated user and membership payloads render only in their corresponding sections');
 assert.doesNotMatch(source,/const raw=platformRows\(response\),companies=raw\.map\(platformCompany\)/u,'user and membership payloads are not rejected by the company presenter');
 assert.match(source,/RotaMotoPlatformAdminRequest\.create\(\(path,options\)=>request\(path,options\)\)/u,'all global administration reads use the bounded request adapter');
 assert.match(requestSource,/setTimeout\(\(\)=>\{timedOut=true;controller\.abort\(\)\},timeoutMs\)/u,'administrative requests abort the actual transport at their operational deadline');
@@ -43,6 +52,7 @@ assert.match(css,/#rmPlatformAdminPage \.rm-admin-nav\{[^}]*display:flex/u,'glob
 assert.match(css,/#rmPlatformAdminPage \.rm-platform-card\{[^}]*gap:9px[^}]*padding:12px/u,'administrative cards use a compact but readable density');
 assert.match(css,/#rmPlatformAdminPage \.rm-platform-settings-grid \.rm-platform-fact\{[^}]*grid-template-columns/u,'platform policy facts are displayed as compact label/value rows');
 assert.match(css,/#rmPlatformAdminPage \.rm-platform-nav-hint\{display:none/u,'navigation hint is limited to the narrow-screen layout');
+assert.match(css,/\.rm-platform-role-list\[hidden\],\s*#rmPlatformAdminPage \.rm-platform-role-content\[hidden\]\{display:none!important\}/u,'closed panels remain hidden despite explicit grid display rules');
 assert.match(appSource,/BACKUP_ADMIN_NOT_CONFIGURED[\s\S]{0,180}não está conectada a esta API[\s\S]{0,120}não verifica se existem scripts ou cópias locais/u,'backup API configuration is distinguished from local Termux backup artifacts');
 assert.match(appSource,/data\.code==='BACKUP_ADMIN_NOT_CONFIGURED'[\s\S]{0,200}A exportação Local-First do aparelho é separada/u,'backup UI explains the independent local-first export without claiming local backups are absent');
 console.log('Super ADM interface DTO, permission, founder-state and financial scope contracts: PASS');

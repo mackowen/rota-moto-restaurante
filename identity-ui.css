@@ -763,3 +763,16 @@ body[data-mfa-locked="true"] .rm-identity-panel {
 #rmPlatformAdminPage .rm-platform-permission-group h5{margin:0 0 8px;color:var(--text-secondary,var(--muted,#596579));font-size:.86rem;letter-spacing:.02em}
 #rmPlatformAdminPage .rm-platform-nav-hint{display:none;margin:0 0 5px;color:var(--text-secondary,var(--muted,#596579));font-size:.8rem}
 @media(max-width:600px){#rmPlatformAdminPage .rm-admin-nav{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;padding:3px 3px 8px;scrollbar-width:thin}#rmPlatformAdminPage .rm-admin-nav button{scroll-snap-align:start}#rmPlatformAdminPage .rm-platform-nav-hint{display:block}#rmPlatformAdminPage .rm-platform-settings-grid .rm-platform-fact{grid-template-columns:minmax(105px,.8fr) minmax(0,1.2fr)}}
+
+/* Expandable Super ADM panels must honor the native hidden state despite grid layout. */
+#rmPlatformAdminPage .rm-platform-role-list[hidden],
+#rmPlatformAdminPage .rm-platform-role-content[hidden]{display:none!important}
+#rmPlatformAdminPage .rm-platform-company-toggle,
+#rmPlatformAdminPage .rm-platform-role-toggle{min-height:44px;justify-self:start;text-align:left;white-space:normal}
+#rmPlatformAdminPage .rm-platform-company-toggle[aria-expanded="true"],
+#rmPlatformAdminPage .rm-platform-role-toggle[aria-expanded="true"]{border-color:var(--accent,#2563eb);outline:2px solid color-mix(in srgb,var(--accent,#2563eb) 30%,transparent);outline-offset:1px}
+#rmPlatformAdminPage .rm-platform-role-content{min-width:0;padding-top:3px}
+#rmPlatformAdminPage .rm-platform-role-head{align-items:center}
+#rmPlatformAdminPage .rm-platform-role{gap:8px;padding:10px}
+#rmPlatformAdminPage .rm-platform-permission-groups{gap:10px}
+#rmPlatformAdminPage .rm-platform-permission{min-height:44px;padding:9px}
