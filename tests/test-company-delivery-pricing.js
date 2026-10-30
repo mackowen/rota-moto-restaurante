@@ -24,6 +24,9 @@ assert.match(app,/\/admin\/company\/delivery-pricing/u,'write/readback uses the 
 assert.match(app,/pricing_unavailable/u,'no fee is calculated from device-only settings');
 assert.match(app,/deliveryPricingCanonical/u,'calculations consume canonical server pricing');
 assert.match(app,/not\s+automatically|not\s+sent|não foram enviados/u,'legacy device values are not represented as canonical');
+const pricingSave=app.slice(app.indexOf('async function saveCompanyDeliveryPricing()'),app.indexOf('\n}\n',app.indexOf('async function saveCompanyDeliveryPricing()'))+2);
+assert.match(pricingSave,/data-delivery-model[\s\S]*data-setting\^="delivery\."[\s\S]*data-range-delete/u,'all model, pricing and range controls are locked for the save/readback cycle');
+assert.match(pricingSave,/control\.isConnected\)control\.disabled=wasDisabled/u,'controls recover their previous authorization/disabled state after completion');
 const valid={model:'perKm',minFee:5,perKm:2.5,fixedFee:8,round:true,roundTo:0.5,ranges:[{from:0,to:3,value:7},{from:3,to:null,value:11}],repasseMode:'percentage',repassePercent:85};
 assert.deepEqual(validateDeliveryPricing({expectedVersion:0,settings:valid}).settings,valid);
 for(const bad of [null,{}, {...valid,model:'range',ranges:[null]}, {...valid,model:'range',ranges:[{from:0,to:5,value:5},{from:4,to:null,value:7}]}, {...valid,model:'range',ranges:[{from:1,to:null,value:7}]}, {...valid,model:'perKm',perKm:0}, {...valid,perKm:1.001}, {...valid,repassePercent:101}])assert.throws(()=>validateDeliveryPricing({expectedVersion:0,settings:bad}),error=>error.code==='INVALID_INPUT');

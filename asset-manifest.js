@@ -2,7 +2,7 @@
 self.RotaMotoAssetManifest = Object.freeze({
   "appId": "restaurante",
   "cachePrefix": "rotamoto-restaurante-shell-",
-  "cacheName": "rotamoto-restaurante-shell-b4c4ab8e133473ca",
+  "cacheName": "rotamoto-restaurante-shell-d2b318067cd1333e",
   "assets": [
     "./",
     "./index.html",
@@ -44,7 +44,7 @@ self.RotaMotoAssetManifest = Object.freeze({
     "./company-settings-persistence.js?v=c5df26162ac52352",
     "./dashboard-v2.js?v=1638274f35de683f",
     "./dialog-service.js?v=da82b77f2dc0866c",
-    "./app.js?v=5597f0c75702e1f0",
+    "./app.js?v=d08ab60adad9c524",
     "./identity-request-state.js?v=d0dcad8fce419513",
     "./platform-admin-request.js?v=3bfaee6419dfa8f4",
     "./platform-permission-catalog.js?v=5ce6639041f0d81e",
