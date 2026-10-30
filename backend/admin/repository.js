@@ -245,10 +245,15 @@ function createAdminRepository() {
       FROM rotamoto.companies WHERE id=$1`, [companyId]);
     if (!result.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
     const row = result.rows[0];
-    let deliveryPricing = { configured: false, version: 0, settings: null };
+    let deliveryPricing = { configured: false, version: 0, settings: null, available: false };
     try {
-      const pricing = await client.query(`SELECT settings,version FROM rotamoto.company_delivery_pricing WHERE company_id=$1`, [companyId]);
-      if (pricing.rowCount) deliveryPricing = { configured: true, version: Number(pricing.rows[0].version), settings: pricing.rows[0].settings };
+      const relation = await client.query(`SELECT to_regclass('rotamoto.company_delivery_pricing') IS NOT NULL AS available`);
+      if (relation.rows[0]?.available) {
+        const pricing = await client.query(`SELECT settings,version FROM rotamoto.company_delivery_pricing WHERE company_id=$1`, [companyId]);
+        deliveryPricing = pricing.rowCount
+          ? { configured: true, version: Number(pricing.rows[0].version), settings: pricing.rows[0].settings, available: true }
+          : { configured: false, version: 0, settings: null, available: true };
+      }
     } catch (error) { if (error.code !== '42P01') throw error; }
     return { id: row.id, name: row.name, status: row.status, timeZone: row.time_zone, supportPhone: row.support_phone,
       operationalLocation: operationalLocationFromRow(row),
