@@ -18,8 +18,10 @@ runFixtureLifecycle({ exercise: async fixture => {
 
   const availabilityBefore=await fixture.authenticatedCall('/api/driver-availability');
   assert.equal(availabilityBefore.status,200,JSON.stringify(availabilityBefore.body));
-  assert.equal(availabilityBefore.body.availability.effectiveStatus,'online','fixture Driver explicitly opted in');
-  const revision=availabilityBefore.body.availability.revision;
+  const initialAvailability=availabilityBefore.body?.records?.find(row=>row.driverId===fixture.driverId);
+  assert(initialAvailability,`fixture Driver availability is present in the scoped records response; response=${JSON.stringify(availabilityBefore.body)}`);
+  assert.equal(initialAvailability.effectiveStatus,'online','fixture Driver explicitly opted in');
+  const revision=initialAvailability.revision;
   const secondLogin=await fixture.call('/api/identity/login',{method:'POST',body:{email:fixture.email,password:fixture.password,companyId:fixture.companyId,mfaCode:fixture.mfaCode}});
   assert.equal(secondLogin.status,200,JSON.stringify(secondLogin.body));
   const secondSessionCookie=secondLogin.headers.get('set-cookie').split(';',1)[0];
@@ -31,7 +33,9 @@ runFixtureLifecycle({ exercise: async fixture => {
   assert.equal(offline.status,200,JSON.stringify(offline.body));
   assert.equal(offline.body.availability.effectiveStatus,'offline');
   const observedOffline=await fixture.authenticatedCall('/api/driver-availability');
-  assert.equal(observedOffline.body.availability.effectiveStatus,'offline','the first session observes the canonical change from the second session');
+  const observedOfflineRecord=observedOffline.body?.records?.find(row=>row.driverId===fixture.driverId);
+  assert(observedOfflineRecord,'first session receives its Driver availability in the scoped records response');
+  assert.equal(observedOfflineRecord.effectiveStatus,'offline','the first session observes the canonical change from the second session');
   const replay=await fixture.call('/api/driver-availability/commands',{method:'POST',cookie:secondSessionCookie,csrf:secondSession.body.csrfToken,body:offlineCommand});
   assert.equal(replay.status,200,JSON.stringify(replay.body));
   assert.equal(replay.body.command.duplicate,true,'availability commands are idempotent');
@@ -60,8 +64,10 @@ runFixtureLifecycle({ exercise: async fixture => {
   await fixture.runtime.query(`UPDATE rotamoto.driver_availability SET lease_expires_at=now()-interval '1 second'
     WHERE company_id=$1 AND driver_id=$2`,[fixture.companyId,fixture.driverId]);
   const expiredLease=await fixture.authenticatedCall('/api/driver-availability');
-  assert.equal(expiredLease.body.availability.effectiveStatus,'offline','an expired lease is not eligible for new assignments');
-  assert.equal(expiredLease.body.availability.reason,'lease_expired');
+  const expiredLeaseRecord=expiredLease.body?.records?.find(row=>row.driverId===fixture.driverId);
+  assert(expiredLeaseRecord,'expired Driver remains represented in the scoped availability response');
+  assert.equal(expiredLeaseRecord.effectiveStatus,'offline','an expired lease is not eligible for new assignments');
+  assert.equal(expiredLeaseRecord.reason,'lease_expired');
   const staleSessionHeartbeat=await fixture.call('/api/driver-availability/heartbeat',{method:'POST',cookie:secondSessionCookie,
     csrf:secondSession.body.csrfToken,body:{revision:onlineAgain.body.availability.revision}});
   assert.equal(staleSessionHeartbeat.status,200);
