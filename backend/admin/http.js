@@ -5,6 +5,8 @@ const { createRateLimiter } = require('../identity/http');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ROUTES = Object.freeze({
   '/api/admin/company': { method: 'GET', permission: 'company.manage', operation: 'company' },
+  '/api/admin/company/settings': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanySettings' },
+  '/api/admin/company/delivery-pricing': { method: 'GET', permission: 'company.manage', operation: 'companyDeliveryPricing' },
   '/api/admin/company/profile': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyProfile' },
   '/api/admin/company/route-grouping': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyRouteGrouping' },
   '/api/admin/company/location': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyLocation' },
@@ -56,6 +58,54 @@ function isIanaTimeZone(value) {
   try { if (/^Etc\/GMT[+-]\d{1,2}$/iu.test(value)) return false; new Intl.DateTimeFormat('en', { timeZone: value }).format(0); return true; } catch (_) { return false; }
 }
 
+function validateCompanySettings(body) {
+  exact(body, ['expectedVersion','expectedLocationVersion','name','supportPhone','timeZone','routeGroupingPolicy','operationalLocation']);
+  if(!Number.isSafeInteger(body.expectedVersion)||body.expectedVersion<0||
+    body.expectedLocationVersion!==undefined&&(!Number.isSafeInteger(body.expectedLocationVersion)||body.expectedLocationVersion<0)||
+    typeof body.name!=='string'||!body.name.trim()||Buffer.byteLength(body.name.trim(),'utf8')>160||/[\u0000-\u001f\u007f]/u.test(body.name)||
+    !(body.supportPhone===null||typeof body.supportPhone==='string'&&body.supportPhone.trim().length>0&&Buffer.byteLength(body.supportPhone.trim(),'utf8')<=40&&!/[\u0000-\u001f\u007f]/u.test(body.supportPhone))||
+    !(body.timeZone===null||typeof body.timeZone==='string'&&body.timeZone.length<=128&&!/^[+-]\d{2}:?\d{2}$/u.test(body.timeZone)&&isIanaTimeZone(body.timeZone))||
+    !['nearest_extension','nearest_origin_round_robin'].includes(body.routeGroupingPolicy))throw error('INVALID_INPUT');
+  let operationalLocation;
+  if(body.operationalLocation!==undefined){
+    const value=body.operationalLocation;
+    if(!value||typeof value!=='object'||Array.isArray(value))throw error('INVALID_INPUT');
+    exact(value,['address','latitude','longitude']);
+    if(!(value.address===null||typeof value.address==='string'&&value.address.trim().length>0&&Buffer.byteLength(value.address.trim(),'utf8')<=500&&!/[\u0000-\u001f\u007f]/u.test(value.address))||
+      !(value.latitude===null||typeof value.latitude==='number'&&Number.isFinite(value.latitude)&&value.latitude>=-90&&value.latitude<=90)||
+      !(value.longitude===null||typeof value.longitude==='number'&&Number.isFinite(value.longitude)&&value.longitude>=-180&&value.longitude<=180)||
+      (value.latitude===null)!==(value.longitude===null))throw error('INVALID_INPUT');
+    operationalLocation={address:value.address?.trim()||null,latitude:value.latitude,longitude:value.longitude};
+  }
+  if(operationalLocation&&body.expectedLocationVersion===undefined)throw error('INVALID_INPUT');
+  return {expectedVersion:body.expectedVersion,expectedLocationVersion:body.expectedLocationVersion,name:body.name.trim(),
+    supportPhone:body.supportPhone?.trim()||null,timeZone:body.timeZone,routeGroupingPolicy:body.routeGroupingPolicy,operationalLocation};
+}
+
+function validateDeliveryPricing(body) {
+  exact(body,['expectedVersion','settings']);
+  if(!Number.isSafeInteger(body.expectedVersion)||body.expectedVersion<0)throw error('INVALID_INPUT');
+  const value=body.settings;if(!value||typeof value!=='object'||Array.isArray(value))throw error('INVALID_INPUT');exact(value,['model','minFee','perKm','fixedFee','round','roundTo','ranges','repasseMode','repassePercent']);
+  const money=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=1000000&&Math.round(v*100)===v*100;
+  if(!['perKm','range','perDelivery'].includes(value.model)||!money(value.minFee)||!money(value.perKm)||!money(value.fixedFee)||
+    typeof value.round!=='boolean'||!money(value.roundTo)||value.roundTo<=0||
+    !['full','percentage'].includes(value.repasseMode)||typeof value.repassePercent!=='number'||!Number.isFinite(value.repassePercent)||value.repassePercent<0||value.repassePercent>100||
+    !Array.isArray(value.ranges)||value.ranges.length>32)throw error('INVALID_INPUT');
+  const ranges=[];let priorTo=0,priorOpen=false;
+  for(const range of value.ranges){
+    if(!range||typeof range!=='object'||Array.isArray(range))throw error('INVALID_INPUT');
+    exact(range,['from','to','value']);
+    if(typeof range.from!=='number'||!Number.isFinite(range.from)||range.from<0||range.from>10000||
+      !(range.to===null||typeof range.to==='number'&&Number.isFinite(range.to)&&range.to>range.from&&range.to<=10000)||!money(range.value)||
+      priorOpen||ranges.length&&range.from<priorTo)throw error('INVALID_INPUT');
+    ranges.push({from:range.from,to:range.to,value:range.value});priorTo=range.to??Infinity;priorOpen=range.to===null;
+  }
+  if(value.model==='range'&&(!ranges.length||ranges[0].from!==0))throw error('INVALID_INPUT');
+  if(value.model==='perKm'&&value.perKm<=0||value.model==='perDelivery'&&value.fixedFee<=0)throw error('INVALID_INPUT');
+  return {expectedVersion:body.expectedVersion,settings:{model:value.model,minFee:value.minFee,perKm:value.perKm,fixedFee:value.fixedFee,
+    round:value.round,roundTo:value.roundTo,ranges,repasseMode:value.repasseMode,repassePercent:value.repassePercent}};
+}
+
 function createAdminHttpHandler({ identityService, adminService, rateLimiter = createRateLimiter(), logger = () => {}, allowedOrigin }) {
   if (!identityService || !adminService) throw new TypeError('Serviços de identidade e administração obrigatórios.');
   return async function adminHttpHandler(req, res) {
@@ -68,7 +118,9 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
         ? { method: 'POST', permission: 'company.manage', operation: 'createRole' }
         : url.pathname === '/api/admin/company' && req.method === 'PUT'
           ? { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyTimeZone' }
-          : ROUTES[url.pathname]; let match;
+          : url.pathname === '/api/admin/company/delivery-pricing' && req.method === 'PUT'
+            ? { method:'PUT',permission:'company.manage',operation:'updateCompanyDeliveryPricing' }
+            : ROUTES[url.pathname]; let match;
       if (!config && (match = /^\/api\/admin\/roles\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateRole', id: match[1] };
       if (!config && url.pathname === '/api/admin/roles/owner/restore-finance') config = { method: 'POST', permission: 'company.manage', operation: 'restoreOwnerFinancePermissions' };
       if (!config && (match = /^\/api\/admin\/memberships\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateMembership', id: match[1] };
@@ -102,6 +154,9 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
         switch (config.operation) {
           case 'memberships': return adminService.memberships(client, principal, query);
           case 'company': return adminService.company(client, principal);
+          case 'companyDeliveryPricing': return adminService.companyDeliveryPricing(client, principal);
+          case 'updateCompanySettings': return adminService.updateCompanySettings(client, principal, validateCompanySettings(body));
+          case 'updateCompanyDeliveryPricing': return adminService.updateCompanyDeliveryPricing(client, principal, validateDeliveryPricing(body));
           case 'updateCompanyTimeZone': {
             exact(body, ['expectedVersion', 'timeZone']);
             if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 0) throw error('INVALID_INPUT');
@@ -175,4 +230,4 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
   };
 }
 
-module.exports = { ROUTES, createAdminHttpHandler, validateDriverLink };
+module.exports = { ROUTES, createAdminHttpHandler, validateDriverLink, validateCompanySettings, validateDeliveryPricing };

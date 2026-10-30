@@ -249,6 +249,39 @@ async function main() {
     assert(ownerRole, 'owner role exists in the active tenant');
     assert(ownerRole.permissions.includes('finance.read') && ownerRole.permissions.includes('finance.manage'),
       'current bootstrap grants tenant finance access to the company owner explicitly');
+    const companyBefore=await call('/api/admin/company',{cookie:sessionCookie});
+    assert.equal(companyBefore.status,200,'authenticated company configuration reads the canonical tenant');
+    assert.equal(companyBefore.body.deliveryPricing.configured,false,'legacy device pricing is not silently migrated to the company');
+    const companyWrite={expectedVersion:companyBefore.body.settingsVersion,expectedLocationVersion:companyBefore.body.operationalLocationVersion,
+      name:'Synthetic HTTP Tenant Updated',supportPhone:'11999990000',timeZone:'America/Sao_Paulo',routeGroupingPolicy:'nearest_origin_round_robin',
+      operationalLocation:{address:'Rua Sintética, 10',latitude:-23.55,longitude:-46.63}};
+    const companySaved=await call('/api/admin/company/settings',{method:'PUT',cookie:sessionCookie,csrf:login.body.csrfToken,body:companyWrite});
+    assert.equal(companySaved.status,200,'the atomic company settings write is accepted through authenticated HTTP');
+    const companyReadback=await call('/api/admin/company',{cookie:sessionCookie});
+    assert.equal(companyReadback.body.name,companyWrite.name);assert.equal(companyReadback.body.supportPhone,companyWrite.supportPhone);
+    assert.equal(companyReadback.body.timeZone,companyWrite.timeZone);assert.equal(companyReadback.body.routeGroupingPolicy,companyWrite.routeGroupingPolicy);
+    assert.deepEqual(companyReadback.body.operationalLocation,{...companyWrite.operationalLocation,provenance:'operator_confirmed',version:companySaved.body.operationalLocationVersion});
+    assert.equal(companyReadback.body.settingsVersion,companySaved.body.settingsVersion,'canonical readback observes the committed company revision');
+    const staleCompany=await call('/api/admin/company/settings',{method:'PUT',cookie:sessionCookie,csrf:login.body.csrfToken,body:{...companyWrite,name:'Stale overwrite'}});
+    assert.equal(staleCompany.status,409,'stale company revisions are rejected');
+    assert.equal((await call('/api/admin/company',{cookie:sessionCookie})).body.name,companyWrite.name,'conflict does not overwrite canonical values');
+    const pricing={model:'range',minFee:4.5,perKm:2.25,fixedFee:18,round:true,roundTo:0.5,
+      ranges:[{from:0,to:3,value:7},{from:3,to:null,value:12}],repasseMode:'percentage',repassePercent:85};
+    const pricingSaved=await call('/api/admin/company/delivery-pricing',{method:'PUT',cookie:sessionCookie,csrf:login.body.csrfToken,
+      body:{expectedVersion:0,settings:pricing}});
+    assert.equal(pricingSaved.status,200,'first reviewed pricing publication succeeds with MFA-authenticated company session');
+    const pricingReadback=await call('/api/admin/company/delivery-pricing',{cookie:sessionCookie});
+    assert.equal(pricingReadback.status,200);assert.equal(pricingReadback.body.configured,true);
+    assert.equal(pricingReadback.body.version,pricingSaved.body.version);assert.deepEqual(pricingReadback.body.settings,pricing);
+    const stalePricing=await call('/api/admin/company/delivery-pricing',{method:'PUT',cookie:sessionCookie,csrf:login.body.csrfToken,
+      body:{expectedVersion:0,settings:{...pricing,model:'perKm',perKm:9}}});
+    assert.equal(stalePricing.status,409,'concurrent pricing writes cannot overwrite the newer version');
+    const badPricing=await call('/api/admin/company/delivery-pricing',{method:'PUT',cookie:sessionCookie,csrf:login.body.csrfToken,
+      body:{expectedVersion:1,settings:{...pricing,ranges:[null]}}});
+    assert.equal(badPricing.status,400,'malformed range data is rejected by the API');
+    const missingCsrf=await call('/api/admin/company/delivery-pricing',{method:'PUT',cookie:sessionCookie,
+      body:{expectedVersion:1,settings:pricing}});assert.equal(missingCsrf.status,403,'pricing write still requires CSRF');
+    assert.equal((await call('/api/admin/company/delivery-pricing',{cookie:sessionCookie})).body.version,1,'negative requests leave persisted pricing unchanged');
     const ownerPrincipal = await service.resolveSession(client, sessionCookie.slice(sessionCookie.indexOf('=') + 1));
     await client.query(`DELETE FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2
       AND permission_key=ANY($3::text[])`, [companyId, ownerRole.id, ['finance.read','finance.manage']]);

@@ -11,6 +11,9 @@ function createAdminService({ repository }) {
   }
   return Object.freeze({
     company: (client, principal) => repository.company(client, principal.company_id),
+    companyDeliveryPricing: (client, principal) => repository.companyDeliveryPricing(client, principal.company_id),
+    updateCompanySettings: (client, principal, input) => repository.updateCompanySettings(client, principal, input),
+    updateCompanyDeliveryPricing: (client, principal, input) => repository.updateCompanyDeliveryPricing(client, principal, input),
     updateCompanyTimeZone(client, principal, input) {
       return repository.updateCompanyTimeZone(client, principal, input);
     },

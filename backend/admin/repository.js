@@ -245,10 +245,62 @@ function createAdminRepository() {
       FROM rotamoto.companies WHERE id=$1`, [companyId]);
     if (!result.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
     const row = result.rows[0];
+    let deliveryPricing = { configured: false, version: 0, settings: null };
+    try {
+      const pricing = await client.query(`SELECT settings,version FROM rotamoto.company_delivery_pricing WHERE company_id=$1`, [companyId]);
+      if (pricing.rowCount) deliveryPricing = { configured: true, version: Number(pricing.rows[0].version), settings: pricing.rows[0].settings };
+    } catch (error) { if (error.code !== '42P01') throw error; }
     return { id: row.id, name: row.name, status: row.status, timeZone: row.time_zone, supportPhone: row.support_phone,
       operationalLocation: operationalLocationFromRow(row),
       operationalLocationVersion: Number(row.operational_location_version), settingsVersion: Number(row.company_settings_version),
-      routeGroupingPolicy: row.route_grouping_policy, createdAt: row.created_at, updatedAt: row.updated_at };
+      routeGroupingPolicy: row.route_grouping_policy, deliveryPricing, createdAt: row.created_at, updatedAt: row.updated_at };
+  }
+  async function updateCompanySettings(client, principal, input) {
+    const location = input.operationalLocation;
+    const updated = await client.query(`UPDATE rotamoto.companies SET name=$2,support_phone=$3,time_zone=$4,
+        route_grouping_policy=$5,
+        operational_address=CASE WHEN $6::boolean THEN $7 ELSE operational_address END,
+        operational_latitude=CASE WHEN $6::boolean THEN $8 ELSE operational_latitude END,
+        operational_longitude=CASE WHEN $6::boolean THEN $9 ELSE operational_longitude END,
+        operational_location_provenance=CASE WHEN $6::boolean THEN CASE WHEN $8::double precision IS NULL THEN NULL ELSE 'operator_confirmed' END ELSE operational_location_provenance END,
+        operational_location_version=operational_location_version+CASE WHEN $6::boolean THEN 1 ELSE 0 END,
+        company_settings_version=company_settings_version+1,updated_at=now()
+      WHERE id=$1 AND company_settings_version=$10
+        AND (NOT $6::boolean OR operational_location_version=$11)
+      RETURNING id::text,name,status,time_zone,support_phone,operational_address,operational_latitude,operational_longitude,
+        operational_location_provenance,operational_location_version,company_settings_version,route_grouping_policy,updated_at`,
+      [principal.company_id,input.name,input.supportPhone,input.timeZone,input.routeGroupingPolicy,Boolean(location),
+        location?.address??null,location?.latitude??null,location?.longitude??null,input.expectedVersion,input.expectedLocationVersion??null]);
+    if (!updated.rowCount) {
+      const exists=await client.query('SELECT company_settings_version,operational_location_version FROM rotamoto.companies WHERE id=$1',[principal.company_id]);
+      if(!exists.rowCount)throw Object.assign(new Error('Empresa não encontrada.'),{code:'NOT_FOUND'});
+      throw Object.assign(new Error(Number(exists.rows[0].company_settings_version)!==input.expectedVersion?'A configuração da empresa mudou em outra sessão.':'A localização mudou em outra sessão.'),{code:'REVISION_CONFLICT'});
+    }
+    const row=updated.rows[0];
+    await writeAudit(client,principal,'company.settings.updated','company',principal.company_id,
+      {fields:['name','supportPhone','timeZone','routeGroupingPolicy',...(location?['operationalLocation']:[])],
+        settingsVersion:Number(row.company_settings_version),locationVersion:Number(row.operational_location_version)});
+    return {id:row.id,name:row.name,status:row.status,timeZone:row.time_zone,supportPhone:row.support_phone,
+      operationalLocation:operationalLocationFromRow(row),operationalLocationVersion:Number(row.operational_location_version),
+      settingsVersion:Number(row.company_settings_version),routeGroupingPolicy:row.route_grouping_policy,updatedAt:row.updated_at};
+  }
+  async function updateCompanyDeliveryPricing(client, principal, input) {
+    const result=await client.query(`INSERT INTO rotamoto.company_delivery_pricing(company_id,settings,version,updated_by)
+      SELECT $1,$3::jsonb,1,$4 WHERE $2=0
+      ON CONFLICT(company_id) DO UPDATE SET settings=EXCLUDED.settings,version=rotamoto.company_delivery_pricing.version+1,
+        updated_by=EXCLUDED.updated_by,updated_at=now()
+      WHERE rotamoto.company_delivery_pricing.version=$2
+      RETURNING settings,version,updated_at`,[principal.company_id,input.expectedVersion,JSON.stringify(input.settings),principal.user_id]);
+    if(!result.rowCount)throw Object.assign(new Error('A configuração operacional mudou em outra sessão.'),{code:'REVISION_CONFLICT'});
+    await writeAudit(client,principal,'company.delivery_pricing.updated','company',principal.company_id,
+      {model:input.settings.model,fields:Object.keys(input.settings).sort(),version:Number(result.rows[0].version)});
+    return {configured:true,settings:result.rows[0].settings,version:Number(result.rows[0].version),updatedAt:result.rows[0].updated_at};
+  }
+  async function companyDeliveryPricing(client, companyId) {
+    try {
+      const result=await client.query('SELECT settings,version,updated_at FROM rotamoto.company_delivery_pricing WHERE company_id=$1',[companyId]);
+      return result.rowCount?{configured:true,settings:result.rows[0].settings,version:Number(result.rows[0].version),updatedAt:result.rows[0].updated_at}:{configured:false,settings:null,version:0,updatedAt:null};
+    } catch(error) { if(error.code==='42P01')return {configured:false,settings:null,version:0,available:false}; throw error; }
   }
   async function updateCompanyTimeZone(client, principal, input) {
     const current = await client.query(`SELECT time_zone,company_settings_version FROM rotamoto.companies WHERE id=$1 FOR UPDATE`, [principal.company_id]);
@@ -382,7 +434,7 @@ function createAdminRepository() {
         AND status IN ('queued','leased','pending','unknown_outcome')`,[companyId,accountId]);
     return {account:{id:result.rows[0].id,status:result.rows[0].account_status,lastSyncAt:result.rows[0].last_sync_at}};
   }
-  return Object.freeze({ company, memberships, roles, integrations, disableIntegrationAccount, permissions, createRole, updateRole,
+  return Object.freeze({ company, companyDeliveryPricing, updateCompanySettings, updateCompanyDeliveryPricing, memberships, roles, integrations, disableIntegrationAccount, permissions, createRole, updateRole,
     restoreOwnerFinancePermissions, updateMembership,
     updateCompanyTimeZone, updateCompanyLocation, updateCompanyProfile, updateCompanyRouteGrouping, associateMembershipDriver, disassociateMembershipDriver });
 }

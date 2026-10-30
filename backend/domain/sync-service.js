@@ -939,9 +939,15 @@ function createSyncService({ clock = () => new Date(), mediaStorage = createMedi
         FROM rotamoto.companies WHERE id=$1 AND status='active'`, [principal.company_id]);
       if (company.rowCount) {
         const row = company.rows[0];
+        let deliveryPricing = null;
+        try {
+          const pricing = await client.query(`SELECT settings,version FROM rotamoto.company_delivery_pricing WHERE company_id=$1`, [principal.company_id]);
+          if (pricing.rowCount) deliveryPricing = { version:Number(pricing.rows[0].version), settings:pricing.rows[0].settings };
+        } catch (error) { if (error.code !== '42P01') throw error; }
         companySettings = { companyId: row.company_id, authority: 'restaurant', revision: Number(row.company_settings_version),
           name: row.name, supportPhone: row.support_phone || null, timeZone: row.time_zone || null,
           routeGroupingPolicy: row.route_grouping_policy,
+          deliveryPricing,
           operationalLocation: row.operational_address == null && row.operational_latitude == null && row.operational_longitude == null
             ? null : { address: row.operational_address,
               latitude: row.operational_latitude == null ? null : Number(row.operational_latitude),

@@ -145,4 +145,16 @@ for (const contract of [current, sibling]) {
   assert.equal(contract.normalizeDeliveryStatus('route', 'motoboy'), 'OUT_FOR_DELIVERY');
 }
 
+const motoboyRoot=path.basename(appRoot)==='rota-moto'?appRoot:siblingRoot;
+assert.ok(restaurantRoot&&motoboyRoot,'both application checkouts are required for the company pricing contract');
+const restaurantHttp=fs.readFileSync(path.join(restaurantRoot,'backend/admin/http.js'),'utf8');
+const restaurantSync=fs.readFileSync(path.join(restaurantRoot,'backend/domain/sync-service.js'),'utf8');
+const motoboyApp=fs.readFileSync(path.join(motoboyRoot,'app.js'),'utf8');
+const motoboyHtml=fs.readFileSync(path.join(motoboyRoot,'index.html'),'utf8');
+assert.match(restaurantHttp,/\/api\/admin\/company\/delivery-pricing[\s\S]*?updateCompanyDeliveryPricing/u,'Restaurant exposes the versioned canonical pricing API');
+assert.match(restaurantSync,/deliveryPricing = \{ version:Number\(pricing\.rows\[0\]\.version\), settings:pricing\.rows\[0\]\.settings \}/u,'authenticated sync emits the server pricing snapshot');
+assert.match(motoboyApp,/const pricing=value\.deliveryPricing[\s\S]*?pricing\.version<1[\s\S]*?range\.from<priorTo/u,'Motoboy validates the version and range semantics of received canonical pricing');
+assert.ok(motoboyApp.includes('A taxa efetiva acompanha cada entrega sincronizada.'),'Motoboy explains that actual fees accompany canonical deliveries');
+assert.ok(motoboyHtml.includes('referências locais do aparelho')&&motoboyHtml.includes('Ganhos efetivos e regras financeiras da entrega vêm do Restaurante'),'Motoboy device estimates remain distinct from company pricing');
+
 console.log('Cross-app contract parity, v1 packet semantics and revision metadata passed.');

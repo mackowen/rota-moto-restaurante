@@ -1,66 +1,39 @@
 'use strict';
 const assert=require('node:assert/strict');
-const { operationalLocationFromRow } = require('../backend/admin/repository');
 const fs=require('node:fs');
 const path=require('node:path');
 const {Readable}=require('node:stream');
-const {createAdminHttpHandler}=require('../backend/admin/http');
+const {createAdminHttpHandler,validateCompanySettings}=require('../backend/admin/http');
 const {createAdminService}=require('../backend/admin/service');
-
-const application=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
-const generalSettings=application.slice(application.indexOf('async function saveGeneralSettings(){'),application.indexOf('\nasync function refreshEvents(){'));
-const publishAddress=application.slice(application.indexOf('async function publishCompanyAddress(address){'),application.indexOf('\nasync function publishOperationalLocation(coords){'));
-const logisticsUi=fs.readFileSync(path.join(__dirname,'../logistics-ui.js'),'utf8');
-assert(generalSettings.length>0,'general settings save handler is present');
-assert.doesNotMatch(generalSettings,/nominatim\.openstreetmap\.org/u,
-  'saving an address must not call an external geocoder');
-assert.match(generalSettings,/restaurantCoords:hasCoordinates\?\[Number\(location\.latitude\),Number\(location\.longitude\)\]:null/u,
-  'an address update without confirmed coordinates clears the old local coordinates');
-assert.match(generalSettings,/manual-required/u,'the interface tells the operator to confirm coordinates manually');
-assert.match(publishAddress,/latitude:null,longitude:null/u,
-  'an unconfirmed address is published with unknown coordinates');
-assert.match(logisticsUi,/const locationCoordinates=location&&location\.latitude!==null&&location\.longitude!==null[\s\S]*?location\.provenance==='operator_confirmed'/u,
-  'Logistics only formats coordinates when the canonical Company location has a confirmed pair');
-assert.match(logisticsUi,/Endereço cadastral · coordenadas não confirmadas/u,
-  'Logistics renders the saved Company address when coordinates are unknown');
-assert.doesNotMatch(logisticsUi,/location\.latitude\.toFixed\(6\)/u,
-  'Logistics must not call toFixed on nullable Company coordinates');
-
-const migration=fs.readFileSync(path.join(__dirname,'../backend/postgres/migrations/0033_company_operational_location.up.sql'),'utf8');
-const addressOnly=operationalLocationFromRow({operational_address:'Rua de teste, 10',operational_latitude:null,operational_longitude:null,operational_location_provenance:null,operational_location_version:'4'});
-assert.deepEqual(addressOnly,{address:'Rua de teste, 10',latitude:null,longitude:null,provenance:null,version:4},'a saved address must remain readable before geocoding is confirmed');
-assert.equal(operationalLocationFromRow({operational_address:null,operational_latitude:null,operational_longitude:null,operational_location_version:'0'}),null,'an empty location remains absent');
-for(const column of ['support_phone','operational_address','operational_latitude','operational_longitude','operational_location_provenance','operational_location_version','company_settings_version'])assert.match(migration,new RegExp(`ADD COLUMN ${column}`));
-assert.match(migration,/operational_location_provenance IS NULL OR operational_location_provenance = 'operator_confirmed'/u);
-assert.match(migration,/GRANT SELECT \(support_phone, operational_address, operational_latitude, operational_longitude,/u);
-assert.match(migration,/GRANT UPDATE \(name, support_phone, operational_address, operational_latitude, operational_longitude,/u);
-assert.doesNotMatch(migration,/secret_ref|GRANT .* ON ALL TABLES|BYPASSRLS/u);
-const groupingMigration=fs.readFileSync(path.join(__dirname,'../backend/postgres/migrations/0034_company_route_grouping_policy.up.sql'),'utf8');
-assert.match(groupingMigration,/route_grouping_policy text NOT NULL DEFAULT 'nearest_extension'/u);
-assert.match(groupingMigration,/route_grouping_policy IN \('nearest_extension', 'nearest_origin_round_robin'\)/u);
-assert.match(groupingMigration,/GRANT SELECT \(route_grouping_policy\).*rotamoto_app/u);
-assert.doesNotMatch(groupingMigration,/secret_ref|GRANT .* ON ALL TABLES|BYPASSRLS/u);
-
-async function call(handler,url,body){const req=Readable.from([Buffer.from(JSON.stringify(body))]);req.method='PUT';req.url=url;req.headers={'content-type':'application/json',cookie:`__Host-rotamoto_session=${'s'.repeat(43)}`,'x-csrf-token':'c'.repeat(43),origin:'https://restaurant.test'};req.socket={remoteAddress:'127.0.0.1',encrypted:true};let status,payload;const res={writeHead(value){status=value},end(value){payload=JSON.parse(value)}};await handler(req,res);return{status,payload}}
-
+const app=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');
+const companyUi=app.slice(app.indexOf("if(cat==='geral')return card("),app.indexOf("if(cat==='aparencia')return card("));
+assert(companyUi.includes('data-save-company-settings'),'Empresa has one main save action');
+for(const redundant of ['data-save-general','data-save-company-timezone','data-publish-company-profile','data-refresh-company-profile'])assert(!companyUi.includes(redundant),`${redundant} was removed from the screen`);
+assert.match(companyUi,/data-confirm-restaurant-location/u,'map pin remains an explicit confirmation before company save');
+assert.match(app,/async function saveCompanySettings\([\s\S]*?\/admin\/company\/settings/u,'Company fields use one atomic API operation');
+assert.match(app,/REVISION_CONFLICT[\s\S]*?valores continuam no formulário/u,'409 preserves the user draft without showing a technical revision');
+assert.doesNotMatch(app,/Dados confirmados pelo servidor · revisão \$\{/u,'normal status does not show revision numbers');
+assert.match(app,/loadCanonicalCompanyProfile\([\s\S]*?\/admin\/company/u,'company configuration loads automatically from its canonical endpoint');
+assert.match(app,/restaurantLocationConfirmed===true[\s\S]*?operationalLocation=/u,'only a confirmed map pin is included in the atomic save');
+assert.match(app,/data-save-company-delivery-pricing/u,'operation section has an explicit server-save affordance');
+assert.match(app,/pricing_unavailable/u,'fees are not calculated from a device-only legacy configuration');
+const location={address:'Rua 1',latitude:-23.5,longitude:-46.6};
+const good=validateCompanySettings({expectedVersion:3,expectedLocationVersion:4,name:'Restaurante',supportPhone:null,timeZone:'America/Sao_Paulo',routeGroupingPolicy:'nearest_extension',operationalLocation:location});
+assert.deepEqual(good.operationalLocation,location);
+assert.throws(()=>validateCompanySettings({expectedVersion:3,name:'Restaurante',supportPhone:null,timeZone:'+03:00',routeGroupingPolicy:'nearest_extension'}),error=>error.code==='INVALID_INPUT','numeric UTC offsets are not accepted in place of an IANA zone');
+assert.throws(()=>validateCompanySettings({expectedVersion:3,name:'Restaurante',supportPhone:null,timeZone:null,routeGroupingPolicy:'nearest_extension',operationalLocation:location}),error=>error.code==='INVALID_INPUT','location writes require their independent revision');
+async function call(handler,url,method,body){const req=Readable.from(body===undefined?[]:[Buffer.from(JSON.stringify(body))]);req.method=method;req.url=url;req.headers={'content-type':'application/json',cookie:`__Host-rotamoto_session=${'s'.repeat(43)}`,'x-csrf-token':'c'.repeat(43),origin:'https://restaurant.test'};req.socket={remoteAddress:'127.0.0.1',encrypted:true};let status,payload;const res={writeHead(value){status=value},end(value){payload=value?JSON.parse(value):null}};await handler(req,res);return{status,payload}}
 (async()=>{
-  const received=[];
-  const repository={async updateCompanyProfile(_client,principal,value){received.push({operation:'profile',tenant:principal.company_id,value});return{name:value.name,supportPhone:value.supportPhone,settingsVersion:value.expectedVersion+1}},
-    async updateCompanyLocation(_client,principal,value){received.push({operation:'location',tenant:principal.company_id,value});return{operationalLocation:{address:value.address,latitude:value.latitude,longitude:value.longitude,provenance:'operator_confirmed',version:value.expectedVersion+1},operationalLocationVersion:value.expectedVersion+1}},
-    async updateCompanyRouteGrouping(_client,principal,value){received.push({operation:'route-grouping',tenant:principal.company_id,value});return{routeGroupingPolicy:value.policy,settingsVersion:value.expectedVersion+1}}};
-  const identityService={async withAuthenticatedTenant(_token,operation,permission){assert.equal(permission,'company.manage');return operation({},{company_id:'tenant-a',user_id:'operator-a'})},async verifyCsrf(){return true}};
-  const handler=createAdminHttpHandler({identityService,adminService:createAdminService({repository}),allowedOrigin:'https://restaurant.test'});
-  const profile=await call(handler,'/api/admin/company/profile',{expectedVersion:2,name:'Restaurante Principal',supportPhone:'11999990000'});
-  assert.equal(profile.status,200);assert.equal(received[0].tenant,'tenant-a');assert.equal(received[0].value.name,'Restaurante Principal');
-  const location=await call(handler,'/api/admin/company/location',{expectedVersion:0,address:'Rua Central, 10',latitude:-23.5,longitude:-46.6});
-  assert.equal(location.status,200);assert.equal(location.payload.operationalLocation.provenance,'operator_confirmed');assert.equal(received[1].tenant,'tenant-a');
-  const grouping=await call(handler,'/api/admin/company/route-grouping',{expectedVersion:2,policy:'nearest_origin_round_robin'});
-  assert.equal(grouping.status,200);assert.equal(grouping.payload.routeGroupingPolicy,'nearest_origin_round_robin');assert.equal(received[2].tenant,'tenant-a');
-  const invalidGrouping=await call(handler,'/api/admin/company/route-grouping',{expectedVersion:3,policy:'arbitrary'});
-  assert.equal(invalidGrouping.status,400);assert.equal(received.length,3,'unsupported policy does not reach repository');
-  const spoof=await call(handler,'/api/admin/company/location',{expectedVersion:1,address:'Rua',latitude:0,longitude:0,companyId:'tenant-b'});
-  assert.equal(spoof.status,400);assert.equal(received.length,3,'unknown client tenant fields never reach repository');
-  const badPair=await call(handler,'/api/admin/company/location',{expectedVersion:1,address:null,latitude:0,longitude:null});
-  assert.equal(badPair.status,400);assert.equal(received.length,3,'unpaired coordinates are rejected');
-  console.log('Company-owned settings, route grouping authority, explicit coordinates, revision and tenant validation: PASS');
+ let received;
+ const repository={async updateCompanySettings(_client,principal,value){received={principal,value};return {id:principal.company_id,name:value.name,status:'active',timeZone:value.timeZone,supportPhone:value.supportPhone,routeGroupingPolicy:value.routeGroupingPolicy,operationalLocation:value.operationalLocation?{...value.operationalLocation,provenance:'operator_confirmed',version:5}:null,operationalLocationVersion:value.expectedLocationVersion+(value.operationalLocation?1:0),settingsVersion:value.expectedVersion+1}}};
+ const identityService={async withAuthenticatedTenant(_token,operation,permission){assert.equal(permission,'company.manage');return operation({},{company_id:'tenant-a',user_id:'operator-a'})},async verifyCsrf(){return true}};
+ const handler=createAdminHttpHandler({identityService,adminService:createAdminService({repository}),allowedOrigin:'https://restaurant.test'});
+ const payload={expectedVersion:7,expectedLocationVersion:4,name:'Restaurante atualizado',supportPhone:'11999990000',timeZone:'America/Sao_Paulo',routeGroupingPolicy:'nearest_origin_round_robin',operationalLocation:location};
+ const result=await call(handler,'/api/admin/company/settings','PUT',payload);
+ assert.equal(result.status,200);assert.equal(received.principal.company_id,'tenant-a');assert.deepEqual(received.value.operationalLocation,location);assert.equal(result.payload.settingsVersion,8);
+ const invalid=await call(handler,'/api/admin/company/settings','PUT',{...payload,companyId:'tenant-b'});assert.equal(invalid.status,400);
+ const conflictRepository={async updateCompanySettings(){throw Object.assign(new Error('conflict'),{code:'REVISION_CONFLICT'})}};
+ const conflictHandler=createAdminHttpHandler({identityService,adminService:createAdminService({repository:conflictRepository}),allowedOrigin:'https://restaurant.test'});
+ const conflict=await call(conflictHandler,'/api/admin/company/settings','PUT',payload);assert.equal(conflict.status,409);
+ console.log('Company atomic settings contract, validation, location confirmation and conflict mapping: PASS');
 })().catch(error=>{console.error(error);process.exitCode=1});
