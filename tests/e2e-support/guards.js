@@ -12,7 +12,14 @@ function storedLoopbackCredential(role, database, port = 5432, allowOperationalF
     // pgpass entries for the same role can authenticate that role to the
     // isolated database; never copy or print the secret.
     if (exact) return exact;
-    if (allowOperationalFallback && port===5432 && role === 'rotamoto_app' && (database === 'rotamoto_e2e' || database === 'rotamoto_disposable_0068_source')) return lookup('rotamoto');
+    if (allowOperationalFallback && port===5432 && role === 'rotamoto_app' &&
+        /^rotamoto_e2e_lote1b_[0-9]{8}_[a-f0-9]{8}$/u.test(database)) {
+      return await lookup('rotamoto_e2e') || await lookup('rotamoto');
+    }
+    if (allowOperationalFallback && port===5432 && role === 'rotamoto_migrator' &&
+        /^rotamoto_e2e_lote1b_[0-9]{8}_[a-f0-9]{8}$/u.test(database)) return lookup('rotamoto');
+    if (allowOperationalFallback && port===5432 && role === 'rotamoto_app' &&
+        (database === 'rotamoto_e2e' || database === 'rotamoto_disposable_0068_source')) return lookup('rotamoto');
     return undefined;
   };
 }
@@ -48,6 +55,17 @@ function resolveE2eTargets(env = process.env) {
         { database, role: 'rotamoto_app', nodeEnv: env.NODE_ENV }),
       migrator: validateConnectionUrl(env.ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL,
         { database, role: 'rotamoto_migrator', nodeEnv: env.NODE_ENV }), database
+    });
+  }
+  if (env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0304B') {
+    const database = env.ROTAMOTO_LOTE1B_DATABASE;
+    if (typeof database !== 'string' || !/^rotamoto_e2e_lote1b_[0-9]{8}_[a-f0-9]{8}$/u.test(database))
+      throw new Error('Alvo descartável 0304B exige nome de banco gerado no formato aprovado.');
+    return Object.freeze({
+      runtime: validateConnectionUrl(env.ROTAMOTO_DISPOSABLE_RUNTIME_DATABASE_URL,
+        { database, role: 'rotamoto_app', nodeEnv: env.NODE_ENV }),
+      migrator: validateConnectionUrl(env.ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL,
+        { database, role: 'rotamoto_migrator', nodeEnv: env.NODE_ENV }), database, disposableLote1b: true
     });
   }
   return Object.freeze({
@@ -92,9 +110,11 @@ async function assertConnectedIdentity(client, { database = 'rotamoto_e2e', role
       has_database_privilege(current_user,current_database(),'TEMPORARY') AS temporary`)).rows[0];
     if (!dbAcl.connect || dbAcl.create || dbAcl.temporary) throw new Error('Privilégios de database do runtime E2E divergem do perfil aprovado.');
   }
-  if (database === 'rotamoto_disposable_0068_source' &&
-      (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0068')) {
-    throw new Error('Identidade de origem descartável exige guard explícito da campanha 0068.');
+  if ((database === 'rotamoto_disposable_0068_source' || /^rotamoto_e2e_lote1b_[0-9]{8}_[a-f0-9]{8}$/u.test(database)) &&
+      (env.NODE_ENV !== 'test' ||
+        (database === 'rotamoto_disposable_0068_source' && env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0068') ||
+        (database.startsWith('rotamoto_e2e_lote1b_') && (env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0304B' || env.ROTAMOTO_LOTE1B_DATABASE !== database)))) {
+    throw new Error('Identidade de banco descartável exige o guard explícito da campanha correspondente.');
   }
   return identity;
 }

@@ -6,6 +6,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createClient } = require('../backend/postgres/connection');
+const { resolveE2eTargets, storedLoopbackCredential, assertConnectedIdentity } = require('./e2e-support/guards');
 const { createIdentityService, tokenDigest } = require('../backend/identity/service');
 const { COOKIE_NAME, createRateLimiter, createIdentityHttpHandler } = require('../backend/identity/http');
 const { createSyncService } = require('../backend/domain/sync-service');
@@ -210,18 +211,18 @@ async function runAuthenticatedFinancialBrowser({base,sessionToken,orderId,earni
 }
 
 async function main() {
-  if (!process.env.DATABASE_URL || !process.env.MIGRATOR_DATABASE_URL) {
-    throw new Error('DATABASE_URL (runtime) e MIGRATOR_DATABASE_URL (status de migrations) são obrigatórias.');
-  }
-  assert.equal(decodeURIComponent(new URL(process.env.DATABASE_URL).username), 'rotamoto_app');
-  assert.equal(decodeURIComponent(new URL(process.env.MIGRATOR_DATABASE_URL).username), 'rotamoto_migrator');
-  assert.equal(decodeURIComponent(new URL(process.env.DATABASE_URL).pathname.slice(1)), 'rotamoto_e2e', 'this synthetic fixture is restricted to rotamoto_e2e');
-  assert.equal(decodeURIComponent(new URL(process.env.MIGRATOR_DATABASE_URL).pathname.slice(1)), 'rotamoto_e2e', 'the migrator connection is also restricted to rotamoto_e2e');
-  const migrator = createClient({ connectionString: process.env.MIGRATOR_DATABASE_URL });
-  const client = createClient({ connectionString: process.env.DATABASE_URL });
+  if (process.env.NODE_ENV !== 'test') throw new Error('Domain sync PostgreSQL E2E exige NODE_ENV=test.');
+  const targets=resolveE2eTargets(process.env);
+  const database=targets.database;
+  const migrator = createClient({ connectionString: targets.migrator,
+    password: storedLoopbackCredential('rotamoto_migrator',database,targets.port||5432) });
+  const client = createClient({ connectionString: targets.runtime,
+    password: storedLoopbackCredential('rotamoto_app',database,targets.port||5432) });
   await migrator.connect();
   await client.connect();
   try {
+    await assertConnectedIdentity(migrator,{database,role:'rotamoto_migrator',env:process.env});
+    await assertConnectedIdentity(client,{database,role:'rotamoto_app',env:process.env});
     const migration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0009_domain_model_constraints'");
     assert.equal(migration.rowCount, 1, 'canonical model constraints migration is applied by the migrator');
     const driverBindingMigration = await migrator.query("SELECT migration_id FROM rotamoto.schema_migrations WHERE migration_id='0013_membership_driver_binding'");
@@ -1283,7 +1284,7 @@ async function main() {
       if(process.env.E2E_BROWSER_CDP_PORT){
         try{browserEvidence=await runAuthenticatedFinancialBrowser({base,sessionToken,orderId,earningOrderId,companyId})}
         catch(error){const pull=await call('/api/sync/pull?deviceId=restaurant-test-device'),events=pull.body?.events||[],invalid=events.filter(row=>{try{SyncReconciliation.canonicalEvent(row,companyId);return false}catch(_){return true}}).map(row=>({eventId:row.eventId,entity:row.entity,entityId:row.entityId,type:row.type,protocolVersion:row.protocolVersion,payloadType:row.payload&&typeof row.payload,payloadId:row.payload?.id,payloadVersion:row.payload?.version}));error.message+=` pullDiagnostic=${JSON.stringify({status:pull.status,eventCount:events.length,invalid:invalid.slice(0,8)})}`;throw error}
-        console.log(JSON.stringify({test:'finance-authenticated-browser-e2e',database:'rotamoto_e2e',...browserEvidence}));
+        console.log(JSON.stringify({test:'finance-authenticated-browser-e2e',database,...browserEvidence}));
         const renewedSession=await call('/api/identity/session');
         assert.equal(renewedSession.status,200,'browser authentication preserves the synthetic server session');
         assert.equal(typeof renewedSession.body.csrfToken,'string');
@@ -1317,7 +1318,7 @@ async function main() {
     await migrator.query('ROLLBACK');
     assert.deepEqual(leftovers.rows[0], { companies: 0, domain_records: 0, memberships: 0, sync_outbox: 0 },
       'all campaign tenant rows are absent after transactional rollback');
-    console.log(JSON.stringify({ fixture: 'domain-sync-company-location-0279', companyId, database: 'rotamoto_e2e', databaseCommitted: false,
+    console.log(JSON.stringify({ fixture: 'domain-sync-company-location-0279', companyId, database, databaseCommitted: false,
       cleanup: 'COMPLETED', residuals: leftovers.rows[0] }));
     console.log('PostgreSQL canonical domain and sync API tests: OK');
   } catch (error) {

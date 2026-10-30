@@ -15,6 +15,9 @@ const { createIdentityHttpHandler, createRateLimiter } = require('../../backend/
 const { createAdminHttpHandler } = require('../../backend/admin/http');
 const { createAdminRepository } = require('../../backend/admin/repository');
 const { createAdminService } = require('../../backend/admin/service');
+const { createPlatformAdminHttpHandler } = require('../../backend/admin/platform-http');
+const { createFinanceHttpHandler } = require('../../backend/finance/http');
+const { createFinanceService } = require('../../backend/finance/service');
 const { createSyncHttpHandler } = require('../../backend/domain/sync-http');
 const { createSyncService } = require('../../backend/domain/sync-service');
 const { createFilesystemObjectStore } = require('../../backend/domain/filesystem-object-store');
@@ -26,6 +29,8 @@ const { createDomainQueryRepository } = require('../../backend/domain/query-repo
 const { createDomainQueryService } = require('../../backend/domain/query-service');
 const { createDriverAvailabilityService } = require('../../backend/logistics/driver-availability');
 const { createDriverAvailabilityHttpHandler } = require('../../backend/logistics/driver-availability-http');
+const { createRestaurantDriverQueueService } = require('../../backend/logistics/restaurant-driver-queue');
+const { createRestaurantDriverQueueHttpHandler } = require('../../backend/logistics/restaurant-driver-queue-http');
 const { COOKIE_NAME } = require('../../backend/identity/http');
 const { createPool } = require('../../backend/postgres/connection');
 const { resolveE2eTargets, storedLoopbackCredential } = require('./guards');
@@ -116,7 +121,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       clients.database !== 'rotamoto_e2e' || env.DATABASE_URL || env.MIGRATOR_DATABASE_URL)) {
     throw new Error('Porta E2E 8787 fixa permitida somente para fixture autenticada 0251 em rotamoto_e2e.');
   }
-  const disposableCampaign = clients.migrator ? env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0068' : false;
+  const disposableCampaign = clients.migrator ? ['0068', '0304B'].includes(env.ROTAMOTO_DISPOSABLE_CAMPAIGN) : false;
   if (persistDisposableFixture && (!disposableCampaign || env.NODE_ENV !== 'test' ||
       requestedMediaDirectory !== path.resolve(requestedMediaDirectory || '') ||
       path.dirname(requestedMediaDirectory) !== os.tmpdir() ||
@@ -183,7 +188,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
   let lifecycleFailed = false;
   try {
     await runtime.connect(); connectedRuntime = true;
-    const database = disposableCampaign ? 'rotamoto_disposable_0068_source' : 'rotamoto_e2e';
+    const database = clients.database;
     await assertConnectedIdentity(runtime, { role: 'rotamoto_app', database, env });
     await runtime.query('BEGIN'); transactionOpen = true;
     activePool = savepointPool(runtime);
@@ -252,13 +257,22 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       async get(secretRef) { if(!mfaSecrets.has(secretRef))throw new Error('missing test secret');return mfaSecrets.get(secretRef); },
       async remove(secretRef) { mfaSecrets.delete(secretRef); } });
     const password = `E2E-${crypto.randomBytes(30).toString('base64url')}`;
+    const bootstrapCapabilityDigest = env.ROTAMOTO_DISPOSABLE_CAMPAIGN === '0304B'
+      ? crypto.createHash('sha256').update(crypto.randomBytes(32)).digest() : null;
+    if (bootstrapCapabilityDigest) {
+      await runtime.query(`INSERT INTO rotamoto.bootstrap_authorizations
+        (token_digest,installation_scope,expires_at) VALUES($1,'rotamoto',now()+interval '10 minutes')`,
+      [bootstrapCapabilityDigest]);
+    }
     const identityService = createIdentityService({ pool,
       authorizeProvisioner: async ({ context }) => {
         if (context?.request?.headers['x-e2e-operator'] !== operatorMarker) throw new Error('unauthorized');
-        return { actorRef: 'test:e2e-fixture-operator' };
+        return { actorRef: 'test:e2e-fixture-operator',
+          ...(bootstrapCapabilityDigest ? { bootstrapCapabilityDigest } : {}) };
       },
       emailProvider: createEmailDeliveryProvider(async message => { emails.push(message); onTestEmail?.(message); return { accepted: true }; }),
-      mfaProvider: createNativeMfaProvider({ secretProvider }) , secretProvider });
+      mfaProvider: createNativeMfaProvider({ secretProvider }) , secretProvider,
+      requireBootstrapAuthorization: Boolean(bootstrapCapabilityDigest) });
     const limiter = rateLimiter();
     const originConfig = allowedOrigins.length ? allowedOrigins : undefined;
     const identityHttp = createIdentityHttpHandler({ identityService, logger: () => {}, rateLimiter: limiter,
@@ -271,10 +285,17 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       rateLimiter: limiter });
     const adminHttp = createAdminHttpHandler({ identityService, adminService: createAdminService({ repository: createAdminRepository() }),
       logger: () => {}, rateLimiter: limiter, allowedOrigin: originConfig });
+    const platformAdminHttp = createPlatformAdminHttpHandler({ identityService, logger: () => {}, allowedOrigin: originConfig });
+    const financeHttp = createFinanceHttpHandler({ identityService, financeService: createFinanceService(), logger: () => {}, allowedOrigin: originConfig });
     const driverAvailabilityService=createDriverAvailabilityService();
+    const queueSigningKeys=crypto.generateKeyPairSync('ed25519');
+    const restaurantDriverQueueService=createRestaurantDriverQueueService({
+      qrKey:queueSigningKeys.privateKey.export({type:'pkcs8',format:'pem'}),qrKid:`e2e-${crypto.randomUUID().slice(0,8)}`
+    });
     const syncHttp = createSyncHttpHandler({ identityService, syncService: createSyncService({ mediaStorage,driverAvailability:driverAvailabilityService }), logger: () => {}, rateLimiter: limiter,
       allowedOrigin: originConfig });
     const driverAvailabilityHttp=createDriverAvailabilityHttpHandler({identityService,service:driverAvailabilityService,logger:()=>{},rateLimiter:limiter,allowedOrigin:originConfig});
+    const restaurantDriverQueueHttp=createRestaurantDriverQueueHttpHandler({identityService,service:restaurantDriverQueueService,logger:()=>{},rateLimiter:limiter,allowedOrigin:originConfig});
     const queryHttp = createDomainQueryHttpHandler({ identityService,
       queryService: createDomainQueryService({ repository: createDomainQueryRepository() }), logger: () => {}, rateLimiter: limiter,
       onProfile: profile => {
@@ -285,7 +306,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     if (!Array.isArray(testHandlers) || testHandlers.some(handler => typeof handler !== 'function')) throw new Error('Handlers E2E inválidos.');
     // Test-only domain adapters must run before the broad /api/admin handler so
     // mounted marketplace/admin subdomains can use their canonical routes.
-    host = await start([identityHttp, ...testHandlers, adminHttp, proofHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext,
+    host = await start([identityHttp, ...testHandlers, platformAdminHttp, financeHttp, adminHttp, proofHttp, restaurantDriverQueueHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext,
       onRequestProfile, onRequestStart, listenPort);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {}, timeoutMs = 30_000 } = {}) => {
@@ -851,8 +872,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     if (!fixturePersisted && !retainIndependentFixture && !fixtureManifest) {
     await migrator.connect();
     try {
-      await assertConnectedIdentity(migrator, { role: 'rotamoto_migrator',
-        database: disposableCampaign ? 'rotamoto_disposable_0068_source' : 'rotamoto_e2e', env });
+      await assertConnectedIdentity(migrator, { role: 'rotamoto_migrator', database: clients.database, env });
       await migrator.query('BEGIN READ ONLY');
       try {
         await migrator.query("SELECT set_config('app.tenant_id',$1,true)", [companyId || '00000000-0000-7000-8000-000000000000']);

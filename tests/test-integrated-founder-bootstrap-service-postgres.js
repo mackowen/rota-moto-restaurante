@@ -4,15 +4,15 @@ const crypto=require('node:crypto');
 const {createPool}=require('../backend/postgres/connection');
 const {createIdentityService}=require('../backend/identity/service');
 const {createEmailDeliveryProvider}=require('../backend/identity/email-provider');
-const {resolveE2eTargets,assertConnectedIdentity}=require('./e2e-support/guards');
+const {resolveE2eTargets,assertConnectedIdentity,storedLoopbackCredential}=require('./e2e-support/guards');
 
 function savepointPool(client){let n=0;const stack=[];return{async connect(){return{async query(sql,values){const normalized=sql.trim().toUpperCase();if(normalized==='BEGIN'){const name=`founder_bootstrap_${++n}`;stack.push(name);return client.query(`SAVEPOINT ${name}`)}if(normalized==='COMMIT'){const name=stack.pop();return client.query(`RELEASE SAVEPOINT ${name}`)}if(normalized==='ROLLBACK'){const name=stack.pop();await client.query(`ROLLBACK TO SAVEPOINT ${name}`);return client.query(`RELEASE SAVEPOINT ${name}`)}return client.query(sql,values)},release(){}}}}}
 async function main(){
- assert.equal(process.env.NODE_ENV,'test');const targets=resolveE2eTargets(process.env),pool=createPool({connectionString:targets.runtime,max:1,connectionTimeoutMillis:3000}),verifierPool=createPool({connectionString:targets.migrator,max:1,connectionTimeoutMillis:3000});
+ assert.equal(process.env.NODE_ENV,'test');const targets=resolveE2eTargets(process.env),pool=createPool({connectionString:targets.runtime,password:storedLoopbackCredential('rotamoto_app',targets.database,targets.port||5432),max:1,connectionTimeoutMillis:3000}),verifierPool=createPool({connectionString:targets.migrator,password:storedLoopbackCredential('rotamoto_migrator',targets.database,targets.port||5432),max:1,connectionTimeoutMillis:3000});
  const client=await pool.connect(),verifier=await verifierPool.connect();let outer=false;
  try{
-  await assertConnectedIdentity(client,{database:'rotamoto_e2e',role:'rotamoto_app',env:process.env});
-  await assertConnectedIdentity(verifier,{database:'rotamoto_e2e',role:'rotamoto_migrator',env:process.env});
+  await assertConnectedIdentity(client,{database:targets.database,role:'rotamoto_app',env:process.env});
+  await assertConnectedIdentity(verifier,{database:targets.database,role:'rotamoto_migrator',env:process.env});
   await verifier.query('BEGIN READ ONLY');
   const prior=await verifier.query(`SELECT
    (SELECT count(*)::int FROM rotamoto.platform_administrators WHERE revoked_at IS NULL) AS active_grants,

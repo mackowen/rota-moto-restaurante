@@ -9,7 +9,9 @@ const { createFixtureManifest } = require('./e2e-support/fixture-manifest');
 
 if (process.env.NODE_ENV !== 'test') throw new Error('Tenant RLS E2E exige NODE_ENV=test.');
 
-const { runtime, migrator } = createE2eClients();
+const clients = createE2eClients();
+const { runtime, migrator } = clients;
+const database = clients.database || 'rotamoto_e2e';
 const tenantIds = [crypto.randomUUID(), crypto.randomUUID()];
 const roleIds = [crypto.randomUUID(), crypto.randomUUID()];
 const campaign = process.env.ROTAMOTO_E2E_CAMPAIGN || '0160';
@@ -71,8 +73,8 @@ async function main() {
   try {
     await Promise.all([runtime.connect(), migrator.connect()]);
     await Promise.all([
-      assertConnectedIdentity(runtime, { database: 'rotamoto_e2e', role: 'rotamoto_app' }),
-      assertConnectedIdentity(migrator, { database: 'rotamoto_e2e', role: 'rotamoto_migrator' })
+      assertConnectedIdentity(runtime, { database, role: 'rotamoto_app' }),
+      assertConnectedIdentity(migrator, { database, role: 'rotamoto_migrator' })
     ]);
 
     const relations = (await migrator.query(`SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity,
@@ -140,9 +142,16 @@ async function main() {
       has_table_privilege('rotamoto_app','rotamoto.marketplace_account_routes','INSERT') AS app_insert,
       has_table_privilege('rotamoto_provider_worker','rotamoto.marketplace_account_routes','SELECT') AS worker_select`)).rows[0];
     assert.deepEqual(internalAccess, { app_insert: false, worker_select: false });
+    const bootstrapRuntimeAccess=(await migrator.query(`SELECT
+      has_schema_privilege('rotamoto_app','rotamoto','USAGE') AS schema_usage,
+      has_table_privilege('rotamoto_app','rotamoto.provisioning_requests','SELECT') AS provisioning_read,
+      has_table_privilege('rotamoto_app','rotamoto.provisioning_requests','INSERT') AS provisioning_insert,
+      has_table_privilege('rotamoto_app','rotamoto.provisioning_requests','UPDATE') AS provisioning_update`)).rows[0];
+    assert.deepEqual(bootstrapRuntimeAccess,{schema_usage:true,provisioning_read:true,provisioning_insert:true,provisioning_update:true},
+      'fresh-install identity runtime grants match the least-privilege bootstrap contract');
 
     if (schemaOnly) {
-      console.log('Tenant RLS schema audit: PASS (55-table catalog through migration 0061, 40 forced-RLS tables, financial-event tenant policy, platform policies and runtime/internal ACLs); data-plane fixtures skipped to preserve E2E state.');
+      console.log('Tenant RLS schema audit: PASS (55-table catalog through migration 0063, 40 forced-RLS tables, financial-event tenant policy, platform policies and runtime/internal ACLs); data-plane fixtures skipped to preserve E2E state.');
       completed = true;
       return;
     }
@@ -231,7 +240,7 @@ async function main() {
       counts: { companies: cleanupComplete ? 0 : created.length, roles: cleanupComplete ? 0 : created.length, role_permissions: cleanupComplete ? 0 : created.length } });
     if (cleanupError) throw cleanupError;
   }
-  if (completed && cleanupComplete && !schemaOnly) console.log('Tenant RLS E2E: PASS (55-table catalog through migration 0061, 40 forced-RLS tables, financial-event tenant policy, three explicit platform policies, two-tenant isolation and runtime/internal ACLs; synthetic fixtures removed and absence verified)');
+  if (completed && cleanupComplete && !schemaOnly) console.log('Tenant RLS E2E: PASS (55-table catalog through migration 0063, 40 forced-RLS tables, financial-event tenant policy, three explicit platform policies, two-tenant isolation, fresh-install identity runtime grants and runtime/internal ACLs; synthetic fixtures removed and absence verified)');
 }
 
 main().catch(error => {

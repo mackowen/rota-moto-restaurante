@@ -2,17 +2,17 @@
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
 const {createPool}=require('../backend/postgres/connection');
-const {resolveE2eTargets,assertConnectedIdentity}=require('./e2e-support/guards');
+const {resolveE2eTargets,assertConnectedIdentity,storedLoopbackCredential}=require('./e2e-support/guards');
 
 async function main(){
   assert.equal(process.env.NODE_ENV,'test');
   const targets=resolveE2eTargets(process.env);
-  const pool=createPool({connectionString:targets.runtime,max:1,connectionTimeoutMillis:3000});
-  const verifierPool=createPool({connectionString:targets.migrator,max:1,connectionTimeoutMillis:3000});
+  const pool=createPool({connectionString:targets.runtime,password:storedLoopbackCredential('rotamoto_app',targets.database,targets.port||5432),max:1,connectionTimeoutMillis:3000});
+  const verifierPool=createPool({connectionString:targets.migrator,password:storedLoopbackCredential('rotamoto_migrator',targets.database,targets.port||5432),max:1,connectionTimeoutMillis:3000});
   const client=await pool.connect(),verifier=await verifierPool.connect();
   try{
-    await assertConnectedIdentity(client,{database:'rotamoto_e2e',role:'rotamoto_app',env:process.env});
-    await assertConnectedIdentity(verifier,{database:'rotamoto_e2e',role:'rotamoto_migrator',env:process.env});
+    await assertConnectedIdentity(client,{database:targets.database,role:'rotamoto_app',env:process.env});
+    await assertConnectedIdentity(verifier,{database:targets.database,role:'rotamoto_migrator',env:process.env});
     await verifier.query('BEGIN READ ONLY');
     const prior=await verifier.query(`SELECT
       (SELECT count(*)::int FROM rotamoto.platform_administrators WHERE revoked_at IS NULL) AS active_grants,

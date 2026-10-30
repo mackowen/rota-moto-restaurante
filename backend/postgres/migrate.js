@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { createClient } = require('./connection');
+const { createClient, resolvePgpassPassword } = require('./connection');
 
 const MIGRATION_DIR = path.join(__dirname, 'migrations');
 const MIGRATION_TABLE = 'rotamoto.schema_migrations';
@@ -87,6 +87,21 @@ function disposableCampaignMigrationConnectionString(env = process.env) {
       parsed.pathname !== '/rotamoto_disposable_0068_source' || parsed.search || parsed.hash) {
     throw new Error('Migration da campanha aceita somente rotamoto_disposable_0068_source em loopback.');
   }
+  return value;
+}
+
+function lote1bMigrationConnectionString(env = process.env) {
+  if (env.NODE_ENV !== 'test' || env.ROTAMOTO_DISPOSABLE_CAMPAIGN !== '0304B')
+    throw new Error('Migrations descartáveis do Lote 1B exigem NODE_ENV=test e campanha explícita 0304B.');
+  const database = env.ROTAMOTO_LOTE1B_DATABASE;
+  const value = env.ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL;
+  let parsed;
+  try { parsed = new URL(value); } catch (_) { throw new Error('URL descartável do Lote 1B inválida.'); }
+  if (typeof database !== 'string' || !/^rotamoto_e2e_lote1b_[0-9]{8}_[a-f0-9]{8}$/u.test(database) ||
+      !['postgres:', 'postgresql:'].includes(parsed.protocol) || parsed.username !== 'rotamoto_migrator' ||
+      parsed.password || parsed.hostname !== '127.0.0.1' || (parsed.port || '5432') !== '5432' ||
+      parsed.pathname !== `/${database}` || parsed.search || parsed.hash)
+    throw new Error('Migration Lote 1B aceita somente alvo recém-gerado em loopback com role rotamoto_migrator.');
   return value;
 }
 
@@ -234,7 +249,7 @@ function assertOfficial0234State(applied, migrations, { allowApplied = false } =
   const pending = migrations.slice(44, 47);
   const prefix = migrations.slice(0, 44);
   const knownPost0234 = new Set(['0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update',
-    '0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference','0055_financial_reference_uniqueness','0056_integrated_founder_bootstrap','0057_founder_bootstrap_proof_guard','0058_bootstrap_founder_guard_alignment','0059_platform_admin_scoped_company_controls','0060_platform_admin_permission_reason_guard','0061_platform_admin_permission_reason_null_guard']);
+    '0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference','0055_financial_reference_uniqueness','0056_integrated_founder_bootstrap','0057_founder_bootstrap_proof_guard','0058_bootstrap_founder_guard_alignment','0059_platform_admin_scoped_company_controls','0060_platform_admin_permission_reason_guard','0061_platform_admin_permission_reason_null_guard','0062_disposable_e2e_runtime_access','0063_identity_runtime_role_grants']);
   if (!baseline || baseline.checksum !== OFFICIAL_0234_CHECKSUM_0044 || prefix.length !== 44 ||
       prefix.at(-1)?.id !== '0044_99food_distributed_rate_limit' || pending.length !== 3 ||
       pending.some((migration,index) => migration.id !== OFFICIAL_0234_MIGRATIONS[index]) ||
@@ -273,6 +288,7 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
   const e2eThroughId = e2eThroughMatch?.[1] || null;
   const e2e = args.length === 2 && (args[1] === '--e2e' || Boolean(e2eThroughId));
   const disposableCampaign = args.length === 2 && args[1] === '--campaign-0068-source';
+  const disposableLote1b = args.length === 2 && args[1] === '--part-b-disposable';
   const rehearsal0110 = args.length === 2 && args[1] === '--rehearsal-0110';
   const rehearsal0115 = args.length === 2 && args[1] === '--rehearsal-0115';
   const rehearsal0116 = args.length === 2 && args[1] === '--rehearsal-0116';
@@ -286,7 +302,7 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
   const throughId = throughMatch?.[1] || null;
   if (!['up', 'down', 'status'].includes(command) ||
       (e2eThroughId && !getMigrations().some(migration => migration.id === e2eThroughId)) ||
-      (args.length > 1 && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !verifyOfficial0154 && !applyOfficial0154 && !verifyOfficial0234 && !applyOfficial0234 && !throughId) || args.length > 2 ||
+      (args.length > 1 && !e2e && !disposableCampaign && !disposableLote1b && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !verifyOfficial0154 && !applyOfficial0154 && !verifyOfficial0234 && !applyOfficial0234 && !throughId) || args.length > 2 ||
       (throughId && (command !== 'up' || !getMigrations().some(migration => migration.id === throughId))) ||
       (throughId && (e2e || disposableCampaign || rehearsal0110 || rehearsal0115 || rehearsal0116 || verifyOfficial0116 || applyOfficial0116 || verifyOfficial0154 || applyOfficial0154 || verifyOfficial0234 || applyOfficial0234)) ||
       ((rehearsal0110 || rehearsal0115 || rehearsal0116) && command === 'down') ||
@@ -296,22 +312,23 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
       (applyOfficial0154 && command !== 'up') ||
       (verifyOfficial0234 && command !== 'status') ||
       (applyOfficial0234 && command !== 'up') ||
-      ((e2e || disposableCampaign) && command === 'down')) {
+      ((e2e || disposableCampaign || disposableLote1b) && command === 'down')) {
     throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e|--e2e-through=<migration conhecida>|--campaign-0068-source|--rehearsal-0110|--rehearsal-0115|--rehearsal-0116|--verify-0116|--apply-0116|--verify-0154|--apply-0154|--through=<migration conhecida>]');
   }
-  if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !verifyOfficial0154 && !applyOfficial0154 && !verifyOfficial0234 && !applyOfficial0234 && command !== 'status') {
-    throw new Error('Migrations mutáveis em NODE_ENV=test exigem --e2e e rotamoto_e2e.');
+  if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && !disposableLote1b && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !verifyOfficial0154 && !applyOfficial0154 && !verifyOfficial0234 && !applyOfficial0234 && command !== 'status') {
+    throw new Error('Migrations mutáveis em NODE_ENV=test exigem modo E2E explicitamente identificado.');
   }
   return { command, ...(e2eThroughId ? { throughId: e2eThroughId } : throughId ? { throughId } : {}), connectionString: applyOfficial0116 || verifyOfficial0116 ? official0116MigrationConnectionString(env)
       : applyOfficial0154 || verifyOfficial0154 ? official0154MigrationConnectionString(env)
       : applyOfficial0234 || verifyOfficial0234 ? official0234MigrationConnectionString(env)
+    : disposableLote1b ? lote1bMigrationConnectionString(env)
     : disposableCampaign ? disposableCampaignMigrationConnectionString(env)
     : rehearsal0110 ? disposable0110MigrationConnectionString(env)
     : rehearsal0115 ? disposable0115MigrationConnectionString(env)
     : rehearsal0116 ? disposable0116MigrationConnectionString(env)
       : e2e || e2eThroughId ? e2eMigrationConnectionString(env) : migrationConnectionString(env),
     ...(rehearsal0110 ? { rehearsal0110: true } : {}), ...(rehearsal0115 ? { rehearsal0115: true } : {}),
-    ...(rehearsal0116 ? { rehearsal0116: true } : {}),
+    ...(rehearsal0116 ? { rehearsal0116: true } : {}), ...(disposableLote1b ? { disposableLote1b: true } : {}),
     ...(verifyOfficial0116 ? { verifyOfficial0116: true } : {}), ...(applyOfficial0116 ? { applyOfficial0116: true } : {}),
     ...(verifyOfficial0154 ? { verifyOfficial0154: true } : {}), ...(applyOfficial0154 ? { applyOfficial0154: true } : {}),
     ...(verifyOfficial0234 ? { verifyOfficial0234: true } : {}), ...(applyOfficial0234 ? { applyOfficial0234: true } : {}) };
@@ -411,11 +428,13 @@ async function status(client, migrations) {
 }
 
 async function main() {
-  const { command, connectionString, throughId, rehearsal0110, rehearsal0115, rehearsal0116, verifyOfficial0116, applyOfficial0116,
+  const { command, connectionString, throughId, rehearsal0110, rehearsal0115, rehearsal0116, disposableLote1b, verifyOfficial0116, applyOfficial0116,
     verifyOfficial0154, applyOfficial0154, verifyOfficial0234, applyOfficial0234 } = resolveMigrationInvocation();
   const disposable0234=process.env.NODE_ENV==='test'&&process.env.ROTAMOTO_BOOTSTRAP_DISPOSABLE==='0234'&&
     new URL(connectionString).port===process.env.ROTAMOTO_BOOTSTRAP_PGPORT&&new URL(connectionString).pathname==='/rotamoto_e2e';
   const client = createClient({ connectionString, connectionTimeoutMillis: 5000,
+    ...(disposableLote1b ? { password: async () => await resolvePgpassPassword({ host: '127.0.0.1', port: 5432,
+      database: 'rotamoto', user: 'rotamoto_migrator' }, { required: true }) } : {}),
     ...(disposable0234?{password:async()=>undefined}:{}) });
   let lockHeld = false;
   try {

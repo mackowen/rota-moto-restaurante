@@ -8,6 +8,13 @@ const { getMigrations, checksumMatches, resolveMigrationInvocation, assert0110Re
 const database = 'rotamoto_disposable_0110_20261009_004823_6e50bdf3';
 const url = `postgresql://rotamoto_migrator@127.0.0.1:5432/${database}`;
 const env = { NODE_ENV: 'test', ROTAMOTO_DISPOSABLE_CAMPAIGN: '0110', ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL: url };
+const lote1bDatabase='rotamoto_e2e_lote1b_20261030_a1b2c3d4';
+const lote1bEnv={NODE_ENV:'test',ROTAMOTO_DISPOSABLE_CAMPAIGN:'0304B',ROTAMOTO_LOTE1B_DATABASE:lote1bDatabase,
+  ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL:`postgresql://rotamoto_migrator@127.0.0.1:5432/${lote1bDatabase}`};
+assert.equal(resolveMigrationInvocation(['up','--part-b-disposable'],lote1bEnv).connectionString,lote1bEnv.ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL);
+assert.throws(()=>resolveMigrationInvocation(['down','--part-b-disposable'],lote1bEnv),/Uso:/u);
+assert.throws(()=>resolveMigrationInvocation(['up','--part-b-disposable'],{...lote1bEnv,ROTAMOTO_LOTE1B_DATABASE:'rotamoto'}),/alvo recém-gerado/u);
+assert.throws(()=>resolveMigrationInvocation(['up','--part-b-disposable'],{...lote1bEnv,ROTAMOTO_DISPOSABLE_MIGRATOR_DATABASE_URL:'postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto'}),/alvo recém-gerado/u);
 
 const e2eThroughEnv = { NODE_ENV: 'test', ROTAMOTO_BOOTSTRAP_DISPOSABLE: '0234', ROTAMOTO_BOOTSTRAP_PGPORT: '55491',
   E2E_MIGRATOR_DATABASE_URL: 'postgresql://rotamoto_migrator@127.0.0.1:55491/rotamoto_e2e' };
@@ -59,7 +66,7 @@ for (const target of [
 const migration0040Index = migrations.findIndex(migration => migration.id === '0040_restaurant_driver_queue');
 assert.equal(migration0040Index, 39, '0040 remains at its immutable historical position');
 const migrationsThrough0040 = migrations.slice(0, migration0040Index + 1);
-assert.deepEqual(migrations.slice(-20).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update','0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference','0055_financial_reference_uniqueness','0056_integrated_founder_bootstrap','0057_founder_bootstrap_proof_guard','0058_bootstrap_founder_guard_alignment','0059_platform_admin_scoped_company_controls','0060_platform_admin_permission_reason_guard','0061_platform_admin_permission_reason_null_guard'], 'founder integration appends without rewriting the migration ledger');
+assert.deepEqual(migrations.slice(-22).map(migration => migration.id), ['0042_marketplace_99food_runtime','0043_99food_application_and_cash_commands','0044_99food_distributed_rate_limit','0045_installation_bootstrap','0046_bootstrap_legacy_installation_latch','0047_administrative_mfa_recovery','0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update','0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference','0055_financial_reference_uniqueness','0056_integrated_founder_bootstrap','0057_founder_bootstrap_proof_guard','0058_bootstrap_founder_guard_alignment','0059_platform_admin_scoped_company_controls','0060_platform_admin_permission_reason_guard','0061_platform_admin_permission_reason_null_guard','0062_disposable_e2e_runtime_access','0063_identity_runtime_role_grants'], 'founder integration appends without rewriting the migration ledger');
 const financeMigration=migrations.find(migration=>migration.id==='0052_financial_ledger');
 assert.match(financeMigration.up,/CREATE TABLE rotamoto\.financial_events/u);
 assert.match(financeMigration.up,/ENABLE ROW LEVEL SECURITY[\s\S]*FORCE ROW LEVEL SECURITY[\s\S]*current_tenant_id/u);

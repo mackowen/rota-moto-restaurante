@@ -1,10 +1,12 @@
 'use strict';
 const assert=require('node:assert/strict');
-const {Pool}=require('pg');
-const {createClient}=require('../backend/postgres/connection');
-const {assertConnectedIdentity}=require('./e2e-support/guards');
-const connectionString=process.env.E2E_MIGRATOR_DATABASE_URL;
-if(process.env.NODE_ENV!=='test'||!connectionString||new URL(connectionString).pathname!=='/rotamoto_e2e'||new URL(connectionString).username!=='rotamoto_migrator'||new URL(connectionString).hostname!=='127.0.0.1')throw new Error('Requires explicit loopback E2E migrator connection.');
+const crypto=require('node:crypto');
+const {createClient,createPool}=require('../backend/postgres/connection');
+const {assertConnectedIdentity,resolveE2eTargets,storedLoopbackCredential}=require('./e2e-support/guards');
+const {runFixtureLifecycle}=require('./e2e-support/fixture-lifecycle');
+const {codeAt}=require('../backend/identity/totp');
+const targets=resolveE2eTargets();
+const connectionString=targets.migrator,database=targets.database||'rotamoto_e2e';
 async function founderSnapshot(client){
  await client.query('BEGIN READ ONLY');
  try{const result=await client.query(`SELECT
@@ -16,11 +18,63 @@ async function founderSnapshot(client){
   (SELECT count(*)::int FROM rotamoto.platform_administrators) AS admin_history`);await client.query('COMMIT');return result.rows[0]}
  catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}
 }
+async function runDisposableHttpSuite(){
+ return runFixtureLifecycle({allowedOrigins:['http://127.0.0.1:8083'],businessFixture:true,exercise:async fixture=>{
+  const unauthenticated=await fixture.call('/api/platform-admin/settings');assert.equal(unauthenticated.status,401);
+  const session=await fixture.call('/api/identity/session',{cookie:fixture.browserSessionCookie});assert.equal(session.status,200);assert.equal(session.body.mfaVerified,true);
+  for(const path of ['/api/platform-admin/settings','/api/platform-admin/companies','/api/platform-admin/users','/api/platform-admin/memberships']){
+   const result=await fixture.call(path,{cookie:fixture.browserSessionCookie});assert.equal(result.status,200,`${path} is authorized only for the authenticated founder`);
+  }
+  const companies=await fixture.call('/api/platform-admin/companies',{cookie:fixture.browserSessionCookie});
+  assert(companies.body.items.some(item=>item.id===fixture.companyId),'bootstrap founder sees the provisioned company through the global endpoint');
+  const globalSettings=await fixture.call('/api/platform-admin/settings',{cookie:fixture.browserSessionCookie});
+  assert.equal(globalSettings.body.item.platform_admin_mfa_required,true);
+  const roleCreate=await fixture.call('/api/admin/roles',{method:'POST',cookie:fixture.browserSessionCookie,csrf:session.body.csrfToken,
+   body:{key:`lote1b_${crypto.randomBytes(5).toString('hex')}`,name:'Perfil E2E delegável',description:'Perfil sintético transacional',permissions:['orders.read']}});
+  assert.equal(roleCreate.status,201,JSON.stringify(roleCreate.body));
+  const roles=await fixture.call(`/api/platform-admin/companies/${fixture.companyId}/roles`,{cookie:fixture.browserSessionCookie});assert.equal(roles.status,200);
+  const owner=roles.body.items.find(role=>role.role_key==='owner');assert(owner?.protected,'owner remains protected in the server catalog');
+  const updated=await fixture.call(`/api/platform-admin/companies/${fixture.companyId}/roles/${roleCreate.body.id}/permissions`,{
+   method:'PATCH',cookie:fixture.browserSessionCookie,csrf:session.body.csrfToken,body:{permissionKeys:['finance.read','finance.manage'],reason:'platform_policy'}});
+  assert.equal(updated.status,200,JSON.stringify(updated.body));
+  const rolesAfter=await fixture.call(`/api/platform-admin/companies/${fixture.companyId}/roles`,{cookie:fixture.browserSessionCookie});
+  assert.deepEqual(rolesAfter.body.items.find(role=>role.id===roleCreate.body.id).permissions,['finance.manage','finance.read']);
+  await fixture.runtime.query("SELECT set_config('app.tenant_id',$1,true)",[fixture.companyId]);
+  const persisted=await fixture.runtime.query('SELECT permission_key FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2 ORDER BY permission_key',[fixture.companyId,roleCreate.body.id]);
+  assert.deepEqual(persisted.rows.map(row=>row.permission_key),['finance.manage','finance.read'],'RBAC changes persist in PostgreSQL and are read back under tenant RLS');
+  const ownerEdit=await fixture.call(`/api/platform-admin/companies/${fixture.companyId}/roles/${owner.id}/permissions`,{
+   method:'PATCH',cookie:fixture.browserSessionCookie,csrf:session.body.csrfToken,body:{permissionKeys:['orders.read'],reason:'platform_policy'}});
+  assert.equal(ownerEdit.status,403,'protected owner grants cannot be edited through HTTP');
+  const blockedMfa=await fixture.call(`/api/platform-admin/companies/${fixture.companyId}/roles/${roleCreate.body.id}/permissions`,{
+   method:'PATCH',cookie:fixture.browserSessionCookie,csrf:'invalid-csrf',body:{permissionKeys:['finance.read'],reason:'platform_policy'}});
+  assert.equal(blockedMfa.status,403,'invalid CSRF cannot change grants');
+  const companyBefore=await fixture.call('/api/admin/company',{cookie:fixture.browserSessionCookie});assert.equal(companyBefore.status,200);
+  while(Math.floor(Date.now()/30000)<=Number(fixture.browserCredentials.mfaLastCounter||-1))await new Promise(resolve=>setTimeout(resolve,100));
+  const secondLogin=await fixture.call('/api/identity/login',{method:'POST',body:{email:fixture.browserCredentials.email,password:fixture.browserCredentials.password,
+   companyId:fixture.companyId,mfaCode:codeAt(fixture.browserCredentials.mfaSecret,Math.floor(Date.now()/30000))}});
+  assert.equal(secondLogin.status,200,JSON.stringify(secondLogin.body));
+  const secondCookie=secondLogin.headers.get('set-cookie').split(';',1)[0];const secondSession=await fixture.call('/api/identity/session',{cookie:secondCookie});
+  assert.equal(secondSession.status,200);assert.equal(secondSession.body.mfaVerified,true,'second independent HTTP session also satisfies MFA');
+  const revisions=[`Concorrência A ${crypto.randomUUID()}`,`Concorrência B ${crypto.randomUUID()}`];
+  const concurrent=await Promise.all(revisions.map((name,index)=>fixture.call('/api/admin/company/profile',{method:'PUT',
+   cookie:index===0?fixture.browserSessionCookie:secondCookie,csrf:index===0?session.body.csrfToken:secondSession.body.csrfToken,
+   body:{expectedVersion:companyBefore.body.settingsVersion,name,supportPhone:companyBefore.body.supportPhone||null}})));
+  assert.deepEqual(concurrent.map(response=>response.status).sort(),[200,409],`same-revision writes across two authenticated sessions must produce one ACK and one conflict; statuses=${concurrent.map(x=>x.status)}`);
+  const winner=concurrent.find(response=>response.status===200).body.name;
+  const otherRead=await fixture.call('/api/admin/company',{cookie:secondCookie});assert.equal(otherRead.status,200);assert.equal(otherRead.body.name,winner,
+   'the second authenticated session reads the single accepted concurrent update');
+  const delegated=await fixture.createSyntheticAdminSessions({ownerCookie:fixture.browserSessionCookie,ownerCsrf:session.body.csrfToken,
+   labels:['plain'],permissions:['orders.read'],roleName:'Usuário E2E limitado'});
+  const denied=await fixture.call('/api/platform-admin/settings',{cookie:delegated[0].cookie});assert.equal(denied.status,403,'company member without global grant cannot access the platform console');
+  process.stdout.write('Lote 1B platform HTTP E2E: PASS — native bootstrap/MFA, global read, RBAC write/readback, protected owner, invalid CSRF, two-session revision conflict and limited-user denial; disposable transaction rolled back\\n');
+ }}).then(result=>{assert.equal(result.authenticated,true);assert.equal(result.mfaVerified,true);return result});
+}
 async function main(){
- const pool=new Pool({connectionString,max:1,application_name:'campaign-0255-platform-admin-test'}),client=await pool.connect();let begun=false;
+ if(targets.disposableLote1b){await runDisposableHttpSuite();return}
+ const pool=createPool({connectionString,password:storedLoopbackCredential('rotamoto_migrator',database),max:1,application_name:'campaign-0304b-platform-admin-test'}),client=await pool.connect();let begun=false;
  try{
-  const target=await client.query('SELECT current_database() AS database,session_user AS session_user,current_user AS current_user');
-  assert.deepEqual(target.rows[0],{database:'rotamoto_e2e',session_user:'rotamoto_migrator',current_user:'rotamoto_migrator'});
+ const target=await client.query('SELECT current_database() AS database,session_user AS session_user,current_user AS current_user');
+  assert.deepEqual(target.rows[0],{database,session_user:'rotamoto_migrator',current_user:'rotamoto_migrator'});
   const existingGrants=await client.query('SELECT count(*)::int AS n FROM rotamoto.platform_administrators WHERE revoked_at IS NULL');
   if(existingGrants.rows[0].n>0){
    const before=await founderSnapshot(client);
@@ -28,13 +82,10 @@ async function main(){
    assert.notEqual(before.founder_user_id,null,'active global founder grant has a claimed founder latch');
    assert.equal(before.active_grant_matches_founder,true,'the active global grant belongs to the latched founder');
    assert.equal(before.admin_history,1,'persistent E2E has no unexpected global-administrator history');
-   const runtimeUrl=process.env.E2E_RUNTIME_DATABASE_URL;
-   if(!runtimeUrl||new URL(runtimeUrl).pathname!=='/rotamoto_e2e'||new URL(runtimeUrl).username!=='rotamoto_app'||new URL(runtimeUrl).hostname!=='127.0.0.1')
-    throw new Error('Persistent-founder denial branch requires the explicit loopback E2E runtime identity.');
-   const runtime=createClient({connectionString:runtimeUrl});
+   const runtime=createClient({connectionString:targets.runtime,password:storedLoopbackCredential('rotamoto_app',database)});
    try{
     await runtime.connect();
-    await assertConnectedIdentity(runtime,{database:'rotamoto_e2e',role:'rotamoto_app'});
+    await assertConnectedIdentity(runtime,{database,role:'rotamoto_app'});
     await runtime.query('BEGIN');
     try{
      async function denied(sql,label){

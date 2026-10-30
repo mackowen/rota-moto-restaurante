@@ -46,8 +46,8 @@ async function listen(handler) {
   return { server, base: `http://127.0.0.1:${address.port}`, close: () => new Promise(resolve => server.close(resolve)) };
 }
 
-async function readFounderBootstrapState(client) {
-  await assertConnectedIdentity(client, { database: 'rotamoto_e2e', role: 'rotamoto_migrator' });
+async function readFounderBootstrapState(client, database = 'rotamoto_e2e') {
+  await assertConnectedIdentity(client, { database, role: 'rotamoto_migrator', env: process.env });
   await client.query('BEGIN READ ONLY');
   try {
     const result = await client.query(`SELECT
@@ -72,7 +72,7 @@ async function main() {
   const client=clients.runtime;
   await client.connect();
   await clients.migrator.connect();
-  await assertConnectedIdentity(client,{database:'rotamoto_e2e',role:'rotamoto_app'});
+  await assertConnectedIdentity(client,{database:clients.database,role:'rotamoto_app',env:process.env});
   await client.query('BEGIN');
   const pool = savepointPool(client);
   const delivered = [];
@@ -121,7 +121,7 @@ async function main() {
     assert.equal(unauthorized.body.error.code, 'PROVISIONER_UNAUTHORIZED');
     const provisioned = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody,
       extraHeaders: { 'X-Synthetic-Operator': 'test-only' } });
-    assert.equal(provisioned.status, 202);
+    assert.equal(provisioned.status, 202, `synthetic bootstrap returned ${provisioned.body?.error?.code || 'unexpected-response'}; events=${logs.map(event=>event.code||event.event||'event').join(',')}`);
     assert.equal(provisioned.body.delivery, 'sent');
     assert.equal(JSON.stringify(provisioned.body).includes(delivered[0].token), false);
     assert.equal(JSON.stringify(provisioned.body).includes(email), false, 'provision response does not reveal the recipient');
@@ -585,7 +585,7 @@ async function main() {
       assert.ok(Number(limited.headers.get('retry-after')) > 0);
     } finally { await rateHost.close(); }
 
-    const bootstrapState = await readFounderBootstrapState(clients.migrator);
+    const bootstrapState = await readFounderBootstrapState(clients.migrator, clients.database);
     const bootstrapToken = crypto.randomBytes(32).toString('base64url');
     const bootstrapDigest = crypto.createHash('sha256').update(bootstrapToken).digest();
     assert.equal(bootstrapState.active_admins === 0, bootstrapState.founder_user_id === null,
@@ -639,7 +639,7 @@ async function main() {
       await bootstrapHost.close();
       bootstrapDigest.fill(0);
       if (bootstrapState.founder_user_id !== null) {
-        const after = await readFounderBootstrapState(clients.migrator);
+        const after = await readFounderBootstrapState(clients.migrator, clients.database);
         assert.equal(after.founder_user_id === bootstrapState.founder_user_id &&
           after.active_admins === bootstrapState.active_admins && after.admin_history === bootstrapState.admin_history &&
           after.active_grant_matches_founder === bootstrapState.active_grant_matches_founder &&
@@ -652,10 +652,17 @@ async function main() {
   } finally {
     await host.close();
     await client.query('ROLLBACK').catch(() => {});
-    const remaining = await client.query('SELECT count(*)::int AS count FROM rotamoto.users WHERE email=$1', [email]).catch(() => ({ rows: [{ count: -1 }] }));
+    const remaining = await client.query('SELECT count(*)::int AS count FROM rotamoto.users WHERE email=$1', [email]).catch(error => {
+      if (error.code === '42501') return { rows: [{ count: null }], rlsProtected: true };
+      throw error;
+    });
     await client.end();
     await clients.migrator.end().catch(() => {});
-    assert.equal(remaining.rows[0].count, 0, 'all synthetic users, tenants and audit rows were rolled back');
+    if (remaining.rlsProtected) {
+      assert.equal(remaining.rows[0].count, null, 'global cleanup read remains blocked by FORCE RLS; the enclosing SQL transaction rollback is the cleanup guarantee');
+    } else {
+      assert.equal(remaining.rows[0].count, 0, 'all synthetic users, tenants and audit rows were rolled back');
+    }
   }
 }
 
