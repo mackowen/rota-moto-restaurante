@@ -31,6 +31,8 @@ const { createDriverAvailabilityService } = require('../../backend/logistics/dri
 const { createDriverAvailabilityHttpHandler } = require('../../backend/logistics/driver-availability-http');
 const { createRestaurantDriverQueueService } = require('../../backend/logistics/restaurant-driver-queue');
 const { createRestaurantDriverQueueHttpHandler } = require('../../backend/logistics/restaurant-driver-queue-http');
+const { createLogisticsService } = require('../../backend/logistics/service');
+const { createLogisticsHttpHandler } = require('../../backend/logistics/http');
 const { COOKIE_NAME } = require('../../backend/identity/http');
 const { createPool } = require('../../backend/postgres/connection');
 const { resolveE2eTargets, storedLoopbackCredential } = require('./guards');
@@ -288,6 +290,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     const platformAdminHttp = createPlatformAdminHttpHandler({ identityService, logger: () => {}, allowedOrigin: originConfig });
     const financeHttp = createFinanceHttpHandler({ identityService, financeService: createFinanceService(), logger: () => {}, allowedOrigin: originConfig });
     const driverAvailabilityService=createDriverAvailabilityService();
+    const logisticsService=createLogisticsService({driverAvailability:driverAvailabilityService});
     const queueSigningKeys=crypto.generateKeyPairSync('ed25519');
     const restaurantDriverQueueService=createRestaurantDriverQueueService({
       qrKey:queueSigningKeys.privateKey.export({type:'pkcs8',format:'pem'}),qrKid:`e2e-${crypto.randomUUID().slice(0,8)}`
@@ -296,6 +299,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
       allowedOrigin: originConfig });
     const driverAvailabilityHttp=createDriverAvailabilityHttpHandler({identityService,service:driverAvailabilityService,logger:()=>{},rateLimiter:limiter,allowedOrigin:originConfig});
     const restaurantDriverQueueHttp=createRestaurantDriverQueueHttpHandler({identityService,service:restaurantDriverQueueService,logger:()=>{},rateLimiter:limiter,allowedOrigin:originConfig});
+    const logisticsHttp=createLogisticsHttpHandler({identityService,logisticsService,logger:()=>{},rateLimiter:limiter,allowedOrigin:originConfig});
     const queryHttp = createDomainQueryHttpHandler({ identityService,
       queryService: createDomainQueryService({ repository: createDomainQueryRepository() }), logger: () => {}, rateLimiter: limiter,
       onProfile: profile => {
@@ -306,7 +310,7 @@ async function runFixtureLifecycle({ env = process.env, exercise = async () => {
     if (!Array.isArray(testHandlers) || testHandlers.some(handler => typeof handler !== 'function')) throw new Error('Handlers E2E inválidos.');
     // Test-only domain adapters must run before the broad /api/admin handler so
     // mounted marketplace/admin subdomains can use their canonical routes.
-    host = await start([identityHttp, ...testHandlers, platformAdminHttp, financeHttp, adminHttp, proofHttp, restaurantDriverQueueHttp, driverAvailabilityHttp, syncHttp, queryHttp], requestContext,
+    host = await start([identityHttp, ...testHandlers, platformAdminHttp, financeHttp, adminHttp, proofHttp, restaurantDriverQueueHttp, driverAvailabilityHttp, logisticsHttp, syncHttp, queryHttp], requestContext,
       onRequestProfile, onRequestStart, listenPort);
 
     const call = async (path, { method = 'GET', body, cookie, csrf, headers = {}, timeoutMs = 30_000 } = {}) => {

@@ -982,6 +982,12 @@ button.analytics-bar-row{width:100%;border:0;background:transparent;cursor:point
 .settings-card-copy b { font-size:.95rem; line-height:1.3; }
 .settings-card-copy small { color:var(--muted); font-size:.78rem; line-height:1.4; }
 .settings-page { min-width:0; }
+.settings-save-feedback{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface2);color:var(--text);font-size:12px;line-height:1.4}
+.settings-save-feedback[data-state="saving"]{border-color:color-mix(in srgb,var(--accent) 42%,var(--border));background:var(--accent-bg)}
+.settings-save-feedback[data-state="saved"]{border-color:color-mix(in srgb,var(--success) 34%,var(--border))}
+.settings-save-feedback[data-state="error"]{border-color:color-mix(in srgb,var(--danger) 48%,var(--border));background:var(--danger-soft);color:var(--text)}
+.settings-save-feedback [hidden]{display:none!important}
+@media(max-width:430px){.settings-save-feedback{align-items:flex-start;flex-direction:column}.settings-save-feedback .btn{width:100%;min-height:44px}}
 .settings-back { min-height:44px; margin-bottom:12px; padding:8px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text); font:inherit; cursor:pointer; }
 @media(max-width:520px) { .settings-cards { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .settings-card { min-height:120px; padding:11px; gap:8px; } .settings-card-icon { flex-basis:34px; width:34px; height:34px; } .settings-card-copy b { font-size:.84rem; } .settings-card-copy small { font-size:.7rem; } }
 
