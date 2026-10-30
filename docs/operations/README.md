@@ -1,5 +1,7 @@
 # Operação RotaMoto
 
+Política permanente dos bancos e fixtures de desenvolvimento: [DEVELOPMENT-DATA-POLICY](../../DEVELOPMENT-DATA-POLICY.md).
+
 Documentação F8 preparada para implantação futura. O checkout Termux/PostgreSQL
 local não é produção e nenhum serviço real foi alterado.
 
