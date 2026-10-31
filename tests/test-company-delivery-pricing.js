@@ -27,6 +27,12 @@ assert.match(app,/not\s+automatically|not\s+sent|não foram enviados/u,'legacy d
 const pricingSave=app.slice(app.indexOf('async function saveCompanyDeliveryPricing()'),app.indexOf('\n}\n',app.indexOf('async function saveCompanyDeliveryPricing()'))+2);
 assert.match(pricingSave,/data-delivery-model[\s\S]*data-setting\^="delivery\."[\s\S]*data-range-delete/u,'all model, pricing and range controls are locked for the save/readback cycle');
 assert.match(pricingSave,/control\.isConnected\)control\.disabled=wasDisabled/u,'controls recover their previous authorization/disabled state after completion');
+const canonicalLoad=app.slice(app.indexOf('async function loadCanonicalCompanyProfile()'),app.indexOf('\nasync function saveCompanySettings()',app.indexOf('async function loadCanonicalCompanyProfile()')));
+assert.match(canonicalLoad,/document\.querySelectorAll\('\[data-delivery-model\][\s\S]*?control\.disabled=true/u,'pricing controls stay locked until the canonical company read completes');
+assert.match(canonicalLoad,/state\.companyPricingLoadedFor=null/u,'a retry cannot leave stale pricing controls enabled after a failed read');
+assert.match(canonicalLoad,/state\.tab==='settings'&&state\.settingsOpen==='operacao'&&!state\.deliveryPricingDirty\)render\(\)/u,'the Operation form is rebuilt from canonical values after read, without replacing an unsent local draft');
+assert.doesNotMatch(pricingSave,/state\.deliveryPricingCanonical\.version/u,'successful persistence updates only the canonical pricing object stored under settings');
+assert.match(pricingSave,/state\.settings\.deliveryPricingCanonical=\{configured:true,version:Number\(canonical\.version\)/u,'successful save stores the server-confirmed canonical version before clearing the draft');
 const valid={model:'perKm',minFee:5,perKm:2.5,fixedFee:8,round:true,roundTo:0.5,ranges:[{from:0,to:3,value:7},{from:3,to:null,value:11}],repasseMode:'percentage',repassePercent:85};
 assert.deepEqual(validateDeliveryPricing({expectedVersion:0,settings:valid}).settings,valid);
 for(const bad of [null,{}, {...valid,model:'range',ranges:[null]}, {...valid,model:'range',ranges:[{from:0,to:5,value:5},{from:4,to:null,value:7}]}, {...valid,model:'range',ranges:[{from:1,to:null,value:7}]}, {...valid,model:'perKm',perKm:0}, {...valid,perKm:1.001}, {...valid,repassePercent:101}])assert.throws(()=>validateDeliveryPricing({expectedVersion:0,settings:bad}),error=>error.code==='INVALID_INPUT');
