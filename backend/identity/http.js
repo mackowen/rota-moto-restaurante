@@ -8,6 +8,7 @@ const MAX_BODY_BYTES = 16 * 1024;
 const RATE_POLICIES = Object.freeze({
   login: { limit: 10, windowMs: 15 * 60 * 1000 },
   recovery: { limit: 5, windowMs: 15 * 60 * 1000 },
+  password: { limit: 8, windowMs: 15 * 60 * 1000 },
   invitation: { limit: 10, windowMs: 15 * 60 * 1000 },
   provision: { limit: 5, windowMs: 15 * 60 * 1000 },
   mfa: { limit: 8, windowMs: 15 * 60 * 1000 },
@@ -16,8 +17,10 @@ const RATE_POLICIES = Object.freeze({
 const ROUTE_METHODS = Object.freeze({
   '/api/identity/login': 'POST',
   '/api/identity/logout': 'POST',
+  '/api/identity/password/change': 'POST',
   '/api/identity/session': 'GET',
   '/api/identity/mfa/enrollment': 'POST',
+  '/api/identity/mfa/enrollment/cancel': 'POST',
   '/api/identity/mfa/enrollment/confirm': 'POST',
   '/api/identity/mfa/recovery-codes': 'POST',
   '/api/identity/tenant': 'POST',
@@ -33,7 +36,8 @@ const ROUTE_METHODS = Object.freeze({
 });
 
 function problemStatus(code) {
-  if (['INVALID_INPUT', 'INVALID_TOKEN', 'INVALID_CREDENTIALS'].includes(code)) return code === 'INVALID_CREDENTIALS' || code === 'INVALID_TOKEN' ? 401 : 400;
+  if (['INVALID_INPUT', 'PASSWORD_UNCHANGED', 'CURRENT_PASSWORD_INVALID'].includes(code)) return 400;
+  if (['INVALID_TOKEN', 'INVALID_CREDENTIALS'].includes(code)) return 401;
   if (code === 'UNAUTHENTICATED') return 401;
   if (['FORBIDDEN', 'PROVISIONER_UNAUTHORIZED', 'MFA_REQUIRED', 'CSRF_INVALID', 'ORIGIN_INVALID'].includes(code)) return 403;
   if (['PROVISIONER_NOT_CONFIGURED', 'BOOTSTRAP_NOT_READY', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE'].includes(code)) return 503;
@@ -141,6 +145,7 @@ function createRateLimiter({ clock = Date.now, policies = RATE_POLICIES, maxKeys
 
 function rateCategory(path) {
   if (path === '/api/identity/login') return 'login';
+  if (path === '/api/identity/password/change') return 'password';
   if (path.startsWith('/api/identity/recovery')) return 'recovery';
   if (path.startsWith('/api/identity/invitations') || path.startsWith('/api/identity/membership-invitations')) return 'invitation';
   if (path === '/api/admin/invitations') return 'invitation';
@@ -169,6 +174,8 @@ function publicError(error) {
     INVALID_INPUT: error.message,
     INVALID_TOKEN: 'Token inválido ou expirado.',
     INVALID_CREDENTIALS: 'Email ou senha inválidos.',
+    CURRENT_PASSWORD_INVALID: 'A senha atual não confere.',
+    PASSWORD_UNCHANGED: 'Escolha uma senha diferente da atual.',
     UNAUTHENTICATED: 'Sessão inválida ou expirada.',
     FORBIDDEN: 'Operação não autorizada.',
     PROVISIONER_UNAUTHORIZED: 'Provisionamento administrativo não autorizado.',
@@ -276,9 +283,23 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
       }
 
       if (path === '/api/identity/mfa/enrollment' && req.method === 'POST') {
-        exactKeys(await readJson(req), []);
+        const body = await readJson(req);
+        exactKeys(body, ['currentPassword', 'currentMfaCode']);
+        if (Object.keys(body).length && (typeof body.currentPassword !== 'string' ||
+            Buffer.byteLength(body.currentPassword, 'utf8') > 1024 || body.currentPassword.includes('\0') ||
+            typeof body.currentMfaCode !== 'string' || !/^\d{6}$/u.test(body.currentMfaCode)))
+          throw fail('INVALID_INPUT', 'Confirme sua senha atual e o código de seis dígitos do autenticador.');
         const result = await requireSessionMutation(req, 'identity.mfa.enroll', (client, principal) =>
-          identityService.startMfaEnrollmentForPrincipal(client, principal));
+          identityService.startMfaEnrollmentForPrincipal(client, principal, body));
+        if (result?.error) throw fail(result.error, 'Não foi possível confirmar sua identidade para substituir o autenticador.');
+        status = 200; send(res, status, result); return true;
+      }
+
+      if (path === '/api/identity/mfa/enrollment/cancel' && req.method === 'POST') {
+        exactKeys(await readJson(req), []);
+        const outcome = await requireSessionMutation(req, 'identity.mfa.enroll', (client, principal) =>
+          identityService.cancelMfaEnrollmentForPrincipal(client, principal));
+        const result = await identityService.finishMfaEnrollmentCancellation(outcome);
         status = 200; send(res, status, result); return true;
       }
 
@@ -336,6 +357,19 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         status = 204;
         send(res, status, undefined, { 'Set-Cookie': `${COOKIE_NAME}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax` });
         return true;
+      }
+
+      if (path === '/api/identity/password/change' && req.method === 'POST') {
+        const body = await readJson(req);
+        exactKeys(body, ['currentPassword', 'newPassword']);
+        if (typeof body.currentPassword !== 'string' || !body.currentPassword ||
+            Buffer.byteLength(body.currentPassword, 'utf8') > 1024 || body.currentPassword.includes('\0'))
+          throw fail('INVALID_INPUT', 'Informe sua senha atual.');
+        validateNewPassword(body.newPassword);
+        const outcome = await requireSessionMutation(req, undefined, (client, principal) =>
+          identityService.changePasswordForPrincipal(client, principal, body.currentPassword, body.newPassword));
+        if (outcome?.error) throw fail(outcome.error, 'Não foi possível atualizar a senha.');
+        status = 200; send(res, status, { changed: true }); return true;
       }
 
       if (path === '/api/identity/tenant' && req.method === 'POST') {

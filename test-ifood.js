@@ -6,5 +6,5 @@ const app=fs.readFileSync('./app.js','utf8');
 for(const x of ['Origens de pedidos','data-ifood-simulate-event','data-ifood-diagnostics','data-ifood-clear-queue','processedEventIds','queue']) if(!app.includes(x)) throw new Error('missing app '+x);
 const lab=app.match(/async function processIFoodLabPayload\([\s\S]*?\nasync function transitionIFoodLab/);
 if(!lab||!lab[0].includes('labOnly=true')||lab[0].includes("put('orders'")||lab[0].includes('saveSettings(')) throw new Error('iFood laboratory must remain in-memory and isolated from commercial orders');
-if(!app.includes('Simulador sintético isolado. Não configura credenciais, não conecta provedores e não envia pedidos.')||!app.includes('Esta página controla nomes e disponibilidade local.')) throw new Error('the provider lab must remain synthetic-only and order origins must remain local controls');
+if(!app.includes('Simulador sintético isolado. Não configura credenciais, não conecta provedores e não envia pedidos.')||!app.includes('Use origens locais para classificar pedidos cadastrados no painel.')||!app.includes('Conexões externas aparecem separadamente')) throw new Error('the provider lab must remain synthetic-only and order origins must remain local controls');
 console.log('ifood structure tests: OK');

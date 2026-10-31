@@ -183,12 +183,21 @@ async function main() {
       body:{key:'pre_mfa_write',name:'Pre MFA Write',permissions:['orders.read']}});
     assert.equal(limitedRoleWrite.status,403,'enrollment-limited session cannot write role configuration through a direct API request');
     assert.equal(limitedRoleWrite.body.error.code,'MFA_REQUIRED');
+    const limitedPasswordChange=await call('/api/identity/password/change',{method:'POST',cookie:limitedCookie,csrf:missingMfa.body.csrfToken,
+      body:{currentPassword:password,newPassword:'synthetic-new-password-990'}});
+    assert.equal(limitedPasswordChange.status,403,'password changes remain blocked until required MFA is verified');
+    assert.equal(limitedPasswordChange.body.error.code,'MFA_REQUIRED');
     let preMfaCallbackInvoked=false;
     await assert.rejects(service.withAuthenticatedTenant(limitedCookie.slice(limitedCookie.indexOf('=')+1),async()=>{
       preMfaCallbackInvoked=true;return true;
     }),error=>error.code==='MFA_REQUIRED','the central tenant guard blocks protected operations even when a caller omits a permission key');
     assert.equal(preMfaCallbackInvoked,false,'the protected operation callback is never invoked before MFA');
     await client.query('SAVEPOINT mfa_enrollment_http');
+    const cancelledEnrollment=await call('/api/identity/mfa/enrollment',{method:'POST',body:{},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.equal(cancelledEnrollment.status,200,'a limited account can begin its required MFA setup');
+    const cancelledMfaSetup=await call('/api/identity/mfa/enrollment/cancel',{method:'POST',body:{},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.equal(cancelledMfaSetup.status,200);assert.deepEqual(cancelledMfaSetup.body,{cancelled:true},'cancelling setup removes only the pending factor');
+    assert.equal(syntheticSecrets.size,0,'cancelled setup removes its temporary secret from the test provider');
     const enrollment=await call('/api/identity/mfa/enrollment',{method:'POST',body:{},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
     assert.equal(enrollment.status,200,'enrollment start remains available to the limited session');
     assert.equal(typeof enrollment.body.secret,'string');
@@ -199,6 +208,18 @@ async function main() {
     assert.equal(Array.isArray(confirmation.body.recoveryCodes),true);
     const afterMfa=await call('/api/admin/roles',{cookie:limitedCookie});
     assert.equal(afterMfa.status,200,'protected administrative reads become available after valid MFA confirmation');
+    const replacementWithoutProof=await call('/api/identity/mfa/enrollment',{method:'POST',body:{},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.equal(replacementWithoutProof.status,403,'replacing an existing factor requires fresh identity proof');
+    assert.equal(replacementWithoutProof.body.error.code,'MFA_REQUIRED');
+    const replacementWithWrongPassword=await call('/api/identity/mfa/enrollment',{method:'POST',body:{currentPassword:'synthetic-wrong-password',currentMfaCode:'654321'},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.equal(replacementWithWrongPassword.status,400);assert.equal(replacementWithWrongPassword.body.error.code,'CURRENT_PASSWORD_INVALID');
+    const replacement=await call('/api/identity/mfa/enrollment',{method:'POST',body:{currentPassword:password,currentMfaCode:'654321'},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.equal(replacement.status,200,'replacing a factor verifies the current password, MFA code and session');
+    assert.notEqual(replacement.body.secret,enrollment.body.secret,'the old secret is never returned as the replacement secret');
+    const cancelledReplacement=await call('/api/identity/mfa/enrollment/cancel',{method:'POST',body:{},cookie:limitedCookie,csrf:missingMfa.body.csrfToken});
+    assert.deepEqual(cancelledReplacement.body,{cancelled:true});
+    assert.equal(syntheticSecrets.size,1,'cancelling factor replacement preserves the currently active secret');
+    assert.equal((await call('/api/identity/session',{cookie:limitedCookie})).body.mfaConfigured,true,'cancelled replacement leaves the current MFA factor active');
     await client.query('ROLLBACK TO SAVEPOINT mfa_enrollment_http');
     await client.query('RELEASE SAVEPOINT mfa_enrollment_http');
     syntheticSecrets.clear();
@@ -227,6 +248,35 @@ async function main() {
     assert.equal(session.body.mfaVerified, true);
     assert.equal(session.body.csrfToken, login.body.csrfToken, 'session bootstrap preserves a stable CSRF token for reload-safe in-memory use');
     assert.equal(JSON.stringify(session.body).includes('password_phc'), false);
+    const parallelLogin=await call('/api/identity/login',{method:'POST',body:{email,password,companyId,mfaCode:'654321'}});
+    assert.equal(parallelLogin.status,200,'a second authenticated session is available to verify session revocation');
+    const parallelCookie=parallelLogin.headers.get('set-cookie').split(';',1)[0];
+    const missingPasswordCsrf=await call('/api/identity/password/change',{method:'POST',cookie:sessionCookie,body:{currentPassword:password,newPassword:'synthetic-new-password-901'}});
+    assert.equal(missingPasswordCsrf.status,403);assert.equal(missingPasswordCsrf.body.error.code,'CSRF_INVALID');
+    const invalidPasswordChange=await call('/api/identity/password/change',{method:'POST',cookie:sessionCookie,csrf:session.body.csrfToken,
+      body:{currentPassword:password,newPassword:'short'}});
+    assert.equal(invalidPasswordChange.status,400,'weak new passwords are rejected at the HTTP boundary');
+    const unchangedPassword=await call('/api/identity/password/change',{method:'POST',cookie:sessionCookie,csrf:session.body.csrfToken,
+      body:{currentPassword:password,newPassword:password}});
+    assert.equal(unchangedPassword.status,400);assert.equal(unchangedPassword.body.error.code,'PASSWORD_UNCHANGED');
+    const wrongCurrentPassword=await call('/api/identity/password/change',{method:'POST',cookie:sessionCookie,csrf:session.body.csrfToken,
+      body:{currentPassword:'synthetic-wrong-password',newPassword:'synthetic-new-password-901'}});
+    assert.equal(wrongCurrentPassword.status,400);assert.equal(wrongCurrentPassword.body.error.code,'CURRENT_PASSWORD_INVALID');
+    assert.equal((await call('/api/identity/session',{cookie:sessionCookie})).status,200,'a rejected current password does not destroy the valid session');
+    const replacementPassword='synthetic-password-changed-902';
+    const passwordChanged=await call('/api/identity/password/change',{method:'POST',cookie:sessionCookie,csrf:session.body.csrfToken,
+      body:{currentPassword:password,newPassword:replacementPassword}});
+    assert.equal(passwordChanged.status,200);assert.deepEqual(passwordChanged.body,{changed:true},'password success is returned only after the transaction commits');
+    assert.equal((await call('/api/identity/session',{cookie:sessionCookie})).status,200,'the session that changed its password remains active');
+    assert.equal((await call('/api/identity/session',{cookie:parallelCookie})).status,401,'other sessions are revoked after the password change');
+    assert.equal((await call('/api/identity/login',{method:'POST',body:{email,password,companyId,mfaCode:'654321'}})).status,401,'the previous password stops authenticating');
+    const replacementLogin=await call('/api/identity/login',{method:'POST',body:{email,password:replacementPassword,companyId,mfaCode:'654321'}});
+    assert.equal(replacementLogin.status,200,'the new password authenticates after persistence');
+    const restorePassword=await call('/api/identity/password/change',{method:'POST',cookie:sessionCookie,csrf:session.body.csrfToken,
+      body:{currentPassword:replacementPassword,newPassword:password}});
+    assert.equal(restorePassword.status,200,'the fixture password is restored through the same authenticated route before rollback');
+    const restoredLogin=await call('/api/identity/login',{method:'POST',body:{email,password,companyId,mfaCode:'654321'}});
+    assert.equal(restoredLogin.status,200,'password readback remains correct after restoration');
     const csrfStable = await call('/api/identity/tenant', { method: 'POST', body: { companyId }, cookie: sessionCookie, csrf: login.body.csrfToken });
     assert.equal(csrfStable.status, 200, 'stable CSRF remains valid after session bootstrap');
     const wrongMethod = await call('/api/identity/session', { method: 'POST', body: {} });

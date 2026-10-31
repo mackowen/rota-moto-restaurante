@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { createSessionReadGuard, sessionRestoreErrorMessage, beginCsrfRefresh, withSessionRead, setCsrfToken, getCsrfToken, clearCsrfToken } = require('../identity-session-guard');
+const { createSessionReadGuard, sessionRestoreErrorMessage, beginCsrfRefresh, invalidateSessionRead, withSessionRead, setCsrfToken, getCsrfToken, clearCsrfToken } = require('../identity-session-guard');
 
 async function run() {
   setCsrfToken('fresh-session-proof');
@@ -23,6 +23,34 @@ async function run() {
   releaseSharedSessionRead({ userId: 'e2e-user', csrfToken: 'one-shared-read' });
   assert.deepEqual(await Promise.all(sessionReaders), [{ userId: 'e2e-user', csrfToken: 'one-shared-read' }, { userId: 'e2e-user', csrfToken: 'one-shared-read' }]);
   assert.equal(sessionReadCount, 1, 'simultaneous identity and sync boot share one CSRF-rotating session read');
+  let releaseAnonymousRead;
+  let anonymousReadCount = 0;
+  const anonymousRead = withSessionRead(() => {
+    anonymousReadCount += 1;
+    return new Promise(resolve => { releaseAnonymousRead = resolve; });
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(anonymousReadCount, 1);
+  invalidateSessionRead();
+  let releaseAuthenticatedRead;
+  let authenticatedReadCount = 0;
+  const authenticatedRead = withSessionRead(() => {
+    authenticatedReadCount += 1;
+    return new Promise(resolve => { releaseAuthenticatedRead = resolve; });
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(authenticatedReadCount, 1, 'login after an in-flight anonymous read starts a fresh session request');
+  releaseAnonymousRead({ ok: false, status: 401, json: async () => ({ error: { code: 'UNAUTHENTICATED' } }) });
+  await assert.rejects(anonymousRead, error => error.status === 401);
+  const joinedAuthenticatedRead = withSessionRead(() => {
+    authenticatedReadCount += 1;
+    return Promise.resolve({ userId: 'duplicate-authenticated-read' });
+  });
+  assert.equal(joinedAuthenticatedRead, authenticatedRead, 'a late stale read cannot detach the current authenticated singleflight');
+  assert.equal(authenticatedReadCount, 1, 'the active authenticated request remains shared after stale completion');
+  releaseAuthenticatedRead({ userId: 'authenticated-after-login', csrfToken: 'fresh-csrf-proof' });
+  assert.deepEqual(await authenticatedRead, { userId: 'authenticated-after-login', csrfToken: 'fresh-csrf-proof' });
+  assert.deepEqual(await joinedAuthenticatedRead, { userId: 'authenticated-after-login', csrfToken: 'fresh-csrf-proof' });
   const guard = createSessionReadGuard();
   let gated = true;
   let offlineMode = false;
@@ -52,7 +80,11 @@ async function run() {
 
   const source = fs.readFileSync(path.join(__dirname, '..', 'identity-ui.js'), 'utf8');
   assert.match(source, /const readVersion = sessionReadGuard\.capture\(\)/u);
-  assert.match(source, /sessionReadGuard\.invalidate\(\);\s*csrf = null/u);
+  assert.match(source, /invalidateSessionReads\(\);\s*csrf = null/u);
+  assert.match(source, /function invalidateSessionReads\(\)[\s\S]*?invalidateSessionRead\?\.\(\)/u,
+    'identity state changes invalidate in-flight shared reads as well as local UI generations');
+  assert.match(source, /request\('\/identity\/login'[\s\S]*?\n\s*invalidateSessionReads\(\);\s*csrf = result\.csrfToken/u,
+    'a successful login cannot reuse an anonymous session response already in flight');
   assert.match(source, /window\.dispatchEvent\(new CustomEvent\(session && !mfaLocked \? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'\)\)/u);
   assert.match(source, /const hadAuthenticatedSession = Boolean\(current\)/u);
   assert.match(source, /sessionRestoreErrorMessage\(error, hadAuthenticatedSession, message\)/u);

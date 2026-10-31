@@ -8,6 +8,10 @@
   let offlineMode = false;
   let invitationKind = 'membership_invitation';
   const sessionReadGuard = window.RotaMotoSessionGuard.createSessionReadGuard();
+  function invalidateSessionReads() {
+    sessionReadGuard.invalidate();
+    window.RotaMotoSessionGuard?.invalidateSessionRead?.();
+  }
   let working = false;
   let mfaStarting = false;
   let authView = 'login';
@@ -29,7 +33,7 @@
     }
   } catch (_) {}
   const codeMessages = {
-    INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'Esta conta precisa de um código de verificação. Configure o aplicativo autenticador para entrar.', MFA_PROVIDER_UNAVAILABLE: 'A verificação em duas etapas está temporariamente indisponível. Tente novamente mais tarde.', CSRF_INVALID: 'A sessão de segurança foi renovada. Tente configurar novamente; se o erro continuar, atualize a página.', RECOVERY_LOCAL_OPERATOR_REQUIRED: 'Esta solicitação exige o procedimento local auditado do operador.',
+    INVALID_CREDENTIALS: 'Email ou senha inválidos.', CURRENT_PASSWORD_INVALID: 'A senha atual não confere.', PASSWORD_UNCHANGED: 'Escolha uma senha diferente da atual.', MFA_REQUIRED: 'Esta conta precisa de um código de verificação. Configure o aplicativo autenticador para entrar.', MFA_PROVIDER_UNAVAILABLE: 'A verificação em duas etapas está temporariamente indisponível. Tente novamente mais tarde.', CSRF_INVALID: 'A sessão de segurança foi renovada. Tente configurar novamente; se o erro continuar, atualize a página.', RECOVERY_LOCAL_OPERATOR_REQUIRED: 'Esta solicitação exige o procedimento local auditado do operador.',
     UNAUTHENTICATED: 'Sua sessão expirou. Entre novamente.', EMAIL_PROVIDER_NOT_CONFIGURED: 'Convites e recuperação ainda dependem da configuração segura de entrega de email.',
     FORBIDDEN: 'Seu perfil não permite esta ação.', LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um responsável principal ativo.',
     DRIVER_MEMBERSHIP_INELIGIBLE: 'A conta precisa estar ativa, confirmada e autorizada para usar o app Motoboy.',
@@ -68,10 +72,12 @@
           <label>Código da empresa<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1m4 0h1m-6 4h1m4 0h1m-5 7v-4h4v4"/></svg><input name="companyId" autocomplete="off" spellcheck="false" aria-describedby="companyHelp" required></span></label>
           <small id="companyHelp">Use o código recebido no convite. O servidor confirma o vínculo da conta.</small>
           <button class="rm-primary rm-login-submit" type="submit"><span>Entrar</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><p data-login-error role="alert" aria-live="polite"></p></form>
-        <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-company-name>Empresa ativa</span><span data-company-code-row>Identificador da empresa: <code data-company-id></code> <button type="button" data-copy-company-id>Copiar</button></span></div>
+        <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-email-verification></span><span data-company-name>Empresa ativa</span><span data-company-code-row>Identificador da empresa: <code data-company-id></code> <button type="button" data-copy-company-id>Copiar</button></span></div>
+          <form data-password-change><p>Use a senha atual para definir uma nova. Sua sessão neste aparelho continuará ativa; as outras sessões serão encerradas após a confirmação.</p><label>Senha atual<input name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Nova senha<input name="newPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><label>Repita a nova senha<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button type="submit">Alterar senha</button><p data-password-change-status role="status" aria-live="polite"></p></form>
           <section data-mfa hidden><p data-mfa-status role="status"></p>
-            <p data-mfa-start-status role="alert" aria-live="assertive" aria-atomic="true"></p><button type="button" data-mfa-start>Configurar verificação em duas etapas</button>
-          <form data-mfa-confirm hidden><p>Escaneie o QR Code ou informe a chave manual no aplicativo autenticador. Digite o código atual para confirmar.</p><canvas data-mfa-qr width="208" height="208" role="img" aria-label="QR Code para configurar autenticação em duas etapas"></canvas><label>Chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar código</button><p data-mfa-error role="alert"></p></form>
+            <p data-mfa-start-status role="alert" aria-live="assertive" aria-atomic="true"></p><button type="button" data-mfa-start>Configurar verificação em duas etapas</button><button type="button" class="rm-secondary" data-mfa-replace hidden>Substituir autenticador</button>
+          <form data-mfa-replace-verify hidden><p>Para substituir o autenticador, confirme sua senha e um código do autenticador atual. A chave atual nunca é exibida novamente.</p><label>Senha atual<input name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código do autenticador atual<input name="currentMfaCode" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar identidade</button><button type="button" class="rm-secondary" data-mfa-replace-cancel>Cancelar</button><p data-mfa-replace-status role="alert" aria-live="polite"></p></form>
+          <form data-mfa-confirm hidden><p>Escaneie o QR Code ou informe a nova chave no aplicativo autenticador. Digite o código atual para confirmar. A chave será exibida apenas durante esta configuração.</p><canvas data-mfa-qr width="208" height="208" role="img" aria-label="QR Code para configurar autenticação em duas etapas"></canvas><label>Nova chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar novo autenticador</button><button type="button" class="rm-secondary" data-mfa-cancel>Cancelar configuração</button><p data-mfa-error role="alert"></p></form>
             <section data-recovery-codes hidden><h4>Códigos de recuperação</h4><p>Guarde-os fora deste navegador. Cada código só pode ser usado uma vez.</p><pre data-recovery-code-list></pre><button type="button" data-recovery-codes-dismiss>Ocultar códigos</button></section>
             <button type="button" data-mfa-regenerate hidden>Gerar novos códigos de recuperação</button>
           </section>
@@ -82,13 +88,13 @@
         <section class="rm-auth-flow" data-recovery data-auth-view="recovery" aria-labelledby="rmRecoveryTitle" hidden>
           <header class="rm-auth-flow-heading"><div class="rm-auth-flow-heading__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.2c0 4.7 3.2 8.3 7.5 9.8 4.3-1.5 7.5-5.1 7.5-9.8V6L12 3Z"/><path d="M9 12h6M12 9v6"/></svg></div><div><h2 id="rmRecoveryTitle" data-recovery-title>Recuperar acesso</h2><p data-recovery-description>Escolha como deseja recuperar sua conta.</p></div><button class="rm-auth-back" type="button" data-recovery-back aria-label="Voltar ao login"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6M9 12h12"/></svg><span data-recovery-back-label>Voltar</span></button></header>
           <nav class="rm-auth-recovery-menu" data-recovery-menu aria-label="Opções para recuperar acesso">
-            <button type="button" class="rm-auth-option" data-recovery-choice="request-code"><span class="rm-auth-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span><span><strong>Solicitar código</strong><small>Receba instruções no email cadastrado.</small></span><span class="rm-auth-option__arrow" aria-hidden="true">›</span></button>
+            <button type="button" class="rm-auth-option" data-recovery-choice="request-code"><span class="rm-auth-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg></span><span><strong>Solicitar código</strong><small>O envio depende da configuração segura de email.</small></span><span class="rm-auth-option__arrow" aria-hidden="true">›</span></button>
             <button type="button" class="rm-auth-option" data-recovery-choice="reset-password"><span class="rm-auth-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8 2 2-2 2 2 2-3 3-2-2-2 2"/></svg></span><span><strong>Redefinir senha</strong><small>Use o código recebido para criar uma nova senha.</small></span><span class="rm-auth-option__arrow" aria-hidden="true">›</span></button>
             <button type="button" class="rm-auth-option" data-recovery-choice="recover-mfa"><span class="rm-auth-option__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9 7h6M10 17h4M3 9v6m18-6v6"/></svg></span><span><strong>Perdi o autenticador</strong><small>Inicie a recuperação segura da verificação em duas etapas.</small></span><span class="rm-auth-option__arrow" aria-hidden="true">›</span></button>
           </nav>
-          <section class="rm-auth-flow-screen" data-recovery-screen="request-code" hidden><form data-recovery-request><label>Email<input name="email" type="email" autocomplete="email" required maxlength="320"></label><small>Se a conta puder ser recuperada, enviaremos instruções ao email cadastrado.</small><button class="rm-primary" type="submit">Solicitar recuperação</button><p role="status" aria-live="polite" data-recovery-status></p></form></section>
+          <section class="rm-auth-flow-screen" data-recovery-screen="request-code" hidden><form data-recovery-request><label>Email<input name="email" type="email" autocomplete="email" required maxlength="320"></label><small>Se a conta puder ser recuperada e o serviço de email estiver disponível, as instruções serão enviadas ao endereço cadastrado.</small><button class="rm-primary" type="submit">Solicitar recuperação por email</button><p role="status" aria-live="polite" data-recovery-status></p></form></section>
           <section class="rm-auth-flow-screen" data-recovery-screen="reset-password" hidden><form data-recovery-consume><label>Código recebido<input name="token" autocomplete="one-time-code" required maxlength="43"></label><label>Nova senha<input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button class="rm-primary" type="submit">Alterar senha</button><p role="status" aria-live="polite" data-recovery-result></p></form></section>
-          <section class="rm-auth-flow-screen" data-recovery-screen="recover-mfa" hidden><form data-mfa-recovery-request data-mfa-recovery-stage="request"><p class="rm-auth-flow-note">A solicitação exige sua senha atual e confirmação pelo email verificado. Outro administrador deverá aprová-la; para proprietário único, somente o operador local pode concluir.</p><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label><label>Senha atual<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código da empresa<input name="companyId" required maxlength="36" autocomplete="off"></label><button class="rm-primary" type="submit">Solicitar recuperação de MFA</button><p role="status" aria-live="polite" data-mfa-recovery-status></p></form><form data-mfa-recovery-confirm data-mfa-recovery-stage="confirm" hidden><label>Código recebido por email<input name="token" autocomplete="one-time-code" required maxlength="43"></label><button class="rm-primary" type="submit">Confirmar solicitação</button><p role="status" aria-live="polite" data-mfa-recovery-confirm-status></p></form></section>
+          <section class="rm-auth-flow-screen" data-recovery-screen="recover-mfa" hidden><form data-mfa-recovery-request data-mfa-recovery-stage="request"><p class="rm-auth-flow-note">A solicitação exige sua senha atual e confirmação pelo email verificado. Outro administrador deverá aprová-la; para proprietário único, somente o operador local pode concluir. O envio depende da configuração segura de email.</p><label>Email<input name="email" type="email" autocomplete="username" required maxlength="320"></label><label>Senha atual<input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código da empresa<input name="companyId" required maxlength="36" autocomplete="off"></label><button class="rm-primary" type="submit">Solicitar recuperação de MFA</button><p role="status" aria-live="polite" data-mfa-recovery-status></p></form><form data-mfa-recovery-confirm data-mfa-recovery-stage="confirm" hidden><label>Código recebido por email<input name="token" autocomplete="one-time-code" required maxlength="43"></label><button class="rm-primary" type="submit">Confirmar solicitação</button><p role="status" aria-live="polite" data-mfa-recovery-confirm-status></p></form></section>
         </section>
         <section class="rm-auth-flow rm-auth-invitation" data-invitation data-auth-view="invitation" aria-labelledby="rmInvitationTitle" hidden><header class="rm-auth-flow-heading"><div class="rm-auth-flow-heading__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.2c0 4.7 3.2 8.3 7.5 9.8 4.3-1.5 7.5-5.1 7.5-9.8V6L12 3Z"/><path d="m9 12 2 2 4-4"/></svg></div><div><h2 id="rmInvitationTitle">Aceitar convite</h2><p>Informe o código recebido para ativar o vínculo autorizado.</p></div><button class="rm-auth-back" type="button" data-invitation-back aria-label="Voltar ao login"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6M9 12h12"/></svg><span>Voltar ao login</span></button></header><form data-accept-invitation><label>Código do convite<input name="token" required maxlength="43" autocomplete="off"></label><label>Crie sua senha<input name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password"></label><button class="rm-primary" type="submit">Aceitar convite</button><p role="status" aria-live="polite" data-invitation-result></p></form></section>
         <nav class="rm-login-secondary" data-login-secondary aria-label="Ajuda para acessar sua conta"><button type="button" data-open-recovery>Recuperar acesso</button><span aria-hidden="true">·</span><button type="button" data-open-invitation>Aceitar convite</button></nav>
@@ -124,6 +130,8 @@
   if (invitationForm) accountCards[3].append(invitationForm);
   const recoveryDetails = $('[data-recovery]'); if (recoveryDetails) accountCards[4].append(recoveryDetails);
   const logoutButton = $('[data-logout]'); const accountError = $('[data-account-error]');
+  const passwordChangeForm = $('[data-password-change]');
+  if (passwordChangeForm) accountCards[2].append(passwordChangeForm);
   if (logoutButton) accountCards[2].append(logoutButton);
   if (accountError) accountCards[2].append(accountError);
   authenticatedContent?.remove();
@@ -482,7 +490,19 @@
   function setBusy(form, busy) { form.setAttribute('aria-busy', String(busy)); form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); if(form.id)document.querySelectorAll(`[form="${form.id}"]`).forEach(button=>{button.disabled=busy});const dialog=form.closest('dialog'); if(dialog)dialog.dataset.busy=String(busy); }
   function markAdminFormSaved(form){form.dataset.dialogDirty='';const dialog=form.closest('dialog');if(dialog?.open)dialog.close()}
 
+  function clearSensitiveAccountState() {
+    passwordChangeForm?.reset();
+    const replacementForm = $('[data-mfa-replace-verify]');
+    if (replacementForm) { replacementForm.reset(); replacementForm.hidden = true; }
+    const enrollmentForm = $('[data-mfa-confirm]');
+    if (enrollmentForm) { enrollmentForm.reset(); enrollmentForm.hidden = true; }
+    clearMfaEnrollment();
+    const recoveryCodes = $('[data-recovery-codes]');
+    if (recoveryCodes) { $('[data-recovery-code-list]').textContent = ''; recoveryCodes.hidden = true; }
+  }
+
   function showSession(session) {
+    if (!session) clearSensitiveAccountState();
     current = session;
     offlineMode = false;
     if (session) authView = 'login';
@@ -499,7 +519,12 @@
     if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
     mfaLocked = Boolean(session && (session.mfaEnrollmentRequired || (session.mfaRequired && !session.mfaVerified)));
     $('[data-login]').hidden = Boolean(session);
-    if (accountPage) { accountPage.classList.toggle('rm-mfa-only', mfaLocked); if (mfaLocked) { panel.append(accountPage); accountPage.hidden = false; } else if (accountPage.parentElement === panel) { accountPage.remove(); accountPage.hidden = true; } else accountPage.hidden = !(session && accountPage.closest('#main')); }
+    if (accountPage) {
+      accountPage.classList.toggle('rm-mfa-only', mfaLocked);
+      if (mfaLocked) { panel.append(accountPage); accountPage.hidden = false; }
+      else if (accountPage.parentElement === panel || !accountPage.isConnected) { host.append(accountPage); accountPage.hidden = true; }
+      else accountPage.hidden = !(session && accountPage.closest('#main'));
+    }
     if (recoveryDetails) { if (session && !mfaLocked) { accountCards[4].append(recoveryDetails); recoveryDetails.hidden = false; } else { $('.rm-identity-content').append(recoveryDetails); recoveryDetails.hidden = Boolean(session); } }
     const appRoot = applicationRoot();
     if (appRoot) { const authorized = Boolean(session && !mfaLocked); appRoot.hidden = !authorized; appRoot.inert = !authorized; appRoot.setAttribute('aria-hidden', String(!authorized)); }
@@ -520,9 +545,11 @@
       $('[data-user-email]').textContent = session.email;
       $('[data-company-id]').textContent = session.activeCompanyId;
       try { localStorage.setItem('rotaMoto.activeCompanyHint', session.activeCompanyId); } catch (_) {}
-      const mfaBox=$('[data-mfa]');mfaBox.hidden=!(mfaLocked||session.mfaConfigured);
-      $('[data-mfa-status]').textContent=session.mfaEnrollmentRequired?'Acesso limitado até confirmar o autenticador.':session.mfaConfigured?'Verificação em duas etapas configurada. A chave não pode ser consultada novamente.':'Verificação em duas etapas não configurada.';
-      $('[data-mfa-start]').hidden=!Boolean(session.mfaEnrollmentRequired);
+      $('[data-email-verification]').textContent=session.emailVerified?'Email confirmado':'Email ainda não confirmado';
+      const mfaBox=$('[data-mfa]');mfaBox.hidden=false;
+      $('[data-mfa-status]').textContent=session.mfaEnrollmentRequired?'Acesso limitado até confirmar o autenticador.':session.mfaConfigured?'Verificação em duas etapas configurada. A chave não pode ser consultada novamente.':'Ative a verificação em duas etapas para adicionar uma proteção à sua conta.';
+      $('[data-mfa-start]').hidden=Boolean(session.mfaConfigured&&!session.mfaEnrollmentRequired);
+      $('[data-mfa-replace]').hidden=!(session.mfaConfigured&&session.mfaVerified&&!session.mfaEnrollmentRequired);
       $('[data-mfa-regenerate]').hidden=!(session.mfaConfigured&&session.mfaVerified&&session.permissions?.includes('company.manage'));
       setStatus(mfaLocked?'Acesso bloqueado · configure e confirme a verificação em duas etapas':'Sessão ativa');
       $('[data-login-error]').textContent = '';
@@ -531,9 +558,12 @@
       setStatus(offlineMode ? 'Sem conta do servidor · dados deste aparelho' : navigator.onLine === false ? 'Sem conexão · usando dados deste aparelho' : 'Entre para acessar sua conta.');
     }
   }
+  window.addEventListener('rotamoto:auth-revoked', () => {
+    if (!accountPage.isConnected) { host.append(accountPage); accountPage.hidden = true; }
+  });
   function expireSession() {
     if (!current) return;
-    sessionReadGuard.invalidate();
+    invalidateSessionReads();
     csrf = null; window.RotaMotoSessionGuard?.clearCsrfToken(); current = null; offlineMode = false;
     Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {});
     showSession(null); setOpen(true);
@@ -599,6 +629,25 @@
       ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.2 6.2C3.5 8 2 12 2 12s3.5 7 10 7a10 10 0 0 0 4-.8"/></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
   });
+  $('[data-password-change]').addEventListener('submit',async event=>{
+    event.preventDefault();
+    const form=event.currentTarget;
+    // Background sync after login must not silently swallow this action.
+    if(form.dataset.saving==='true')return;
+    const newPassword=form.elements.newPassword.value;
+    const confirmation=form.elements.confirmPassword;
+    confirmation.setCustomValidity(confirmation.value===newPassword?'':'As duas novas senhas precisam ser iguais.');
+    if(!form.reportValidity())return;
+    confirmation.setCustomValidity('');
+    form.dataset.saving='true';setBusy(form,true);
+    const feedback=$('[data-password-change-status]');feedback.textContent='';
+    try{
+      const result=await request('/identity/password/change',{method:'POST',body:JSON.stringify({currentPassword:form.elements.currentPassword.value,newPassword})});
+      if(result?.changed!==true)throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});
+      form.reset();feedback.textContent='Senha atualizada. As outras sessões foram encerradas.';
+    }catch(error){feedback.textContent=message(error)}
+    finally{delete form.dataset.saving;setBusy(form,false)}
+  });
   function clearMfaEnrollment(){const canvas=mfaQrCanvas;canvas?.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);if(mfaSecretInput)mfaSecretInput.value=''}
   function renderMfaQr(uri){const canvas=$('[data-mfa-qr]'),context=canvas?.getContext('2d'),encoder=window.RotaMotoQRCode;
     if(!canvas||!context||typeof encoder!=='function')throw new Error('QR local indisponível. Use a chave manual.');
@@ -607,50 +656,59 @@
     context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.fillStyle='#111';
     for(let row=0;row<modules;row++)for(let column=0;column<modules;column++)if(code.isDark(row,column))context.fillRect(offset+column*scale,offset+row*scale,scale,scale);
   }
-  $('[data-mfa-start]').addEventListener('click',async()=>{
-    const button=$('[data-mfa-start]'),feedback=$('[data-mfa-start-status]');
-    if(mfaStarting)return;
-    mfaStarting=true;button.disabled=true;button.setAttribute('aria-busy','true');
-    feedback.textContent='';$('[data-mfa-error]').textContent='';
-    $('[data-mfa-status]').textContent='Preparando a configuração…';
+  async function startMfaEnrollment(button, credentials = {}) {
+    const feedback=$('[data-mfa-start-status]');
+    if(mfaStarting)return false;
+    mfaStarting=true;
+    host.querySelectorAll('[data-mfa-start],[data-mfa-replace]').forEach(control=>{control.disabled=true;control.setAttribute('aria-busy','true')});
+    feedback.textContent='';$('[data-mfa-error]').textContent='';$('[data-mfa-status]').textContent='Preparando a configuração…';
     try{
-      const result=await request('/identity/mfa/enrollment',{method:'POST',body:'{}'});
+      const result=await request('/identity/mfa/enrollment',{method:'POST',body:JSON.stringify(credentials)});
       if(typeof result?.secret!=='string'||!result.secret||typeof result?.otpauthUri!=='string'||!result.otpauthUri.startsWith('otpauth://totp/'))
         throw Object.assign(new Error('Resposta de configuração inválida.'),{code:'MFA_ENROLLMENT_INVALID_RESPONSE'});
       $('[data-mfa-secret]').value=result.secret;
+      $('[data-mfa-start]').hidden=true;$('[data-mfa-replace]').hidden=true;$('[data-mfa-replace-verify]').hidden=true;
       const form=$('[data-mfa-confirm]');form.hidden=false;
       try{
         renderMfaQr(result.otpauthUri);
-        $('[data-mfa-status]').textContent='Escaneie o QR Code ou use a chave manual. Confirme com o código atual.';
+        $('[data-mfa-status]').textContent='Escaneie o QR Code ou use a nova chave manual. Confirme com o código do autenticador novo.';
       }catch(_){
-        $('[data-mfa-status]').textContent='O QR Code não pôde ser exibido neste aparelho. Use a chave manual abaixo e confirme com o código atual.';
+        $('[data-mfa-status]').textContent='O QR Code não pôde ser exibido neste aparelho. Use a nova chave manual abaixo e confirme com o código atual.';
         feedback.textContent='QR Code indisponível; a chave manual continua disponível.';
       }
-      $('[data-mfa-confirm] [name=code]').focus();
+      form.querySelector('[name=code]').focus();
+      return true;
     }catch(error){
       feedback.textContent=error?.code==='MFA_ENROLLMENT_INVALID_RESPONSE'?'O servidor respondeu de forma inesperada. Atualize a página e tente novamente.':message(error);
       $('[data-mfa-status]').textContent='Não foi possível iniciar a verificação em duas etapas.';
-    }finally{mfaStarting=false;button.disabled=false;button.removeAttribute('aria-busy')}
-  });
-  $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});clearMfaEnrollment();$('[data-mfa-confirm]').hidden=true;$('[data-mfa-status]').textContent='Verificação em duas etapas configurada. A chave foi removida desta tela.';$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore()}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
+      return false;
+    }finally{mfaStarting=false;host.querySelectorAll('[data-mfa-start],[data-mfa-replace]').forEach(control=>{control.disabled=false;control.removeAttribute('aria-busy')})}
+  }
+  $('[data-mfa-start]').addEventListener('click',event=>startMfaEnrollment(event.currentTarget));
+  $('[data-mfa-replace]').addEventListener('click',()=>{const form=$('[data-mfa-replace-verify]');form.hidden=false;$('[data-mfa-replace-status]').textContent='';form.elements.currentPassword.focus()});
+  $('[data-mfa-replace-cancel]').addEventListener('click',()=>{const form=$('[data-mfa-replace-verify]');form.reset();form.hidden=true;$('[data-mfa-replace-status]').textContent=''});
+  $('[data-mfa-replace-verify]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(mfaStarting||form.dataset.saving==='true'||!form.reportValidity())return;const button=form.querySelector('[type=submit]');form.dataset.saving='true';setBusy(form,true);$('[data-mfa-replace-status]').textContent='';try{const started=await startMfaEnrollment(button,{currentPassword:form.elements.currentPassword.value,currentMfaCode:form.elements.currentMfaCode.value});if(started){form.reset();form.hidden=true}else $('[data-mfa-replace-status]').textContent=$('[data-mfa-start-status]').textContent}finally{delete form.dataset.saving;setBusy(form,false)}});
+  $('[data-mfa-cancel]').addEventListener('click',async event=>{const button=event.currentTarget;if(mfaStarting||working)return;mfaStarting=true;button.disabled=true;try{const result=await request('/identity/mfa/enrollment/cancel',{method:'POST',body:'{}'});if(result.cancelled!==true&&result.cancelled!==false)throw Object.assign(new Error(),{code:'MFA_ENROLLMENT_INVALID_RESPONSE'});invalidateSessionReads();clearMfaEnrollment();$('[data-mfa-confirm]').reset();$('[data-mfa-confirm]').hidden=true;$('[data-mfa-start-status]').textContent='';await restore();$('[data-mfa-status]').textContent=result.cancelled?(current?.mfaConfigured?'Configuração cancelada. O autenticador atual continua ativo.':'Configuração cancelada.'):'Não havia uma configuração pendente para cancelar.'}catch(error){$('[data-mfa-start-status]').textContent=message(error)}finally{mfaStarting=false;button.disabled=false}});
+  $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});invalidateSessionReads();clearMfaEnrollment();form.hidden=true;$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore();$('[data-mfa-status]').textContent='Verificação em duas etapas confirmada. Guarde os novos códigos de recuperação; a chave não poderá ser consultada novamente.'}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
   $('[data-recovery-codes-dismiss]').addEventListener('click',()=>{$('[data-recovery-code-list]').textContent='';$('[data-recovery-codes]').hidden=true});
   $('[data-mfa-regenerate]').addEventListener('click',async event=>{const button=event.currentTarget;if(working)return;working=true;button.disabled=true;try{const result=await request('/identity/mfa/recovery-codes',{method:'POST',body:'{}'});$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{working=false;button.disabled=false}});
   document.addEventListener('rotamoto:settings-page', event => {
     if (event.detail?.section === 'seguranca') { if (!current || mfaLocked) return; const mount=document.querySelector('#rmAccountSettingsMount'); if(mount && mount.closest('#main')){ mount.append(accountPage); accountPage.hidden=false; } panel.hidden=true; return; }
     if (mfaLocked) return;
-    accountPage.remove();
+    host.append(accountPage);
     accountPage.hidden=true;
   });
-  $('[data-copy-company-id]').addEventListener('click', async event => { try { await navigator.clipboard.writeText(current?.activeCompanyId || ''); event.currentTarget.textContent='Copiado'; setTimeout(()=>{event.currentTarget.textContent='Copiar'},1600); } catch (_) { $('[data-account-error]').textContent='Não foi possível copiar o identificador neste navegador.'; } });
+  $('[data-copy-company-id]').addEventListener('click',async event=>{try{await navigator.clipboard.writeText(current?.activeCompanyId||'');event.currentTarget.textContent='Copiado';setTimeout(()=>{event.currentTarget.textContent='Copiar'},1600)}catch(_){$('[data-account-error]').textContent='Não foi possível copiar o identificador neste navegador.'}});
   $('[data-close]').addEventListener('click', () => { if (current || offlineMode) setOpen(false); });
   $('[data-login]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
-    sessionReadGuard.invalidate();
+    invalidateSessionReads();
     working = true; setBusy(form, true); $('[data-login-error]').textContent = ''; setStatus('Autenticando…');
     const data = new FormData(form); const password = data.get('password');
     try {
       const body = { email: String(data.get('email')).trim(), password: String(password), ...(data.get('companyId') ? { companyId: String(data.get('companyId')).trim() } : {}), ...(data.get('mfaCode') ? { mfaCode: String(data.get('mfaCode')).trim() } : {}) };
       const result = await request('/identity/login', { method: 'POST', body: JSON.stringify(body) });
+      invalidateSessionReads();
       csrf = result.csrfToken; window.RotaMotoSessionGuard?.setCsrfToken(csrf); form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true;
       const session = await restore();
       if (!session) throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
@@ -660,15 +718,16 @@
   });
   $('[data-switch]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
+    invalidateSessionReads();
     working = true; setBusy(form, true); $('[data-switch-error]').textContent = '';
-    try { await request('/identity/tenant', { method: 'POST', body: JSON.stringify({ companyId: form.elements.companyId.value.trim() }) }); await restore(); await syncAfterAuthentication(); }
+    try { await request('/identity/tenant', { method: 'POST', body: JSON.stringify({ companyId: form.elements.companyId.value.trim() }) }); invalidateSessionReads(); await restore(); await syncAfterAuthentication(); }
     catch (error) { $('[data-switch-error]').textContent = message(error); }
     finally { working = false; setBusy(form, false); }
   });
   $('[data-logout]').addEventListener('click', async () => {
     if (working) return; working = true;
-    sessionReadGuard.invalidate();
-    try { await request('/identity/logout', { method: 'POST', body: '{}' }); sessionReadGuard.invalidate(); csrf = null; current = null; showSession(null); setOpen(true); Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {}).finally(() => { if (!current) setOpen(true); }); }
+    invalidateSessionReads();
+    try { await request('/identity/logout', { method: 'POST', body: '{}' }); invalidateSessionReads(); csrf = null; current = null; showSession(null); setOpen(true); Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {}).finally(() => { if (!current) setOpen(true); }); }
     catch (error) { const feedback = $('[data-account-error]'); if (feedback) feedback.textContent = message(error); }
     finally { working = false; if (!current) { panel.hidden = false; setOpen(true); } }
   });

@@ -245,7 +245,20 @@ assert.match(source, /error\.status !== 401 && hadAuthenticatedSession/u, 'tempo
 assert.match(source, /document\.addEventListener\('visibilitychange'/u, 'foreground resume revalidates session with the server');
 assert.match(source, /rotamoto:app-ready/u, 'server sync waits until IndexedDB settings have finished hydrating');
 assert.match(source, /Verificando sua sessão…/u, 'the initial identity state stays neutral until session verification completes');
-assert.match(source, /\$\('\[data-mfa-start\]'\)\.hidden=!Boolean\(session\.mfaEnrollmentRequired\)/u, 'MFA enrollment guidance is not shown for an already configured factor');
+assert.match(source, /\$\('\[data-mfa-start\]'\)\.hidden=Boolean\(session\.mfaConfigured&&!session\.mfaEnrollmentRequired\)[\s\S]*?\$\('\[data-mfa-replace\]'\)\.hidden=!\(session\.mfaConfigured&&session\.mfaVerified&&!session\.mfaEnrollmentRequired\)/u, 'optional MFA setup and authenticated factor replacement are shown only in valid session states');
+assert.match(source, /\$\('\[data-password-change\]'\)\.addEventListener\('submit'[\s\S]*?request\('\/identity\/password\/change'[\s\S]*?result\?\.changed!==true/u, 'password settings require current credentials and a confirmed server response');
+assert.match(source, /\$\('\[data-password-change\]'\)\.addEventListener\('submit',[\s\S]*?if\(form\.dataset\.saving==='true'\)return/u, 'password changes use a local duplicate-submit guard independent of background sync');
+assert.match(source, /function showSession\(session\)\s*\{\s*if \(!session\) clearSensitiveAccountState\(\)/u, 'logout and session expiration clear account secrets and pending drafts from the hidden DOM');
+assert.match(source, /accountPage\.parentElement === panel \|\| !accountPage\.isConnected[\s\S]*?host\.append\(accountPage\)/u,
+  'the account settings subtree stays attached when authentication removes the application view');
+assert.match(source, /addEventListener\('rotamoto:auth-revoked'[\s\S]*?if \(!accountPage\.isConnected\) \{ host\.append\(accountPage\)/u,
+  'logout reattaches account controls before a later login reads the MFA form');
+assert.match(source, /host\.append\(accountPage\);\s*accountPage\.hidden=true/u,
+  'leaving the Account and security page hides it in its persistent identity host');
+assert.match(source, /function clearSensitiveAccountState\(\)[\s\S]*?passwordChangeForm\?\.reset\(\)[\s\S]*?clearMfaEnrollment\(\)[\s\S]*?recoveryCodes\.hidden = true/u, 'sensitive account forms, pending MFA key, and recovery codes are removed from the page when the session ends');
+assert.match(source, /currentPassword:form\.elements\.currentPassword\.value,currentMfaCode:form\.elements\.currentMfaCode\.value/u, 'factor replacement requires the current password and a fresh TOTP code');
+assert.match(source, /\/identity\/mfa\/enrollment\/cancel/u, 'pending MFA secrets can be cancelled and removed server-side');
+assert.match(source, /session\.emailVerified\?'Email confirmado':'Email ainda não confirmado'/u, 'account displays server-confirmed email verification');
 
 assert.match(source, /response\.status === 401 && path !== '\/identity\/session'\) expireSession\(\)/u, 'session restoration applies its own generation check before changing identity');
 assert.doesNotMatch(source, /data-offline/u, 'unauthenticated users cannot bypass identity through local mode');
