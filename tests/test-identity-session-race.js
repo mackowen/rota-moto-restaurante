@@ -56,6 +56,11 @@ async function run() {
   assert.match(source, /window\.dispatchEvent\(new CustomEvent\(session && !mfaLocked \? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'\)\)/u);
   assert.match(source, /const hadAuthenticatedSession = Boolean\(current\)/u);
   assert.match(source, /sessionRestoreErrorMessage\(error, hadAuthenticatedSession, message\)/u);
+  const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  assert.match(appSource, /activeEditor=document\.activeElement\?\.closest\?\.\('#main input,#main select,#main textarea,#main \[contenteditable="true"\]'\)/u,
+    'restoring focus to a hidden login field after reload must not suppress the authenticated app render');
+  assert.match(appSource, /activeEditor\?\.isConnected&&activeEditor\.getClientRects\(\)\.length/u,
+    'only a visible, connected editor inside the authenticated main view may preserve an in-progress edit');
   console.log('identity local-choice/session race regression: OK');
 }
 
