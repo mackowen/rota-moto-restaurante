@@ -10,4 +10,4 @@ Esta política aplica-se ao Restaurante e aos contratos compartilhados com o Mot
 - Executar testes direcionados durante o desenvolvimento e suítes completas nos marcos de integração. Remover somente artefatos temporários identificados após a execução; preservar evidências e documentação histórica.
 - Mecanismos sintéticos de autenticação são permitidos somente no E2E isolado. O código mantém MFA, CSRF, RLS, RBAC e isolamento empresarial ativos.
 
-Estado conhecido em 2026-10-30: `rotamoto` está em 0064 e sem registros operacionais; `rotamoto_e2e` está em 0061. A limpeza/contagem autoritativa do E2E requer backup e leitura administrativa aprovados; não presumir que RLS sem contexto representa ausência de dados.
+Estado verificado em 2026-10-31: `rotamoto` e `rotamoto_e2e` estão em 0064, com os mesmos 64 checksums. `rotamoto` não possui empresas nem registros de domínio. `rotamoto_e2e` contém exclusivamente Chico Restaurante (ID canônico `01a14b34-2f79-7b57-a29d-9535574e3806`); testes e fixtures reutilizam essa empresa. O fundador E2E, o latch e o grant global foram preservados. Não inferir ausência de dados a partir de consultas bloqueadas por RLS.
