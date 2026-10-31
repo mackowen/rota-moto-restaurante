@@ -7,6 +7,7 @@ const ROUTES = Object.freeze({
   '/api/admin/company': { method: 'GET', permission: 'company.manage', operation: 'company' },
   '/api/admin/company/settings': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanySettings' },
   '/api/admin/company/delivery-pricing': { method: 'GET', permission: 'company.manage', operation: 'companyDeliveryPricing' },
+  '/api/admin/order-origins': { method: 'GET', permission: 'company.manage', operation: 'companyOrderOrigins' },
   '/api/admin/company/profile': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyProfile' },
   '/api/admin/company/route-grouping': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyRouteGrouping' },
   '/api/admin/company/location': { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyLocation' },
@@ -106,6 +107,26 @@ function validateDeliveryPricing(body) {
     round:value.round,roundTo:value.roundTo,ranges,repasseMode:value.repasseMode,repassePercent:value.repassePercent}};
 }
 
+function validateOrderOrigins(body) {
+  exact(body, ['expectedVersion', 'origins']);
+  if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 1 || !Array.isArray(body.origins) || body.origins.length > 50) throw error('INVALID_INPUT');
+  const reserved = new Set(['manual','ifood','keeta','99','99food','outro']);
+  const ids = new Set(), names = new Set();
+  const origins = body.origins.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw error('INVALID_INPUT');
+    exact(item, ['id', 'name', 'active']);
+    const id = typeof item.id === 'string' ? item.id.trim().toLowerCase() : '';
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    const normalizedName = name.normalize('NFKC').toLocaleLowerCase('pt-BR');
+    if (!/^[a-z][a-z0-9_-]{1,63}$/u.test(id) || reserved.has(id) || ids.has(id) ||
+        !name || Buffer.byteLength(name, 'utf8') > 80 || /[\u0000-\u001f\u007f]/u.test(name) ||
+        names.has(normalizedName) || typeof item.active !== 'boolean') throw error('INVALID_INPUT');
+    ids.add(id); names.add(normalizedName);
+    return { id, name, active: item.active };
+  });
+  return { expectedVersion: body.expectedVersion, origins };
+}
+
 function createAdminHttpHandler({ identityService, adminService, rateLimiter = createRateLimiter(), logger = () => {}, allowedOrigin }) {
   if (!identityService || !adminService) throw new TypeError('Serviços de identidade e administração obrigatórios.');
   return async function adminHttpHandler(req, res) {
@@ -118,7 +139,9 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
         ? { method: 'POST', permission: 'company.manage', operation: 'createRole' }
         : url.pathname === '/api/admin/company' && req.method === 'PUT'
           ? { method: 'PUT', permission: 'company.manage', operation: 'updateCompanyTimeZone' }
-          : url.pathname === '/api/admin/company/delivery-pricing' && req.method === 'PUT'
+          : url.pathname === '/api/admin/order-origins' && req.method === 'PUT'
+            ? { method:'PUT', permission:'company.manage', operation:'updateCompanyOrderOrigins' }
+            : url.pathname === '/api/admin/company/delivery-pricing' && req.method === 'PUT'
             ? { method:'PUT',permission:'company.manage',operation:'updateCompanyDeliveryPricing' }
             : ROUTES[url.pathname]; let match;
       if (!config && (match = /^\/api\/admin\/roles\/([0-9a-f-]{36})$/iu.exec(url.pathname))) config = { method: 'PATCH', permission: 'company.manage', operation: 'updateRole', id: match[1] };
@@ -155,6 +178,8 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
           case 'memberships': return adminService.memberships(client, principal, query);
           case 'company': return adminService.company(client, principal);
           case 'companyDeliveryPricing': return adminService.companyDeliveryPricing(client, principal);
+          case 'companyOrderOrigins': return adminService.companyOrderOrigins(client, principal);
+          case 'updateCompanyOrderOrigins': return adminService.updateCompanyOrderOrigins(client, principal, validateOrderOrigins(body));
           case 'updateCompanySettings': return adminService.updateCompanySettings(client, principal, validateCompanySettings(body));
           case 'updateCompanyDeliveryPricing': return adminService.updateCompanyDeliveryPricing(client, principal, validateDeliveryPricing(body));
           case 'updateCompanyTimeZone': {
@@ -230,4 +255,4 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
   };
 }
 
-module.exports = { ROUTES, createAdminHttpHandler, validateDriverLink, validateCompanySettings, validateDeliveryPricing };
+module.exports = { ROUTES, createAdminHttpHandler, validateDriverLink, validateCompanySettings, validateDeliveryPricing, validateOrderOrigins };

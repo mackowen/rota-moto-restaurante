@@ -48,6 +48,7 @@
     "test:delivery-qr": "node tests/test-delivery-qr.js",
     "test:logistics": "node tests/test-logistics-domain.js && node tests/test-logistics-http.js && node tests/test-logistics-analytics-scope.js && node tests/test-logistics-decision-quality.js && node tests/test-planned-route-geometry.js",
     "test:logistics-intelligence": "node tests/test-logistics-intelligence.js && node tests/test-osrm-route-distance.js && node tests/test-ors-route-distance.js",
+    "test:company-order-origins": "node tests/test-company-order-origins.js && NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e node tests/test-company-order-origins-postgres.js",
     "test:keeta-protocol": "node tests/test-keeta-protocol.js && node tests/test-keeta-adapter.js",
     "test:99food-protocol": "node tests/test-99food-protocol.js",
     "test:logistics-postgres": "NODE_ENV=test E2E_RUNTIME_DATABASE_URL=postgresql://rotamoto_app@127.0.0.1:5432/rotamoto_e2e E2E_MIGRATOR_DATABASE_URL=postgresql://rotamoto_migrator@127.0.0.1:5432/rotamoto_e2e node tests/test-logistics-e2e-postgres.js",

@@ -367,10 +367,10 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
   }
   async function getSettings(client, principal) { return { settings: await readSettings(client, principal.company_id), policies: POLICIES }; }
   async function getRouteSettings(client, companyId) {
-    const result=await client.query(`SELECT COALESCE(route.origin_mode,'establishment') AS origin_mode,
-        CASE WHEN COALESCE(route.origin_mode,'establishment')='custom' THEN route.origin_latitude ELSE company.operational_latitude END AS origin_latitude,
-        CASE WHEN COALESCE(route.origin_mode,'establishment')='custom' THEN route.origin_longitude ELSE company.operational_longitude END AS origin_longitude,
-        CASE WHEN COALESCE(route.origin_mode,'establishment')='custom' THEN route.origin_provenance ELSE company.operational_location_provenance END AS origin_provenance,
+    const result=await client.query(`SELECT 'establishment'::text AS origin_mode,
+        company.operational_latitude AS origin_latitude,
+        company.operational_longitude AS origin_longitude,
+        company.operational_location_provenance AS origin_provenance,
         COALESCE(route.return_to_origin,false) AS return_to_origin,COALESCE(route.version,0) AS version,
         COALESCE(company.operational_location_version,0) AS establishment_location_version,
         COALESCE(route.updated_at,company.updated_at) AS updated_at,company.operational_address
@@ -434,16 +434,9 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
   async function updateRouteSettings(client,principal,input){
     const allowed=new Set(['expectedVersion','originMode','latitude','longitude','returnToOrigin']);
     if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!allowed.has(key))||
-      !Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<0||!['establishment','custom'].includes(input.originMode)||
+      !Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<0||input.originMode!=='establishment'||
       typeof input.returnToOrigin!=='boolean')invalid('Configuração de origem/retorno inválida.');
-    let latitude=null,longitude=null,provenance=null;
-    if(input.originMode==='custom'){
-      const hasLat=input.latitude!==null&&input.latitude!==undefined,hasLon=input.longitude!==null&&input.longitude!==undefined;
-      if(hasLat!==hasLon)invalid('Informe latitude e longitude juntas.');
-      if(hasLat){latitude=input.latitude;longitude=input.longitude;
-        if(!Number.isFinite(latitude)||latitude< -90||latitude>90||!Number.isFinite(longitude)||longitude< -180||longitude>180)invalid('Coordenadas fora dos limites válidos.');
-        provenance='operator_configured';}
-    }else if(input.latitude!=null||input.longitude!=null)invalid('O modo estabelecimento usa somente localização canônica existente.');
+    if(input.latitude!=null||input.longitude!=null)invalid('A origem da frota vem exclusivamente da localização confirmada da empresa.');
     const current=await client.query(`SELECT version FROM rotamoto.logistics_route_settings WHERE company_id=$1 FOR UPDATE`,[principal.company_id]);
     const version=current.rowCount?Number(current.rows[0].version):0;
     if(version!==input.expectedVersion)throw Object.assign(new Error('Configuração alterada em outra sessão.'),{code:'REVISION_CONFLICT'});
@@ -453,11 +446,11 @@ function createLogisticsIntelligenceService({ clock = () => new Date(), testProv
         origin_longitude=EXCLUDED.origin_longitude,origin_provenance=EXCLUDED.origin_provenance,return_to_origin=EXCLUDED.return_to_origin,
         version=rotamoto.logistics_route_settings.version+1,updated_by=EXCLUDED.updated_by,updated_at=now()
       WHERE rotamoto.logistics_route_settings.version=$8 RETURNING version,updated_at`,
-    [principal.company_id,input.originMode,latitude,longitude,provenance,input.returnToOrigin,principal.user_id,input.expectedVersion]);
+    [principal.company_id,'establishment',null,null,null,input.returnToOrigin,principal.user_id,input.expectedVersion]);
     if(!result.rowCount)throw Object.assign(new Error('Configuração alterada em outra sessão.'),{code:'REVISION_CONFLICT'});
     await client.query(`INSERT INTO rotamoto.audit_log(id,company_id,actor_user_id,actor_kind,action,resource_type,resource_id,details)
       VALUES($1,$2,$3,'user','logistics.route_settings_updated','logistics_route_settings',$4,$5::jsonb)`,
-    [crypto.randomUUID(),principal.company_id,principal.user_id,String(principal.company_id),JSON.stringify({originMode:input.originMode,coordinatesConfigured:latitude!==null,
+    [crypto.randomUUID(),principal.company_id,principal.user_id,String(principal.company_id),JSON.stringify({originMode:'establishment',coordinatesConfigured:false,
       returnToOrigin:input.returnToOrigin,version:Number(result.rows[0].version)})]);
     return readRouteSettings(client,principal);
   }

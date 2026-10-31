@@ -311,6 +311,26 @@ function createAdminRepository() {
       return result.rowCount?{configured:true,settings:result.rows[0].settings,version:Number(result.rows[0].version),updatedAt:result.rows[0].updated_at}:{configured:false,settings:null,version:0,updatedAt:null};
     } catch(error) { if(error.code==='42P01')return {configured:false,settings:null,version:0,available:false}; throw error; }
   }
+  async function companyOrderOrigins(client, companyId) {
+    const result=await client.query('SELECT order_origins,order_origins_version FROM rotamoto.companies WHERE id=$1',[companyId]);
+    if(!result.rowCount)throw Object.assign(new Error('Empresa não encontrada.'),{code:'NOT_FOUND'});
+    return {version:Number(result.rows[0].order_origins_version),origins:result.rows[0].order_origins||[],updatedAt:null};
+  }
+  async function updateCompanyOrderOrigins(client,principal,input) {
+    const current=await client.query('SELECT order_origins,order_origins_version FROM rotamoto.companies WHERE id=$1 FOR UPDATE',[principal.company_id]);
+    if(!current.rowCount)throw Object.assign(new Error('Empresa não encontrada.'),{code:'NOT_FOUND'});
+    if(Number(current.rows[0].order_origins_version)!==input.expectedVersion)throw Object.assign(new Error('As origens mudaram em outra sessão.'),{code:'REVISION_CONFLICT'});
+    const previous=Array.isArray(current.rows[0].order_origins)?current.rows[0].order_origins:[];
+    const nextById=new Map(input.origins.map(origin=>[origin.id,origin]));
+    if(previous.some(origin=>!nextById.has(origin.id)))throw Object.assign(new Error('Origens existentes não podem ser removidas; desative-as para preservar pedidos históricos.'),{code:'INVALID_INPUT'});
+    const updated=await client.query(`UPDATE rotamoto.companies SET order_origins=$2::jsonb,order_origins_version=order_origins_version+1,updated_at=now()
+      WHERE id=$1 AND order_origins_version=$3 RETURNING order_origins,order_origins_version,updated_at`,
+      [principal.company_id,JSON.stringify(input.origins),input.expectedVersion]);
+    if(!updated.rowCount)throw Object.assign(new Error('As origens mudaram em outra sessão.'),{code:'REVISION_CONFLICT'});
+    await writeAudit(client,principal,'company.order_origins.updated','company',principal.company_id,
+      {version:Number(updated.rows[0].order_origins_version),originIds:input.origins.map(origin=>origin.id).sort()});
+    return {version:Number(updated.rows[0].order_origins_version),origins:updated.rows[0].order_origins,updatedAt:updated.rows[0].updated_at};
+  }
   async function updateCompanyTimeZone(client, principal, input) {
     const current = await client.query(`SELECT time_zone,company_settings_version FROM rotamoto.companies WHERE id=$1 FOR UPDATE`, [principal.company_id]);
     if (!current.rowCount) { const error = new Error('Empresa não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
@@ -443,7 +463,7 @@ function createAdminRepository() {
         AND status IN ('queued','leased','pending','unknown_outcome')`,[companyId,accountId]);
     return {account:{id:result.rows[0].id,status:result.rows[0].account_status,lastSyncAt:result.rows[0].last_sync_at}};
   }
-  return Object.freeze({ company, companyDeliveryPricing, updateCompanySettings, updateCompanyDeliveryPricing, memberships, roles, integrations, disableIntegrationAccount, permissions, createRole, updateRole,
+  return Object.freeze({ company, companyDeliveryPricing, companyOrderOrigins, updateCompanyOrderOrigins, updateCompanySettings, updateCompanyDeliveryPricing, memberships, roles, integrations, disableIntegrationAccount, permissions, createRole, updateRole,
     restoreOwnerFinancePermissions, updateMembership,
     updateCompanyTimeZone, updateCompanyLocation, updateCompanyProfile, updateCompanyRouteGrouping, associateMembershipDriver, disassociateMembershipDriver });
 }

@@ -2,8 +2,10 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const ui=fs.readFileSync(require.resolve('../logistics-ui.js'),'utf8');
-assert.match(ui,/const \[\{settings:routeSettings\},company\] = await Promise\.all\(\[api\('\/logistics\/route-settings'\),api\('\/admin\/company'\)\]\)/u,
-  'Logistics settings consume the canonical direct Company response without a duplicate wrapper assumption');
+assert.match(ui,/const \{settings:routeSettings\} = await api\('\/logistics\/route-settings'\)/u,
+  'Logistics reads its canonical Company location from the authorized route settings response');
+assert.doesNotMatch(ui,/api\('\/admin\/company'\)/u,
+  'Logistics does not require a second Company settings permission/read path');
 process.env.NODE_ENV='test';
 const {createLogisticsIntelligenceService}=require('../backend/logistics/intelligence');
 const companyId='10000000-0000-4000-8000-000000000001',userId='20000000-0000-4000-8000-000000000001';
@@ -23,15 +25,17 @@ const service=createLogisticsIntelligenceService({});
   const unknown=(await service.getRouteSettings(client,principal)).settings;assert.equal(unknown.originMode,'establishment');assert.equal(unknown.origin,null);assert.equal(unknown.establishmentLocationVersion,0);
   companyLocation={latitude:-23.55,longitude:-46.63,provenance:'operator_confirmed',version:4,address:'Endereço cadastral'};
   const establishment=(await service.getRouteSettings(client,principal)).settings;assert.deepEqual(establishment.origin,{latitude:-23.55,longitude:-46.63,address:'Endereço cadastral'});assert.equal(establishment.originProvenance,'operator_confirmed');assert.equal(establishment.establishmentLocationVersion,4);
-  const saved=await service.updateRouteSettings(client,principal,{expectedVersion:0,originMode:'custom',latitude:12.3,longitude:-45.6,returnToOrigin:true});
-  assert.equal(saved.settings.origin.latitude,12.3);assert.equal(saved.settings.returnToOrigin,true);
-  assert.equal(saved.settings.origin.longitude,-45.6,'custom Route origin remains separate from Company location');assert.equal(companyLocation.latitude,-23.55);
+  const saved=await service.updateRouteSettings(client,principal,{expectedVersion:0,originMode:'establishment',latitude:null,longitude:null,returnToOrigin:true});
+  assert.deepEqual(saved.settings.origin,{latitude:-23.55,longitude:-46.63,address:'Endereço cadastral'},'Routes read the canonical Company location');
+  assert.equal(saved.settings.returnToOrigin,true);assert.equal(companyLocation.latitude,-23.55);
   const write=calls.find(item=>item.sql.includes('INSERT INTO rotamoto.logistics_route_settings'));
   assert.equal(write.params[0],companyId,'settings write is tenant scoped');assert.equal(write.params[6],userId,'operator recorded');
   const audit=calls.find(item=>item.sql.includes("'logistics.route_settings_updated'"));
   assert.ok(audit,'configuration update is audited');assert.equal(audit.params[1],companyId);assert.equal(audit.params[3],companyId,
     'audit resource id is a separate text parameter, not a reused tenant UUID placeholder');
-  await assert.rejects(service.updateRouteSettings(client,principal,{expectedVersion:0,originMode:'custom',latitude:91,longitude:1,returnToOrigin:false}),/Coordenadas/u);
-  await assert.rejects(service.updateRouteSettings(client,principal,{expectedVersion:0,originMode:'establishment',latitude:1,longitude:null,returnToOrigin:false}),/estabelecimento/u);
+  await assert.rejects(service.updateRouteSettings(client,principal,{expectedVersion:1,originMode:'custom',latitude:12.3,longitude:-45.6,returnToOrigin:false}),/Configuração de origem/u,
+    'a logistics-specific origin cannot shadow Company location');
+  await assert.rejects(service.updateRouteSettings(client,principal,{expectedVersion:1,originMode:'establishment',latitude:1,longitude:null,returnToOrigin:false}),/origem da frota vem exclusivamente/u,
+    'coordinates cannot be edited in Logistics');
   console.log('Operational route origin/return settings validation and tenant scope: PASS');
 })().catch(error=>{console.error(error);process.exitCode=1});
