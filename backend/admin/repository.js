@@ -291,7 +291,11 @@ function createAdminRepository() {
   }
   async function updateCompanyDeliveryPricing(client, principal, input) {
     const result=await client.query(`INSERT INTO rotamoto.company_delivery_pricing(company_id,settings,version,updated_by)
-      SELECT $1,$3::jsonb,1,$4 WHERE $2=0
+      SELECT $1,$3::jsonb,1,$4
+      WHERE $2=0 OR EXISTS (
+        SELECT 1 FROM rotamoto.company_delivery_pricing current
+        WHERE current.company_id=$1 AND current.version=$2
+      )
       ON CONFLICT(company_id) DO UPDATE SET settings=EXCLUDED.settings,version=rotamoto.company_delivery_pricing.version+1,
         updated_by=EXCLUDED.updated_by,updated_at=now()
       WHERE rotamoto.company_delivery_pricing.version=$2
