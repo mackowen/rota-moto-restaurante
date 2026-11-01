@@ -225,9 +225,25 @@ assert.match(appSource, /window\.addEventListener\('rotamoto:auth-revoked',[\s\S
 assert.match(source, /rmAccountSettingsPage/u, 'account management has a dedicated page mounted under Ajustes');
 const accountMarkup = source.match(/accountPage\.innerHTML = `([\s\S]*?)`;/u)?.[1] || '';
 assert(accountMarkup, 'account settings overview has a dedicated semantic template');
-assert.match(accountMarkup, /data-account-overview[\s\S]*Minha conta[\s\S]*Senha e acesso[\s\S]*Verificação em duas etapas[\s\S]*Códigos de recuperação[\s\S]*Empresas vinculadas[\s\S]*Convites[\s\S]*Sessões/u,
-  'the overview shows the requested compact account and security summaries');
+assert.match(accountMarkup, /data-account-overview[\s\S]*Minha conta[\s\S]*aria-labelledby="rmAccountSecurityTitle"[\s\S]*Segurança[\s\S]*data-account-open="password"[\s\S]*data-account-open="mfa"[\s\S]*data-account-open="recovery-codes"[\s\S]*aria-labelledby="rmAccountAccessTitle"[\s\S]*Empresas e acesso[\s\S]*data-account-open="companies"[\s\S]*data-account-open="invitation"[\s\S]*data-account-open="logout"/u,
+  'the compact overview groups security, company access and session actions');
+assert.equal((accountMarkup.match(/class="rm-account-setting-row(?: rm-account-setting-row--session)?"/gu) || []).length, 6,
+  'every existing account operation remains a full-row button');
+assert.match(accountMarkup, /data-account-open="mfa"[\s\S]*aria-haspopup="dialog"[\s\S]*data-account-mfa-summary/u,
+  'the MFA row exposes its live status and opens the existing accessible dialog');
+assert.match(accountMarkup, /rm-account-setting-row--session[\s\S]*data-account-open="logout"/u,
+  'logout remains visually separated as its own session action');
+assert.doesNotMatch(accountMarkup, /rm-account-settings-card|<article\b/u,
+  'the overview no longer uses tall nested setting cards');
 assert.doesNotMatch(accountMarkup, /<form\b/u, 'operational forms are not rendered on the account overview');
+assert.match(styles, /\.rm-account-settings-page \.rm-account-setting-row\s*\{[^}]*min-height:\s*58px/su,
+  'compact setting rows retain comfortable mobile touch targets');
+assert.match(styles, /\.rm-account-setting-row:focus-visible|\.rm-account-settings-page button:focus-visible/u,
+  'the compact settings rows retain a visible keyboard focus treatment');
+assert.match(styles, /\.rm-account-setting-icon\s*\{[^}]*background:\s*var\(--accent-soft,\s*var\(--accent-bg/u,
+  'account row icons follow the application accent token in both themes');
+assert.match(styles, /\.rm-account-setting-title\s*\{\s*color:\s*var\(--rm-id-text\)/u,
+  'setting titles use the semantic text color rather than relying on native button defaults');
 assert.match(accountMarkup, /<dialog[^>]*data-account-dialog[^>]*aria-modal="true"[^>]*aria-labelledby/u, 'account actions use a single accessible modal dialog');
 assert.equal((accountMarkup.match(/data-account-panel="/gu) || []).length, 6, 'dialog content is divided into exclusive action panels');
 assert.match(source, /accountPanelContent\('password'\)\?\.append\(passwordChangeForm\)/u, 'password form is mounted only in its own action panel');
@@ -295,8 +311,8 @@ assert.match(source, /\$\('\[data-mfa-start\]'\)\.hidden=Boolean\(session\.mfaCo
 assert.match(source, /\$\('\[data-password-change\]'\)\.addEventListener\('submit'[\s\S]*?request\('\/identity\/password\/change'[\s\S]*?result\?\.changed!==true/u, 'password settings require current credentials and a confirmed server response');
 assert.match(source, /\$\('\[data-password-change\]'\)\.addEventListener\('submit',[\s\S]*?if\(form\.dataset\.saving==='true'\)return/u, 'password changes use a local duplicate-submit guard independent of background sync');
 assert.match(source, /function showSession\(session\)\s*\{\s*if \(!session\) clearSensitiveAccountState\(\)/u, 'logout and session expiration clear account secrets and pending drafts from the hidden DOM');
-assert.match(source, /\$\('\[data-company-name\]'\)\.textContent = companyLabel[\s\S]*accountPage\.querySelector\('\[data-account-company-summary\]'\)\.textContent = companyLabel[\s\S]*accountPage\.querySelector\('\[data-account-mfa-summary\]'\)\.textContent/u,
-  'session restoration updates the moved company-name node once and the remaining account summaries through their owning subtree');
+assert.match(source, /companySummary\.replaceChildren\(document\.createTextNode\('Empresa ativa · '\), companyName\)[\s\S]*\$\('\[data-company-name\]'\)\.textContent = companyLabel[\s\S]*accountPage\.querySelector\('\[data-account-mfa-summary\]'\)\.textContent/u,
+  'session restoration keeps the active-company label around the canonical company name and updates the MFA summary');
 assert.doesNotMatch(source, /querySelector\('\[data-account-summary-company\]'\)\.textContent/u,
   'the session renderer does not write through the company summary placeholder after it has been replaced');
 assert.match(source, /accountPage\.parentElement === panel \|\| !accountPage\.isConnected[\s\S]*?host\.append\(accountPage\)/u,
