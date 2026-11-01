@@ -1021,7 +1021,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
         AND m.company_id=c.id AND s.revoked_at IS NULL AND s.idle_expires_at>$2 AND s.absolute_expires_at>$2
         AND u.disabled_at IS NULL AND m.status='active' AND c.status='active' AND cred.user_id=s.user_id
       RETURNING s.id::text AS session_id,s.user_id::text,s.active_company_id::text AS company_id,m.role_id::text,
-        m.driver_id::text AS driver_id,c.time_zone AS company_time_zone,s.mfa_verified_at,cred.mfa_required,cred.mfa_secret_ref IS NOT NULL AS mfa_configured,
+        m.driver_id::text AS driver_id,c.name AS company_name,c.time_zone AS company_time_zone,s.mfa_verified_at,cred.mfa_required,cred.mfa_secret_ref IS NOT NULL AS mfa_configured,
         (cred.mfa_required AND cred.mfa_secret_ref IS NULL) AS mfa_enrollment_required`, [digest, now]);
     return result.rowCount ? { ...result.rows[0], authenticated: true } : null;
   }
@@ -1069,6 +1069,16 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
         return { companyId: selectedCompanyId };
       });
     } finally { client.release(); }
+  }
+
+  async function listCompaniesForSession(sessionToken) {
+    return withAuthenticatedTenant(sessionToken, async client => {
+      const rows = await client.query(`SELECT company_id,company_name,membership_status,company_status,is_active,can_switch
+        FROM rotamoto.identity_company_options($1)`, [tokenDigest(sessionToken)]);
+      return rows.rows.map(row => ({ companyId: row.company_id, name: row.company_name,
+        membershipStatus: row.membership_status, companyStatus: row.company_status,
+        isActive: Boolean(row.is_active), canSwitch: Boolean(row.can_switch) }));
+    });
   }
 
   async function revokeSession(sessionToken, transactionClient = null) {
@@ -1130,7 +1140,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     cancelMfaEnrollmentForPrincipal, finishMfaEnrollmentCancellation,
     confirmMfaEnrollment, confirmMfaEnrollmentForPrincipal, finishMfaEnrollment,
     regenerateMfaRecoveryCodes, regenerateMfaRecoveryCodesForPrincipal,
-    resolveSession, verifyCsrf, renewCsrfToken, switchActiveCompany, revokeSession, withAuthenticatedTenant });
+    resolveSession, verifyCsrf, renewCsrfToken, switchActiveCompany, listCompaniesForSession, revokeSession, withAuthenticatedTenant });
 }
 
 module.exports = { createIdentityService, IdentityError, normalizeEmail, tokenDigest, uuidV7: id,

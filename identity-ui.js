@@ -63,7 +63,7 @@
         <div class="rm-login-route-art" aria-hidden="true"><span class="rm-login-route-art__pin"><svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span><span class="rm-login-route-art__line"></span><span class="rm-login-route-art__dot"></span><span class="rm-login-route-art__caption">Pedidos · Equipe · Entregas</span></div>
       </section>
       <header><div><strong id="rmIdentityTitle">Conta RotaMoto</strong><small data-identity-status>Verificando sua conta…</small></div><button type="button" data-close aria-label="Fechar painel">×</button></header>
-      <div class="rm-identity-content">
+    <div class="rm-identity-content">
         <div class="rm-login-mobile-brand" data-login-mobile-brand><img src="/favicon.svg?v=0140.1" alt=""><span>RotaMoto</span></div>
         <form data-login novalidate><div class="rm-login-form-heading"><h2 tabindex="-1">Conta RotaMoto</h2><p>Entre para acessar sua conta.</p></div>
           <label>Email<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input name="email" type="email" autocomplete="username" required maxlength="320"></span></label>
@@ -77,12 +77,12 @@
           <section data-mfa hidden><p data-mfa-status role="status"></p>
             <p data-mfa-start-status role="alert" aria-live="assertive" aria-atomic="true"></p><button type="button" data-mfa-start>Configurar verificação em duas etapas</button><button type="button" class="rm-secondary" data-mfa-replace hidden>Substituir autenticador</button>
           <form data-mfa-replace-verify hidden><p>Para substituir o autenticador, confirme sua senha e um código do autenticador atual. A chave atual nunca é exibida novamente.</p><label>Senha atual<input name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Código do autenticador atual<input name="currentMfaCode" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar identidade</button><button type="button" class="rm-secondary" data-mfa-replace-cancel>Cancelar</button><p data-mfa-replace-status role="alert" aria-live="polite"></p></form>
-          <form data-mfa-confirm hidden><p>Escaneie o QR Code ou informe a nova chave no aplicativo autenticador. Digite o código atual para confirmar. A chave será exibida apenas durante esta configuração.</p><canvas data-mfa-qr width="208" height="208" role="img" aria-label="QR Code para configurar autenticação em duas etapas"></canvas><label>Nova chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar novo autenticador</button><button type="button" class="rm-secondary" data-mfa-cancel>Cancelar configuração</button><p data-mfa-error role="alert"></p></form>
+          <form data-mfa-confirm hidden><p>Escaneie o QR Code ou informe a nova chave no aplicativo autenticador. Digite o código atual para confirmar. A chave será exibida apenas durante esta configuração.</p><canvas data-mfa-qr width="208" height="208" role="img" aria-label="QR Code para configurar autenticação em duas etapas" hidden></canvas><label>Nova chave de configuração<input data-mfa-secret readonly autocomplete="off"></label><label>Código de confirmação<input name="code" inputmode="numeric" autocomplete="one-time-code" required minlength="6" maxlength="6"></label><button type="submit">Confirmar novo autenticador</button><button type="button" class="rm-secondary" data-mfa-cancel>Cancelar configuração</button><p data-mfa-error role="alert"></p></form>
             <section data-recovery-codes hidden><h4>Códigos de recuperação</h4><p>Guarde-os fora deste navegador. Cada código só pode ser usado uma vez.</p><pre data-recovery-code-list></pre><button type="button" data-recovery-codes-dismiss>Ocultar códigos</button></section>
             <button type="button" data-mfa-regenerate hidden>Gerar novos códigos de recuperação</button>
           </section>
           <form data-accept-existing><label>Código de convite para sua conta<input name="token" required maxlength="43" autocomplete="off"></label><button type="submit">Aceitar convite</button><p role="status" data-existing-invitation-result></p></form>
-          <form data-switch><label>Trocar empresa<input name="companyId" autocomplete="off" spellcheck="false" required></label><button type="submit">Confirmar troca</button><p data-switch-error role="alert"></p></form>
+          <form data-switch hidden><label>Ativar outra empresa vinculada<select name="companyId" required><option value="">Escolha uma empresa</option></select></label><button type="submit" disabled>Ativar empresa selecionada</button><p data-switch-error role="alert"></p></form>
           <button type="button" data-logout class="rm-secondary">Sair</button><p data-account-error role="alert" aria-live="polite"></p>
         </div>
         <section class="rm-auth-flow" data-recovery data-auth-view="recovery" aria-labelledby="rmRecoveryTitle" hidden>
@@ -120,22 +120,376 @@
   accountPage.id = 'rmAccountSettingsPage';
   accountPage.className = 'rm-account-settings-page';
   accountPage.hidden = true;
-  accountPage.innerHTML = '<header><div><h2 tabindex="-1">Conta e segurança</h2><p>Gerencie sua identidade, acesso e empresas vinculadas.</p></div></header><div class="rm-account-settings-grid"><section class="rm-account-settings-card"><h3>Minha conta</h3></section><section class="rm-account-settings-card"><h3>Verificação em duas etapas</h3></section><section class="rm-account-settings-card"><h3>Senha e acesso</h3></section><section class="rm-account-settings-card"><h3>Empresas vinculadas e convites</h3></section><section class="rm-account-settings-card"><h3>Recuperação de acesso</h3></section></div>';
-  const accountCards = accountPage.querySelectorAll('.rm-account-settings-card');
+  accountPage.innerHTML = `<header class="rm-account-settings-heading"><div><h2 id="rmAccountPageHeading" tabindex="-1">Conta e segurança</h2><p>Gerencie os dados da sua conta e como acessá-la.</p></div><button type="button" data-account-page-close aria-label="Voltar ao aplicativo" hidden>Voltar</button></header>
+    <div class="rm-account-settings-grid" data-account-overview>
+      <article class="rm-account-settings-card"><div class="rm-account-card-heading"><h3>Minha conta</h3><span class="rm-account-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span></div><div data-account-summary-slot></div><p data-account-summary-company>Empresa ativa</p></article>
+      <article class="rm-account-settings-card"><div class="rm-account-card-heading"><h3>Senha e acesso</h3><span class="rm-account-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span></div><p>Atualize sua senha com confirmação da senha atual.</p><button type="button" data-account-open="password">Alterar senha</button></article>
+      <article class="rm-account-settings-card"><div class="rm-account-card-heading"><h3>Verificação em duas etapas</h3><span class="rm-account-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/></svg></span></div><p data-account-mfa-summary>Verificando o estado da proteção…</p><button type="button" data-account-open="mfa">Gerenciar</button></article>
+      <article class="rm-account-settings-card"><div class="rm-account-card-heading"><h3>Códigos de recuperação</h3><span class="rm-account-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span></div><p>Gerencie códigos de uso único para recuperar o acesso.</p><button type="button" data-account-open="recovery-codes">Gerenciar códigos</button></article>
+      <article class="rm-account-settings-card"><div class="rm-account-card-heading"><h3>Empresas vinculadas</h3><span class="rm-account-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 20h18M5 20V7l7-3 7 3v13M9 10h1m4 0h1m-6 4h1m4 0h1M10 20v-4h4v4"/></svg></span></div><p data-account-company-summary>Empresa ativa</p><button type="button" data-account-open="companies">Gerenciar empresas</button></article>
+      <article class="rm-account-settings-card"><div class="rm-account-card-heading"><h3>Convites</h3><span class="rm-account-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6M12 3v8m-4-4h8"/></svg></span></div><p>Insira um código para aceitar um convite de vínculo.</p><button type="button" data-account-open="invitation">Inserir código de convite</button></article>
+      <article class="rm-account-settings-card rm-account-settings-card--session"><div class="rm-account-card-heading"><h3>Sessões</h3><span class="rm-account-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 4H5v16h5M14 8l4 4-4 4m4-4H9"/></svg></span></div><p>Encerre a sessão deste aparelho com segurança.</p><button type="button" class="rm-secondary" data-account-open="logout">Encerrar sessão</button></article>
+    </div>
+    <dialog class="rm-account-dialog" data-account-dialog aria-modal="true" aria-labelledby="rmAccountDialogTitle" aria-describedby="rmAccountDialogDescription">
+      <div class="rm-account-dialog-surface"><header><div><h2 id="rmAccountDialogTitle" data-account-dialog-title></h2><p id="rmAccountDialogDescription" data-account-dialog-description></p></div><button type="button" data-account-close aria-label="Fechar">×</button></header>
+        <div class="rm-account-dialog-body">
+          <section data-account-panel="password" hidden><div data-account-panel-content="password"></div></section>
+          <section data-account-panel="mfa" hidden><div data-account-panel-content="mfa"></div></section>
+          <section data-account-panel="companies" hidden><div data-account-panel-content="companies"><p class="rm-account-company-status" data-account-companies-state role="status" aria-live="polite"></p><div class="rm-account-company-list" data-account-companies-list></div><button type="button" class="rm-secondary" data-account-companies-retry hidden>Tentar novamente</button></div></section>
+          <section data-account-panel="invitation" hidden><div data-account-panel-content="invitation"></div></section>
+          <section data-account-panel="logout" hidden><div data-account-panel-content="logout"></div></section>
+          <section class="rm-account-discard" data-account-panel="discard" hidden><p data-account-discard-message>Há alterações não salvas.</p><div><button type="button" data-account-discard-stay>Continuar editando</button><button type="button" class="rm-danger" data-account-discard-confirm>Descartar e fechar</button></div></section>
+        </div>
+        <footer class="rm-account-dialog-footer"><button type="button" data-account-cancel>Cancelar</button></footer>
+      </div>
+    </dialog>`;
+  const accountPanel = name => accountPage.querySelector(`[data-account-panel="${name}"]`);
+  const accountPanelContent = name => accountPage.querySelector(`[data-account-panel-content="${name}"]`);
   const accountSummary = $('[data-account-summary]') || $('.rm-account-summary');
-  if (accountSummary) { accountSummary.dataset.accountSummary = ''; accountCards[0].append(accountSummary); }
-  const mfaSection = $('[data-mfa]'); if (mfaSection) accountCards[1].append(mfaSection);
+  const accountEmail = accountSummary?.querySelector('[data-user-email]');
+  const emailVerification = accountSummary?.querySelector('[data-email-verification]');
+  const companyName = accountSummary?.querySelector('[data-company-name]');
+  const companyCodeRow = accountSummary?.querySelector('[data-company-code-row]');
+  if (accountSummary) {
+    accountSummary.classList.add('rm-account-summary');
+    const slot = accountPage.querySelector('[data-account-summary-slot]');
+    if (accountEmail) slot.append(accountEmail);
+    if (emailVerification) slot.append(emailVerification);
+    const companySummary = accountPage.querySelector('[data-account-summary-company]');
+    if (companyName && companySummary) { companySummary.replaceWith(companyName); companyName.classList.add('rm-account-summary-company'); }
+    companyCodeRow?.remove();
+    accountSummary.remove();
+  }
+  const mfaSection = $('[data-mfa]');
+  if (mfaSection) {
+    mfaSection.querySelector('h3')?.remove();
+    const recoveryCodes = mfaSection.querySelector('[data-recovery-codes]');
+    const regenerateCodes = mfaSection.querySelector('[data-mfa-regenerate]');
+    const setupView = document.createElement('div');
+    setupView.className = 'rm-account-mfa-view'; setupView.dataset.accountMfaView = 'setup';
+    const recoveryView = document.createElement('div');
+    recoveryView.className = 'rm-account-mfa-view'; recoveryView.dataset.accountMfaView = 'codes'; recoveryView.hidden = true;
+    const regenerationConfirm = document.createElement('div');
+    regenerationConfirm.className = 'rm-account-inline-confirm rm-account-inline-confirm--compact'; regenerationConfirm.dataset.recoveryRegenerateStep = ''; regenerationConfirm.hidden = true;
+    regenerationConfirm.setAttribute('role','group'); regenerationConfirm.setAttribute('aria-label','Confirmar geração de códigos de recuperação');
+    regenerationConfirm.innerHTML = '<p>Gerar novos códigos invalida os códigos anteriores que ainda não foram usados.</p><div><button type="button" data-recovery-regenerate-cancel>Cancelar</button><button type="button" class="rm-danger" data-recovery-regenerate-submit>Gerar novos códigos</button></div><p role="alert" data-recovery-regenerate-error></p>';
+    for (const child of [...mfaSection.childNodes]) if (child !== recoveryCodes && child !== regenerateCodes) setupView.append(child);
+    if (recoveryCodes) recoveryView.append(recoveryCodes);
+    if (regenerateCodes) recoveryView.append(regenerateCodes);
+    recoveryView.append(regenerationConfirm);
+    mfaSection.replaceChildren(setupView, recoveryView);
+    mfaSection.dataset.accountMfaReady = 'true';
+    accountPanelContent('mfa')?.append(mfaSection);
+  }
   const switchForm = $('[data-switch]'); const invitationForm = $('[data-accept-existing]');
-  if (switchForm) accountCards[3].append(switchForm);
-  if (invitationForm) accountCards[3].append(invitationForm);
-  const recoveryDetails = $('[data-recovery]'); if (recoveryDetails) accountCards[4].append(recoveryDetails);
+  if (switchForm) accountPanelContent('companies')?.append(switchForm);
+  if (companyCodeRow) {
+    const details = document.createElement('details'); details.className = 'rm-account-company-details';
+    const summary = document.createElement('summary'); summary.textContent = 'Detalhes técnicos';
+    details.append(summary, companyCodeRow); accountPanelContent('companies')?.append(details);
+  }
+  if (invitationForm) accountPanelContent('invitation')?.append(invitationForm);
+  const recoveryDetails = $('[data-recovery]');
   const logoutButton = $('[data-logout]'); const accountError = $('[data-account-error]');
   const passwordChangeForm = $('[data-password-change]');
-  if (passwordChangeForm) accountCards[2].append(passwordChangeForm);
-  if (logoutButton) accountCards[2].append(logoutButton);
-  if (accountError) accountCards[2].append(accountError);
+  if (passwordChangeForm) accountPanelContent('password')?.append(passwordChangeForm);
+  if (logoutButton) accountPanelContent('logout')?.append(document.createTextNode('Encerrar a sessão neste aparelho. Você poderá entrar novamente quando precisar. '), logoutButton);
+  if (accountError) accountPanelContent('logout')?.append(accountError);
   authenticatedContent?.remove();
   host.append(accountPage);
+  const accountDialog = accountPage.querySelector('[data-account-dialog]');
+  let accountDialogPanelName = '';
+  let accountDialogInitialDraft = '';
+  let accountDialogReturnFocus = null;
+  let accountPageOverlayOpen = false;
+  let showRecoveryCodesAfterEnrollment = false;
+  let linkedCompanies = [];
+  let linkedCompaniesLoad = null;
+  let linkedCompaniesRequestId = 0;
+  let requestedCompanySwitchId = '';
+  const accountPanelCopy = {
+    password: ['Alterar senha', 'Confirme sua senha atual para proteger esta alteração.'],
+    mfa: ['Verificação em duas etapas', 'Gerencie a proteção da conta sem revelar o autenticador atual.'],
+    'recovery-codes': ['Códigos de recuperação', 'Cada código pode ser usado uma única vez.'],
+    companies: ['Empresas vinculadas', 'O servidor valida os vínculos antes de trocar a empresa ativa.'],
+    invitation: ['Inserir código de convite', 'Aceite um convite enviado para esta conta.'],
+    logout: ['Encerrar sessão', 'Confirme para sair desta conta neste aparelho.']
+  };
+  function setAccountMfaView(view) {
+    accountPage.querySelectorAll('[data-account-mfa-view]').forEach(section => { section.hidden = section.dataset.accountMfaView !== view; });
+    const isCodes = view === 'codes';
+    const title = accountPage.querySelector('[data-account-dialog-title]');
+    const description = accountPage.querySelector('[data-account-dialog-description]');
+    if (title && isCodes) title.textContent = accountPanelCopy['recovery-codes'][0];
+    if (description && isCodes) description.textContent = accountPanelCopy['recovery-codes'][1];
+  }
+  function openAccountPanel(name, { source = document.activeElement, mfaView = 'setup', force = false } = {}) {
+    if (!accountDialog || (!current && !force)) return false;
+    const panelName = name === 'recovery-codes' ? 'mfa' : name;
+    const copy = accountPanelCopy[name] || accountPanelCopy[panelName];
+    if (!copy) return false;
+    if (name === 'password') { const status = accountPage.querySelector('[data-password-change-status]'); if (status) status.textContent = ''; }
+    accountDialogPanelName = name;
+    if (!accountDialog.open) accountDialogReturnFocus = source;
+    accountPage.querySelectorAll('[data-account-panel]').forEach(section => { section.hidden = section.dataset.accountPanel !== panelName; });
+    accountDialogInitialDraft = accountPanelFormSnapshot(panelName);
+    if (panelName === 'mfa') setAccountMfaView(name === 'recovery-codes' ? 'codes' : mfaView);
+    const title = accountPage.querySelector('[data-account-dialog-title]');
+    const description = accountPage.querySelector('[data-account-dialog-description]');
+    if (title) title.textContent = copy[0];
+    if (description) description.textContent = copy[1];
+    const cancel = accountPage.querySelector('[data-account-cancel]');
+    if (cancel) cancel.textContent = name === 'logout' ? 'Voltar' : 'Cancelar';
+    if (!accountDialog.open) accountDialog.showModal();
+    accountDialog.classList.toggle('rm-account-dialog--long', ['mfa', 'recovery-codes', 'companies', 'invitation'].includes(name));
+    syncAccountDialogActions();
+    if (name === 'companies') void loadLinkedCompanies(requestedCompanySwitchId);
+    requestAnimationFrame(() => {
+      const activePanel = accountPanel(panelName);
+      const target = [...(activePanel?.querySelectorAll('input:not([disabled]),button:not([disabled]),select:not([disabled]),textarea:not([disabled])') || [])].find(element => !element.closest('[hidden]') && element.getClientRects().length > 0);
+      (target || accountPage.querySelector('[data-account-close]') || accountPage.querySelector('[data-account-dialog-title]'))?.focus();
+    });
+    return true;
+  }
+  function syncAccountDialogActions() {
+    const isMfaPanel = accountDialogPanelName === 'mfa' || accountDialogPanelName === 'recovery-codes';
+    const pendingEnrollment = accountPage.querySelector('[data-mfa-confirm]')?.hidden === false;
+    const identityStep = accountPage.querySelector('[data-mfa-replace-verify]')?.hidden === false;
+    const recoveryCodesVisible = Boolean(accountPage.querySelector('[data-recovery-code-list]')?.textContent?.trim());
+    const regenerateConfirmation = accountPage.querySelector('[data-recovery-regenerate-step]')?.hidden === false;
+    const handledInside = isMfaPanel && (pendingEnrollment || identityStep || recoveryCodesVisible || regenerateConfirmation);
+    const headerClose = accountPage.querySelector('[data-account-close]');
+    const footer = accountPage.querySelector('.rm-account-dialog-footer');
+    if (headerClose) headerClose.hidden = handledInside;
+    if (footer) footer.hidden = handledInside;
+  }
+  function companyNameForDisplay(company) {
+    const name = typeof company?.name === 'string' ? company.name.trim() : '';
+    if (!name || /^(?:synthetic\b|__campaign_|[0-9a-f]{8}-[0-9a-f-]{27,})/iu.test(name)) return 'Registro empresarial';
+    return name;
+  }
+  function companyStateForDisplay(company) {
+    if (company?.isActive) return 'Selecionada';
+    const membership = { active: 'Vínculo ativo', invited: 'Convite pendente', suspended: 'Vínculo suspenso', revoked: 'Vínculo encerrado' }[company?.membershipStatus] || 'Vínculo não disponível';
+    const status = { active: 'Empresa ativa', suspended: 'Empresa suspensa', inactive: 'Empresa indisponível' }[company?.companyStatus] || '';
+    return status ? `${membership} · ${status}` : membership;
+  }
+  function renderLinkedCompanies(companies, requestedId = '') {
+    const state = accountPage.querySelector('[data-account-companies-state]');
+    const list = accountPage.querySelector('[data-account-companies-list]');
+    const retry = accountPage.querySelector('[data-account-companies-retry]');
+    const form = accountPage.querySelector('[data-switch]');
+    const select = form?.elements.companyId;
+    const submit = form?.querySelector('[type="submit"]');
+    if (!state || !list || !select || !form) return;
+    list.replaceChildren();
+    select.replaceChildren(new Option('Escolha uma empresa', ''));
+    const visibleCompanies = companies.filter(company => company && typeof company.companyId === 'string' && typeof company.name === 'string');
+    for (const company of visibleCompanies) {
+      const row = document.createElement('article'); row.className = 'rm-account-company-row';
+      const heading = document.createElement('h3'); heading.textContent = companyNameForDisplay(company);
+      const badge = document.createElement('span'); badge.className = 'rm-account-company-state'; badge.dataset.state = company.isActive ? 'current' : 'linked'; badge.textContent = companyStateForDisplay(company);
+      const note = document.createElement('p'); note.textContent = company.isActive ? 'Empresa ativa nesta sessão.' : company.canSwitch ? 'Disponível para seleção por esta conta.' : 'Este vínculo não pode ser ativado nesta sessão.';
+      row.append(heading, badge, note);
+      if (companyNameForDisplay(company) === 'Registro empresarial') {
+        const details = document.createElement('details'); details.className = 'rm-account-company-details';
+        const summary = document.createElement('summary'); summary.textContent = 'Detalhes técnicos';
+        const technical = document.createElement('p'); technical.textContent = `Nome cadastrado: ${company.name} · Identificador: ${company.companyId}`;
+        details.append(summary, technical); row.append(details);
+      }
+      list.append(row);
+      if (company.canSwitch && !company.isActive) select.add(new Option(companyNameForDisplay(company), company.companyId));
+    }
+    if (!visibleCompanies.length) {
+      state.textContent = 'Nenhuma empresa vinculada foi disponibilizada para esta sessão.';
+      form.hidden = true; retry.hidden = true; return;
+    }
+    const active = visibleCompanies.find(company => company.isActive);
+    const alternatives = visibleCompanies.filter(company => company.canSwitch && !company.isActive);
+    if (active && visibleCompanies.length === 1) state.textContent = `${companyNameForDisplay(active)} está selecionada. Esta conta tem somente uma empresa vinculada; não há outra para trocar.`;
+    else if (active) state.textContent = `Empresa selecionada: ${companyNameForDisplay(active)}.`;
+    else state.textContent = 'Empresas vinculadas a esta conta.';
+    if (alternatives.length) {
+      form.hidden = false;
+      if (requestedId && alternatives.some(company => company.companyId === requestedId)) select.value = requestedId;
+      if (submit) submit.disabled = !select.value;
+    } else { form.hidden = true; if (submit) submit.disabled = true; }
+    retry.hidden = true;
+    accountDialogInitialDraft = accountPanelFormSnapshot('companies');
+  }
+  async function loadLinkedCompanies(requestedId = '') {
+    if (linkedCompaniesLoad) return linkedCompaniesLoad.then(() => { if (requestedId && linkedCompanies.length) renderLinkedCompanies(linkedCompanies, requestedId); });
+    const state = accountPage.querySelector('[data-account-companies-state]');
+    const retry = accountPage.querySelector('[data-account-companies-retry]');
+    const list = accountPage.querySelector('[data-account-companies-list]');
+    const form = accountPage.querySelector('[data-switch]');
+    const requestId = ++linkedCompaniesRequestId;
+    const userId = current?.userId;
+    if (state) state.textContent = 'Carregando empresas vinculadas…';
+    if (list) list.replaceChildren();
+    if (form) form.hidden = true;
+    if (retry) retry.hidden = true;
+    linkedCompaniesLoad = (async () => {
+      try {
+        const result = await request('/identity/companies');
+        if (!Array.isArray(result?.companies) || result.companies.some(company => !company || typeof company.companyId !== 'string' || typeof company.name !== 'string' || typeof company.isActive !== 'boolean' || typeof company.canSwitch !== 'boolean')) throw Object.assign(new Error(), { code: 'INVALID_RESPONSE' });
+        if (requestId !== linkedCompaniesRequestId || current?.userId !== userId) return;
+        linkedCompanies = result.companies;
+        renderLinkedCompanies(linkedCompanies, requestedId);
+      } catch (error) {
+        if (requestId !== linkedCompaniesRequestId || current?.userId !== userId) return;
+        if (state) state.textContent = message(error);
+        if (retry) retry.hidden = false;
+      } finally {
+        if (requestId === linkedCompaniesRequestId) linkedCompaniesLoad = null;
+      }
+    })();
+    return linkedCompaniesLoad;
+  }
+  function accountPanelFormSnapshot(name) {
+    const form = accountPanelContent(name)?.querySelector('form');
+    if (!form) return '';
+    return JSON.stringify([...form.elements].filter(field => field.name && !['currentPassword','currentMfaCode','mfaCode'].includes(field.name) && field.type !== 'submit').map(field => ({ name: field.name, type: field.type || '',
+      value: ['checkbox','radio'].includes(field.type) ? String(field.checked) : field.value })));
+  }
+  function accountPanelHasDraft(name = accountDialogPanelName) {
+    const panelName = name === 'recovery-codes' ? 'mfa' : name;
+    const form = accountPanelContent(panelName)?.querySelector('form');
+    if (!form || form.dataset.saving === 'true') return false;
+    return accountPanelFormSnapshot(panelName) !== accountDialogInitialDraft;
+  }
+  function showAccountDiscardPrompt(messageText, confirmText = 'Descartar e fechar') {
+    accountPanel('discard').hidden = false;
+    accountPage.querySelectorAll('[data-account-panel]').forEach(section => { if (section.dataset.accountPanel !== 'discard') section.hidden = true; });
+    accountPage.querySelector('[data-account-discard-message]').textContent = messageText;
+    accountPage.querySelector('[data-account-discard-confirm]').textContent = confirmText;
+    accountPage.querySelector('[data-account-discard-stay]').focus();
+  }
+  function closeAccountDialog(force = false) {
+    if (!accountDialog?.open) return true;
+    const activeForm = accountPanelContent(accountDialogPanelName === 'recovery-codes' ? 'mfa' : accountDialogPanelName)?.querySelector('form');
+    const pendingAction = mfaStarting || activeForm?.dataset.saving === 'true' || activeForm?.dataset.submitting === 'true' || activeForm?.dataset.accepting === 'true' || accountPage.querySelector('[data-recovery-regenerate-submit]')?.dataset.saving === 'true' || (accountDialogPanelName === 'logout' && logoutButton?.dataset.saving === 'true');
+    if (!force && pendingAction) { accountPage.querySelector('[data-account-dialog-description]').textContent = 'Aguarde a confirmação da operação antes de fechar esta tela.'; return false; }
+    const pendingEnrollment = accountPage.querySelector('[data-mfa-confirm]')?.hidden === false;
+    if (!force && pendingEnrollment) {
+      const feedback = accountPage.querySelector('[data-mfa-error]');
+      if (feedback) feedback.textContent = 'Para sair, cancele primeiro a configuração pendente. O autenticador atual não será alterado.';
+      accountPage.querySelector('[data-mfa-cancel]')?.focus();
+      return false;
+    }
+    if (!force && mfaLocked) { accountPage.querySelector('[data-account-dialog-description]').textContent = 'Conclua a verificação em duas etapas para acessar o aplicativo.'; accountPage.querySelector('[data-mfa-start]:not([hidden]),[data-mfa-replace]:not([hidden])')?.focus(); return false; }
+    const shownRecoveryCodes = accountPage.querySelector('[data-recovery-code-list]')?.textContent?.trim();
+    if (!force && shownRecoveryCodes) {
+      showAccountDiscardPrompt('Os códigos são exibidos uma única vez. Se você ainda não os guardou, continue nesta tela.', 'Ocultar códigos e fechar');
+      return false;
+    }
+    if (!force && accountPanelHasDraft()) {
+      showAccountDiscardPrompt('Há informações digitadas que ainda não foram enviadas. Deseja descartá-las?');
+      return false;
+    }
+    accountDialog.close();
+    return true;
+  }
+  function openAccountPageOverlay(source = trigger) {
+    if (!current || appKind !== 'motoboy' || mfaLocked) return;
+    accountDialogReturnFocus = source;
+    accountPageOverlayOpen = true;
+    accountPage.hidden = false;
+    accountPage.classList.add('rm-account-settings-page--overlay');
+    accountPage.setAttribute('role', 'dialog');
+    accountPage.setAttribute('aria-modal', 'true');
+    accountPage.setAttribute('aria-labelledby', 'rmAccountPageHeading');
+    const app = applicationRoot();
+    if (app) { app.inert = true; app.setAttribute('aria-hidden', 'true'); }
+    document.body.dataset.accountSettingsOpen = 'true';
+    trigger.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => accountPage.querySelector('.rm-account-settings-heading h2')?.focus());
+  }
+  function closeAccountPageOverlay(force = false) {
+    if (!accountPageOverlayOpen) return true;
+    if (accountDialog.open && !closeAccountDialog(force)) return false;
+    accountPageOverlayOpen = false;
+    accountPage.hidden = true;
+    accountPage.classList.remove('rm-account-settings-page--overlay');
+    accountPage.removeAttribute('role'); accountPage.removeAttribute('aria-modal'); accountPage.removeAttribute('aria-labelledby');
+    delete document.body.dataset.accountSettingsOpen;
+    const app = applicationRoot();
+    const gated = host.dataset.gated === 'true';
+    if (app) { app.inert = gated; app.setAttribute('aria-hidden', String(gated)); }
+    trigger.hidden = !current || mfaLocked;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (accountDialogReturnFocus?.isConnected && !accountDialogReturnFocus.closest('[hidden]')) accountDialogReturnFocus.focus();
+    else if (!gated) trigger.focus();
+    return true;
+  }
+  accountPage.addEventListener('keydown', event => {
+    if (!accountPageOverlayOpen || accountDialog.open) return;
+    if (event.key === 'Escape') { event.preventDefault(); closeAccountPageOverlay(); return; }
+    if (event.key !== 'Tab') return;
+    const controls = [...accountPage.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[href],[tabindex]:not([tabindex="-1"])')]
+      .filter(element => !element.closest('[hidden]') && element.getClientRects().length > 0);
+    if (!controls.length) { event.preventDefault(); accountPage.querySelector('h2')?.focus(); return; }
+    if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1).focus(); }
+    else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0].focus(); }
+  });
+  accountDialog?.addEventListener('cancel', event => { event.preventDefault(); closeAccountDialog(); });
+  accountDialog?.addEventListener('click', event => { if (event.target === accountDialog) closeAccountDialog(); });
+  accountDialog?.addEventListener('close', () => {
+    if (accountDialog.open) return;
+    accountPanelContent(accountDialogPanelName === 'recovery-codes' ? 'mfa' : accountDialogPanelName)?.querySelectorAll('form').forEach(form => form.reset());
+    accountPage.classList.remove('rm-account-dialog-open');
+    const recoveryList = accountPage.querySelector('[data-recovery-code-list]');
+    if (recoveryList?.textContent) recoveryList.textContent = '';
+    const recoveryCodes = accountPage.querySelector('[data-recovery-codes]');
+    if (recoveryCodes) recoveryCodes.hidden = true;
+    accountDialogPanelName = '';
+    accountDialogInitialDraft = '';
+    syncAccountDialogActions();
+    if (accountDialogReturnFocus?.isConnected && !accountDialogReturnFocus.closest('[hidden]')) accountDialogReturnFocus.focus();
+  });
+  accountPage.querySelector('[data-account-close]')?.addEventListener('click', () => closeAccountDialog());
+  accountPage.querySelector('[data-account-cancel]')?.addEventListener('click', () => closeAccountDialog());
+  accountPage.querySelector('[data-account-discard-stay]')?.addEventListener('click', () => {
+    const name = accountDialogPanelName === 'recovery-codes' ? 'mfa' : accountDialogPanelName;
+    accountPage.querySelectorAll('[data-account-panel]').forEach(section => { section.hidden = section.dataset.accountPanel !== name; });
+    if (name === 'mfa') setAccountMfaView(accountDialogPanelName === 'recovery-codes' ? 'codes' : 'setup');
+    accountPage.querySelector('[data-account-close]')?.focus();
+  });
+  accountPage.querySelector('[data-account-discard-confirm]')?.addEventListener('click', () => {
+    const activeName = accountDialogPanelName === 'recovery-codes' ? 'mfa' : accountDialogPanelName;
+    accountPanelContent(activeName)?.querySelector('form')?.reset();
+    const recoveryList = accountPage.querySelector('[data-recovery-code-list]'); if (recoveryList) recoveryList.textContent = '';
+    const recoveryCodes = accountPage.querySelector('[data-recovery-codes]'); if (recoveryCodes) recoveryCodes.hidden = true;
+    accountPanel('discard').hidden = true;
+    closeAccountDialog(true);
+  });
+  accountPage.querySelectorAll('[data-account-open]').forEach(button => button.addEventListener('click', () => {
+    const name = button.dataset.accountOpen;
+    openAccountPanel(name, { source: button, mfaView: name === 'recovery-codes' ? 'codes' : 'setup' });
+  }));
+  accountPage.querySelector('[data-account-companies-retry]')?.addEventListener('click', () => { if (!linkedCompaniesLoad) void loadLinkedCompanies(requestedCompanySwitchId); });
+  accountPage.querySelector('[data-switch]')?.elements.companyId?.addEventListener('change', event => {
+    const submit = event.currentTarget.form?.querySelector('[type="submit"]');
+    if (submit) submit.disabled = !linkedCompanies.some(company => company.companyId === event.currentTarget.value && company.canSwitch && !company.isActive);
+  });
+  accountPage.querySelector('[data-recovery-regenerate-cancel]')?.addEventListener('click', () => { accountPage.querySelector('[data-recovery-regenerate-step]').hidden = true; syncAccountDialogActions(); accountPage.querySelector('[data-mfa-regenerate]')?.focus(); });
+  accountPage.querySelector('[data-mfa-regenerate]')?.addEventListener('click', event => { event.preventDefault(); const confirmBox = accountPage.querySelector('[data-recovery-regenerate-step]'); if (confirmBox) confirmBox.hidden = false; syncAccountDialogActions(); accountPage.querySelector('[data-recovery-regenerate-submit]')?.focus(); });
+  accountPage.querySelector('[data-recovery-regenerate-submit]')?.addEventListener('click', async event => {
+    const button = event.currentTarget; if (button.disabled || button.dataset.saving === 'true') return; button.dataset.saving = 'true'; button.disabled = true;
+    const confirmBox = accountPage.querySelector('[data-recovery-regenerate-step]'); const cancel = accountPage.querySelector('[data-recovery-regenerate-cancel]'); if (cancel) cancel.disabled = true; confirmBox?.setAttribute('aria-busy','true');
+    const error = accountPage.querySelector('[data-recovery-regenerate-error]'); if (error) error.textContent = '';
+    try {
+      const result = await request('/identity/mfa/recovery-codes', { method: 'POST', body: '{}' });
+      if (!Array.isArray(result?.recoveryCodes) || result.recoveryCodes.some(code => typeof code !== 'string' || !code)) throw Object.assign(new Error(), { code: 'INVALID_RESPONSE' });
+      accountPage.querySelector('[data-recovery-code-list]').textContent = result.recoveryCodes.join('\n');
+      accountPage.querySelector('[data-recovery-codes]').hidden = false;
+      accountPage.querySelector('[data-recovery-regenerate-step]').hidden = true;
+      accountPage.querySelector('[data-mfa-start-status]').textContent = 'Novos códigos gerados. Guarde-os agora; eles não poderão ser consultados novamente.';
+      syncAccountDialogActions(); accountPage.querySelector('[data-recovery-codes-dismiss]')?.focus();
+    } catch (errorValue) { if (error) error.textContent = message(errorValue); }
+    finally { delete button.dataset.saving; button.disabled = false; if (cancel) cancel.disabled = false; confirmBox?.removeAttribute('aria-busy'); }
+  });
+  accountPage.querySelector('[data-account-page-close]')?.addEventListener('click', () => closeAccountPageOverlay());
   const adminPage = document.createElement('section');
   adminPage.id = 'rmCompanyAdminPage';
   adminPage.className = 'rm-company-admin-page';
@@ -340,7 +694,7 @@
   const appKind = document.currentScript?.dataset.app || 'restaurante';
   function updateTriggerLabel() {
     trigger.innerHTML = `<span class="rm-account-trigger-label">${offlineMode ? 'Dados locais' : 'Conta'}</span><svg class="rm-account-trigger-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg>`;
-    const opensAccountPage = Boolean(current && appKind === 'restaurante' && !mfaLocked);
+    const opensAccountPage = Boolean(current && !mfaLocked);
     const triggerLabel = opensAccountPage ? 'Abrir Conta e segurança' : offlineMode ? 'Dados locais. Abrir opções da conta; sem sessão autenticada' : 'Abrir conta e acesso';
     trigger.setAttribute('aria-label', triggerLabel);
     trigger.setAttribute('aria-controls', opensAccountPage ? 'rmAccountSettingsPage' : 'rmIdentityPanel');
@@ -414,7 +768,10 @@
     const app = applicationRoot();
     const gated = host.dataset.gated === 'true';
     if (app) { app.inert = open || gated; app.setAttribute('aria-hidden', String(open || gated)); }
-    if (open) (visibleControls()[0] || panel).focus();
+    if (open) {
+      if (mfaLocked) openAccountPanel('mfa', { source: trigger, force: true });
+      else (visibleControls()[0] || panel).focus();
+    }
     else if (previousFocus?.isConnected && !panel.contains(previousFocus) && !previousFocus.closest('[inert]')) previousFocus.focus();
     else if (!gated) trigger.focus();
   }
@@ -423,8 +780,9 @@
     const accountTrigger = event.target?.closest?.('[data-account-security]');
     if (!accountTrigger) return;
     event.preventDefault();
-    if (current && appKind === 'restaurante' && !mfaLocked) {
-      document.dispatchEvent(new CustomEvent('rotamoto:open-account-settings'));
+    if (current && !mfaLocked) {
+      if (appKind === 'restaurante') document.dispatchEvent(new CustomEvent('rotamoto:open-account-settings'));
+      else openAccountPageOverlay(accountTrigger);
       return;
     }
     setOpen(true, accountTrigger);
@@ -491,6 +849,8 @@
   function markAdminFormSaved(form){form.dataset.dialogDirty='';const dialog=form.closest('dialog');if(dialog?.open)dialog.close()}
 
   function clearSensitiveAccountState() {
+    closeAccountDialog(true);
+    showRecoveryCodesAfterEnrollment = false;
     passwordChangeForm?.reset();
     const replacementForm = $('[data-mfa-replace-verify]');
     if (replacementForm) { replacementForm.reset(); replacementForm.hidden = true; }
@@ -506,6 +866,7 @@
     current = session;
     offlineMode = false;
     if (session) authView = 'login';
+    if (!session) { linkedCompaniesRequestId += 1; linkedCompaniesLoad = null; linkedCompanies = []; requestedCompanySwitchId = ''; accountPageOverlayOpen = false; accountPage.classList.remove('rm-account-settings-page--overlay'); accountPage.removeAttribute('role'); accountPage.removeAttribute('aria-modal'); accountPage.removeAttribute('aria-labelledby'); closeAccountDialog(true); delete document.body.dataset.accountSettingsOpen; }
     $('[data-recovery]').hidden = Boolean(session);
     $('[data-invitation]').hidden = Boolean(session);
     const inviteForm = $('[data-invite]');
@@ -518,14 +879,20 @@
     if (membersList) membersList.hidden = !session?.permissions?.includes('members.read');
     if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
     mfaLocked = Boolean(session && (session.mfaEnrollmentRequired || (session.mfaRequired && !session.mfaVerified)));
+    if (!mfaLocked && !showRecoveryCodesAfterEnrollment && accountPage.classList.contains('rm-mfa-only')) closeAccountDialog(true);
     $('[data-login]').hidden = Boolean(session);
     if (accountPage) {
-      accountPage.classList.toggle('rm-mfa-only', mfaLocked);
-      if (mfaLocked) { panel.append(accountPage); accountPage.hidden = false; }
-      else if (accountPage.parentElement === panel || !accountPage.isConnected) { host.append(accountPage); accountPage.hidden = true; }
-      else accountPage.hidden = !(session && accountPage.closest('#main'));
+    const mfaGatePage = Boolean(mfaLocked || (showRecoveryCodesAfterEnrollment && accountPage.parentElement === panel));
+      accountPage.classList.toggle('rm-mfa-only', mfaGatePage);
+      if (mfaGatePage) { if (accountPage.parentElement !== panel) panel.append(accountPage); accountPage.hidden = false; }
+      else if (appKind === 'motoboy') {
+        if (accountPage.parentElement === panel) host.append(accountPage);
+        accountPage.hidden = !accountPageOverlayOpen;
+      } else {
+        if (accountPage.parentElement === panel || !accountPage.isConnected) host.append(accountPage);
+        accountPage.hidden = !(session && accountPage.closest('#main'));
+      }
     }
-    if (recoveryDetails) { if (session && !mfaLocked) { accountCards[4].append(recoveryDetails); recoveryDetails.hidden = false; } else { $('.rm-identity-content').append(recoveryDetails); recoveryDetails.hidden = Boolean(session); } }
     const appRoot = applicationRoot();
     if (appRoot) { const authorized = Boolean(session && !mfaLocked); appRoot.hidden = !authorized; appRoot.inert = !authorized; appRoot.setAttribute('aria-hidden', String(!authorized)); }
     window.dispatchEvent(new CustomEvent(session && !mfaLocked ? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'));
@@ -536,7 +903,7 @@
     platformAdminPage.hidden=true;
     $('[data-close]').hidden = !session || mfaLocked;
     $('[data-accept-existing]').hidden = mfaLocked;
-    $('[data-switch]').hidden = mfaLocked;
+    $('[data-switch]').hidden = true;
     setAuthView(authView, false);
     trigger.hidden = true;
     placeTrigger();
@@ -546,11 +913,17 @@
       $('[data-company-id]').textContent = session.activeCompanyId;
       try { localStorage.setItem('rotaMoto.activeCompanyHint', session.activeCompanyId); } catch (_) {}
       $('[data-email-verification]').textContent=session.emailVerified?'Email confirmado':'Email ainda não confirmado';
+      const companyLabel = typeof session.activeCompanyName === 'string' && session.activeCompanyName.trim() ? session.activeCompanyName.trim() : 'Empresa ativa';
+      $('[data-company-name]').textContent = companyLabel;
+      accountPage.querySelector('[data-account-company-summary]').textContent = companyLabel;
+      accountPage.querySelector('[data-account-mfa-summary]').textContent = session.mfaEnrollmentRequired ? 'Configuração pendente' : session.mfaConfigured ? 'Ativa' : 'Inativa';
       const mfaBox=$('[data-mfa]');mfaBox.hidden=false;
       $('[data-mfa-status]').textContent=session.mfaEnrollmentRequired?'Acesso limitado até confirmar o autenticador.':session.mfaConfigured?'Verificação em duas etapas configurada. A chave não pode ser consultada novamente.':'Ative a verificação em duas etapas para adicionar uma proteção à sua conta.';
       $('[data-mfa-start]').hidden=Boolean(session.mfaConfigured&&!session.mfaEnrollmentRequired);
       $('[data-mfa-replace]').hidden=!(session.mfaConfigured&&session.mfaVerified&&!session.mfaEnrollmentRequired);
       $('[data-mfa-regenerate]').hidden=!(session.mfaConfigured&&session.mfaVerified&&session.permissions?.includes('company.manage'));
+      const recoveryButton=accountPage.querySelector('[data-account-open="recovery-codes"]');
+      if (recoveryButton) { recoveryButton.disabled = $('[data-mfa-regenerate]').hidden; recoveryButton.title = recoveryButton.disabled ? 'Disponível após configurar a verificação em duas etapas e ter autorização para gerenciar os códigos.' : ''; }
       setStatus(mfaLocked?'Acesso bloqueado · configure e confirme a verificação em duas etapas':'Sessão ativa');
       $('[data-login-error]').textContent = '';
       if (!mfaLocked && !adminPage.hidden) loadAdmin().catch(error => { $('[data-admin-error]').textContent = message(error); });
@@ -648,7 +1021,7 @@
     }catch(error){feedback.textContent=message(error)}
     finally{delete form.dataset.saving;setBusy(form,false)}
   });
-  function clearMfaEnrollment(){const canvas=mfaQrCanvas;canvas?.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);if(mfaSecretInput)mfaSecretInput.value=''}
+  function clearMfaEnrollment(){const canvas=mfaQrCanvas;canvas?.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);if(canvas)canvas.hidden=true;if(mfaSecretInput)mfaSecretInput.value=''}
   function renderMfaQr(uri){const canvas=$('[data-mfa-qr]'),context=canvas?.getContext('2d'),encoder=window.RotaMotoQRCode;
     if(!canvas||!context||typeof encoder!=='function')throw new Error('QR local indisponível. Use a chave manual.');
     const code=new encoder(0,window.RotaMotoQRErrorCorrectLevel?.M??0);code.addData(uri);code.make();
@@ -664,15 +1037,19 @@
     feedback.textContent='';$('[data-mfa-error]').textContent='';$('[data-mfa-status]').textContent='Preparando a configuração…';
     try{
       const result=await request('/identity/mfa/enrollment',{method:'POST',body:JSON.stringify(credentials)});
-      if(typeof result?.secret!=='string'||!result.secret||typeof result?.otpauthUri!=='string'||!result.otpauthUri.startsWith('otpauth://totp/'))
+      let enrollmentUri;
+      try { enrollmentUri = new URL(result?.otpauthUri); } catch (_) { throw Object.assign(new Error(),{code:'MFA_ENROLLMENT_INVALID_RESPONSE'}); }
+      if(typeof result?.secret!=='string'||! /^[A-Z2-7]{16,128}$/u.test(result.secret)||enrollmentUri.protocol!=='otpauth:'||enrollmentUri.hostname!=='totp'||!enrollmentUri.pathname.slice(1)||enrollmentUri.searchParams.get('secret')!==result.secret)
         throw Object.assign(new Error('Resposta de configuração inválida.'),{code:'MFA_ENROLLMENT_INVALID_RESPONSE'});
       $('[data-mfa-secret]').value=result.secret;
       $('[data-mfa-start]').hidden=true;$('[data-mfa-replace]').hidden=true;$('[data-mfa-replace-verify]').hidden=true;
       const form=$('[data-mfa-confirm]');form.hidden=false;
+      syncAccountDialogActions();
       try{
-        renderMfaQr(result.otpauthUri);
+        const canvas=$('[data-mfa-qr]');canvas.hidden=false;renderMfaQr(result.otpauthUri);
         $('[data-mfa-status]').textContent='Escaneie o QR Code ou use a nova chave manual. Confirme com o código do autenticador novo.';
       }catch(_){
+        $('[data-mfa-qr]').hidden=true;
         $('[data-mfa-status]').textContent='O QR Code não pôde ser exibido neste aparelho. Use a nova chave manual abaixo e confirme com o código atual.';
         feedback.textContent='QR Code indisponível; a chave manual continua disponível.';
       }
@@ -685,13 +1062,12 @@
     }finally{mfaStarting=false;host.querySelectorAll('[data-mfa-start],[data-mfa-replace]').forEach(control=>{control.disabled=false;control.removeAttribute('aria-busy')})}
   }
   $('[data-mfa-start]').addEventListener('click',event=>startMfaEnrollment(event.currentTarget));
-  $('[data-mfa-replace]').addEventListener('click',()=>{const form=$('[data-mfa-replace-verify]');form.hidden=false;$('[data-mfa-replace-status]').textContent='';form.elements.currentPassword.focus()});
-  $('[data-mfa-replace-cancel]').addEventListener('click',()=>{const form=$('[data-mfa-replace-verify]');form.reset();form.hidden=true;$('[data-mfa-replace-status]').textContent=''});
+  $('[data-mfa-replace]').addEventListener('click',()=>{const form=$('[data-mfa-replace-verify]');form.hidden=false;$('[data-mfa-start]').hidden=true;$('[data-mfa-replace]').hidden=true;$('[data-mfa-replace-status]').textContent='';syncAccountDialogActions();form.elements.currentPassword.focus()});
+  $('[data-mfa-replace-cancel]').addEventListener('click',()=>{const form=$('[data-mfa-replace-verify]');form.reset();form.hidden=true;$('[data-mfa-start]').hidden=Boolean(current?.mfaConfigured&&!current?.mfaEnrollmentRequired);$('[data-mfa-replace]').hidden=!(current?.mfaConfigured&&current?.mfaVerified&&!current?.mfaEnrollmentRequired);$('[data-mfa-replace-status]').textContent='';syncAccountDialogActions()});
   $('[data-mfa-replace-verify]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(mfaStarting||form.dataset.saving==='true'||!form.reportValidity())return;const button=form.querySelector('[type=submit]');form.dataset.saving='true';setBusy(form,true);$('[data-mfa-replace-status]').textContent='';try{const started=await startMfaEnrollment(button,{currentPassword:form.elements.currentPassword.value,currentMfaCode:form.elements.currentMfaCode.value});if(started){form.reset();form.hidden=true}else $('[data-mfa-replace-status]').textContent=$('[data-mfa-start-status]').textContent}finally{delete form.dataset.saving;setBusy(form,false)}});
-  $('[data-mfa-cancel]').addEventListener('click',async event=>{const button=event.currentTarget;if(mfaStarting||working)return;mfaStarting=true;button.disabled=true;try{const result=await request('/identity/mfa/enrollment/cancel',{method:'POST',body:'{}'});if(result.cancelled!==true&&result.cancelled!==false)throw Object.assign(new Error(),{code:'MFA_ENROLLMENT_INVALID_RESPONSE'});invalidateSessionReads();clearMfaEnrollment();$('[data-mfa-confirm]').reset();$('[data-mfa-confirm]').hidden=true;$('[data-mfa-start-status]').textContent='';await restore();$('[data-mfa-status]').textContent=result.cancelled?(current?.mfaConfigured?'Configuração cancelada. O autenticador atual continua ativo.':'Configuração cancelada.'):'Não havia uma configuração pendente para cancelar.'}catch(error){$('[data-mfa-start-status]').textContent=message(error)}finally{mfaStarting=false;button.disabled=false}});
-  $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||working)return;working=true;setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});invalidateSessionReads();clearMfaEnrollment();form.hidden=true;$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;await restore();$('[data-mfa-status]').textContent='Verificação em duas etapas confirmada. Guarde os novos códigos de recuperação; a chave não poderá ser consultada novamente.'}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{working=false;setBusy(form,false)}});
-  $('[data-recovery-codes-dismiss]').addEventListener('click',()=>{$('[data-recovery-code-list]').textContent='';$('[data-recovery-codes]').hidden=true});
-  $('[data-mfa-regenerate]').addEventListener('click',async event=>{const button=event.currentTarget;if(working)return;working=true;button.disabled=true;try{const result=await request('/identity/mfa/recovery-codes',{method:'POST',body:'{}'});$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false}catch(error){$('[data-mfa-error]').textContent=message(error)}finally{working=false;button.disabled=false}});
+  $('[data-mfa-cancel]').addEventListener('click',async event=>{const button=event.currentTarget;if(mfaStarting||button.disabled)return;mfaStarting=true;button.disabled=true;try{const result=await request('/identity/mfa/enrollment/cancel',{method:'POST',body:'{}'});if(result.cancelled!==true&&result.cancelled!==false)throw Object.assign(new Error(),{code:'MFA_ENROLLMENT_INVALID_RESPONSE'});invalidateSessionReads();clearMfaEnrollment();$('[data-mfa-confirm]').reset();$('[data-mfa-confirm]').hidden=true;$('[data-mfa-start-status]').textContent='';await restore();$('[data-mfa-status]').textContent=result.cancelled?(current?.mfaConfigured?'Configuração cancelada. O autenticador atual continua ativo.':'Configuração cancelada.'):'Não havia uma configuração pendente para cancelar.';syncAccountDialogActions()}catch(error){$('[data-mfa-start-status]').textContent=message(error)}finally{mfaStarting=false;button.disabled=false}});
+  $('[data-mfa-confirm]').addEventListener('submit',async event=>{event.preventDefault();const form=event.currentTarget;if(!form.reportValidity()||form.dataset.saving==='true')return;form.dataset.saving='true';setBusy(form,true);try{const result=await request('/identity/mfa/enrollment/confirm',{method:'POST',body:JSON.stringify({code:form.elements.code.value})});if(!Array.isArray(result?.recoveryCodes)||result.recoveryCodes.some(code=>typeof code!=='string'||!code))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});invalidateSessionReads();clearMfaEnrollment();form.hidden=true;$('[data-recovery-code-list]').textContent=result.recoveryCodes.join('\n');$('[data-recovery-codes]').hidden=false;showRecoveryCodesAfterEnrollment=true;await restore();setAccountMfaView('codes');openAccountPanel('recovery-codes',{force:true,source:accountDialogReturnFocus});$('[data-mfa-status]').textContent='Verificação em duas etapas confirmada. Guarde os novos códigos; eles não poderão ser consultados novamente.'}catch(error){form.elements.code.value='';$('[data-mfa-error]').textContent=message(error)}finally{delete form.dataset.saving;setBusy(form,false)}});
+  $('[data-recovery-codes-dismiss]').addEventListener('click',()=>{$('[data-recovery-code-list]').textContent='';$('[data-recovery-codes]').hidden=true;if(showRecoveryCodesAfterEnrollment){showRecoveryCodesAfterEnrollment=false;closeAccountDialog(true);accountPage.classList.remove('rm-mfa-only');if(accountPage.parentElement===panel){host.append(accountPage);accountPage.hidden=true;setOpen(false)}void syncAfterAuthentication()}else closeAccountDialog(true)});
   document.addEventListener('rotamoto:settings-page', event => {
     if (event.detail?.section === 'seguranca') { if (!current || mfaLocked) return; const mount=document.querySelector('#rmAccountSettingsMount'); if(mount && mount.closest('#main')){ mount.append(accountPage); accountPage.hidden=false; } panel.hidden=true; return; }
     if (mfaLocked) return;
@@ -717,19 +1093,22 @@
     finally { working = false; setBusy(form, false); }
   });
   $('[data-switch]').addEventListener('submit', async event => {
-    event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
+    event.preventDefault(); const form = event.currentTarget; if (form.dataset.saving === 'true' || !form.reportValidity()) return;
+    const selected = linkedCompanies.find(company => company.companyId === form.elements.companyId.value && company.canSwitch && !company.isActive);
+    if (!selected) { $('[data-switch-error]').textContent = 'Selecione uma empresa ativa vinculada a esta conta.'; return; }
+    linkedCompaniesRequestId += 1; linkedCompaniesLoad = null;
     invalidateSessionReads();
-    working = true; setBusy(form, true); $('[data-switch-error]').textContent = '';
-    try { await request('/identity/tenant', { method: 'POST', body: JSON.stringify({ companyId: form.elements.companyId.value.trim() }) }); invalidateSessionReads(); await restore(); await syncAfterAuthentication(); }
+    form.dataset.saving = 'true'; setBusy(form, true); $('[data-switch-error]').textContent = '';
+    try { await request('/identity/tenant', { method: 'POST', body: JSON.stringify({ companyId: selected.companyId }) }); invalidateSessionReads(); await restore(); await syncAfterAuthentication(); closeAccountDialog(true); requestedCompanySwitchId = ''; }
     catch (error) { $('[data-switch-error]').textContent = message(error); }
-    finally { working = false; setBusy(form, false); }
+    finally { delete form.dataset.saving; setBusy(form, false); }
   });
   $('[data-logout]').addEventListener('click', async () => {
-    if (working) return; working = true;
+    const button = $('[data-logout]'); if (button.dataset.saving === 'true') return; button.dataset.saving = 'true'; button.disabled = true;
     invalidateSessionReads();
     try { await request('/identity/logout', { method: 'POST', body: '{}' }); invalidateSessionReads(); csrf = null; current = null; showSession(null); setOpen(true); Promise.resolve(window.RotaMotoSync?.clearSession?.()).catch(() => {}).finally(() => { if (!current) setOpen(true); }); }
     catch (error) { const feedback = $('[data-account-error]'); if (feedback) feedback.textContent = message(error); }
-    finally { working = false; if (!current) { panel.hidden = false; setOpen(true); } }
+    finally { delete button.dataset.saving; button.disabled = false; if (!current) { panel.hidden = false; setOpen(true); } }
   });
   $('[data-recovery-request]').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
@@ -764,10 +1143,11 @@
     finally { working = false; setBusy(form, false); }
   });
   $('[data-accept-existing]').addEventListener('submit', async event => {
-    event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()) return; setBusy(form, true);
+    event.preventDefault(); const form = event.currentTarget; if (form.dataset.accepting === 'true' || !form.reportValidity()) return; form.dataset.accepting='true'; setBusy(form, true);
     try { const result = await request('/identity/membership-invitations/accept-authenticated', { method: 'POST', body: JSON.stringify({ token: form.elements.token.value.trim() }) });
-      form.reset(); $('[data-existing-invitation-result]').textContent = `Convite aceito para a empresa ${result.companyId}. Confirme a troca para ativar o vínculo.`; $('[data-switch] [name=companyId]').value = result.companyId; }
-    catch (error) { $('[data-existing-invitation-result]').textContent = message(error); } finally { setBusy(form, false); }
+      linkedCompaniesRequestId += 1; linkedCompaniesLoad = null; linkedCompanies = [];
+      form.reset(); $('[data-existing-invitation-result]').textContent = 'Convite aceito. Confirme a troca para ativar o vínculo autorizado.'; requestedCompanySwitchId = result.companyId; openAccountPanel('companies',{source:accountPage.querySelector('[data-account-open="invitation"]')}); }
+    catch (error) { $('[data-existing-invitation-result]').textContent = message(error); } finally { delete form.dataset.accepting; setBusy(form, false); }
   });
   function appendPermissionOptions(container, permissions, selectedKeys = [], actorPermissions = [], { readOnly = false } = {}) {
     const groups = new Map();

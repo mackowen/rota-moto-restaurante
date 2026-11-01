@@ -249,7 +249,7 @@ function assertOfficial0234State(applied, migrations, { allowApplied = false } =
   const pending = migrations.slice(44, 47);
   const prefix = migrations.slice(0, 44);
   const knownPost0234 = new Set(['0048_platform_administration','0049_platform_administration_hardening','0050_company_role_descriptions','0051_company_role_description_runtime_update',
-    '0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference','0055_financial_reference_uniqueness','0056_integrated_founder_bootstrap','0057_founder_bootstrap_proof_guard','0058_bootstrap_founder_guard_alignment','0059_platform_admin_scoped_company_controls','0060_platform_admin_permission_reason_guard','0061_platform_admin_permission_reason_null_guard','0062_disposable_e2e_runtime_access','0063_identity_runtime_role_grants','0064_company_delivery_pricing','0065_company_order_origins']);
+    '0052_financial_ledger','0053_financial_event_time_independence','0054_adjustment_event_reference','0055_financial_reference_uniqueness','0056_integrated_founder_bootstrap','0057_founder_bootstrap_proof_guard','0058_bootstrap_founder_guard_alignment','0059_platform_admin_scoped_company_controls','0060_platform_admin_permission_reason_guard','0061_platform_admin_permission_reason_null_guard','0062_disposable_e2e_runtime_access','0063_identity_runtime_role_grants','0064_company_delivery_pricing','0065_company_order_origins','0066_identity_linked_companies']);
   if (!baseline || baseline.checksum !== OFFICIAL_0234_CHECKSUM_0044 || prefix.length !== 44 ||
       prefix.at(-1)?.id !== '0044_99food_distributed_rate_limit' || pending.length !== 3 ||
       pending.some((migration,index) => migration.id !== OFFICIAL_0234_MIGRATIONS[index]) ||
@@ -316,7 +316,7 @@ function resolveMigrationInvocation(args = process.argv.slice(2), env = process.
     throw new Error('Uso: node backend/postgres/migrate.js [up|down|status] [--e2e|--e2e-through=<migration conhecida>|--campaign-0068-source|--rehearsal-0110|--rehearsal-0115|--rehearsal-0116|--verify-0116|--apply-0116|--verify-0154|--apply-0154|--through=<migration conhecida>]');
   }
   if (env.NODE_ENV === 'test' && !e2e && !disposableCampaign && !disposableLote1b && !rehearsal0110 && !rehearsal0115 && !rehearsal0116 && !verifyOfficial0116 && !applyOfficial0116 && !verifyOfficial0154 && !applyOfficial0154 && !verifyOfficial0234 && !applyOfficial0234 && command !== 'status') {
-    throw new Error('Migrations mutáveis em NODE_ENV=test exigem modo E2E explicitamente identificado.');
+    throw new Error('Migrations mutáveis em NODE_ENV=test exigem --e2e explicitamente identificado.');
   }
   return { command, ...(e2eThroughId ? { throughId: e2eThroughId } : throughId ? { throughId } : {}), connectionString: applyOfficial0116 || verifyOfficial0116 ? official0116MigrationConnectionString(env)
       : applyOfficial0154 || verifyOfficial0154 ? official0154MigrationConnectionString(env)

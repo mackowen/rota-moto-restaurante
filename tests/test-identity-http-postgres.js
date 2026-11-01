@@ -244,8 +244,14 @@ async function main() {
     const session = await call('/api/identity/session?companyId=00000000-0000-7000-8000-000000000000', { cookie: sessionCookie });
     assert.equal(session.status, 200);
     assert.equal(session.body.activeCompanyId, companyId, 'tenant context comes from validated session');
+    assert.equal(session.body.activeCompanyName, provisionBody.companyName, 'account UI receives the canonical active company name from the authenticated tenant');
     assert.equal(session.body.email, email);
     assert.equal(session.body.mfaVerified, true);
+    const linkedCompanies = await call('/api/identity/companies', { cookie: sessionCookie });
+    assert.equal(linkedCompanies.status, 200);
+    assert.deepEqual(linkedCompanies.body.companies, [{ companyId, name: provisionBody.companyName,
+      membershipStatus: 'active', companyStatus: 'active', isActive: true, canSwitch: true }],
+      'linked company options are derived from the authenticated user and include no other tenant');
     assert.equal(session.body.csrfToken, login.body.csrfToken, 'session bootstrap preserves a stable CSRF token for reload-safe in-memory use');
     assert.equal(JSON.stringify(session.body).includes('password_phc'), false);
     const parallelLogin=await call('/api/identity/login',{method:'POST',body:{email,password,companyId,mfaCode:'654321'}});

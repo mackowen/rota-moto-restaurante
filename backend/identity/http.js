@@ -271,6 +271,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           const csrfToken = await identityService.renewCsrfToken(client, value.session_id, sessionToken);
           return { userId: value.user_id, email: user.rows[0].email, emailVerified: user.rows[0].email_verified,
             activeCompanyId: value.company_id, activeRoleId: value.role_id, driverId: value.driver_id || null,
+            activeCompanyName: value.company_name || null,
             companyTimeZone: value.company_time_zone || null,
             permissions: permissions.rows.map(row => row.permission_key),
             mfaVerified: Boolean(value.mfa_verified_at), mfaConfigured: Boolean(value.mfa_configured),
@@ -356,6 +357,14 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         await requireSessionMutation(req, 'identity.logout', async client => identityService.revokeSession(sessionToken, client));
         status = 204;
         send(res, status, undefined, { 'Set-Cookie': `${COOKIE_NAME}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax` });
+        return true;
+      }
+
+      if (path === '/api/identity/companies' && req.method === 'GET') {
+        const sessionToken = parseCookie(req);
+        if (!sessionToken) throw fail('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
+        status = 200;
+        send(res, status, { companies: await identityService.listCompaniesForSession(sessionToken) });
         return true;
       }
 

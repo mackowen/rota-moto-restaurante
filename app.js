@@ -470,7 +470,7 @@ function settingsPageChrome(section){
   };
   const title=titles[section]||'Ajustes';
   const back='<button type="button" class="iconbtn settings-back-action" data-settings-back aria-label="Voltar para Ajustes" title="Voltar para Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6M9 12h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
-  return header(title,section==='platform-admin'?'Administração global com escopo empresarial explícito e auditoria.':`Configurações · ${title}`,back);
+  return header(title,section==='platform-admin'?'Administração global com escopo empresarial explícito e auditoria.':`Configurações · ${title}`,back,section==='seguranca'?'Ajustes':undefined);
 }
 function card(content,cls=''){return `<section class="card rm-surface ${cls}">${content}</section>`}
 function kpi(label,value,hint,accent=''){return `<button class="kpi card rm-surface rm-metric ${accent}" data-kpi="${label}"><span class="kpi-label">${label}</span><strong class="kpi-value">${value}</strong><small>${hint}</small></button>`}

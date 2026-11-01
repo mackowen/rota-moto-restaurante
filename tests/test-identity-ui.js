@@ -91,8 +91,8 @@ assert.doesNotMatch(source, /\$\('\.rm-account-trigger'\)\?\.addEventListener\('
   'the account trigger has no placeholder click handler that can mask a missing navigation contract');
 assert.match(source, /const accountTrigger = event\.target\?\.closest\?\.\('\[data-account-security\]'\)[\s\S]*?setOpen\(true, accountTrigger\)/u,
   'an unauthenticated trigger opens the identity panel and retains its focus target');
-assert.match(source, /if \(current && appKind === 'restaurante' && !mfaLocked\) \{\s*document\.dispatchEvent\(new CustomEvent\('rotamoto:open-account-settings'\)\)/u,
-  'an authenticated Restaurante trigger navigates to the dedicated account settings page');
+assert.match(source, /if \(current && !mfaLocked\) \{\s*if \(appKind === 'restaurante'\) document\.dispatchEvent\(new CustomEvent\('rotamoto:open-account-settings'\)\);\s*else openAccountPageOverlay\(accountTrigger\)/u,
+  'an authenticated account trigger opens the account settings surface in both applications');
 assert.match(source, /trigger\.setAttribute\('aria-controls', opensAccountPage \? 'rmAccountSettingsPage' : 'rmIdentityPanel'\)/u,
   'the top-bar trigger identifies the destination it controls');
 assert.match(source, /function setOpen\(open, returnFocusTarget = null\)[\s\S]*?previousFocus = returnFocusTarget\?\.isConnected \? returnFocusTarget : document\.activeElement/u,
@@ -120,6 +120,8 @@ assert.doesNotMatch(source,/platformAdminPage\.innerHTML\s*=\s*'<header/u,'globa
 assert.match(appSource,/settings-back-action" data-settings-back aria-label="Voltar para Ajustes"/u,'settings return is integrated into the application topbar');
 assert.doesNotMatch(appSource.match(/function settings\(\)[\s\S]*?\nfunction backupCenter/u)?.[0]||'',/class="settings-back"/u,'settings categories do not place a detached return row above the topbar');
 assert.match(appSource,/'company-admin-team':'Equipe e permissões'/u,'team settings use a context-specific topbar title');
+assert.match(appSource,/return header\(title,[\s\S]*section==='seguranca'\?'Ajustes':undefined\)/u,
+  'Account uses the Ajustes topbar context while keeping its own page heading');
 assert.match(appSource,/'system-admin':'Sistema local'/u,'local system settings use a context-specific topbar title');
 assert.match(adminDialogSource,/function create\([\s\S]*?aria-modal[\s\S]*?aria-labelledby[\s\S]*?dialog\.showModal\(\)/u,'administrative forms use an accessible native modal with managed focus');
 assert.match(adminDialogSource,/Descartar alterações\?[\s\S]*?dialog\.addEventListener\('cancel'/u,'Escape and explicit close protect unsaved administrative form edits');
@@ -221,6 +223,50 @@ assert.match(source, /rotamoto:auth-ready[\s\S]*rotamoto:auth-revoked/u, 'the ap
 assert.match(appSource, /window\.addEventListener\('rotamoto:auth-ready',startAuthenticatedApp\)/u, 'operational bootstrap waits for identity authorization');
 assert.match(appSource, /window\.addEventListener\('rotamoto:auth-revoked',[\s\S]*root\.replaceChildren\(\)/u, 'logout and expiry remove operational UI from the DOM');
 assert.match(source, /rmAccountSettingsPage/u, 'account management has a dedicated page mounted under Ajustes');
+const accountMarkup = source.match(/accountPage\.innerHTML = `([\s\S]*?)`;/u)?.[1] || '';
+assert(accountMarkup, 'account settings overview has a dedicated semantic template');
+assert.match(accountMarkup, /data-account-overview[\s\S]*Minha conta[\s\S]*Senha e acesso[\s\S]*Verificação em duas etapas[\s\S]*Códigos de recuperação[\s\S]*Empresas vinculadas[\s\S]*Convites[\s\S]*Sessões/u,
+  'the overview shows the requested compact account and security summaries');
+assert.doesNotMatch(accountMarkup, /<form\b/u, 'operational forms are not rendered on the account overview');
+assert.match(accountMarkup, /<dialog[^>]*data-account-dialog[^>]*aria-modal="true"[^>]*aria-labelledby/u, 'account actions use a single accessible modal dialog');
+assert.equal((accountMarkup.match(/data-account-panel="/gu) || []).length, 6, 'dialog content is divided into exclusive action panels');
+assert.match(source, /accountPanelContent\('password'\)\?\.append\(passwordChangeForm\)/u, 'password form is mounted only in its own action panel');
+assert.match(source, /accountPanelContent\('mfa'\)\?\.append\(mfaSection\)/u, 'MFA controls are mounted only in their action panel');
+assert.match(source, /accountPanelContent\('companies'\)\?\.append\(switchForm\)/u, 'company switching is separated into the company management panel');
+assert.match(accountMarkup, /data-account-companies-state[\s\S]*data-account-companies-list[\s\S]*data-account-companies-retry/u, 'linked-company management has explicit loading, content, and retry regions');
+assert.match(source, /<form data-switch hidden>[\s\S]*<select name="companyId"/u, 'company switching starts hidden and can select only server-provided memberships');
+assert.match(source, /async function loadLinkedCompanies[\s\S]*request\('\/identity\/companies'\)[\s\S]*renderLinkedCompanies/u, 'linked companies come from the authenticated backend contract');
+assert.match(source, /Esta conta tem somente uma empresa vinculada; não há outra para trocar/u, 'one-company accounts are told clearly that switching is unavailable');
+assert.match(source, /Registro empresarial[\s\S]*Identificador: \$\{company\.companyId\}/u, 'technical company identifiers appear only in a collapsed details section');
+assert.match(source, /const pendingAction = mfaStarting[\s\S]*activeForm\?\.dataset\.saving/u, 'account dialog closure is gated by the active account operation rather than unrelated sync work');
+assert.match(source, /function syncAccountDialogActions[\s\S]*pendingEnrollment[\s\S]*identityStep[\s\S]*recoveryCodesVisible[\s\S]*regenerateConfirmation/u, 'MFA and recovery steps hide redundant outer dismissal actions');
+assert.match(source, /enrollmentUri\.searchParams\.get\('secret'\)!==result\.secret/u, 'MFA setup is rendered only when the enrollment URI matches the authorized secret');
+assert.match(source, /syncAccountDialogActions\(\)[\s\S]*?pendingEnrollment[\s\S]*?identityStep/u, 'the MFA identity and enrollment steps are isolated before the next state opens');
+assert.match(source, /\$\('\[data-mfa-qr\]'\)\.hidden=true/u, 'an unavailable QR renderer does not leave an empty QR area');
+assert.match(source, /accountPanelContent\('invitation'\)\?\.append\(invitationForm\)/u, 'invitation acceptance is separated from company switching');
+assert.match(source, /function accountPanelHasDraft[\s\S]*?showAccountDiscardPrompt[\s\S]*?function closeAccountDialog/u,
+  'closing an edited form requires a custom discard decision and keeps the draft until confirmation');
+assert.match(source, /accountDialogInitialDraft = accountPanelFormSnapshot\(panelName\)[\s\S]*?function accountPanelFormSnapshot[\s\S]*?accountPanelFormSnapshot\(panelName\) !== accountDialogInitialDraft/u,
+  'prefilled values are not mistaken for edits when the user opens a form');
+assert.match(source, /data-account-discard-confirm[\s\S]*?accountPanel\('discard'\)\.hidden = true[\s\S]*?closeAccountDialog\(true\)/u,
+  'explicitly confirming draft disposal closes the correct discard panel and the dialog');
+assert.match(source, /accountDialog\?\.addEventListener\('cancel',[\s\S]*?closeAccountDialog\(\)/u, 'Escape follows the same unsaved-draft and MFA safety guards');
+assert.match(source, /accountDialog\?\.addEventListener\('close',[\s\S]*?if \(accountDialog\.open\) return;/u, 'a delayed close event cannot clear the state of a newly reopened account dialog');
+assert.match(source, /function setAccountMfaView[\s\S]*section\.hidden = section\.dataset\.accountMfaView !== view/u,
+  'MFA setup and one-time recovery-code views are mutually exclusive');
+assert.match(source, /data-recovery-codes-dismiss[\s\S]*?else closeAccountDialog\(true\)/u,
+  'dismissing regenerated recovery codes closes their dedicated modal when no mandatory MFA gate remains');
+assert.match(source, /pendingEnrollment[\s\S]*?Para sair, cancele primeiro a configuração pendente/u,
+  'a pending MFA replacement cannot be dismissed without safely cancelling enrollment');
+assert.match(styles, /\.rm-account-dialog\s*\{[^}]*max-height:[^}]*safe-area-inset/u,
+  'account dialogs fit the viewport and device safe area');
+assert.match(styles, /\.rm-account-dialog-body\s*\{[^}]*overflow:auto/u, 'long account flows scroll inside the dialog body');
+assert.match(styles, /\.rm-account-dialog-body\s*\[hidden\]\s*\{\s*display:none\s*!important/u,
+  'CSS cannot visually override the hidden state of another account-dialog step');
+assert.match(styles, /\.rm-account-dialog-surface > header\[hidden\],\.rm-account-dialog-footer\[hidden\]\s*\{\s*display:none\s*!important/u,
+  'hidden dialog actions collapse completely instead of leaving a blank row');
+assert.match(styles, /\.rm-account-dialog-footer\s*\{[^}]*safe-area-inset-bottom/u, 'account action buttons remain above the mobile home indicator');
+assert.doesNotMatch(source, /window\.(?:confirm|alert|prompt)\s*\(/u, 'account flows do not fall back to native JavaScript dialogs');
 assert.match(source, /visibleControls\(\)/u, 'account dialog keeps keyboard focus within visible controls');
 assert.match(source, /driverCursor/u, 'driver linking can navigate a paginated driver list');
 assert.match(source, /app\.inert = open \|\| gated/u, 'authentication keeps the application inaccessible until authorized');
@@ -249,6 +295,10 @@ assert.match(source, /\$\('\[data-mfa-start\]'\)\.hidden=Boolean\(session\.mfaCo
 assert.match(source, /\$\('\[data-password-change\]'\)\.addEventListener\('submit'[\s\S]*?request\('\/identity\/password\/change'[\s\S]*?result\?\.changed!==true/u, 'password settings require current credentials and a confirmed server response');
 assert.match(source, /\$\('\[data-password-change\]'\)\.addEventListener\('submit',[\s\S]*?if\(form\.dataset\.saving==='true'\)return/u, 'password changes use a local duplicate-submit guard independent of background sync');
 assert.match(source, /function showSession\(session\)\s*\{\s*if \(!session\) clearSensitiveAccountState\(\)/u, 'logout and session expiration clear account secrets and pending drafts from the hidden DOM');
+assert.match(source, /\$\('\[data-company-name\]'\)\.textContent = companyLabel[\s\S]*accountPage\.querySelector\('\[data-account-company-summary\]'\)\.textContent = companyLabel[\s\S]*accountPage\.querySelector\('\[data-account-mfa-summary\]'\)\.textContent/u,
+  'session restoration updates the moved company-name node once and the remaining account summaries through their owning subtree');
+assert.doesNotMatch(source, /querySelector\('\[data-account-summary-company\]'\)\.textContent/u,
+  'the session renderer does not write through the company summary placeholder after it has been replaced');
 assert.match(source, /accountPage\.parentElement === panel \|\| !accountPage\.isConnected[\s\S]*?host\.append\(accountPage\)/u,
   'the account settings subtree stays attached when authentication removes the application view');
 assert.match(source, /addEventListener\('rotamoto:auth-revoked'[\s\S]*?if \(!accountPage\.isConnected\) \{ host\.append\(accountPage\)/u,
