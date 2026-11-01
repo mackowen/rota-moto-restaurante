@@ -420,13 +420,19 @@ function createAdminRepository() {
           FROM rotamoto.role_permissions rp WHERE rp.company_id=m.company_id AND rp.role_id=m.role_id),'[]'::jsonb) AS permissions
       FROM rotamoto.memberships m JOIN rotamoto.users u ON u.id=m.user_id
       JOIN rotamoto.roles r ON r.id=m.role_id AND r.company_id=m.company_id
+      LEFT JOIN LATERAL (
+        SELECT it.expires_at AS invitation_expires_at FROM rotamoto.identity_tokens it
+        WHERE it.company_id=m.company_id AND it.user_id=m.user_id
+          AND it.purpose='membership_invitation' AND it.consumed_at IS NULL
+        ORDER BY it.created_at DESC,it.id DESC LIMIT 1
+      ) invitation ON m.status='invited'
       WHERE m.company_id=$1 ${keyset} ORDER BY m.created_at DESC,m.id ASC LIMIT $${params.length}`, params);
     const hasMore = result.rowCount > limit;
     const rows = result.rows.slice(0, limit);
     return { members: rows.map(row => ({ membershipId: row.id, userId: row.user_id, email: row.email,
       emailVerified: row.email_verified, disabled: Boolean(row.disabled_at), status: row.status, roleId: row.role_id,
       roleKey: row.role_key, roleName: row.display_name, permissions: row.permissions, driverId: row.driver_id,
-      createdAt: row.created_at, activatedAt: row.activated_at })),
+      invitationExpiresAt: row.invitation_expires_at, createdAt: row.created_at, activatedAt: row.activated_at })),
       nextCursor: hasMore && rows.length ? encodeCursor(rows.at(-1)) : null, hasMore };
   }
   async function roles(client, companyId) {

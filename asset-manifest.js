@@ -2,7 +2,7 @@
 self.RotaMotoAssetManifest = Object.freeze({
   "appId": "restaurante",
   "cachePrefix": "rotamoto-restaurante-shell-",
-  "cacheName": "rotamoto-restaurante-shell-daa1deea8d504953",
+  "cacheName": "rotamoto-restaurante-shell-e768fade5522be6c",
   "assets": [
     "./",
     "./index.html",
@@ -14,7 +14,7 @@ self.RotaMotoAssetManifest = Object.freeze({
     "./vendor/maplibre/maplibre-gl.css?v=bacba6a85a867fcf",
     "./favicon.svg?v=a97bb5409f1d0483",
     "./styles.css?v=48944c9b5e1f10bd",
-    "./identity-ui.css?v=b31db7c12275ad31",
+    "./identity-ui.css?v=076f7812a28792ec",
     "./presence-qr.css?v=2ec97427291d478f",
     "./design-system.css?v=3cf184ae73a556ff",
     "./pilot-views.css?v=447303529d55b78a",
@@ -49,8 +49,8 @@ self.RotaMotoAssetManifest = Object.freeze({
     "./platform-admin-request.js?v=3bfaee6419dfa8f4",
     "./platform-permission-catalog.js?v=5ce6639041f0d81e",
     "./platform-admin-disclosure.js?v=188a5e1b2618c853",
-    "./admin-form-dialog.js?v=955bb9b9003ee7a5",
-    "./identity-ui.js?v=54a1fd91881f34d6",
+    "./admin-form-dialog.js?v=f88137aac742bb55",
+    "./identity-ui.js?v=8f41d3761ea1543a",
     "vendor/maplibre/maplibre-gl-worker.js?v=5f1e2f0e1624082b",
     "./vendor/maplibre/maplibre-gl-worker.js?v=5f1e2f0e1624082b"
   ],

@@ -76,7 +76,7 @@ O Motoboy usa `GET /api/motoboy/domain/{collection}[/{canonicalId}]` para os mes
 |---|---|---|---|
 | `GET /api/admin/company` | `company.manage` | — | ID, nome, status, `timeZone` IANA ou `null` e timestamps da empresa ativa. |
 | `PUT /api/admin/company` | `company.manage` + MFA verificado + CSRF | `{timeZone:string|null}` | Define ou limpa timezone operacional IANA da Company; registra auditoria. Offset fixo/identificador inválido retorna 400. |
-| `GET /api/admin/memberships?limit=…&cursor=…` | `members.read` | `limit` (1–100) e cursor | Memberships da empresa ativa com identificadores, email, estado, role e permissions. Não retorna credenciais/sessões. |
+| `GET /api/admin/memberships?limit=…&cursor=…` | `members.read` | `limit` (1–100) e cursor | Memberships da empresa ativa com identificadores, email, estado, role e permissions; `invitationExpiresAt` informa somente o vencimento do convite não consumido, quando houver. Não retorna credenciais, tokens ou sessões. |
 | `GET /api/admin/roles` | `company.manage` | — | Roles da empresa e permission keys. |
 | `GET /api/admin/permissions` | `company.manage` | — | Catálogo versionado e descrições de permission keys. |
 | `GET /api/admin/integrations` | `integrations.manage` + sessão/tenant/RLS | — | Catálogo iFood/99Food/Keeta com `capability=blocked_external`, estado sanitizado, `connectionVerified=false`, blockers e metadados mínimos de contas cadastradas. Nunca `secret_ref`, tokens ou credentials. |

@@ -676,17 +676,45 @@
     }
     const company = $('[data-company-setup]',companyAdminSection), recovery = $('[data-mfa-recovery-admin]',companyAdminSection), adminError = $('[data-admin-error]',companyAdminSection), adminRefresh = $('[data-refresh-admin]',companyAdminSection);
     const invite = $('[data-invite]',companyAdminSection), members = $('[data-members]',companyAdminSection), memberNote = $('[data-members-note]',companyAdminSection), roles = $('[data-roles-list]',companyAdminSection), createRole = $('[data-create-role]',companyAdminSection), driverNote = $('[data-driver-access-note]',companyAdminSection), integrations = $('[data-integrations]',companyAdminSection);
-    const teamIntro=document.createElement('div');teamIntro.className='rm-admin-team-intro';teamIntro.innerHTML='<p>Consulte quem tem acesso à empresa, acompanhe convites e defina funções dentro do seu nível de autorização.</p><p data-team-feedback role="status" aria-live="polite"></p>';sections.get('team').prepend(teamIntro);
-    for (const node of [adminError,adminRefresh,recovery]) if(node) sections.get('team').append(node);
-    for (const node of [invite?.closest('details')||invite,members,memberNote,roles,createRole?.closest('details')||createRole]) if(node) sections.get('team').append(node);
-    if(invite)window.RotaMotoAdminFormDialog.create({source:invite.closest('details'),form:invite,title:'Convidar pessoa',description:'Envie um convite para criar ou associar a conta pelo email. Para liberar entregas, vincule depois a conta ativa ao cadastro operacional correto do motoboy.',triggerLabel:'Convidar pessoa',submitButton:invite.querySelector('[type="submit"]')});
-    if(createRole)window.RotaMotoAdminFormDialog.create({source:createRole.closest('details'),form:createRole,title:'Criar perfil',description:'Escolha um nome e somente as permissões que seu perfil pode delegar. O servidor valida e registra a alteração.',triggerLabel:'Criar perfil',submitButton:createRole.querySelector('[type="submit"]')});
+    const teamPage=sections.get('team');
+    const teamIntro=document.createElement('div');teamIntro.className='rm-admin-team-intro';
+    teamIntro.innerHTML='<p>Gerencie quem tem acesso a esta empresa, os convites e os perfis autorizados.</p><div class="rm-team-summary" aria-live="polite"><span data-team-member-count>Carregando integrantes…</span><span data-team-invite-count>Convites pendentes: —</span></div><p data-team-feedback role="status" aria-live="polite"></p>';
+    teamPage.prepend(teamIntro);
+    for (const node of [adminError,adminRefresh,recovery]) if(node) teamPage.append(node);
+
+    const memberSection=members?.closest('section');
+    if(memberSection){memberSection.classList.add('rm-team-section','rm-team-members-section');const heading=memberSection.querySelector('h3');if(heading)heading.textContent='Integrantes';teamPage.append(memberSection);}
+    if(memberNote)teamPage.append(memberNote);
+
+    const invitationSection=document.createElement('section');invitationSection.className='rm-team-section rm-team-invitations-section';
+    const invitationHeader=document.createElement('div');invitationHeader.className='rm-team-section-heading';
+    const invitationCopy=document.createElement('div');invitationCopy.className='rm-team-section-heading-copy';
+    const invitationTitle=document.createElement('h3');invitationTitle.textContent='Convites';
+    const invitationDescription=document.createElement('p');invitationDescription.textContent='Convites aguardando ativação. O envio depende do serviço de email configurado.';
+    invitationCopy.append(invitationTitle,invitationDescription);invitationHeader.append(invitationCopy);
+    const invitationList=document.createElement('div');invitationList.className='rm-team-invitation-list';invitationList.dataset.teamInvitations='';invitationList.setAttribute('aria-live','polite');
+    invitationSection.append(invitationHeader,invitationList);
+    if(invite){
+      const dialog=window.RotaMotoAdminFormDialog.create({source:invite.closest('details'),form:invite,title:'Convidar pessoa',description:'Envie um convite para criar ou associar a conta pelo email. Para liberar entregas, vincule depois a conta ativa ao cadastro operacional correto do motoboy.',triggerLabel:'Convidar pessoa',submitButton:invite.querySelector('[type="submit"]')});
+      if(dialog){dialog.trigger.classList.add('rm-team-section-action');dialog.trigger.remove();dialog.dialog.remove();invitationHeader.append(dialog.trigger);invitationSection.append(dialog.dialog);}
+    }
+    invitationSection.append(invitationList);teamPage.append(invitationSection);
+
+    const roleSection=document.createElement('section');roleSection.className='rm-team-section rm-team-profiles-section';
+    const roleHeader=document.createElement('div');roleHeader.className='rm-team-section-heading';
+    const roleHeading=document.createElement('h3');roleHeading.textContent='Perfis e permissões';
+    roleHeader.append(roleHeading);
+    if(createRole){
+      const dialog=window.RotaMotoAdminFormDialog.create({source:createRole.closest('details'),form:createRole,title:'Criar perfil',description:'Escolha um nome e somente as permissões que seu perfil pode delegar. O servidor valida e registra a alteração.',triggerLabel:'Criar perfil',submitButton:createRole.querySelector('[type="submit"]')});
+      if(dialog){dialog.trigger.classList.add('rm-team-section-action');dialog.trigger.remove();dialog.dialog.remove();roleHeader.append(dialog.trigger);roleSection.append(dialog.dialog);}
+    }
+    if(roles){roles.classList.add('rm-team-role-list');roles.replaceChildren();roleSection.append(roleHeader,roles);teamPage.append(roleSection);}
     const driverMembers = document.createElement('div'); driverMembers.dataset.driverMembers=''; driverMembers.setAttribute('aria-live','polite');
     const driverIntro=document.createElement('p'); driverIntro.className='rm-driver-flow-note'; driverIntro.textContent='O cadastro do motorista é operacional e não cria uma conta. Para liberar o aplicativo, convide o endereço de email da pessoa, aguarde a ativação e vincule a conta ativa ao cadastro correto.'; sections.get('drivers').append(driverIntro);
     sections.get('drivers').append(driverMembers);
     for (const node of [driverNote]) if(node) sections.get('drivers').append(node);
     if(integrations) sections.get('integrations').append(integrations);
-    for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.setAttribute('aria-busy','true');const submit=form.querySelector('[type="submit"]');if(submit)submit.disabled=true;}
+    for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.setAttribute('aria-busy','true');const submit=adminSubmitButton(form);if(submit)submit.disabled=true;}
     companyAdminSection.remove();
     function showAdminPage(id) { if(!sections.has(id))return;for(const [key,section] of sections)section.hidden=key!==id;adminPage.dataset.activePage=id; }
     adminPage.showPage = showAdminPage;
@@ -849,6 +877,7 @@
       target?.focus();
     });
   }
+  function adminSubmitButton(form){return form.querySelector('[type="submit"]')||[...adminPage.querySelectorAll('button[form]')].find(button=>button.form===form)||null}
   function setBusy(form, busy) { form.setAttribute('aria-busy', String(busy)); form.querySelectorAll('button').forEach(button => { button.disabled = busy; }); if(form.id)document.querySelectorAll(`[form="${form.id}"]`).forEach(button=>{button.disabled=busy});const dialog=form.closest('dialog'); if(dialog)dialog.dataset.busy=String(busy); }
   function markAdminFormSaved(form){form.dataset.dialogDirty='';const dialog=form.closest('dialog');if(dialog?.open)dialog.close()}
 
@@ -878,7 +907,8 @@
     const membersNote = $('[data-members-note]');
     const canInvite = Boolean(session?.permissions?.includes('members.invite'));
     if (inviteForm) inviteForm.hidden = !canInvite;
-    const inviteTrigger = inviteForm?.closest('dialog')?.previousElementSibling;
+    const inviteDialog=inviteForm?.closest('dialog');
+    const inviteTrigger=inviteDialog?[...adminPage.querySelectorAll('button[aria-controls]')].find(button=>button.getAttribute('aria-controls')===inviteDialog.id):null;
     if (inviteTrigger instanceof HTMLButtonElement) inviteTrigger.hidden = !canInvite;
     if (membersList) membersList.hidden = !session?.permissions?.includes('members.read');
     if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
@@ -1206,7 +1236,7 @@
   let adminLoadGeneration=0;
   let adminReady=false;
   function showAdminLoadError(error){const text=message(error),status=adminPage.querySelector('[data-admin-page-status="'+(adminPage.dataset.activePage||'team')+'"]');const pageError=error?.status===401?'Sua sessão expirou. Entre novamente.':error?.status===403?'Seu perfil não tem acesso a esta informação.':text;if(status)status.textContent=pageError;const errorBox=adminPage.querySelector('[data-admin-error]');if(errorBox)errorBox.textContent=pageError;}
-  function loadAdmin(options={}){const generation=++adminLoadGeneration;adminReady=false;for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.setAttribute('aria-busy','true');const submit=form.querySelector('[type="submit"]');if(submit)submit.disabled=true;}return loadAdminData(options).then(result=>{if(generation===adminLoadGeneration)adminReady=true;return result}).catch(error=>{if(generation===adminLoadGeneration){adminReady=false;showAdminLoadError(error)}throw error}).finally(()=>{if(generation!==adminLoadGeneration)return;for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.removeAttribute('aria-busy');const submit=form.querySelector('[type="submit"]');if(submit)submit.disabled=!adminReady;}});}
+  function loadAdmin(options={}){const generation=++adminLoadGeneration;adminReady=false;for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.setAttribute('aria-busy','true');const submit=adminSubmitButton(form);if(submit)submit.disabled=true;}return loadAdminData(options).then(result=>{if(generation===adminLoadGeneration)adminReady=true;return result}).catch(error=>{if(generation===adminLoadGeneration){adminReady=false;showAdminLoadError(error)}throw error}).finally(()=>{if(generation!==adminLoadGeneration)return;for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.removeAttribute('aria-busy');const submit=adminSubmitButton(form);if(submit)submit.disabled=!adminReady;}});}
   async function loadAdminData({ appendDrivers = false } = {}) {
     const generation=adminLoadGeneration;
     const loadStatus=adminPage.querySelector('[data-admin-page-status="'+(adminPage.dataset.activePage||'team')+'"]');
@@ -1390,49 +1420,83 @@
     const grantablePermissionKeys = current.permissions;
     appendPermissionOptions(permissionBox, permissionResult.permissions, [], grantablePermissionKeys);
     const roleList = $('[data-roles-list]'); roleList.replaceChildren();
-    const roleHeading = document.createElement('h3'); roleHeading.textContent = 'Perfis existentes'; roleList.append(roleHeading);
+    const roleCount=document.createElement('p');roleCount.className='rm-team-section-note';roleCount.textContent=`${roles.roles.length} ${roles.roles.length===1?'perfil disponível':'perfis disponíveis'} nesta empresa.`;roleList.append(roleCount);
     roles.roles.forEach(role => {
-      const card = document.createElement('article'); card.className = 'rm-member rm-role-card';
-      const heading = document.createElement('strong'); heading.textContent = role.name; card.append(heading);
-      if(role.description){const description=document.createElement('p');description.textContent=role.description;card.append(description)}
+      const card = document.createElement('article'); card.className = 'rm-team-role';
+      const disclosure=document.createElement('details');disclosure.className='rm-team-disclosure rm-team-role-disclosure';
+      const summary=document.createElement('summary');summary.className='rm-team-row-summary';
+      const summaryName=document.createElement('strong');summaryName.textContent=role.name;
+      const roleState=document.createElement('span');roleState.className='rm-team-state';roleState.textContent=role.key==='owner'||role.systemTemplate?'Protegido':role.id===current.activeRoleId?'Perfil da sua sessão':'Perfil da empresa';
+      const summaryArrow=document.createElement('span');summaryArrow.className='rm-team-chevron';summaryArrow.setAttribute('aria-hidden','true');summaryArrow.textContent='›';
+      summary.append(summaryName,roleState,summaryArrow);disclosure.append(summary);
+      const roleDetails=document.createElement('div');roleDetails.className='rm-team-disclosure-content';
+      if(role.description){const description=document.createElement('p');description.className='rm-team-section-note';description.textContent=role.description;roleDetails.append(description)}
+      const permissionSummary=document.createElement('div');permissionSummary.className='rm-team-role-permission-summary';
+      appendPermissionOptions(permissionSummary,permissionResult.permissions,role.permissions,grantablePermissionKeys,{readOnly:true});
+      roleDetails.append(permissionSummary);
       if (role.key === 'owner' || role.systemTemplate) {
-        const note = document.createElement('span'); note.textContent = 'Perfil de proprietário protegido contra edição para manter os acessos essenciais.'; card.append(note);
+        const note = document.createElement('p'); note.className='rm-team-protected-note';note.textContent = 'Este perfil é protegido para preservar os acessos essenciais. Suas permissões não podem ser alteradas pelo editor comum.'; roleDetails.append(note);
         if (role.key === 'owner' && role.id === current.activeRoleId && current.permissions.includes('company.manage')) {
           const financeKeys = ['finance.read', 'finance.manage'];
           const missingFinance = financeKeys.filter(key => !role.permissions.includes(key));
           if (missingFinance.length) {
-            const help = document.createElement('p'); help.textContent = 'Faltam acessos financeiros neste perfil. Você pode restaurar somente as permissões financeiras do proprietário desta empresa.'; card.append(help);
+            const help = document.createElement('p'); help.textContent = 'Faltam acessos financeiros neste perfil. Você pode restaurar somente as permissões financeiras do proprietário desta empresa.'; roleDetails.append(help);
             const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = 'Restaurar acessos financeiros do proprietário';
-            const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); card.append(restore, feedback);
+            const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); roleDetails.append(restore, feedback);
             restore.addEventListener('click', async () => {
               const confirmation=await window.RotaMotoDialog.confirm({title:'Restaurar acessos financeiros essenciais?',message:'Serão adicionadas somente as permissões de consulta e gestão financeira ao perfil protegido desta empresa. A alteração será validada e auditada pelo servidor.',confirmLabel:'Restaurar acessos'});if(!confirmation?.confirmed)return;
               restore.disabled = true;
               try { await request('/admin/roles/owner/restore-finance', { method: 'POST', body: JSON.stringify({}) }); feedback.textContent = 'Acessos financeiros restaurados. Atualizando a sessão…'; window.location.reload(); }
               catch (error) { feedback.textContent = message(error); restore.disabled = false; }
             });
-          } else { const complete = document.createElement('span'); complete.textContent = 'Acessos financeiros essenciais já estão configurados.'; card.append(complete); }
+          } else { const complete = document.createElement('p'); complete.className='rm-team-section-note';complete.textContent = 'Acessos financeiros essenciais já estão configurados.'; roleDetails.append(complete); }
         }
-        roleList.append(card); return;
-      }
-      if (role.id === current.activeRoleId) { const note = document.createElement('span'); note.textContent = 'Perfil atualmente associado à sua sessão; não pode ser alterado por você.'; card.append(note); roleList.append(card); return; }
-      if (!role.permissions.every(permission => current.permissions.includes(permission))) { const note = document.createElement('span'); note.textContent = 'Este perfil contém acessos acima dos seus; você pode consultar, mas somente um administrador com nível suficiente pode alterá-lo.'; card.append(note); appendPermissionOptions(card, permissionResult.permissions, role.permissions, current.permissions, { readOnly: true }); roleList.append(card); return; }
-      const disclosure=document.createElement('div');disclosure.className='rm-admin-role-editor-source';
+      } else if (role.id === current.activeRoleId) { const note = document.createElement('p');note.className='rm-team-protected-note'; note.textContent = 'Este é o perfil associado à sua sessão e não pode ser alterado por você.'; roleDetails.append(note);
+      } else if (!role.permissions.every(permission => current.permissions.includes(permission))) { const note = document.createElement('p');note.className='rm-team-protected-note'; note.textContent = 'Este perfil inclui acessos acima do seu nível. Você pode consultar as permissões, mas somente um administrador com nível suficiente pode alterá-las.'; roleDetails.append(note);
+      } else {
+      const editorSource=document.createElement('div');editorSource.className='rm-admin-role-editor-source';
       const nameLabel = document.createElement('label'); nameLabel.textContent = 'Nome do perfil'; const nameInput = document.createElement('input'); nameInput.name = 'name'; nameInput.required = true; nameInput.maxLength = 100; nameInput.value = role.name; nameLabel.append(nameInput);
       const descriptionLabel=document.createElement('label');descriptionLabel.textContent='Descrição';const descriptionInput=document.createElement('input');descriptionInput.name='description';descriptionInput.maxLength=240;descriptionInput.value=role.description||'';descriptionLabel.append(descriptionInput);
       const fieldset = document.createElement('fieldset'); const legend = document.createElement('legend'); legend.textContent = 'Permissões'; fieldset.append(legend);
       const checks = document.createElement('div'); checks.className = 'rm-role-permissions';
       appendPermissionOptions(checks, permissionResult.permissions, role.permissions, grantablePermissionKeys);
       fieldset.append(checks);const editForm=document.createElement('form');editForm.append(nameLabel,descriptionLabel,fieldset);
-      const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Salvar perfil'; const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); editForm.append(feedback);card.append(disclosure);
-      const dialog=window.RotaMotoAdminFormDialog.create({source:disclosure,form:editForm,title:`Editar perfil: ${role.name}`,description:'As permissões disponíveis são limitadas pelo seu nível de acesso e confirmadas pelo servidor.',triggerLabel:'Editar perfil',submitButton:save});
+      const save = document.createElement('button'); save.type = 'submit'; save.textContent = 'Salvar perfil'; const feedback = document.createElement('p'); feedback.setAttribute('role', 'status'); editForm.append(feedback);roleDetails.append(editorSource);
+      const dialog=window.RotaMotoAdminFormDialog.create({source:editorSource,form:editForm,title:`Editar perfil: ${role.name}`,description:'As permissões disponíveis são limitadas pelo seu nível de acesso e confirmadas pelo servidor.',triggerLabel:'Editar perfil',submitButton:save});
+      if(dialog){dialog.trigger.classList.add('rm-team-section-action');roleDetails.append(dialog.trigger,dialog.dialog)}
       editForm.addEventListener('submit', async event => { event.preventDefault(); if (!nameInput.reportValidity()||save.disabled) return; setBusy(editForm,true);let persisted=false;
         const permissions = [...checks.querySelectorAll('input:checked')].map(input => input.value);
-        try { await request(`/admin/roles/${encodeURIComponent(role.id)}`, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value.trim(), description:descriptionInput.value.trim(), permissions }) }); persisted=true;dialog.markSaved();await loadAdmin();const teamFeedback=adminPage.querySelector('[data-team-feedback]');if(teamFeedback)teamFeedback.textContent='Perfil atualizado e relido do servidor.'; }
+        try { const result=await request(`/admin/roles/${encodeURIComponent(role.id)}`, { method: 'PATCH', body: JSON.stringify({ name: nameInput.value.trim(), description:descriptionInput.value.trim(), permissions }) });if(result?.id!==role.id||!Array.isArray(result.permissions))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});persisted=true;dialog.markSaved();const refreshed=await loadAdmin();const savedRole=refreshed?.roles?.roles?.find(item=>item.id===role.id);if(!savedRole||savedRole.name!==nameInput.value.trim()||JSON.stringify([...savedRole.permissions].sort())!==JSON.stringify([...permissions].sort()))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});const teamFeedback=adminPage.querySelector('[data-team-feedback]');if(teamFeedback)teamFeedback.textContent='Perfil atualizado e confirmado na lista do servidor.'; }
         catch (error) { if(persisted){const teamFeedback=adminPage.querySelector('[data-team-feedback]');if(teamFeedback)teamFeedback.textContent=`Perfil salvo, mas a lista não pôde ser atualizada: ${message(error)}`}else{feedback.textContent = message(error);feedback.hidden=false} } finally { setBusy(editForm,false); }
-      }); roleList.append(card);
+      });
+      }
+      disclosure.append(roleDetails);card.append(disclosure);roleList.append(card);
     });
+    const invitationList=adminPage.querySelector('[data-team-invitations]');
+    const pendingInvitations=members.members.filter(member=>member.status==='invited');
+    const memberRows=members.members.filter(member=>member.status!=='invited');
+    const memberCount=adminPage.querySelector('[data-team-member-count]');
+    const inviteCount=adminPage.querySelector('[data-team-invite-count]');
+    if(memberCount)memberCount.textContent=canReadMembers?`${memberRows.filter(member=>member.status==='active'&&!member.disabled).length} integrantes ativos`:'Integrantes: sem acesso à consulta';
+    if(inviteCount)inviteCount.textContent=canReadMembers?`Convites para acompanhar: ${pendingInvitations.length}`:'Convites: sem acesso à consulta';
     const list = $('[data-members]'); list.replaceChildren();
-    if(!members.members.length){const empty=document.createElement('p');empty.textContent='Nenhuma pessoa vinculada a esta empresa.';list.append(empty);}
+    if(!canReadMembers){const empty=document.createElement('p');empty.textContent='Seu perfil não permite consultar os integrantes desta empresa.';list.append(empty);}
+    else if(!memberRows.length){const empty=document.createElement('p');empty.textContent='Nenhum integrante com vínculo ativo ou encerrado nesta empresa.';list.append(empty);}
+    if(invitationList){invitationList.replaceChildren();if(!canReadMembers){const empty=document.createElement('p');empty.textContent='Seu perfil não permite consultar os convites desta empresa.';invitationList.append(empty)}else if(!pendingInvitations.length){const empty=document.createElement('p');empty.textContent='Não há convites aguardando ativação.';invitationList.append(empty)}else pendingInvitations.forEach(member=>{
+      const card=document.createElement('article');card.className='rm-team-invitation';
+      const identity=document.createElement('div');identity.className='rm-team-invitation-identity';
+      const email=document.createElement('strong');email.textContent=member.email;
+      const state=document.createElement('span');state.className='rm-team-state';
+      const expiresAt=Date.parse(member.invitationExpiresAt||'');
+      state.textContent=Number.isFinite(expiresAt)?(expiresAt<=Date.now()?'Convite expirado · reenvie para emitir outro':member.userId?'Conta existente · aguardando ativação':'Aguardando aceitação'):'Convite sem validade ativa · reenvie para emitir outro';
+      const role=document.createElement('small');role.textContent=`Perfil: ${member.roleName}`;identity.append(email,state,role);card.append(identity);
+      const feedback=document.createElement('p');feedback.className='rm-team-row-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');card.append(feedback);
+      const actions=document.createElement('div');actions.className='rm-team-row-actions';
+      if(current.permissions.includes('members.invite')){const resend=document.createElement('button');resend.type='button';resend.className='rm-secondary';resend.textContent='Reenviar convite';resend.addEventListener('click',async()=>{resend.disabled=true;card.setAttribute('aria-busy','true');feedback.textContent='Enviando convite…';const teamFeedback=adminPage.querySelector('[data-team-feedback]');try{const result=await request('/admin/invitations',{method:'POST',body:JSON.stringify({email:member.email,roleId:member.roleId})});if(result?.delivery!=='sent'||result.membershipId!==member.membershipId)throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});if(teamFeedback)teamFeedback.textContent='Novo convite enviado. O anterior deixou de ser válido.';try{const refreshed=await loadAdmin();if(!refreshed?.members?.members?.some(item=>item.membershipId===member.membershipId&&item.status==='invited'))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});}catch(error){if(teamFeedback)teamFeedback.textContent=`Convite enviado, mas a lista não pôde ser atualizada: ${message(error)}`;}}catch(error){feedback.textContent=message(error);resend.disabled=false;}finally{card.removeAttribute('aria-busy')}});actions.append(resend)}
+      if(current.permissions.includes('company.manage')){const revoke=document.createElement('button');revoke.type='button';revoke.className='rm-secondary';revoke.textContent='Revogar convite';revoke.addEventListener('click',async()=>{const confirmation=await window.RotaMotoDialog.confirm({title:'Revogar convite?',message:`O convite enviado a ${member.email} deixará de ser válido.`,danger:true,confirmLabel:'Revogar convite'});if(!confirmation?.confirmed)return;revoke.disabled=true;card.setAttribute('aria-busy','true');feedback.textContent='Revogando convite…';const teamFeedback=adminPage.querySelector('[data-team-feedback]');try{const result=await request(`/admin/memberships/${member.membershipId}`,{method:'PATCH',body:JSON.stringify({status:'revoked'})});if(result?.membershipId!==member.membershipId||result.status!=='revoked')throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});if(teamFeedback)teamFeedback.textContent='Convite revogado pelo servidor.';try{const refreshed=await loadAdmin();if(refreshed?.members?.members?.some(item=>item.membershipId===member.membershipId&&item.status==='invited'))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});}catch(error){if(teamFeedback)teamFeedback.textContent=`Convite revogado, mas a lista não pôde ser atualizada: ${message(error)}`;}}catch(error){feedback.textContent=message(error);revoke.disabled=false;}finally{card.removeAttribute('aria-busy')}});actions.append(revoke)}
+      if(actions.childElementCount)card.append(actions);else{const note=document.createElement('p');note.className='rm-team-section-note';note.textContent='Seu perfil pode consultar este convite, mas não pode reenviá-lo nem revogá-lo.';card.append(note)}
+      invitationList.append(card);
+    })}
     const driverList = $('[data-driver-members]'); if(driverList) driverList.replaceChildren();
     if(driverList){
       const linkedIds=new Set(members.members.map(member=>member.driverId).filter(Boolean));
@@ -1441,20 +1505,22 @@
       for(const row of unlinked){const item=document.createElement('article');item.className='rm-member';const name=document.createElement('strong');name.textContent=row.record?.name||row.record?.displayName||'Motoboy';const state=document.createElement('span');state.textContent='Sem convite · cadastro operacional sem identidade vinculada';item.append(name,state);const inviteButton=document.createElement('button');inviteButton.type='button';inviteButton.className='rm-primary';inviteButton.textContent='Convidar para acessar o Motoboy';inviteButton.addEventListener('click',()=>{adminPage.showPage?.('team');const emailInput=$('[data-invite] input[name="email"]');if(emailInput&&row.record?.email)emailInput.value=row.record.email;emailInput?.focus();});item.append(inviteButton);driverList.append(item)}
       if(!unlinked.length&&!members.members.some(member=>member.driverId)){const empty=document.createElement('p');empty.textContent='Nenhum cadastro de motoboy aguardando convite ou vínculo.';driverList.append(empty)}
     }
-    members.members.forEach(member => {
-      const card = document.createElement('article'); card.className = 'rm-member';
-      const title = document.createElement('strong'); title.textContent = member.email; card.append(title);
+    memberRows.forEach(member => {
+      const card = document.createElement('article'); card.className = 'rm-team-member';
       const linkedDriver = driverRows.find(row => row.id === member.driverId);
-      const memberStatus = member.status === 'invited' ? (member.userId ? 'Aguardando ativação' : 'Convite pendente')
-        : member.status === 'suspended' || member.status === 'revoked' || member.disabled ? 'Suspenso'
-          : member.driverId ? !canReadDrivers
-            ? 'Cadastro de motoboy vinculado; estado não consultado pelo seu perfil'
-            : !linkedDriver ? 'Vínculo informado, mas cadastro de motoboy não localizado nesta empresa'
-              : linkedDriver.record?.status === 'active' ? 'Motoboy vinculado · ativo' : 'Motoboy vinculado · inativo'
-            : member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push')
-              ? 'Permissões de sincronização ativas; sem cadastro de motoboy vinculado'
-              : 'Sem cadastro de motoboy vinculado';
-      const meta = document.createElement('span'); meta.textContent = `${member.roleName} · ${memberStatus}`; card.append(meta);
+      const memberStatus = member.disabled ? 'Conta desativada'
+        : member.status === 'active' ? 'Ativo'
+          : member.status === 'suspended' ? 'Acesso suspenso'
+            : member.status === 'revoked' ? 'Vínculo encerrado'
+              : 'Estado não disponível';
+      const details=document.createElement('details');details.className='rm-team-disclosure rm-team-member-disclosure';
+      const summary=document.createElement('summary');summary.className='rm-team-row-summary';
+      const title=document.createElement('strong');title.textContent=member.email;
+      const meta=document.createElement('span');meta.className='rm-team-state';meta.textContent=`${member.roleName} · ${memberStatus}`;
+      const arrow=document.createElement('span');arrow.className='rm-team-chevron';arrow.setAttribute('aria-hidden','true');arrow.textContent='›';summary.append(title,meta,arrow);details.append(summary);
+      const controls=document.createElement('div');controls.className='rm-team-disclosure-content';
+      const rowFeedback=document.createElement('p');rowFeedback.className='rm-team-row-feedback';rowFeedback.setAttribute('role','status');rowFeedback.setAttribute('aria-live','polite');
+      if(member.driverId){const driverNote=document.createElement('p');driverNote.className='rm-team-section-note';driverNote.textContent=memberStatus==='Ativo'?'Há um cadastro operacional de motoboy vinculado.':'O cadastro operacional de motoboy permanece vinculado; o acesso segue o estado desta associação.';controls.append(driverNote)}
       if (member.userId !== current.userId) {
         const currentRole = roles.roles.find(role => role.id === member.roleId);
         const canReassignCurrent = currentRole?.permissions.every(permission => current.permissions.includes(permission)) ?? false;
@@ -1462,25 +1528,22 @@
         const select = document.createElement('select'); select.setAttribute('aria-label', `Perfil de ${member.email}`);
         roles.roles.filter(role => role.id === member.roleId || role.permissions.every(permission => current.permissions.includes(permission)))
           .forEach(role => { const option = document.createElement('option'); option.value = role.id; option.textContent = role.name; option.selected = role.id === member.roleId; select.append(option); });
-        const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Salvar perfil';
-        save.addEventListener('click', async () => { save.disabled = true; try { await request(`/admin/memberships/${member.membershipId}`, { method: 'PATCH', body: JSON.stringify({ roleId: select.value }) }); await loadAdmin(); } catch (error) { $('[data-admin-error]').textContent = message(error); } finally { save.disabled = false; } });
-        card.append(select, save);
+        const save = document.createElement('button'); save.type = 'button'; save.className='rm-primary';save.textContent = 'Salvar função';save.disabled=true;
+        const originalRole=member.roleId;select.addEventListener('change',()=>{save.disabled=select.value===originalRole});
+        save.addEventListener('click', async () => { const requestedRole=select.value;if(!requestedRole||requestedRole===originalRole)return;save.disabled=true;controls.setAttribute('aria-busy','true');rowFeedback.textContent='Salvando função…';let persisted=false;try{const result=await request(`/admin/memberships/${member.membershipId}`,{method:'PATCH',body:JSON.stringify({roleId:requestedRole})});if(result?.membershipId!==member.membershipId||result.roleId!==requestedRole)throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});persisted=true;const refreshed=await loadAdmin();if(!refreshed?.members?.members?.some(item=>item.membershipId===member.membershipId&&item.roleId===requestedRole))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});adminPage.querySelector('[data-team-feedback]').textContent='Função atualizada e confirmada pelo servidor.';}catch(error){const text=persisted?`Função salva, mas a lista não pôde ser confirmada: ${message(error)}`:message(error);rowFeedback.textContent=text;if(persisted)adminPage.querySelector('[data-team-feedback]').textContent=text;if(!persisted)save.disabled=false;}finally{controls.removeAttribute('aria-busy')}});
+        const roleAction=document.createElement('div');roleAction.className='rm-team-role-action';roleAction.append(select,save);controls.append(roleAction);
         }
       if (member.status === 'active' || member.status === 'suspended') { const stateButton = document.createElement('button'); stateButton.type = 'button'; stateButton.className = 'rm-secondary'; stateButton.textContent = member.status === 'active' ? 'Suspender' : 'Reativar';
-          stateButton.addEventListener('click', async () => { if (member.status === 'active') { const confirmation=await window.RotaMotoDialog.confirm({title:'Suspender acesso?',message:`O acesso empresarial de ${member.email} será suspenso.`,danger:true,confirmLabel:'Suspender acesso'});if(!confirmation?.confirmed)return; } stateButton.disabled = true; try { await request(`/admin/memberships/${member.membershipId}`, { method: 'PATCH', body: JSON.stringify({ status: member.status === 'active' ? 'suspended' : 'active' }) }); await loadAdmin(); } catch (error) { $('[data-admin-error]').textContent = message(error); } finally { stateButton.disabled = false; } }); card.append(stateButton); }
+          stateButton.addEventListener('click', async () => { if (member.status === 'active') { const confirmation=await window.RotaMotoDialog.confirm({title:'Suspender acesso?',message:`O acesso empresarial de ${member.email} será suspenso.`,danger:true,confirmLabel:'Suspender acesso'});if(!confirmation?.confirmed)return; } stateButton.disabled = true;controls.setAttribute('aria-busy','true');rowFeedback.textContent=member.status==='active'?'Suspendendo acesso…':'Reativando acesso…';let persisted=false;try{const nextStatus=member.status==='active'?'suspended':'active';const result=await request(`/admin/memberships/${member.membershipId}`,{method:'PATCH',body:JSON.stringify({status:nextStatus})});if(result?.membershipId!==member.membershipId||result.status!==nextStatus)throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});persisted=true;const refreshed=await loadAdmin();if(!refreshed?.members?.members?.some(item=>item.membershipId===member.membershipId&&item.status===nextStatus))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});adminPage.querySelector('[data-team-feedback]').textContent=nextStatus==='suspended'?'Acesso suspenso e confirmado pelo servidor.':'Acesso reativado e confirmado pelo servidor.';}catch(error){const text=persisted?`Alteração confirmada, mas a lista não pôde ser atualizada: ${message(error)}`:message(error);rowFeedback.textContent=text;if(persisted)adminPage.querySelector('[data-team-feedback]').textContent=text;if(!persisted)stateButton.disabled=false;}finally{controls.removeAttribute('aria-busy')}}); controls.append(stateButton); }
       }
+      if(member.userId===current.userId){const ownNote=document.createElement('p');ownNote.className='rm-team-protected-note';ownNote.textContent='Seu próprio vínculo administrativo não pode ser alterado nesta tela.';controls.append(ownNote)}
+      controls.append(rowFeedback);
+      details.append(controls);card.append(details);
       if (current.permissions.includes('company.manage')) {
         const linkBox = document.createElement('div'); linkBox.className = 'rm-driver-link';
         const title = document.createElement('strong'); title.textContent = 'Motorista operacional'; linkBox.append(title);
         const feedback = document.createElement('p'); feedback.className = 'rm-driver-link-status'; feedback.setAttribute('role', 'status');
         const driver = linkedDriver;
-        if (member.status === 'invited' && member.userId !== current.userId && current.permissions.includes('members.invite')) {
-          const resend = document.createElement('button'); resend.type = 'button'; resend.className = 'rm-secondary'; resend.textContent = 'Reenviar convite';
-          resend.addEventListener('click', async () => { resend.disabled = true; try { await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: member.email, roleId: member.roleId }) }); feedback.textContent = 'Novo convite enviado; o anterior foi invalidado.'; await loadAdmin(); } catch (error) { feedback.textContent = message(error); resend.disabled = false; } });
-          const revoke = document.createElement('button'); revoke.type = 'button'; revoke.className = 'rm-secondary'; revoke.textContent = 'Revogar convite';
-          revoke.addEventListener('click', async () => { const confirmation=await window.RotaMotoDialog.confirm({title:'Revogar convite?',message:`O convite enviado a ${member.email} deixará de ser válido.`,danger:true,confirmLabel:'Revogar convite'});if(!confirmation?.confirmed)return; revoke.disabled = true; try { await request(`/admin/memberships/${member.membershipId}`, { method: 'PATCH', body: JSON.stringify({ status: 'revoked' }) }); feedback.textContent = 'Convite revogado.'; await loadAdmin(); } catch (error) { feedback.textContent = message(error); revoke.disabled = false; } });
-          linkBox.append(resend, revoke);
-        }
         if (member.driverId) {
           const driverStatus = String(driver?.record?.status || '').normalize('NFD').replace(/[\u0300-\u036f]/gu, '').trim().toUpperCase();
           const authorizedDriverStatuses = new Set(['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED',
@@ -1533,7 +1596,8 @@
       more.addEventListener('click', async () => { more.disabled = true; try { await loadAdmin({ appendDrivers: true }); } catch (error) { $('[data-admin-error]').textContent = message(error); more.disabled = false; } });
       driverList?.append(more);
     }
-    await loadMfaRecoveryRequests();
+    try{await loadMfaRecoveryRequests()}catch(error){const recoveryList=adminPage.querySelector('[data-mfa-recovery-requests]');if(recoveryList){recoveryList.replaceChildren();const status=document.createElement('p');status.setAttribute('role','status');status.textContent=`As solicitações de recuperação não puderam ser atualizadas: ${message(error)}`;recoveryList.append(status)}}
+    return {company,members,roles,permissions:permissionResult};
   }
   if (serverUpdateBus && appKind === 'restaurante') {
     serverUpdateBus.subscribe(({ topic }) => {
@@ -1568,16 +1632,17 @@
   $('[data-company-setup]')?.addEventListener('input',event=>{if(event.target?.form===event.currentTarget)event.currentTarget.dataset.dirty='true'});
   $('[data-company-setup]')?.addEventListener('change',event=>{if(event.target?.form===event.currentTarget)event.currentTarget.dataset.dirty='true'});
   $('[data-invite]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()||form.dataset.submitting==='true') return; setBusy(form, true);form.dataset.submitting='true';
-    const result=$('[data-invite-result]'),feedback=adminPage.querySelector('[data-team-feedback]');let saved=false;
-    try { await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: form.elements.email.value.trim(), roleId: form.elements.roleId.value }) }); saved=true;form.reset();if(feedback)feedback.textContent='Convite enviado e confirmado pelo servidor.'; }
+    const result=$('[data-invite-result]'),feedback=adminPage.querySelector('[data-team-feedback]');let saved=false;let invitedMembershipId=null;
+    try { const response=await request('/admin/invitations', { method: 'POST', body: JSON.stringify({ email: form.elements.email.value.trim(), roleId: form.elements.roleId.value }) });if(typeof response?.membershipId!=='string'||response.delivery!=='sent')throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});invitedMembershipId=response.membershipId;saved=true;form.reset();if(feedback)feedback.textContent='Convite enviado e confirmado pelo servidor.'; }
     catch (error) { result.hidden=false;result.textContent = message(error); }
-    finally { setBusy(form, false);delete form.dataset.submitting;if(saved){result.textContent='';result.hidden=true;markAdminFormSaved(form);await loadAdmin().catch(error=>{if(feedback)feedback.textContent=`Convite enviado. A lista não pôde ser atualizada: ${message(error)}`})} }
+    finally { setBusy(form, false);delete form.dataset.submitting;if(saved){result.textContent='';result.hidden=true;markAdminFormSaved(form);try{const refreshed=await loadAdmin();if(!refreshed?.members?.members?.some(member=>member.membershipId===invitedMembershipId))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});}catch(error){if(feedback)feedback.textContent=`Convite enviado, mas a lista não pôde ser confirmada: ${message(error)}`}} }
   });
   $('[data-create-role]')?.addEventListener('submit', async event => { event.preventDefault(); const form = event.currentTarget; if (!form.reportValidity()||form.dataset.submitting==='true') return; setBusy(form, true);form.dataset.submitting='true';
     const result=$('[data-role-result]'),feedback=adminPage.querySelector('[data-team-feedback]');let saved=false;
-    try { const permissions = [...form.querySelectorAll('[data-permissions] input:checked')].map(input => input.value); await request('/admin/roles', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value.trim(), description:form.elements.description.value.trim(), permissions }) }); saved=true;form.reset();if(feedback)feedback.textContent='Perfil criado e confirmado pelo servidor.'; }
+    let createdId=null;const permissions = [...form.querySelectorAll('[data-permissions] input:checked')].map(input => input.value);
+    try { const response=await request('/admin/roles', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value.trim(), description:form.elements.description.value.trim(), permissions }) });if(typeof response?.id!=='string'||!Array.isArray(response.permissions))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});createdId=response.id;saved=true;form.reset();if(feedback)feedback.textContent='Perfil criado e confirmado pelo servidor.'; }
     catch (error) { result.hidden=false;result.textContent = message(error); }
-    finally { setBusy(form, false);delete form.dataset.submitting;if(saved){result.textContent='';result.hidden=true;markAdminFormSaved(form);await loadAdmin().catch(error=>{if(feedback)feedback.textContent=`Perfil criado. A lista não pôde ser atualizada: ${message(error)}`})} }
+    finally { setBusy(form, false);delete form.dataset.submitting;if(saved){result.textContent='';result.hidden=true;markAdminFormSaved(form);try{const refreshed=await loadAdmin();const role=refreshed?.roles?.roles?.find(item=>item.id===createdId);if(!role||JSON.stringify([...role.permissions].sort())!==JSON.stringify([...permissions].sort()))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});}catch(error){if(feedback)feedback.textContent=`Perfil criado, mas a lista não pôde ser confirmada: ${message(error)}`}} }
   });
   window.addEventListener('online', async () => { if (!current && !offlineMode) { const session = await restore(); if (session) await syncAfterAuthentication(); } else if (current) await syncAfterAuthentication(); });
   document.addEventListener('visibilitychange', async () => {

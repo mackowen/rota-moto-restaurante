@@ -124,11 +124,11 @@ assert.match(appSource,/return header\(title,[\s\S]*section==='seguranca'\?'Ajus
   'Account uses the Ajustes topbar context while keeping its own page heading');
 assert.match(appSource,/'system-admin':'Sistema local'/u,'local system settings use a context-specific topbar title');
 assert.match(adminDialogSource,/function create\([\s\S]*?aria-modal[\s\S]*?aria-labelledby[\s\S]*?dialog\.showModal\(\)/u,'administrative forms use an accessible native modal with managed focus');
-assert.match(adminDialogSource,/Descartar alterações\?[\s\S]*?dialog\.addEventListener\('cancel'/u,'Escape and explicit close protect unsaved administrative form edits');
+assert.match(adminDialogSource,/Há alterações não salvas[\s\S]*?dialog\.addEventListener\('cancel'/u,'Escape and explicit close protect unsaved administrative form edits');
 assert.match(source,/source:invite\.closest\('details'\)[\s\S]*?triggerLabel:'Convidar pessoa'/u,'the supported user-creation flow is presented as an invitation modal');
 assert.match(source,/const canInvite = Boolean\(session\?\.permissions\?\.includes\('members\.invite'\)\)[\s\S]*?inviteTrigger\.hidden = !canInvite/u,'invitation trigger visibility follows the effective invite permission');
 assert.match(source,/source:createRole\.closest\('details'\)[\s\S]*?triggerLabel:'Criar perfil'/u,'role creation is presented in the shared administrative modal');
-assert.match(source,/window\.RotaMotoAdminFormDialog\.create\(\{source:disclosure,form:editForm/u,'role editing uses the same modal component as invitations');
+assert.match(source,/window\.RotaMotoAdminFormDialog\.create\(\{source:editorSource,form:editForm/u,'role editing uses the same modal component as invitations');
 assert.match(styles,/\.rm-admin-form-dialog__body \{[^}]*overflow:auto/u,'long administrative forms scroll independently within the dialog');
 assert.match(styles,/\.rm-admin-form-dialog__actions \{[^}]*safe-area-inset-bottom/u,'dialog actions respect the mobile safe area');
 assert.match(appSource, /data-settings-back/u, 'each Ajustes category page has a clear return to the card grid');
@@ -184,13 +184,23 @@ assert.match(source, /normalize\('NFD'\)[\s\S]*?authorizedDriverStatuses\.has\(d
   'Driver status labels normalize canonical status casing and accent rules before reporting access');
 assert.match(source, /\['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED'[\s\S]*?'OFFLINE','UNAVAILABLE','INDISPONIVEL','BUSY','OCUPADO','PAUSED','PAUSADO'\]/u,
   'Driver UI authorization status vocabulary stays aligned with the backend access allowlist');
-assert.match(source, /Convite pendente/u, 'membership invitation state is presented in plain language');
-assert.match(source, /Permissões de sincronização ativas; sem cadastro de motoboy vinculado/u, 'sync-enabled identities without a Driver link are distinguished from company membership');
-assert.match(source, /Cadastro de motoboy vinculado; estado não consultado pelo seu perfil/u, 'a linked Driver hidden by authorization is not presented as an absent company membership');
-assert.match(source, /Vínculo informado, mas cadastro de motoboy não localizado nesta empresa/u, 'an unresolved operational Driver reference is not collapsed into a generic pending label');
+assert.match(source, /Convites para acompanhar: \$\{pendingInvitations\.length\}/u, 'pending and expired invitations are counted independently from team members');
+assert.match(source, /members\.members\.filter\(member=>member\.status==='invited'\)/u, 'invitation records are rendered in a separate team section');
+assert.match(source, /member\.status === 'suspended' \? 'Acesso suspenso'[\s\S]*member\.status === 'revoked' \? 'Vínculo encerrado'/u, 'suspended and revoked membership states remain distinct');
+assert.match(source, /data-team-member-count/u, 'the team overview reports the authorized active member count');
+assert.match(source, /data-team-invitations/u, 'pending invitations have their own list and empty state');
+assert.match(source, /Função salva, mas a lista não pôde ser confirmada/u, 'membership edits distinguish server ACK from failed canonical readback');
+assert.match(source, /Novo convite enviado\. O anterior deixou de ser válido\./u, 'resend action reports the API-confirmed delivery result');
+assert.match(source, /response\.delivery!=='sent'/u, 'invitation creation requires a server delivery acknowledgement');
+assert.match(source, /Date\.parse\(member\.invitationExpiresAt\|\|''\)[\s\S]*Convite expirado · reenvie para emitir outro/u,
+  'expired invitations are distinguished from active and unavailable invitation links');
 assert.doesNotMatch(source, /Aguardando vínculo operacional/u, 'identity UI no longer implies that an owner company membership is an awaiting operational association');
 assert.match(appSource, /company-admin-team[\s\S]*?company-admin-drivers[\s\S]*?company-admin-integrations/u, 'team, drivers and integrations are first-class Ajustes categories');
-assert.match(source, /Consulte quem tem acesso à empresa, acompanhe convites e defina funções dentro do seu nível de autorização/u, 'team page retains context under the single topbar title');
+assert.match(source, /Gerencie quem tem acesso a esta empresa, os convites e os perfis autorizados/u, 'team page retains concise context under the single topbar title');
+assert.match(source, /Perfis e permissões/u, 'roles and permissions are presented in their own section');
+assert.match(source, /rm-team-disclosure rm-team-member-disclosure/u, 'member details are compact and expandable');
+assert.match(source, /rm-team-disclosure rm-team-role-disclosure/u, 'permission details are compact and expandable by profile');
+assert.match(styles, /\.rm-team-summary\s*\{[^}]*display:flex/su, 'team counts use a compact responsive summary');
 assert.doesNotMatch(source, /data-admin-close|data-platform-close/u, 'administrative pages do not add redundant return-to-settings controls');
 assert.doesNotMatch(source, /data-admin-page="/u, 'company pages do not duplicate category navigation inside the content');
 assert.match(source, /dataset\.providerPage[\s\S]*?dataset\.providerTab/u, 'delivery platform configuration and received orders have separate provider pages');
@@ -209,7 +219,15 @@ assert.match(source, /finance: 'Financeiro'/u, 'financial permissions have a ded
 assert.match(source, /Consultar relatórios e registros financeiros da empresa/u, 'financial read access is described in restaurant language');
 assert.match(source, /Gerenciar operações financeiras da empresa/u, 'financial management access is described in restaurant language');
 assert.match(source, /roles\/owner\/restore-finance/u, 'only the active owner receives an explicit tenant-scoped recovery action for missing finance permissions');
-assert.match(source, /Perfil de proprietário protegido contra edição/u, 'essential owner permissions remain protected from generic role edits');
+assert.match(source, /Este perfil é protegido para preservar os acessos essenciais/u, 'essential owner permissions remain protected from generic role edits');
+assert.match(source, /result\?\.id!==role\.id\|\|!Array\.isArray\(result\.permissions\)/u, 'role writes require a valid API acknowledgement');
+assert.match(source, /Perfil atualizado e confirmado na lista do servidor/u, 'role changes require canonical readback before success feedback');
+assert.match(adminDialogSource, /Confirmação para descartar alterações/u, 'unsaved edits use an inline discard confirmation in the same dialog');
+assert.match(adminDialogSource, /Continuar editando/u, 'the inline discard prompt preserves a path back to the form');
+assert.match(adminDialogSource, /aria-haspopup','dialog'/u, 'dialog triggers identify their popup semantics');
+assert.doesNotMatch(adminDialogSource, /RotaMotoDialog\?\.confirm/u, 'discard confirmation does not open a nested dialog');
+assert.match(styles, /\.rm-admin-form-dialog__actions\[hidden\]\s*\{\s*display:none !important/u,
+  'a dirty-form discard prompt cannot leave the primary dialog actions visible behind it');
 assert.match(source, /Atualizar situação no RotaMoto/u, 'provider state refresh is distinct from an external connection test');
 assert.match(source, /RotaMotoDialog\.confirm\(\{title:'Desconectar loja\?',message:'O recebimento de pedidos será interrompido\. Esta ação não revoga a autorização no portal da plataforma\.'/u, 'provider disconnection uses the accessible custom confirmation and keeps the portal authorization boundary explicit');
 assert.match(styles, /\.rm-provider-nav/u, 'provider navigation remains touch friendly and horizontally scrollable');

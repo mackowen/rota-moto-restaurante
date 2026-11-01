@@ -15,6 +15,11 @@
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
     const id = ++sequence;
+    const dialogId = `rm-admin-form-dialog-${id}`;
+    dialog.id = dialogId;
+    trigger.setAttribute('aria-haspopup','dialog');
+    trigger.setAttribute('aria-controls',dialogId);
+    trigger.setAttribute('aria-expanded','false');
     const titleId = `rm-admin-form-title-${id}`;
     const descriptionId = `rm-admin-form-description-${id}`;
     dialog.setAttribute('aria-labelledby', titleId);
@@ -46,6 +51,20 @@
     cancel.type = 'button';
     cancel.className = 'rm-secondary';
     cancel.textContent = 'Cancelar';
+    const discardPrompt=document.createElement('section');
+    discardPrompt.className='rm-admin-form-dialog__discard';
+    discardPrompt.hidden=true;
+    discardPrompt.setAttribute('role','group');
+    discardPrompt.setAttribute('aria-label','Confirmação para descartar alterações');
+    const discardMessage=document.createElement('p');
+    discardMessage.textContent='Há alterações não salvas. Deseja continuar editando ou descartar o que foi preenchido?';
+    const discardActions=document.createElement('div');
+    discardActions.className='rm-admin-form-dialog__discard-actions';
+    const keepEditing=document.createElement('button');
+    keepEditing.type='button';keepEditing.className='rm-secondary';keepEditing.textContent='Continuar editando';
+    const discardChanges=document.createElement('button');
+    discardChanges.type='button';discardChanges.className='rm-danger';discardChanges.textContent='Descartar e fechar';
+    discardActions.append(keepEditing,discardChanges);discardPrompt.append(discardMessage,discardActions);
 
     const formId = `rm-admin-dialog-form-${id}`;
     form.id = formId;
@@ -60,26 +79,17 @@
     submitButton.setAttribute('form', formId);
     actions.append(cancel, submitButton);
     body.append(form);
-    shell.append(head, help, body, actions);
+    shell.append(head, help, body, actions, discardPrompt);
     dialog.append(shell);
     source.replaceWith(trigger, dialog);
 
-    let closePending = false;
-    const closeDialog = async ({ discard = false, force = false } = {}) => {
-      if (dialog.dataset.busy === 'true' || closePending) return;
-      if (!force && form.dataset.dialogDirty === 'true') {
-        closePending = true;
-        try {
-          const result = await window.RotaMotoDialog?.confirm({
-            title: 'Descartar alterações?',
-            message: 'As informações ainda não foram salvas. Deseja fechar e descartar o que foi preenchido?',
-            danger: true,
-            confirmLabel: 'Descartar alterações'
-          });
-          if (!result?.confirmed) return;
-        } finally { closePending = false; }
-      }
+    const showDiscardPrompt=()=>{actions.hidden=true;discardPrompt.hidden=false;keepEditing.focus()};
+    const resumeEditing=()=>{discardPrompt.hidden=true;actions.hidden=false;close.focus()};
+    const closeDialog = ({ discard = false, force = false } = {}) => {
+      if (dialog.dataset.busy === 'true') return;
+      if (!force && form.dataset.dialogDirty === 'true') { showDiscardPrompt(); return; }
       if (discard) { form.reset(); form.dataset.dialogDirty = ''; }
+      discardPrompt.hidden=true;actions.hidden=false;
       if (dialog.open) dialog.close();
     };
     trigger.addEventListener('click', () => {
@@ -87,13 +97,16 @@
       const feedback = dialog.closest('[data-admin-subpage]')?.querySelector('[data-team-feedback]');
       if (feedback) feedback.textContent = '';
       dialog.showModal();
+      trigger.setAttribute('aria-expanded','true');
       (form.querySelector('input:not([type="hidden"]),select,textarea') || cancel).focus();
     });
     close.addEventListener('click', () => { void closeDialog({ discard: true }); });
     cancel.addEventListener('click', () => { void closeDialog({ discard: true }); });
     dialog.addEventListener('cancel', event => { event.preventDefault(); void closeDialog({ discard: true }); });
     dialog.addEventListener('click', event => { if (event.target === dialog) void closeDialog({ discard: true }); });
-    dialog.addEventListener('close', () => { if (trigger.isConnected) trigger.focus(); });
+    keepEditing.addEventListener('click',resumeEditing);
+    discardChanges.addEventListener('click',()=>closeDialog({discard:true,force:true}));
+    dialog.addEventListener('close', () => { trigger.setAttribute('aria-expanded','false');if (trigger.isConnected) trigger.focus(); });
     form.addEventListener('input', () => { form.dataset.dialogDirty = 'true'; });
     form.addEventListener('change', () => { form.dataset.dialogDirty = 'true'; });
     return {
