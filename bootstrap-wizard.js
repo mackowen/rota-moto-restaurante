@@ -88,10 +88,13 @@
     render();
   }
 
-  function allChecksPass() {
+  function canBeginSetupFlow() {
     return diagnostics.health && diagnostics.state === 'ready' &&
-      diagnostics.checks.databaseAndMigrations === true && diagnostics.checks.mfaKeystoreConfigured === true &&
-      diagnostics.checks.invitationDeliveryConfigured === true;
+      diagnostics.checks.databaseAndMigrations === true && diagnostics.checks.mfaKeystoreConfigured === true;
+  }
+
+  function canSubmitBootstrap() {
+    return canBeginSetupFlow() && diagnostics.checks.invitationDeliveryConfigured === true;
   }
 
   function checkRow(label, value, detail = '') {
@@ -103,7 +106,7 @@
     if (diagnostics.state === 'complete') return `<section class="bootstrap-notice bootstrap-notice--success"><h2>Instalação já concluída</h2><p>O assistente de primeira instalação está bloqueado. Entre pela tela normal para acessar o sistema.</p><a class="bootstrap-link-button" href="/">Ir para o acesso</a></section>`;
     if (diagnostics.state === 'pending_owner_activation' || diagnostics.state === 'pending_owner_mfa') return `<section class="bootstrap-notice"><h2>Ativação do titular em andamento</h2><p>${diagnostics.state === 'pending_owner_activation' ? 'A empresa e o convite inicial foram registrados. O titular precisa aceitar o convite recebido por e-mail, definir a senha e depois entrar para configurar o MFA obrigatório.' : 'O convite já foi aceito. O titular precisa entrar e confirmar o novo autenticador para concluir o primeiro acesso privilegiado.'}</p><a class="bootstrap-link-button" href="/">Abrir o acesso</a></section>`;
     if (diagnostics.state === 'unavailable') return `<section class="bootstrap-notice bootstrap-notice--warning"><h2>Primeira instalação indisponível</h2><p>Este ambiente já tem uma instalação, uma reserva ou dados de identidade. O assistente não pode iniciar outra instalação.</p><a class="bootstrap-link-button" href="/">Voltar ao acesso</a></section>`;
-    return `<section class="bootstrap-diagnostic"><div><h2>Antes de começar</h2><p>O assistente verifica o serviço e os requisitos. Para continuar, a instalação precisa estar realmente vazia e o serviço de convites e o keystore precisam estar configurados.</p></div>
+    return `<section class="bootstrap-diagnostic"><div><h2>Antes de começar</h2><p>O assistente verifica o serviço e os requisitos. Com o schema vazio e o keystore de MFA pronto, você pode preencher os dados. O cadastro só poderá ser enviado quando a entrega de convites também estiver configurada.</p></div>
       <ul class="bootstrap-checks">${checkRow('API e PostgreSQL', diagnostics.health)}${checkRow('Schema e migrations', diagnostics.checks.databaseAndMigrations)}${checkRow('Keystore de MFA', diagnostics.checks.mfaKeystoreConfigured, 'Necessário para guardar o fator sem expor o segredo no banco ou na interface.')}${checkRow('Envio de convites', diagnostics.checks.invitationDeliveryConfigured, 'O titular define a senha pelo convite e confirma o MFA no primeiro acesso.')}</ul>
       ${diagnostics.error ? `<p class="bootstrap-inline-error" role="alert">${escapeHtml(diagnostics.error)}</p>` : ''}
       ${diagnostics.state === 'unavailable' || diagnostics.state === 'not_ready' || diagnostics.error
@@ -137,7 +140,7 @@
     if (index === 4) return pricingMarkup();
     if (index === 5) return reviewMarkup();
     if (finished) return finishedMarkup();
-    return `<section class="bootstrap-form-step"><h2>Pronto para iniciar</h2><p>Revise os dados e confirme para criar a empresa inicial e enviar o convite ao titular.</p></section>`;
+    return `<section class="bootstrap-form-step"><h2>Pronto para iniciar</h2><p>Revise os dados e confirme para criar a empresa inicial e enviar o convite ao titular.</p>${diagnostics.checks.invitationDeliveryConfigured !== true ? '<p class="bootstrap-inline-error" role="status">O envio está bloqueado até que a entrega de convites seja configurada. Nenhum dado será enviado enquanto esse requisito estiver pendente.</p>' : ''}</section>`;
   }
 
   function rangeMarkup(item, index) {
@@ -198,12 +201,13 @@
       return;
     }
     const nextLabel = currentStep === 5 ? 'Continuar para finalização' : currentStep === 6 ? 'Iniciar instalação' : 'Continuar';
-    actions.innerHTML = `${currentStep > 0 ? '<button type="button" class="bootstrap-secondary-button" data-back>Voltar</button>' : ''}<button type="button" class="bootstrap-primary-button" data-next ${busy || currentStep === 0 && !allChecksPass() ? 'disabled' : ''}>${busy ? 'Verificando…' : nextLabel}</button>`;
+    const blocked = currentStep === 0 ? !canBeginSetupFlow() : currentStep === 6 && !canSubmitBootstrap();
+    actions.innerHTML = `${currentStep > 0 ? '<button type="button" class="bootstrap-secondary-button" data-back>Voltar</button>' : ''}<button type="button" class="bootstrap-primary-button" data-next ${busy || blocked ? 'disabled' : ''}>${busy ? 'Verificando…' : nextLabel}</button>`;
     $('[data-back]', actions)?.addEventListener('click', () => { syncForm(); currentStep = Math.max(0, currentStep - 1); setMessage(); render(); });
     $('[data-next]', actions)?.addEventListener('click', async () => {
       syncForm();
       if (currentStep === 0) {
-        if (!allChecksPass()) return setMessage('Corrija os requisitos pendentes antes de avançar.', 'error');
+        if (!canBeginSetupFlow()) return setMessage('Corrija os requisitos de banco, schema e MFA antes de avançar.', 'error');
         currentStep = 1; render(); return;
       }
       if (!validateStep(currentStep)) return;

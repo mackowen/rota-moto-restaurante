@@ -210,20 +210,15 @@ async function main() {
   assert.deepEqual(e2e.roles,official.roles,'role attributes differ');
   assert.deepEqual(e2e.membership,official.membership,'runtime role membership differs');
   assert.deepEqual(e2e.schema,official.schema,'schema grants/ownership differ');
-  assert.deepEqual(e2e.relations.filter(row=>row.relname!=='delivery_custody_operations'),official.relations,
-    'base table/sequence privileges, ownership or RLS flags differ outside additive migration 0041');
-  assert.deepEqual(e2e.columns.filter(row=>row.relation!=='delivery_custody_operations'),official.columns,
-    'base column privileges differ outside additive migration 0041');
+  assert.deepEqual(e2e.relations,official.relations,
+    'table/sequence privileges, ownership or RLS flags differ');
+  assert.deepEqual(e2e.columns,official.columns,
+    'column privileges differ');
   assert.deepEqual(e2e.functions,official.functions,'function privileges/ownership differ');
-  assert.deepEqual(e2e.policies.filter(row=>row.tablename!=='delivery_custody_operations'),official.policies,
-    'base RLS policies differ outside additive migration 0041');
-  const baseConstraints = rows => rows.filter(row => row.relation !== 'delivery_custody_operations' &&
-    !['domain_records_check1','domain_records_related_entity_type_check'].includes(row.name));
-  assert.deepEqual(baseConstraints(e2e.constraints),baseConstraints(official.constraints),
-    'base constraints differ outside the documented 0041 custody/RETURN delta');
-  const known0041Indexes = new Set(['delivery_custody_operations_pkey','domain_one_return_delivery_per_original_uq']);
-  assert.deepEqual(e2e.indexes.filter(row=>!known0041Indexes.has(row.name)),official.indexes,
-    'base indexes differ outside the documented 0041 custody/RETURN delta');
+  assert.deepEqual(e2e.policies,official.policies,
+    'RLS policies differ');
+  assert.deepEqual(e2e.constraints,official.constraints,'schema constraints differ');
+  assert.deepEqual(e2e.indexes,official.indexes,'schema indexes differ');
   assert.deepEqual(e2e.defaultPublic,official.defaultPublic,'PUBLIC default ACL differs');
   assert.deepEqual(e2e.ledger,official.ledger,'migration ledger ownership/access differs');
   const normalizedLedger=rows=>rows.map(row=>({migration_id:row.migration_id,checksum_sha256:row.checksum_sha256.trim()}));
@@ -263,7 +258,7 @@ async function main() {
     assert(snapshot.policies.some(policy => policy.tablename === 'proof_media_upload_intents' && policy.policyname === 'tenant_isolation' &&
       policy.qual.includes('current_tenant_id') && policy.with_check.includes('current_tenant_id')), 'upload intents have tenant isolation policy');
   }
-  console.log(`PostgreSQL metadata parity: PASS for common schema/security metadata; documented production delta remains: official=${official.applied?.at(-1)?.migration_id || 'ledger unavailable'}, E2E=${e2eApplied.at(-1)?.migration_id}, local checksums and E2E 0041 delta verified. Official transaction was read-only.`);
+  console.log(`PostgreSQL metadata parity: PASS for schema/security metadata; official=${official.applied?.at(-1)?.migration_id || 'ledger unavailable'}, E2E=${e2eApplied.at(-1)?.migration_id}, local checksums verified. Official transaction was read-only.`);
 }
 
 if (require.main===module) main().catch(error=>{console.error(error.message);process.exitCode=1;});
