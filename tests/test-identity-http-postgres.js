@@ -7,6 +7,7 @@ const { createClient } = require('../backend/postgres/connection');
 const { createIdentityService } = require('../backend/identity/service');
 const { createEmailDeliveryProvider } = require('../backend/identity/email-provider');
 const { createMfaProvider } = require('../backend/identity/mfa-provider');
+const { createNativeMfaProvider } = require('../backend/identity/native-mfa-provider');
 const { codeAt } = require('../backend/identity/totp');
 const { createIdentityHttpHandler, createRateLimiter, COOKIE_NAME } = require('../backend/identity/http');
 const { createAdminHttpHandler } = require('../backend/admin/http');
@@ -562,7 +563,25 @@ async function main() {
     const adminEnrollment = await noProvider.authenticate(adminEmail, adminPassword, companyId);
     assert.equal(adminEnrollment.mfaEnrollmentRequired, true,
       'administrative identity without an enrolled secret receives only an enrollment-limited session');
-    await client.query(`UPDATE rotamoto.credentials SET mfa_secret_ref='local-v1:synthetic-manager-reference' WHERE user_id=$1`, [adminAccepted.body.userId]);
+    const missingManagerRef=`local-v1:${crypto.randomUUID()}`;
+    await client.query('UPDATE rotamoto.credentials SET mfa_secret_ref=$2 WHERE user_id=$1', [adminAccepted.body.userId,missingManagerRef]);
+    const missingSecretService=createIdentityService({pool,emailProvider:provider,
+      mfaProvider:createNativeMfaProvider({secretProvider:await secretProvider}),secretProvider});
+    const missingSecretLogs=[];
+    const missingSecretHost=await listen(createIdentityHttpHandler({identityService:missingSecretService,logger:event=>missingSecretLogs.push(event)}));
+    try {
+      const beforeMissingFileLogin=await client.query('SELECT count(*)::int AS count FROM rotamoto.sessions WHERE user_id=$1 AND revoked_at IS NULL',[adminAccepted.body.userId]);
+      const missingFileLogin=await fetch(`${missingSecretHost.base}/api/identity/login`,{method:'POST',headers:{Origin:missingSecretHost.base,'Content-Type':'application/json'},
+        body:JSON.stringify({email:adminEmail,password:adminPassword,companyId,mfaCode:'654321'})});
+      const missingFileBody=await missingFileLogin.json();
+      assert.equal(missingFileLogin.status,503,'an enrolled factor with a missing keystore file fails closed through HTTP');
+      assert.equal(missingFileBody.error.code,'MFA_PROVIDER_UNAVAILABLE');
+      assert.equal(missingFileLogin.headers.get('set-cookie'),null,'missing MFA material never creates an authenticated session');
+      const afterMissingFileLogin=await client.query('SELECT count(*)::int AS count FROM rotamoto.sessions WHERE user_id=$1 AND revoked_at IS NULL',[adminAccepted.body.userId]);
+      assert.equal(afterMissingFileLogin.rows[0].count,beforeMissingFileLogin.rows[0].count,'failed keystore lookup creates no session');
+      assert.equal(JSON.stringify(missingSecretLogs).includes(adminPassword),false,'missing factor diagnostics do not log passwords');
+      assert.equal(JSON.stringify(missingSecretLogs).includes(missingManagerRef),false,'missing factor diagnostics do not log secret references');
+    } finally { await missingSecretHost.close(); }
     await assert.rejects(noProvider.authenticate(adminEmail, adminPassword, companyId, '654321'), error => error.code === 'MFA_REQUIRED',
       'administrative login with an enrolled secret fails closed when the MFA provider is unavailable');
     const adminLogin = await call('/api/identity/login', { method: 'POST', body: { email: adminEmail,
@@ -637,6 +656,52 @@ async function main() {
     const recoveredFactor=await client.query('SELECT mfa_required,mfa_secret_ref,mfa_totp_last_counter FROM rotamoto.credentials WHERE user_id=$1',[accepted.body.userId]);
     assert.equal(recoveredFactor.rows[0].mfa_required,true);assert.equal(recoveredFactor.rows[0].mfa_secret_ref,null);
     assert.equal(recoveredFactor.rows[0].mfa_totp_last_counter,null,'the next login is limited to mandatory MFA re-enrollment');
+
+    const postRecoveryLogin=await call('/api/identity/login',{method:'POST',body:{email,password:recoveredPassword,companyId}});
+    assert.equal(postRecoveryLogin.status,200);assert.equal(postRecoveryLogin.body.mfaEnrollmentRequired,true,
+      'a recovered identity can only enter the mandatory MFA enrollment flow');
+    const postRecoveryCookie=postRecoveryLogin.headers.get('set-cookie').split(';',1)[0];
+    const nativeSecrets=await secretProvider;
+    const nativeRecoveryService=createIdentityService({pool,emailProvider:provider,
+      mfaProvider:createNativeMfaProvider({secretProvider:nativeSecrets}),secretProvider});
+    const nativeRecoveryHost=await listen(createIdentityHttpHandler({identityService:nativeRecoveryService}));
+    const nativeRecoveryCall=async(path,{method='GET',body,cookie,csrf,origin=nativeRecoveryHost.base}={})=>{
+      const headers={Origin:origin};if(body!==undefined)headers['Content-Type']='application/json';if(cookie)headers.Cookie=cookie;if(csrf)headers['X-CSRF-Token']=csrf;
+      const response=await fetch(`${nativeRecoveryHost.base}${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});
+      const text=await response.text();return{status:response.status,headers:response.headers,body:text?JSON.parse(text):null};
+    };
+    try {
+      const postRecoverySession=await nativeRecoveryCall('/api/identity/session',{cookie:postRecoveryCookie});
+      assert.equal(postRecoverySession.status,200);assert.equal(postRecoverySession.body.mfaEnrollmentRequired,true);
+      const newEnrollment=await nativeRecoveryCall('/api/identity/mfa/enrollment',{method:'POST',body:{},cookie:postRecoveryCookie,csrf:postRecoveryLogin.body.csrfToken});
+      assert.equal(newEnrollment.status,200);
+      const newTotp=codeAt(newEnrollment.body.secret,Math.floor(Date.now()/30000));
+      const newEnrollmentConfirmed=await nativeRecoveryCall('/api/identity/mfa/enrollment/confirm',{method:'POST',body:{code:newTotp},cookie:postRecoveryCookie,csrf:postRecoveryLogin.body.csrfToken});
+      assert.equal(newEnrollmentConfirmed.status,200);assert.equal(newEnrollmentConfirmed.body.recoveryCodes.length,10);
+      const replacementLoginCode=codeAt(newEnrollment.body.secret,Math.floor(Date.now()/30000)+1);
+      const postRecoveryAuthenticated=await nativeRecoveryCall('/api/identity/login',{method:'POST',body:{email,password:recoveredPassword,companyId,mfaCode:replacementLoginCode}});
+      assert.equal(postRecoveryAuthenticated.status,200,'a newly enrolled TOTP factor authenticates through the native verifier');
+      const postRecoveryAuthenticatedCookie=postRecoveryAuthenticated.headers.get('set-cookie').split(';',1)[0];
+      const verifiedRecoverySession=await nativeRecoveryCall('/api/identity/session',{cookie:postRecoveryAuthenticatedCookie});
+      assert.equal(verifiedRecoverySession.status,200);assert.equal(verifiedRecoverySession.body.mfaVerified,true);
+      const oneTimeRecoveryCode=newEnrollmentConfirmed.body.recoveryCodes[0];
+      const replacementStart=await nativeRecoveryCall('/api/identity/mfa/enrollment',{method:'POST',
+        body:{currentPassword:recoveredPassword,currentMfaCode:oneTimeRecoveryCode},cookie:postRecoveryAuthenticatedCookie,csrf:verifiedRecoverySession.body.csrfToken});
+      assert.equal(replacementStart.status,200,'a one-time recovery code can authorize replacement of a lost TOTP factor');
+      const reusedRecoveryCode=await nativeRecoveryCall('/api/identity/mfa/enrollment',{method:'POST',
+        body:{currentPassword:recoveredPassword,currentMfaCode:oneTimeRecoveryCode},cookie:postRecoveryAuthenticatedCookie,csrf:verifiedRecoverySession.body.csrfToken});
+      assert.equal(reusedRecoveryCode.status,403);assert.equal(reusedRecoveryCode.body.error.code,'MFA_REQUIRED',
+        'a recovery code consumed for replacement cannot be replayed');
+      const replacementTotp=codeAt(replacementStart.body.secret,Math.floor(Date.now()/30000));
+      const replacementConfirmed=await nativeRecoveryCall('/api/identity/mfa/enrollment/confirm',{method:'POST',body:{code:replacementTotp},
+        cookie:postRecoveryAuthenticatedCookie,csrf:verifiedRecoverySession.body.csrfToken});
+      assert.equal(replacementConfirmed.status,200,'the replacement factor is confirmed only after valid TOTP proof');
+      const finalLoginCode=codeAt(replacementStart.body.secret,Math.floor(Date.now()/30000)+1);
+      const finalLogin=await nativeRecoveryCall('/api/identity/login',{method:'POST',body:{email,password:recoveredPassword,companyId,mfaCode:finalLoginCode}});
+      assert.equal(finalLogin.status,200,'the replacement authenticator works for a fresh login');
+      const finalSession=await nativeRecoveryCall('/api/identity/session',{cookie:finalLogin.headers.get('set-cookie').split(';',1)[0]});
+      assert.equal(finalSession.body.mfaVerified,true);
+    } finally { await nativeRecoveryHost.close(); syntheticSecrets.clear(); }
 
     await client.query("SELECT set_config('app.tenant_id',$1,true)", [companyId]);
     await client.query(`UPDATE rotamoto.credentials SET failed_attempts=9,locked_until=NULL WHERE user_id=$1`, [accepted.body.userId]);

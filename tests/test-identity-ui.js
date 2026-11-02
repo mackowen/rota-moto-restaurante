@@ -357,7 +357,8 @@ assert.match(source, /addEventListener\('rotamoto:auth-revoked'[\s\S]*?if \(!acc
 assert.match(source, /host\.append\(accountPage\);\s*accountPage\.hidden=true/u,
   'leaving the Account and security page hides it in its persistent identity host');
 assert.match(source, /function clearSensitiveAccountState\(\)[\s\S]*?passwordChangeForm\?\.reset\(\)[\s\S]*?clearMfaEnrollment\(\)[\s\S]*?recoveryCodes\.hidden = true/u, 'sensitive account forms, pending MFA key, and recovery codes are removed from the page when the session ends');
-assert.match(source, /currentPassword:form\.elements\.currentPassword\.value,currentMfaCode:form\.elements\.currentMfaCode\.value/u, 'factor replacement requires the current password and a fresh TOTP code');
+assert.match(source, /currentPassword:form\.elements\.currentPassword\.value,currentMfaCode:form\.elements\.currentMfaCode\.value/u, 'factor replacement requires the current password and a fresh TOTP or unused recovery code');
+assert.match(source, /Código TOTP ou de recuperação[\s\S]*maxlength="23"/u, 'factor replacement UI accepts a TOTP code or a single-use recovery code');
 assert.match(source, /\/identity\/mfa\/enrollment\/cancel/u, 'pending MFA secrets can be cancelled and removed server-side');
 assert.match(source, /session\.emailVerified\?'Email confirmado':'Email ainda não confirmado'/u, 'account displays server-confirmed email verification');
 

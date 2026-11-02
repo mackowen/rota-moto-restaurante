@@ -14,6 +14,10 @@ function decodeBase32(value) {
   return Buffer.from(out);
 }
 function generateSecret() { return encodeBase32(crypto.randomBytes(20)); }
+function isValidMfaProof(value) {
+  return typeof value === 'string' && (/^\d{6}$/u.test(value) ||
+    /^(?:[a-f0-9]{20}|[a-f0-9]{5}(?:-[a-f0-9]{5}){3})$/iu.test(value));
+}
 function otpauthUri(secret, { issuer = 'RotaMoto', account } = {}) {
   if (typeof account !== 'string' || !account || typeof issuer !== 'string' || !issuer) throw new TypeError('TOTP account/issuer required.');
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
@@ -38,4 +42,4 @@ function verifyCode(secret, code, { now = Date.now(), lastCounter = -1, window =
 }
 function generateRecoveryCodes(count = 10) { return Object.freeze(Array.from({ length: count }, () => crypto.randomBytes(10).toString('hex').toUpperCase())); }
 function recoveryDigest(code) { return crypto.createHash('sha256').update(String(code).replace(/-/gu, '').toUpperCase()).digest(); }
-module.exports = { encodeBase32, decodeBase32, generateSecret, otpauthUri, codeAt, verifyCode, generateRecoveryCodes, recoveryDigest };
+module.exports = { encodeBase32, decodeBase32, generateSecret, isValidMfaProof, otpauthUri, codeAt, verifyCode, generateRecoveryCodes, recoveryDigest };

@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { deriveCsrfToken } = require('./csrf');
 const { hashPassword, verifyPassword } = require('./passwords');
 const { requireEmailProvider } = require('./email-provider');
-const { generateSecret, otpauthUri, verifyCode, generateRecoveryCodes, recoveryDigest } = require('./totp');
+const { generateSecret, isValidMfaProof, otpauthUri, verifyCode, generateRecoveryCodes, recoveryDigest } = require('./totp');
 
 const OWNER_PERMISSIONS = Object.freeze([
   'company.manage', 'members.invite', 'members.read', 'orders.read', 'orders.manage', 'integrations.manage',
@@ -775,7 +775,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
       if (!principal.mfa_verified_at) throw new IdentityError('MFA_REQUIRED', 'Verifique MFA antes de substituir o fator.');
       if (credential.locked_until && new Date(credential.locked_until) > clock()) return { error: 'RATE_LIMITED' };
       if (typeof reauthentication.currentPassword !== 'string' || !reauthentication.currentPassword || reauthentication.currentPassword.includes('\0') ||
-          typeof reauthentication.currentMfaCode !== 'string' || !/^\d{6}$/u.test(reauthentication.currentMfaCode))
+          !isValidMfaProof(reauthentication.currentMfaCode))
         return { error: 'MFA_REQUIRED' };
       if (!await verifyPassword(credential.password_phc, reauthentication.currentPassword)) {
         await client.query(`UPDATE rotamoto.credentials SET failed_attempts=least(failed_attempts+1,$2),

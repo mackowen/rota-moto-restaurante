@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { IdentityError } = require('./service');
+const { isValidMfaProof } = require('./totp');
 
 const COOKIE_NAME = '__Host-rotamoto_session';
 const MAX_BODY_BYTES = 16 * 1024;
@@ -288,8 +289,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         exactKeys(body, ['currentPassword', 'currentMfaCode']);
         if (Object.keys(body).length && (typeof body.currentPassword !== 'string' ||
             Buffer.byteLength(body.currentPassword, 'utf8') > 1024 || body.currentPassword.includes('\0') ||
-            typeof body.currentMfaCode !== 'string' || !/^\d{6}$/u.test(body.currentMfaCode)))
-          throw fail('INVALID_INPUT', 'Confirme sua senha atual e o código de seis dígitos do autenticador.');
+            !isValidMfaProof(body.currentMfaCode)))
+          throw fail('INVALID_INPUT', 'Confirme sua senha atual e um código válido do autenticador ou de recuperação.');
         const result = await requireSessionMutation(req, 'identity.mfa.enroll', (client, principal) =>
           identityService.startMfaEnrollmentForPrincipal(client, principal, body));
         if (result?.error) throw fail(result.error, 'Não foi possível confirmar sua identidade para substituir o autenticador.');
