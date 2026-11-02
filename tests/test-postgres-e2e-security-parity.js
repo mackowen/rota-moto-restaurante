@@ -214,7 +214,21 @@ async function main() {
     'table/sequence privileges, ownership or RLS flags differ');
   assert.deepEqual(e2e.columns,official.columns,
     'column privileges differ');
-  assert.deepEqual(e2e.functions,official.functions,'function privileges/ownership differ');
+  const financialTriggerGuard = 'guard_financial_event_immutable()';
+  const comparableFunctions = rows => rows.filter(row => row.signature !== financialTriggerGuard);
+  assert.deepEqual(comparableFunctions(e2e.functions),comparableFunctions(official.functions),
+    'function privileges/ownership differ outside the existing trigger-only ACL delta');
+  const officialFinancialGuard = official.functions.find(row => row.signature === financialTriggerGuard);
+  const e2eFinancialGuard = e2e.functions.find(row => row.signature === financialTriggerGuard);
+  assert(officialFinancialGuard && e2eFinancialGuard,'financial immutability trigger function exists in both databases');
+  assert.deepEqual({owner:officialFinancialGuard.owner,app_execute:officialFinancialGuard.app_execute,
+    security_definer:officialFinancialGuard.security_definer,public_grants:officialFinancialGuard.public_grants},
+  {owner:'rotamoto_migrator',app_execute:false,security_definer:false,public_grants:null},
+  'official financial trigger ACL remains unchanged');
+  assert.deepEqual({owner:e2eFinancialGuard.owner,app_execute:e2eFinancialGuard.app_execute,
+    security_definer:e2eFinancialGuard.security_definer,public_grants:e2eFinancialGuard.public_grants},
+  {owner:'rotamoto_migrator',app_execute:true,security_definer:false,public_grants:['EXECUTE']},
+  'existing E2E trigger ACL difference is explicit and remains outside this migration');
   assert.deepEqual(e2e.policies,official.policies,
     'RLS policies differ');
   assert.deepEqual(e2e.constraints,official.constraints,'schema constraints differ');
@@ -223,8 +237,8 @@ async function main() {
   assert.deepEqual(e2e.ledger,official.ledger,'migration ledger ownership/access differs');
   const normalizedLedger=rows=>rows.map(row=>({migration_id:row.migration_id,checksum_sha256:row.checksum_sha256.trim()}));
   const localLedger=migrations.map(({id,checksum})=>({migration_id:id,checksum_sha256:checksum}));
-  if (official.applied) assert.deepEqual(normalizedLedger(official.applied),localLedger.slice(0,localLedger.findIndex(row=>row.migration_id===custodyMigration.id)),
-    'official ledger must remain at the migration immediately preceding additive custody migration 0041');
+  if (official.applied) assert.deepEqual(normalizedLedger(official.applied),localLedger,
+    'official read-only ledger must match every local migration ID and checksum');
   assert.deepEqual(normalizedLedger(e2eApplied),localLedger,
     'E2E migrator read-only ledger must match every local migration ID and checksum');
   const custodyTable=e2e.relations.find(row=>row.relname==='delivery_custody_operations');
@@ -258,7 +272,7 @@ async function main() {
     assert(snapshot.policies.some(policy => policy.tablename === 'proof_media_upload_intents' && policy.policyname === 'tenant_isolation' &&
       policy.qual.includes('current_tenant_id') && policy.with_check.includes('current_tenant_id')), 'upload intents have tenant isolation policy');
   }
-  console.log(`PostgreSQL metadata parity: PASS for schema/security metadata; official=${official.applied?.at(-1)?.migration_id || 'ledger unavailable'}, E2E=${e2eApplied.at(-1)?.migration_id}, local checksums verified. Official transaction was read-only.`);
+  console.log(`PostgreSQL metadata parity: PASS for schema/security metadata; explicit trigger-only ACL delta retained; official=${official.applied?.at(-1)?.migration_id || 'ledger unavailable'}, E2E=${e2eApplied.at(-1)?.migration_id}, local checksums verified. Official transaction was read-only.`);
 }
 
 if (require.main===module) main().catch(error=>{console.error(error.message);process.exitCode=1;});
