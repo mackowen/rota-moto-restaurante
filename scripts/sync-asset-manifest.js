@@ -7,7 +7,6 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, 'asset-manifest.config.json'), 'utf8'));
 const indexPath = path.join(root, 'index.html');
-const indexSource = fs.readFileSync(indexPath, 'utf8');
 const virtualFiles = new Map();
 const digest = value => crypto.createHash('sha256').update(value).digest('hex').slice(0, 16);
 
@@ -39,16 +38,22 @@ for (const referenceFile of config.referenceFiles || []) {
 }
 
 const tagPattern = /<(?:script|link)\b[^>]*>/giu;
-let nextIndex = indexSource.replace(tagPattern, tag => {
-  const name = /<script\b/iu.test(tag) ? 'src' : 'href';
-  return tag.replace(new RegExp(`\\b${name}=(['"])([^'"]+)\\1`, 'iu'), (whole, quote, value) => {
-    try {
-      const url = new URL(value, 'https://assets.invalid');
-      if (url.origin !== 'https://assets.invalid') return whole;
-      return `${name}=${quote}${versionedUrl(value)}${quote}`;
-    } catch (error) { throw new Error(`não foi possível versionar asset da página (${name}): ${error.message}`); }
+const referenceHtmlFiles = [...new Set([indexPath, ...(config.referenceHtmlFiles || []).map(localFile)])];
+for (const file of referenceHtmlFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  const next = source.replace(tagPattern, tag => {
+    const name = /<script\b/iu.test(tag) ? 'src' : 'href';
+    return tag.replace(new RegExp(`\\b${name}=(['"])([^'"]+)\\1`, 'iu'), (whole, quote, value) => {
+      try {
+        const url = new URL(value, 'https://assets.invalid');
+        if (url.origin !== 'https://assets.invalid') return whole;
+        return `${name}=${quote}${versionedUrl(value)}${quote}`;
+      } catch (error) { throw new Error(`não foi possível versionar asset da página (${name}): ${error.message}`); }
+    });
   });
-});
+  virtualFiles.set(file, Buffer.from(next));
+}
+const nextIndex = virtualFiles.get(indexPath).toString('utf8');
 
 function canonical(assetPath) {
   const url = new URL(assetPath, 'https://assets.invalid/');
@@ -57,7 +62,7 @@ function canonical(assetPath) {
 }
 
 const extras = (config.extraAssets || []).map(versionedUrl);
-const taggedAssets = [...nextIndex.matchAll(tagPattern)].flatMap(([tag]) => {
+const taggedAssets = referenceHtmlFiles.flatMap(file => [...virtualFiles.get(file).toString('utf8').matchAll(tagPattern)]).flatMap(([tag]) => {
   const name = /<script\b/iu.test(tag) ? 'src' : 'href';
   const match = new RegExp(`\\b${name}=(['"])([^'"]+)\\1`, 'iu').exec(tag);
   if (!match) return [];

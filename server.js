@@ -151,13 +151,31 @@ async function authorizeInitialBootstrap({action,context}){
   const req=context?.request;
   const peer=String(req?.socket?.remoteAddress||'').replace(/^::ffff:/u,'');
   const capability=req?.headers?.['x-rotamoto-bootstrap-authorization'];
+  let originHost='';
+  try{originHost=new URL(req?.headers?.origin||'').hostname.toLowerCase()}catch(_){}
   if(action!=='tenant.owner.provision'||!['127.0.0.1','::1'].includes(peer)||
+    !['127.0.0.1','::1','localhost'].includes(originHost)||
     typeof capability!=='string'||!/^[A-Za-z0-9_-]{43}$/u.test(capability))
     throw new Error('Local one-time deployment authorization required.');
   return {actorRef:'local-deployment-operator',bootstrapCapabilityDigest:crypto.createHash('sha256').update(capability,'utf8').digest()};
 }
 const identityService=createIdentityService({pool:identityPool,authorizeProvisioner:authorizeInitialBootstrap,
   requireBootstrapAuthorization:true,emailProvider,mfaProvider,secretProvider});
+const bootstrapReadiness=async()=>{
+  const result={mfaKeystoreConfigured:false,invitationDeliveryConfigured:false};
+  if(!secretProvider)return result;
+  try{
+    const secrets=await secretProvider;
+    result.mfaKeystoreConfigured=Boolean(secrets&&typeof secrets.get==='function'&&typeof secrets.put==='function'&&typeof secrets.remove==='function');
+    const smtp=CONFIG.smtp;
+    if(result.mfaKeystoreConfigured&&smtp?.host&&smtp?.user&&smtp?.passwordRef&&smtp?.from&&smtp?.baseUrl&&
+      Number.isInteger(smtp.port)&&smtp.port>=1&&smtp.port<=65535){
+      const password=await secrets.get(smtp.passwordRef,{name:'smtp/password',scope:'installation'});
+      result.invitationDeliveryConfigured=typeof password==='string'&&password.length>0;
+    }
+  }catch(_){ /* Readiness is fail-closed without surfacing secret-store diagnostics. */ }
+  return result;
+};
 const LOG_FIELDS=new Set(['event','requestId','method','path','status','durationMs','errorCode','diagnosticCode','code','host','port','environment','signal']);
 const requestLogger=entry=>{
   const safe={};
@@ -174,7 +192,7 @@ const requestLogger=entry=>{
 const runtimeMetrics=createRuntimeMetrics();
 const queueMetrics=createQueueMetrics({pool:identityPool,tenantResolver:async()=>[]});
 const queueMetricsHttp=createQueueMetricsHttpHandler({identityService,metrics:queueMetrics,logger:requestLogger});
-const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS});
+const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS,bootstrapReadiness});
 let mediaProviderPromise=null;
 async function getMediaStorage(){if(!CONFIG.mediaDirectory)return createMediaStorage();if(!mediaProviderPromise)mediaProviderPromise=createFilesystemObjectStore({directory:CONFIG.mediaDirectory}).then(objectStore=>createMediaStorage({objectStore}));return mediaProviderPromise}
 const mediaStorage=Object.freeze({configured:()=>Boolean(CONFIG.mediaDirectory),status:()=>CONFIG.mediaDirectory?{configured:true,provider:'filesystem-v1'}:{configured:false,provider:null},

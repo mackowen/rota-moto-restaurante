@@ -122,7 +122,7 @@ async function main() {
     assert.equal(unauthorized.body.error.code, 'PROVISIONER_UNAUTHORIZED');
     const provisioned = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody,
       extraHeaders: { 'X-Synthetic-Operator': 'test-only' } });
-    assert.equal(provisioned.status, 202, `synthetic bootstrap returned ${provisioned.body?.error?.code || 'unexpected-response'}; events=${logs.map(event=>event.code||event.event||'event').join(',')}`);
+    assert.equal(provisioned.status, 202, `synthetic bootstrap returned ${provisioned.body?.error?.code || 'unexpected-response'}; events=${logs.map(event=>event.errorCode||event.code||event.event||'event').join(',')}`);
     assert.equal(provisioned.body.delivery, 'sent');
     assert.equal(JSON.stringify(provisioned.body).includes(delivered[0].token), false);
     assert.equal(JSON.stringify(provisioned.body).includes(email), false, 'provision response does not reveal the recipient');
@@ -771,23 +771,42 @@ async function main() {
       return { status: response.status, body: await response.json() };
     };
     try {
+      const browserBootstrapSchema = await client.query(`SELECT
+        to_regprocedure('rotamoto.platform_admin_bootstrap_status()') IS NOT NULL AND
+        to_regclass('rotamoto.company_delivery_pricing') IS NOT NULL AND
+        EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.provisioning_requests')
+          AND attname='bootstrap_capability_digest' AND NOT attisdropped) AS ready`);
+      const browserBootstrapReady = browserBootstrapSchema.rows[0]?.ready === true;
+      const initialStatus = await fetch(`${bootstrapHost.base}/api/identity/bootstrap/status`, { cache: 'no-store' });
+      const initialStatusBody = await initialStatus.json();
+      if (!browserBootstrapReady) assert.equal(initialStatusBody.state, 'not_ready', 'old persistent schema fails closed until the browser bootstrap migration is applied');
+      else if (bootstrapState.founder_user_id === null) assert.equal(initialStatusBody.state, 'ready');
+      else assert.equal(initialStatusBody.state, 'complete');
       const firstBootstrapRequest = { companyName: 'Empresa Bootstrap Sintética', email: `bootstrap-${crypto.randomUUID()}@example.invalid`,
         idempotencyKey: `bootstrap-${crypto.randomUUID()}` };
       assert.equal((await bootstrapCall(null, firstBootstrapRequest)).status, 403, 'bootstrap has no unauthenticated public path');
-      const initialized = await bootstrapCall(bootstrapToken, firstBootstrapRequest);
-      if (bootstrapState.founder_user_id !== null) {
-        assert.equal(initialized.status, 403, 'a persistent founder latch rejects a new bootstrap without being reset');
-        assert.equal(initialized.body?.error?.code, 'PROVISIONER_UNAUTHORIZED');
+      if (!browserBootstrapReady) {
+        assert.equal(initialStatusBody.state, 'not_ready');
       } else {
-        assert.equal(initialized.status, 202, 'only an actually empty installation accepts its first authorized bootstrap');
-        assert.equal((await bootstrapCall(bootstrapToken, firstBootstrapRequest)).body.replayed, true,
-          'same idempotency key can safely recover delivery after single-use authorization');
-        const secondToken = crypto.randomBytes(32).toString('base64url');
-        await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
-          VALUES($1,'rotamoto',now()+interval '10 minutes')`, [crypto.createHash('sha256').update(secondToken).digest()]);
-        const secondBootstrap = await bootstrapCall(secondToken, { ...firstBootstrapRequest,
-          email: `second-${crypto.randomUUID()}@example.invalid`, idempotencyKey: `bootstrap-${crypto.randomUUID()}` });
-        assert.equal(secondBootstrap.status, 403, 'installation latch prevents a second initial owner');
+        const initialized = await bootstrapCall(bootstrapToken, firstBootstrapRequest);
+        if (bootstrapState.founder_user_id !== null) {
+          assert.equal(initialized.status, 403, 'a persistent founder latch rejects a new bootstrap without being reset');
+          assert.equal(initialized.body?.error?.code, 'PROVISIONER_UNAUTHORIZED');
+        } else {
+          assert.equal(initialized.status, 202, 'only an actually empty installation accepts its first authorized bootstrap');
+          assert.equal(initialized.body.setupState, 'awaiting_owner_activation_and_mfa');
+          assert.equal((await bootstrapCall(bootstrapToken, firstBootstrapRequest)).body.replayed, true,
+            'same idempotency key can safely recover delivery after single-use authorization');
+          const pendingState = await fetch(`${bootstrapHost.base}/api/identity/bootstrap/status`, { cache: 'no-store' });
+          assert.equal((await pendingState.json()).state, 'pending_owner_activation',
+            'provisioning remains pending, with no founder grant, before owner activation and mandatory MFA');
+          const secondToken = crypto.randomBytes(32).toString('base64url');
+          await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
+            VALUES($1,'rotamoto',now()+interval '10 minutes')`, [crypto.createHash('sha256').update(secondToken).digest()]);
+          const secondBootstrap = await bootstrapCall(secondToken, { ...firstBootstrapRequest,
+            email: `second-${crypto.randomUUID()}@example.invalid`, idempotencyKey: `bootstrap-${crypto.randomUUID()}` });
+          assert.equal(secondBootstrap.status, 403, 'installation latch prevents a second initial owner');
+        }
       }
     } finally {
       await bootstrapHost.close();

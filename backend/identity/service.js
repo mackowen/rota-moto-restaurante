@@ -1,10 +1,12 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { deriveCsrfToken } = require('./csrf');
 const { hashPassword, verifyPassword } = require('./passwords');
 const { requireEmailProvider } = require('./email-provider');
 const { generateSecret, isValidMfaProof, otpauthUri, verifyCode, generateRecoveryCodes, recoveryDigest } = require('./totp');
+const { validateInitialSetup } = require('./bootstrap-setup');
 
 const OWNER_PERMISSIONS = Object.freeze([
   'company.manage', 'members.invite', 'members.read', 'orders.read', 'orders.manage', 'integrations.manage',
@@ -107,7 +109,7 @@ async function audit(client, { companyId, actorUserId = null, actorKind, action,
 
 function validateProvisioningInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).some(key => !['companyName', 'email', 'idempotencyKey'].includes(key))) {
+      Object.keys(input).some(key => !['companyName', 'email', 'idempotencyKey', 'initialSetup'].includes(key))) {
     throw new IdentityError('INVALID_INPUT', 'Dados de provisionamento inválidos.');
   }
   const companyName = requiredText(input.companyName, 'Nome da empresa', 160);
@@ -116,7 +118,8 @@ function validateProvisioningInput(input) {
   if (Buffer.byteLength(idempotencyKey, 'utf8') < 16) {
     throw new IdentityError('INVALID_INPUT', 'Chave idempotente inválida.');
   }
-  return { companyName, email, idempotencyKey };
+  return { companyName, email, idempotencyKey,
+    initialSetup: input.initialSetup === undefined ? null : validateInitialSetup(input.initialSetup) };
 }
 
 function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecoveryOperator, emailProvider, mfaProvider, secretProvider,
@@ -141,8 +144,69 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     await verifyPassword(await dummyPasswordHash, password);
   };
 
+  async function getBootstrapStatus() {
+    const client = await pool.connect();
+    try {
+      const schema = await client.query(`SELECT
+        to_regclass('rotamoto.installation_bootstrap') IS NOT NULL AS latch_ready,
+        to_regclass('rotamoto.bootstrap_authorizations') IS NOT NULL AS authorization_ready,
+        to_regclass('rotamoto.platform_admin_bootstrap_latch') IS NOT NULL AS founder_latch_ready,
+        to_regprocedure('rotamoto.platform_admin_bootstrap_status()') IS NOT NULL AS status_function_ready,
+        to_regclass('rotamoto.company_delivery_pricing') IS NOT NULL AS pricing_ready,
+        EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass('rotamoto.provisioning_requests')
+          AND attname='bootstrap_capability_digest' AND NOT attisdropped) AS deferred_mfa_ready`);
+      const checks = schema.rows[0] || {};
+      const ready = checks.latch_ready && checks.authorization_ready && checks.founder_latch_ready &&
+        checks.deferred_mfa_ready && checks.status_function_ready && checks.pricing_ready;
+      if (!ready) return { state: 'not_ready', checks: { schema: false, pricing: Boolean(checks.pricing_ready) } };
+      const status = await client.query('SELECT rotamoto.platform_admin_bootstrap_status() AS state');
+      const state = status.rows[0]?.state;
+      if (!['ready', 'pending_owner_activation', 'pending_owner_mfa', 'complete', 'unavailable'].includes(state))
+        return { state: 'not_ready', checks: { schema: false, pricing: Boolean(checks.pricing_ready) } };
+      return { state, checks: { schema: true, pricing: Boolean(checks.pricing_ready) } };
+    } catch (error) {
+      if (error.code === '42P01' || error.code === '42703') return { state: 'not_ready', checks: { schema: false, pricing: false } };
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async function verifyInitialSetupReadback(client, companyId, companyName, initialSetup) {
+    if (!initialSetup) return false;
+    const company = await client.query(`SELECT name,support_phone,time_zone,route_grouping_policy,operational_address,
+      operational_latitude,operational_longitude FROM rotamoto.companies WHERE id=$1`, [companyId]);
+    const expectedLocation = initialSetup.company.operationalLocation;
+    const row = company.rows[0];
+    const latitude = row?.operational_latitude == null ? null : Number(row.operational_latitude);
+    const longitude = row?.operational_longitude == null ? null : Number(row.operational_longitude);
+    if (!row || row.name !== companyName || row.support_phone !== initialSetup.company.supportPhone ||
+        row.time_zone !== initialSetup.company.timeZone || row.route_grouping_policy !== initialSetup.company.routeGroupingPolicy ||
+        row.operational_address !== (expectedLocation?.address ?? null) ||
+        latitude !== (expectedLocation?.latitude ?? null) || longitude !== (expectedLocation?.longitude ?? null)) {
+      throw new IdentityError('BOOTSTRAP_READBACK_FAILED', 'Não foi possível confirmar a configuração inicial da empresa.');
+    }
+    const pricing = await client.query('SELECT settings,version FROM rotamoto.company_delivery_pricing WHERE company_id=$1', [companyId]);
+    if (initialSetup.deliveryPricing) {
+      if (!pricing.rowCount || Number(pricing.rows[0].version) !== 1 ||
+          !isDeepStrictEqual(pricing.rows[0].settings, initialSetup.deliveryPricing))
+        throw new IdentityError('BOOTSTRAP_READBACK_FAILED', 'Não foi possível confirmar as regras iniciais de entrega.');
+    } else if (pricing.rowCount) {
+      throw new IdentityError('BOOTSTRAP_READBACK_FAILED', 'A cobrança não configurada não deveria ter sido persistida.');
+    }
+    return true;
+  }
+
+  async function verifyCommittedInitialSetup(companyId, companyName, initialSetup) {
+    const client = await pool.connect();
+    try {
+      await transaction(client, async () => {
+        await setTenant(client, companyId);
+        await verifyInitialSetupReadback(client, companyId, companyName, initialSetup);
+      });
+    } finally { client.release(); }
+  }
+
   async function provisionInitialOwner(input, context = undefined) {
-    const { companyName, email, idempotencyKey } = validateProvisioningInput(input);
+    const { companyName, email, idempotencyKey, initialSetup } = validateProvisioningInput(input);
     if (typeof authorizeProvisioner !== 'function') {
       throw new IdentityError('PROVISIONER_NOT_CONFIGURED', 'Autorização administrativa não configurada.');
     }
@@ -162,28 +226,45 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
       throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
     }
     const provider = requireEmailProvider(emailProvider);
-    const requestDigest = digestText(JSON.stringify({ companyName, email }));
+    const normalizedRequest = initialSetup === null ? { companyName, email } : { companyName, email, initialSetup };
+    const requestDigest = digestText(JSON.stringify(normalizedRequest));
     const keyDigest = digestText(idempotencyKey);
     const client = await pool.connect();
     let delivery;
     try {
       delivery = await transaction(client, async () => {
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 817231))', [keyDigest.toString('hex')]);
+        const bootstrapSchema = await client.query(`SELECT EXISTS(SELECT 1 FROM pg_attribute
+          WHERE attrelid=to_regclass('rotamoto.provisioning_requests')
+            AND attname='bootstrap_capability_digest' AND NOT attisdropped) AS ready`);
+        const browserBootstrapReady = bootstrapSchema.rows[0]?.ready === true;
+        if ((requireBootstrapAuthorization || bootstrapCapabilityDigest || initialSetup) && !browserBootstrapReady)
+          throw new IdentityError('BOOTSTRAP_NOT_READY', 'A primeira instalação ainda não está disponível neste schema.');
         const existing = await client.query(`
-          SELECT request_digest, company_id::text, user_id::text, delivery_status, updated_at
+          SELECT request_digest, company_id::text, user_id::text, delivery_status, updated_at,
+            ${browserBootstrapReady ? 'bootstrap_capability_digest' : 'NULL::bytea AS bootstrap_capability_digest'}
           FROM rotamoto.provisioning_requests WHERE idempotency_key_digest=$1
         `, [keyDigest]);
         if (requireBootstrapAuthorization || bootstrapCapabilityDigest) {
           const latch = await client.query(`SELECT completed_at,request_digest FROM rotamoto.installation_bootstrap
             WHERE singleton=true FOR UPDATE`);
           if (!latch.rowCount) throw new IdentityError('BOOTSTRAP_NOT_READY', 'Bootstrap ainda não está preparado.');
-          const isReplayOfBootstrap = Boolean(existing.rowCount && latch.rows[0].completed_at &&
-            Buffer.from(latch.rows[0].request_digest || []).equals(keyDigest));
+          const storedBootstrapCapability = existing.rows[0]?.bootstrap_capability_digest;
+          const isReplayOfBootstrap = Boolean(existing.rowCount && bootstrapCapabilityDigest &&
+            Buffer.from(latch.rows[0].request_digest || []).equals(keyDigest) &&
+            (storedBootstrapCapability && Buffer.from(storedBootstrapCapability).equals(bootstrapCapabilityDigest) ||
+              !storedBootstrapCapability && latch.rows[0].completed_at));
+          if (!isReplayOfBootstrap) {
+            const installState = await client.query('SELECT rotamoto.platform_admin_bootstrap_status() AS state');
+            if (installState.rows[0]?.state !== 'ready')
+              throw new IdentityError('BOOTSTRAP_NOT_AVAILABLE', 'A instalação inicial não está disponível neste ambiente.');
+          }
           const authorized = bootstrapCapabilityDigest && await client.query(`SELECT token_digest,consumed_at FROM rotamoto.bootstrap_authorizations
-            WHERE token_digest=$1 AND installation_scope='rotamoto' AND expires_at>now()
-              AND (consumed_at IS NULL OR $2::boolean)
+            WHERE token_digest=$1 AND installation_scope='rotamoto'
+              AND ((expires_at>now() AND consumed_at IS NULL) OR (consumed_at IS NOT NULL AND $2::boolean))
             FOR UPDATE`, [bootstrapCapabilityDigest, isReplayOfBootstrap]);
-          if (!authorized?.rowCount || latch.rows[0].completed_at && !isReplayOfBootstrap)
+          if (!authorized?.rowCount || latch.rows[0].completed_at && !isReplayOfBootstrap ||
+              latch.rows[0].request_digest && !isReplayOfBootstrap)
             throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
           if (authorized.rows[0].consumed_at === null) await client.query(`UPDATE rotamoto.bootstrap_authorizations SET consumed_at=now()
             WHERE token_digest=$1 AND consumed_at IS NULL`, [bootstrapCapabilityDigest]);
@@ -197,12 +278,16 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
           }
           companyId = previous.company_id;
           userId = previous.user_id;
+          if (initialSetup) {
+            await setTenant(client, companyId);
+            await verifyInitialSetupReadback(client, companyId, companyName, initialSetup);
+          }
           if (previous.delivery_status === 'sent') {
-            return { companyId, userId, replayed: true, send: false, delivery: 'sent' };
+            return { companyId, userId, replayed: true, send: false, delivery: 'sent', setupReadback: Boolean(initialSetup) };
           }
           if (previous.delivery_status === 'pending' &&
               new Date(previous.updated_at).getTime() > clock().getTime() - DELIVERY_LEASE_MS) {
-            return { companyId, userId, replayed: true, send: false, delivery: 'pending' };
+            return { companyId, userId, replayed: true, send: false, delivery: 'pending', setupReadback: Boolean(initialSetup) };
           }
           await setTenant(client, companyId);
           await client.query(`UPDATE rotamoto.provisioning_requests SET delivery_status='pending',updated_at=now()
@@ -215,7 +300,18 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
           const roleId = id();
           const membershipId = id();
           await setTenant(client, companyId);
-          await client.query(`INSERT INTO rotamoto.companies (id,name,status) VALUES ($1,$2,'provisioning')`, [companyId, companyName]);
+          const companySettings = initialSetup?.company;
+          const location = companySettings?.operationalLocation;
+          if (initialSetup) {
+            await client.query(`INSERT INTO rotamoto.companies
+              (id,name,status,support_phone,time_zone,route_grouping_policy,operational_address,operational_latitude,
+               operational_longitude,operational_location_provenance,operational_location_version,company_settings_version)
+              VALUES($1,$2,'provisioning',$3,$4,$5,$6,$7,$8,
+                CASE WHEN $7::double precision IS NULL THEN NULL ELSE 'operator_confirmed' END,
+                CASE WHEN $6::text IS NULL AND $7::double precision IS NULL THEN 0 ELSE 1 END,0)`,
+            [companyId, companyName, companySettings.supportPhone, companySettings.timeZone,
+              companySettings.routeGroupingPolicy, location?.address ?? null, location?.latitude ?? null, location?.longitude ?? null]);
+          } else await client.query(`INSERT INTO rotamoto.companies (id,name,status) VALUES ($1,$2,'provisioning')`, [companyId, companyName]);
           await client.query(`INSERT INTO rotamoto.roles (id,company_id,role_key,display_name,is_system_template)
             VALUES ($1,$2,'owner','Proprietário',false)`, [roleId, companyId]);
           await client.query(`INSERT INTO rotamoto.role_permissions (company_id,role_id,permission_key,catalog_version)
@@ -224,32 +320,43 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
           const granted = await client.query(`SELECT count(*)::int AS count FROM rotamoto.role_permissions WHERE company_id=$1 AND role_id=$2`, [companyId, roleId]);
           if (granted.rows[0].count !== OWNER_PERMISSIONS.length) throw new IdentityError('ROLE_CATALOG_INCOMPLETE', 'Catálogo de permissões incompleto.');
           await client.query(`INSERT INTO rotamoto.users (id,email) VALUES ($1,$2)`, [userId, email]);
+          if (initialSetup?.deliveryPricing) await client.query(`INSERT INTO rotamoto.company_delivery_pricing
+            (company_id,settings,version,updated_by) VALUES($1,$2::jsonb,1,$3)`,
+          [companyId, JSON.stringify(initialSetup.deliveryPricing), userId]);
           await client.query(`INSERT INTO rotamoto.memberships (id,company_id,user_id,role_id,status)
             VALUES ($1,$2,$3,$4,'invited')`, [membershipId, companyId, userId, roleId]);
           await audit(client, { companyId, actorKind: 'admin_provisioner', action: 'tenant.owner.provisioned',
             resourceType: 'membership', resourceId: membershipId, details: { actor_ref: actorRef, delivery_status: 'pending' } });
-          await client.query(`INSERT INTO rotamoto.provisioning_requests
-            (idempotency_key_digest,request_digest,company_id,user_id,delivery_status) VALUES ($1,$2,$3,$4,'pending')`,
-          [keyDigest, requestDigest, companyId, userId]);
+          if (browserBootstrapReady) await client.query(`INSERT INTO rotamoto.provisioning_requests
+            (idempotency_key_digest,request_digest,company_id,user_id,delivery_status,bootstrap_capability_digest)
+            VALUES ($1,$2,$3,$4,'pending',$5)`, [keyDigest, requestDigest, companyId, userId, bootstrapCapabilityDigest]);
+          else await client.query(`INSERT INTO rotamoto.provisioning_requests
+            (idempotency_key_digest,request_digest,company_id,user_id,delivery_status)
+            VALUES ($1,$2,$3,$4,'pending')`, [keyDigest, requestDigest, companyId, userId]);
+          if (initialSetup) await verifyInitialSetupReadback(client, companyId, companyName, initialSetup);
         }
-        if (bootstrapCapabilityDigest) await client.query(`SELECT rotamoto.platform_admin_complete_initial_bootstrap($1,$2,$3,$4)`,
-          [userId, companyId, keyDigest, bootstrapCapabilityDigest]);
-        if (bootstrapCapabilityDigest) await client.query(`UPDATE rotamoto.installation_bootstrap
-          SET completed_at=coalesce(completed_at,now()),request_digest=coalesce(request_digest,$1)
-          WHERE singleton=true`, [keyDigest]);
+        if (bootstrapCapabilityDigest) {
+          const reserved = await client.query(`UPDATE rotamoto.installation_bootstrap SET request_digest=$1
+            WHERE singleton=true AND completed_at IS NULL AND (request_digest IS NULL OR request_digest=$1)
+            RETURNING request_digest`, [keyDigest]);
+          if (!reserved.rowCount) throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'A instalação já está reservada ou foi concluída.');
+        }
         const invitation = newToken();
         const expiresAt = new Date(clock().getTime() + INVITATION_TTL_MS);
         await client.query(`INSERT INTO rotamoto.identity_tokens
           (id,company_id,user_id,purpose,token_digest,expires_at)
           VALUES ($1,$2,$3,'owner_invitation',$4,$5)`, [id(), companyId, userId, invitation.digest, expiresAt]);
-        return { companyId, userId, replayed: Boolean(existing.rowCount), send: true,
+        return { companyId, userId, replayed: Boolean(existing.rowCount), send: true, setupReadback: Boolean(initialSetup),
           message: { to: email, kind: 'owner_invitation', token: invitation.token, expiresAt, companyName } };
       });
     } finally {
       client.release();
     }
+    if (delivery.setupReadback) {
+      await verifyCommittedInitialSetup(delivery.companyId, companyName, initialSetup);
+    }
     if (!delivery.send) return { companyId: delivery.companyId, userId: delivery.userId,
-      delivery: delivery.delivery, replayed: true };
+      delivery: delivery.delivery, replayed: true, setupReadback: Boolean(delivery.setupReadback) };
 
     let sent = false;
     try {
@@ -271,7 +378,8 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     } finally {
       statusClient.release();
     }
-    return { companyId: delivery.companyId, userId: delivery.userId, delivery: sent ? 'sent' : 'failed', replayed: delivery.replayed };
+    return { companyId: delivery.companyId, userId: delivery.userId, delivery: sent ? 'sent' : 'failed', replayed: delivery.replayed,
+      setupReadback: Boolean(delivery.setupReadback) };
   }
 
   async function consumeOwnerInvitation({ token, password }) {
@@ -872,7 +980,30 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
       action: 'identity.mfa.enabled', resourceType: 'user', resourceId: principal.user_id,
       details: { recovery_codes_issued: recoveryCodes.length } });
-    return { recoveryCodes, oldRef, newRef: current.rows[0].mfa_enrollment_secret_ref };
+    const bootstrapSchema = await client.query(`SELECT EXISTS(SELECT 1 FROM pg_attribute
+      WHERE attrelid=to_regclass('rotamoto.provisioning_requests') AND attname='bootstrap_capability_digest' AND NOT attisdropped) AS ready`);
+    const pendingBootstrap = bootstrapSchema.rows[0]?.ready ? await client.query(`SELECT p.idempotency_key_digest,p.bootstrap_capability_digest
+      FROM rotamoto.provisioning_requests p
+      JOIN rotamoto.installation_bootstrap ib ON ib.singleton=true AND ib.request_digest=p.idempotency_key_digest
+        AND ib.completed_at IS NULL
+      WHERE p.company_id=$1 AND p.user_id=$2 AND p.bootstrap_capability_digest IS NOT NULL
+      FOR UPDATE OF p,ib`, [principal.company_id, principal.user_id]) : { rowCount: 0, rows: [] };
+    let bootstrapCompleted = false;
+    if (pendingBootstrap.rowCount) {
+      if (pendingBootstrap.rowCount !== 1) throw new IdentityError('BOOTSTRAP_STATE_INVALID', 'Estado de instalação inconsistente.');
+      const pending = pendingBootstrap.rows[0];
+      await client.query(`SELECT rotamoto.platform_admin_complete_initial_bootstrap($1,$2,$3,$4)`,
+        [principal.user_id, principal.company_id, pending.idempotency_key_digest, pending.bootstrap_capability_digest]);
+      const completed = await client.query(`UPDATE rotamoto.installation_bootstrap SET completed_at=$2
+        WHERE singleton=true AND completed_at IS NULL AND request_digest=$1 RETURNING completed_at`,
+      [pending.idempotency_key_digest, now]);
+      if (!completed.rowCount) throw new IdentityError('BOOTSTRAP_STATE_INVALID', 'Não foi possível concluir a instalação.');
+      await audit(client, { companyId: principal.company_id, actorUserId: principal.user_id, actorKind: 'user',
+        action: 'identity.bootstrap.completed', resourceType: 'company', resourceId: principal.company_id,
+        details: { mfa_confirmed: true } });
+      bootstrapCompleted = true;
+    }
+    return { recoveryCodes, oldRef, newRef: current.rows[0].mfa_enrollment_secret_ref, bootstrapCompleted };
   }
 
   async function finishMfaEnrollment(outcome) {
@@ -881,7 +1012,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
       const provider = await requireSecretProvider('remove');
       await provider.remove(outcome.oldRef).catch(() => {});
     }
-    return { recoveryCodes: outcome.recoveryCodes };
+    return { recoveryCodes: outcome.recoveryCodes, bootstrapCompleted: Boolean(outcome.bootstrapCompleted) };
   }
 
   async function confirmMfaEnrollment(sessionToken, code) {
@@ -1133,7 +1264,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     } finally { client.release(); }
   }
 
-  return Object.freeze({ provisionInitialOwner, consumeOwnerInvitation, inviteMembershipWithSession, consumeMembershipInvitation,
+  return Object.freeze({ provisionInitialOwner, getBootstrapStatus, consumeOwnerInvitation, inviteMembershipWithSession, consumeMembershipInvitation,
     acceptExistingMembershipInvitation, requestPasswordRecovery, requestMfaRecovery, confirmMfaRecoveryChallenge,
     listMfaRecoveryRequestsForPrincipal, approveMfaRecoveryForPrincipal, approveSoleOwnerMfaRecoveryLocally, finishMfaRecovery,
     consumePasswordRecovery, changePasswordForPrincipal, authenticate, startMfaEnrollment, startMfaEnrollmentForPrincipal,

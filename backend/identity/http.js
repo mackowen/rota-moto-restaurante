@@ -20,6 +20,7 @@ const ROUTE_METHODS = Object.freeze({
   '/api/identity/logout': 'POST',
   '/api/identity/password/change': 'POST',
   '/api/identity/session': 'GET',
+  '/api/identity/bootstrap/status': 'GET',
   '/api/identity/mfa/enrollment': 'POST',
   '/api/identity/mfa/enrollment/cancel': 'POST',
   '/api/identity/mfa/enrollment/confirm': 'POST',
@@ -41,6 +42,7 @@ function problemStatus(code) {
   if (['INVALID_TOKEN', 'INVALID_CREDENTIALS'].includes(code)) return 401;
   if (code === 'UNAUTHENTICATED') return 401;
   if (['FORBIDDEN', 'PROVISIONER_UNAUTHORIZED', 'MFA_REQUIRED', 'CSRF_INVALID', 'ORIGIN_INVALID'].includes(code)) return 403;
+  if (['BOOTSTRAP_NOT_AVAILABLE', 'BOOTSTRAP_STATE_INVALID'].includes(code)) return 409;
   if (['PROVISIONER_NOT_CONFIGURED', 'BOOTSTRAP_NOT_READY', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE'].includes(code)) return 503;
   if (code === 'AUTHENTICATION_REQUIRED') return 401;
   if (code === 'IDEMPOTENCY_CONFLICT') return 409;
@@ -182,6 +184,8 @@ function publicError(error) {
     PROVISIONER_UNAUTHORIZED: 'Provisionamento administrativo não autorizado.',
     PROVISIONER_NOT_CONFIGURED: 'Provisionamento administrativo indisponível.',
     BOOTSTRAP_NOT_READY: 'Bootstrap ainda não está preparado. Aplique as migrations antes de provisionar.',
+    BOOTSTRAP_NOT_AVAILABLE: 'A primeira instalação não está disponível neste ambiente.',
+    BOOTSTRAP_STATE_INVALID: 'Não foi possível concluir a instalação com segurança. Procure o operador local.',
     EMAIL_PROVIDER_NOT_CONFIGURED: 'Entrega de email indisponível.',
     EMAIL_DELIVERY_FAILED: 'Entrega do convite indisponível.',
     AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar o convite.',
@@ -206,7 +210,7 @@ function publicError(error) {
 }
 
 function createIdentityHttpHandler({ identityService, rateLimiter = createRateLimiter(), logger = () => {},
-  requestId = req => req.requestId || crypto.randomUUID(), allowedOrigin }) {
+  requestId = req => req.requestId || crypto.randomUUID(), allowedOrigin, bootstrapReadiness = async () => ({}) }) {
   if (!identityService) throw new TypeError('Serviço de identidade obrigatório.');
 
   async function requireSessionMutation(req, permissionKey, operation) {
@@ -240,6 +244,20 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         status = 405;
         req.apiErrorCode = 'METHOD_NOT_ALLOWED';
         send(res, status, { error: { code: 'METHOD_NOT_ALLOWED', message: 'Método não permitido.' }, requestId: id }, { Allow: ROUTE_METHODS[path] });
+        return true;
+      }
+
+      if (path === '/api/identity/bootstrap/status' && req.method === 'GET') {
+        const [installation, deployment] = await Promise.all([
+          identityService.getBootstrapStatus(), Promise.resolve(bootstrapReadiness()).catch(() => ({}))
+        ]);
+        status = 200;
+        send(res, status, { state: installation.state, checks: {
+          databaseAndMigrations: installation.checks?.schema === true,
+          pricingConfigurationAvailable: installation.checks?.pricing === true,
+          mfaKeystoreConfigured: deployment?.mfaKeystoreConfigured === true,
+          invitationDeliveryConfigured: deployment?.invitationDeliveryConfigured === true
+        } });
         return true;
       }
 
@@ -457,11 +475,12 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
       if (path === '/api/admin/tenants/provision' && req.method === 'POST') {
         const body = await readJson(req);
-        exactKeys(body, ['companyName', 'email', 'idempotencyKey']);
+        exactKeys(body, ['companyName', 'email', 'idempotencyKey', 'initialSetup']);
         const provisioned = await identityService.provisionInitialOwner(body, { request: req });
         status = 202;
         send(res, status, { companyId: provisioned.companyId, userId: provisioned.userId,
-          delivery: provisioned.delivery, replayed: provisioned.replayed });
+          delivery: provisioned.delivery, replayed: provisioned.replayed, setupReadback: provisioned.setupReadback,
+          setupState: 'awaiting_owner_activation_and_mfa' });
         return true;
       }
 
@@ -482,7 +501,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
       send(res, status, { ...mapped.payload, requestId: id });
       return true;
     } finally {
-      try { logger({ requestId: id, method: req.method, path, status, durationMs: Date.now() - startedAt }); }
+      try { logger({ requestId: id, method: req.method, path, status, durationMs: Date.now() - startedAt,
+        ...(req.apiErrorCode ? { errorCode: req.apiErrorCode } : {}) }); }
       catch (_) { /* logging must not change request outcome */ }
     }
   };

@@ -853,6 +853,7 @@ body[data-mfa-locked="true"] .rm-identity-panel {
 .rm-login-secondary { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; min-width: 0; color: var(--rm-id-muted); }
 .rm-identity-content .rm-login-secondary button { min-width: 44px; min-height: 40px; padding: 6px 8px; border: 0; background: transparent; color: var(--rm-login-accent); font-size: .9rem; }
 .rm-identity-content .rm-login-secondary button:hover { text-decoration: underline; }
+.rm-identity-content .rm-login-secondary [data-open-bootstrap] { color: var(--rm-id-muted); }
 #rmIdentityRoot[data-gated="true"] .rm-identity-content > .rm-privacy { margin: 0; }
 #rmIdentityRoot[data-gated="true"] .rm-identity-content > .rm-privacy { display: flex; align-items: flex-start; gap: 8px; padding: 4px; color: var(--text-secondary, #475569); }
 #rmIdentityRoot[data-gated="true"] .rm-login-mobile-brand { display: none; }
