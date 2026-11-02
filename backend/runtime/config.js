@@ -89,6 +89,12 @@ function loadRuntimeConfig(env = process.env, { context = 'http' } = {}) {
   const databaseUrl = validateDatabaseUrl(nodeEnv === 'test' ? env.E2E_RUNTIME_DATABASE_URL : env.DATABASE_URL,
     { production, test: nodeEnv === 'test', testRuntimeRole: e2eRuntimeRole });
   const databaseIdentity = new URL(databaseUrl);
+  const officialOperatorRuntime = env.ROTAMOTO_OFFICIAL_OPERATOR_CONFIG === 'true';
+  if (env.ROTAMOTO_OFFICIAL_OPERATOR_CONFIG !== undefined &&
+      (!officialOperatorRuntime || context !== 'http' || nodeEnv !== 'development' ||
+       decodeURIComponent(databaseIdentity.username) !== 'rotamoto_app' || databaseIdentity.pathname !== '/rotamoto' ||
+       !LOOPBACK_HOSTS.has(databaseIdentity.hostname.toLowerCase())))
+    throw new Error('Configuração de operador HTTP somente é aceita no runtime local oficial rotamoto.');
   const isolatedE2eRole = nodeEnv === 'test' && e2eRuntimeRole === 'rotamoto_e2e_app';
   const origins = parseOrigins(production ? [env.ALLOWED_ORIGINS] : env.ALLOWED_ORIGINS
     ? [env.ALLOWED_ORIGINS] : [env.ALLOWED_ORIGIN || 'http://localhost:8787'], { production });
@@ -189,12 +195,12 @@ function loadRuntimeConfig(env = process.env, { context = 'http' } = {}) {
     deliveryQrKeyRef, deliveryQrKeyId, routeDistance,
     databaseTlsCaFile:production?env.DATABASE_TLS_CA_FILE:null, requestTimeoutMs: 30_000, headersTimeoutMs: 10_000,
     keepAliveTimeoutMs: 5_000, shutdownTimeoutMs: 10_000,
-    // Installation secrets are available to the standalone CLI only through
-    // an explicit operator context. HTTP development and all E2E configs stay
-    // blind to the keystore, while production keeps its existing behavior.
-    secretProviderModule: production || context === 'operator' ? secretProviderModule : null,
-    secretStoreDirectory: production || context === 'operator' ? secretStoreDirectory : null,
-    secretMasterKeyFile: production || context === 'operator' ? secretMasterKeyFile : null });
+    // Local HTTP may use installation secrets only through the exact official
+    // operator runtime flag. Ordinary development and every E2E config stay
+    // blind to the keystore; production behavior is unchanged.
+    secretProviderModule: production || context === 'operator' || officialOperatorRuntime ? secretProviderModule : null,
+    secretStoreDirectory: production || context === 'operator' || officialOperatorRuntime ? secretStoreDirectory : null,
+    secretMasterKeyFile: production || context === 'operator' || officialOperatorRuntime ? secretMasterKeyFile : null });
 }
 
 function hostAllowed(header, allowedHosts, production = false) {

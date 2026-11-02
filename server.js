@@ -74,7 +74,9 @@ const databaseUrl=new URL(CONFIG.databaseUrl);
 let secretProvider=null,databaseTlsCa=null;
 try{
   if(CONFIG.production){secretProvider=CONFIG.secretProviderModule?loadSecretProvider(CONFIG.secretProviderModule):loadLocalSecretProvider({directory:CONFIG.secretStoreDirectory,masterKeyFile:CONFIG.secretMasterKeyFile});databaseTlsCa=fs.readFileSync(CONFIG.databaseTlsCaFile,'utf8')}
-  else {
+  else if(CONFIG.databaseName==='rotamoto'&&CONFIG.databaseUser==='rotamoto_app'&&CONFIG.secretStoreDirectory&&CONFIG.secretMasterKeyFile){
+    secretProvider=loadLocalSecretProvider({directory:CONFIG.secretStoreDirectory,masterKeyFile:CONFIG.secretMasterKeyFile});
+  } else {
     const e2eSecretStore=resolveE2eSecretStore(process.env);
     if(e2eSecretStore)secretProvider=loadLocalSecretProvider(e2eSecretStore);
   }

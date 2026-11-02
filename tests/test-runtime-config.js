@@ -13,6 +13,14 @@ const configuredDevHttp=loadRuntimeConfig({NODE_ENV:'development',ROTAMOTO_SECRE
   ROTAMOTO_SECRET_MASTER_KEY_FILE:'/private/identity/keys/master.key'});
 assert.equal(configuredDevHttp.secretStoreDirectory,null,'HTTP development context cannot see the keystore');
 assert.equal(configuredDevHttp.secretMasterKeyFile,null,'HTTP development context cannot see the master key');
+const officialOperatorHttp=loadRuntimeConfig({NODE_ENV:'development',HOST:'127.0.0.1',PORT:'8788',
+  DATABASE_URL:'postgresql://rotamoto_app@127.0.0.1:5432/rotamoto',ROTAMOTO_OFFICIAL_OPERATOR_CONFIG:'true',
+  ROTAMOTO_SECRET_STORE_DIRECTORY:'/private/identity/keystore',ROTAMOTO_SECRET_MASTER_KEY_FILE:'/private/identity/keys/master.key'});
+assert.equal(officialOperatorHttp.secretStoreDirectory,'/private/identity/keystore','only the explicitly selected official local runtime can load its keystore');
+assert.equal(officialOperatorHttp.secretMasterKeyFile,'/private/identity/keys/master.key');
+assert.throws(()=>loadRuntimeConfig({NODE_ENV:'test',ROTAMOTO_OFFICIAL_OPERATOR_CONFIG:'true',
+  E2E_RUNTIME_DATABASE_URL:'postgresql://rotamoto_e2e_app@127.0.0.1:5432/rotamoto_e2e',ROTAMOTO_E2E_RUNTIME_ROLE:'rotamoto_e2e_app'}),
+/somente é aceita no runtime local oficial/u);
 const operatorConfig=loadRuntimeConfig({NODE_ENV:'development',ROTAMOTO_SECRET_STORE_DIRECTORY:'/private/identity/keystore',
   ROTAMOTO_SECRET_MASTER_KEY_FILE:'/private/identity/keys/master.key'},{context:'operator'});
 assert.equal(operatorConfig.secretStoreDirectory,'/private/identity/keystore','standalone operator context can use the local keystore');
