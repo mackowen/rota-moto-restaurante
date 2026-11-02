@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { publicCatalog } = require('../integrations/registry');
+const { AUTHORIZED_DRIVER_STATUSES, normalizedDriverStatus } = require('../domain/driver-access');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 function invalid() { const error = new Error('cursor inválido.'); error.code = 'INVALID_INPUT'; throw error; }
@@ -221,10 +222,13 @@ function createAdminRepository() {
     if (row.status !== 'active' || row.disabled_at || !row.email_verified_at || !row.sync_permissions) {
       const error = new Error('A associação precisa estar ativa e autorizada para sincronização Motoboy.'); error.code = 'DRIVER_MEMBERSHIP_INELIGIBLE'; throw error;
     }
-    const driver = await client.query(`SELECT 1 FROM rotamoto.domain_records
+    const driver = await client.query(`SELECT payload->>'status' AS status FROM rotamoto.domain_records
       WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Driver' AND deleted_at IS NULL FOR UPDATE`,
     [principal.company_id, driverId]);
     if (!driver.rowCount) { const error = new Error('Motorista canônico não encontrado.'); error.code = 'DRIVER_NOT_FOUND'; throw error; }
+    if (!AUTHORIZED_DRIVER_STATUSES.has(normalizedDriverStatus(driver.rows[0].status))) {
+      const error = new Error('O cadastro do motorista não está ativo para usar o aplicativo.'); error.code = 'DRIVER_INACTIVE'; throw error;
+    }
     if (row.driver_id === driverId) return { membershipId, driverId, changed: false };
     if (row.driver_id) { const error = new Error('Remova o vínculo atual antes de associar outro motorista.'); error.code = 'MEMBERSHIP_DRIVER_CONFLICT'; throw error; }
     try {
@@ -245,10 +249,36 @@ function createAdminRepository() {
     if (!member.rowCount) { const error = new Error('Associação não encontrada.'); error.code = 'NOT_FOUND'; throw error; }
     const driverId = member.rows[0].driver_id;
     if (!driverId) return { membershipId, driverId: null, changed: false };
+    // Dispatch and sync lock the canonical Driver row before assigning work.
+    // Take the same lock before checking active deliveries so an assignment
+    // cannot race with unlink and leave an inaccessible delivery in progress.
+    const driver = await client.query(`SELECT record_id FROM rotamoto.domain_records
+      WHERE company_id=$1 AND record_id=$2::uuid AND entity_type='Driver' AND deleted_at IS NULL FOR UPDATE`,
+    [principal.company_id, driverId]);
+    if (!driver.rowCount) { const error = new Error('Motorista canônico não encontrado.'); error.code = 'DRIVER_NOT_FOUND'; throw error; }
+    const activeDelivery = await client.query(`SELECT record_id FROM rotamoto.domain_records
+      WHERE company_id=$1 AND entity_type='Delivery' AND deleted_at IS NULL
+        AND payload->>'driverId'=$2 AND upper(coalesce(payload->>'status',''))=ANY($3::text[]) LIMIT 1`,
+    [principal.company_id, driverId, ['CREATED','ASSIGNED','ACCEPTED','PICKED_UP','OUT_FOR_DELIVERY','ARRIVED','REDELIVERY']]);
+    if (activeDelivery.rowCount) {
+      const error = new Error('Reatribua ou conclua as entregas em andamento antes de encerrar este vínculo.');
+      error.code = 'DRIVER_HAS_ACTIVE_DELIVERIES'; throw error;
+    }
+    const availability = await client.query(`UPDATE rotamoto.driver_availability
+      SET status='offline',revision=revision+1,lease_expires_at=NULL,lease_session_id=NULL,
+          updated_by_user_id=$3,updated_at=now()
+      WHERE company_id=$1 AND driver_id=$2::uuid AND status='online' RETURNING driver_id`,
+    [principal.company_id, driverId, principal.user_id]);
+    const presence = await client.query(`UPDATE rotamoto.restaurant_driver_presence
+      SET is_present=false,checked_out_at=now(),revision=revision+1,updated_at=now()
+      WHERE company_id=$1 AND driver_id=$2::uuid AND is_present RETURNING driver_id`,
+    [principal.company_id, driverId]);
     await client.query('UPDATE rotamoto.memberships SET driver_id=NULL,updated_at=now() WHERE company_id=$1 AND id=$2',
       [principal.company_id, membershipId]);
-    await writeAudit(client, principal, 'membership.driver.unlinked', 'membership', membershipId, { driverId });
-    return { membershipId, driverId: null, previousDriverId: driverId, changed: true };
+    await writeAudit(client, principal, 'membership.driver.unlinked', 'membership', membershipId,
+      { driverId, availabilityEnded: availability.rowCount > 0, presenceEnded: presence.rowCount > 0 });
+    return { membershipId, driverId: null, previousDriverId: driverId, changed: true,
+      availabilityEnded: availability.rowCount > 0, presenceEnded: presence.rowCount > 0 };
   }
   async function company(client, companyId) {
     const result = await client.query(`SELECT id::text,name,status,time_zone,support_phone,operational_address,operational_latitude,

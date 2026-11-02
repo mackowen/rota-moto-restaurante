@@ -37,6 +37,8 @@
     UNAUTHENTICATED: 'Sua sessão expirou. Entre novamente.', EMAIL_PROVIDER_NOT_CONFIGURED: 'Convites e recuperação ainda dependem da configuração segura de entrega de email.',
     FORBIDDEN: 'Seu perfil não permite esta ação.', LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um responsável principal ativo.',
     DRIVER_MEMBERSHIP_INELIGIBLE: 'A conta precisa estar ativa, confirmada e autorizada para usar o app Motoboy.',
+    DRIVER_INACTIVE: 'Este cadastro operacional não está ativo para usar o app Motoboy.',
+    DRIVER_HAS_ACTIVE_DELIVERIES: 'Reatribua ou conclua as entregas em andamento antes de encerrar este vínculo.',
     DRIVER_NOT_FOUND: 'Motoboy não encontrado nesta empresa.', DRIVER_ALREADY_LINKED: 'Este motorista já está associado a outra conta.',
     MEMBERSHIP_DRIVER_CONFLICT: 'Desvincule o motorista atual antes de trocar a associação.',
     INVALID_STATE_TRANSITION: 'Esta mudança de estado não é permitida.', EMAIL_DELIVERY_FAILED: 'Não foi possível entregar o convite. Nenhum link utilizável foi enviado.', AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar este convite.',
@@ -709,9 +711,11 @@
       if(dialog){dialog.trigger.classList.add('rm-team-section-action');dialog.trigger.remove();dialog.dialog.remove();roleHeader.append(dialog.trigger);roleSection.append(dialog.dialog);}
     }
     if(roles){roles.classList.add('rm-team-role-list');roles.replaceChildren();roleSection.append(roleHeader,roles);teamPage.append(roleSection);}
-    const driverMembers = document.createElement('div'); driverMembers.dataset.driverMembers=''; driverMembers.setAttribute('aria-live','polite');
-    const driverIntro=document.createElement('p'); driverIntro.className='rm-driver-flow-note'; driverIntro.textContent='O cadastro do motorista é operacional e não cria uma conta. Para liberar o aplicativo, convide o endereço de email da pessoa, aguarde a ativação e vincule a conta ativa ao cadastro correto.'; sections.get('drivers').append(driverIntro);
-    sections.get('drivers').append(driverMembers);
+    const driverMembers = document.createElement('div'); driverMembers.className='rm-driver-admin-list'; driverMembers.dataset.driverMembers=''; driverMembers.setAttribute('aria-live','polite');
+    const driverIntro=document.createElement('p'); driverIntro.className='rm-driver-flow-note'; driverIntro.textContent='O cadastro operacional e a conta são registros diferentes. O vínculo conecta uma conta já ativa a um cadastro da empresa; disponibilidade é consultada separadamente.';
+    const driverSummary=document.createElement('p');driverSummary.className='rm-driver-summary';driverSummary.dataset.driverSummary='';driverSummary.setAttribute('aria-live','polite');
+    const driverFeedback=document.createElement('p');driverFeedback.className='rm-driver-feedback';driverFeedback.dataset.driverFeedback='';driverFeedback.setAttribute('role','status');driverFeedback.setAttribute('aria-live','polite');
+    sections.get('drivers').append(driverIntro,driverSummary,driverFeedback,driverMembers);
     for (const node of [driverNote]) if(node) sections.get('drivers').append(node);
     if(integrations) sections.get('integrations').append(integrations);
     for(const form of adminPage.querySelectorAll('[data-company-setup],[data-invite],[data-create-role]')){form.setAttribute('aria-busy','true');const submit=adminSubmitButton(form);if(submit)submit.disabled=true;}
@@ -1250,11 +1254,29 @@
     if(generation!==adminLoadGeneration)return;
     const marketplaceOrders = marketplaceOrderCache;
     const driverPage = canReadDrivers ? await request(`/domain/drivers?limit=100${appendDrivers && driverCursor ? `&cursor=${encodeURIComponent(driverCursor)}` : ''}`) : { records: [], nextCursor: null };
+    if(generation!==adminLoadGeneration)return;
     $('[data-admin-error]').textContent='';
     if(loadStatus)loadStatus.textContent='Dados carregados do servidor.';
     if (!appendDrivers) driverRows = [];
     driverRows.push(...driverPage.records);
     driverCursor = driverPage.nextCursor;
+    let availabilityByDriver = new Map();
+    let availabilityReadFailed = false;
+    if (canReadDrivers) {
+      try {
+        const availability = await request('/driver-availability');
+        if (!availability || !Array.isArray(availability.records) || availability.records.some(row =>
+          !row || typeof row.driverId !== 'string' || !['online','offline'].includes(row.effectiveStatus))) {
+          throw Object.assign(new Error(), { code: 'INVALID_RESPONSE' });
+        }
+        availabilityByDriver = new Map(availability.records.map(row => [row.driverId, row]));
+      } catch (_) {
+        // Availability is a separate live signal; a missing/expired lease must
+        // never hide canonical Driver records or identity links.
+        availabilityReadFailed = true;
+      }
+    }
+    if(generation!==adminLoadGeneration)return;
     companySnapshot = company;
     $('[data-driver-access-note]').hidden = canReadDrivers;
     const companyForm=$('[data-company-setup]');
@@ -1498,16 +1520,8 @@
       invitationList.append(card);
     })}
     const driverList = $('[data-driver-members]'); if(driverList) driverList.replaceChildren();
-    if(driverList){
-      const linkedIds=new Set(members.members.map(member=>member.driverId).filter(Boolean));
-      const identityEmails=new Set(members.members.map(member=>String(member.email||'').trim().toLowerCase()).filter(Boolean));
-      const unlinked=driverRows.filter(row=>!linkedIds.has(row.id)&&!identityEmails.has(String(row.record?.email||'').trim().toLowerCase()));
-      for(const row of unlinked){const item=document.createElement('article');item.className='rm-member';const name=document.createElement('strong');name.textContent=row.record?.name||row.record?.displayName||'Motoboy';const state=document.createElement('span');state.textContent='Sem convite · cadastro operacional sem identidade vinculada';item.append(name,state);const inviteButton=document.createElement('button');inviteButton.type='button';inviteButton.className='rm-primary';inviteButton.textContent='Convidar para acessar o Motoboy';inviteButton.addEventListener('click',()=>{adminPage.showPage?.('team');const emailInput=$('[data-invite] input[name="email"]');if(emailInput&&row.record?.email)emailInput.value=row.record.email;emailInput?.focus();});item.append(inviteButton);driverList.append(item)}
-      if(!unlinked.length&&!members.members.some(member=>member.driverId)){const empty=document.createElement('p');empty.textContent='Nenhum cadastro de motoboy aguardando convite ou vínculo.';driverList.append(empty)}
-    }
     memberRows.forEach(member => {
       const card = document.createElement('article'); card.className = 'rm-team-member';
-      const linkedDriver = driverRows.find(row => row.id === member.driverId);
       const memberStatus = member.disabled ? 'Conta desativada'
         : member.status === 'active' ? 'Ativo'
           : member.status === 'suspended' ? 'Acesso suspenso'
@@ -1539,58 +1553,132 @@
       if(member.userId===current.userId){const ownNote=document.createElement('p');ownNote.className='rm-team-protected-note';ownNote.textContent='Seu próprio vínculo administrativo não pode ser alterado nesta tela.';controls.append(ownNote)}
       controls.append(rowFeedback);
       details.append(controls);card.append(details);
-      if (current.permissions.includes('company.manage')) {
-        const linkBox = document.createElement('div'); linkBox.className = 'rm-driver-link';
-        const title = document.createElement('strong'); title.textContent = 'Motorista operacional'; linkBox.append(title);
-        const feedback = document.createElement('p'); feedback.className = 'rm-driver-link-status'; feedback.setAttribute('role', 'status');
-        const driver = linkedDriver;
-        if (member.driverId) {
-          const driverStatus = String(driver?.record?.status || '').normalize('NFD').replace(/[\u0300-\u036f]/gu, '').trim().toUpperCase();
-          const authorizedDriverStatuses = new Set(['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED',
-            'OFFLINE','UNAVAILABLE','INDISPONIVEL','BUSY','OCUPADO','PAUSED','PAUSADO']);
-          feedback.textContent = driverStatus && !authorizedDriverStatuses.has(driverStatus)
-            ? `Cadastro vinculado, mas inativo (${driver?.record?.status}). O acesso operacional está bloqueado.`
-            : `Vinculado a ${driver?.record?.name || driver?.record?.displayName || 'motorista ativo'}.`;
-          const unlink = document.createElement('button'); unlink.type = 'button'; unlink.className = 'rm-secondary'; unlink.textContent = 'Desvincular motorista';
-          unlink.addEventListener('click', async () => {
-            const confirmation=await window.RotaMotoDialog.confirm({title:'Desvincular motoboy?',message:`${member.email} deixará de receber entregas desta empresa até ser vinculado novamente.`,danger:true,confirmLabel:'Desvincular motoboy'});if(!confirmation?.confirmed)return;
-            unlink.disabled = true;
-            try { await request(`/admin/memberships/${member.membershipId}/driver`, { method: 'DELETE' }); await loadAdmin(); }
-            catch (error) { feedback.textContent = message(error); unlink.disabled = false; }
-          });
-          linkBox.append(feedback, unlink);
-        } else {
-          const eligible = member.status === 'active' && !member.disabled && member.emailVerified &&
-            member.permissions?.includes('sync.pull') && member.permissions?.includes('sync.push');
-          if (!eligible) feedback.textContent = 'Disponível quando a conta estiver ativa, confirmada e autorizada.';
-          else if (!canReadDrivers) feedback.textContent = 'Seu perfil não pode listar os motoristas desta empresa.';
-          else {
-            const select = document.createElement('select');
-            select.setAttribute('aria-label', `Motorista para ${member.email}`);
-            const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = 'Selecione um motorista'; select.append(placeholder);
-            const linkedElsewhere = new Set(members.members.filter(item => item.membershipId !== member.membershipId && item.driverId).map(item => item.driverId));
-            driverRows.filter(row => !linkedElsewhere.has(row.id)).forEach(row => {
-              const option = document.createElement('option'); option.value = row.id;
-              option.textContent = `${row.record?.name || row.record?.displayName || 'Motorista'}${row.record?.status ? ` · ${row.record.status}` : ''}`;
-              select.append(option);
-            });
-            const link = document.createElement('button'); link.type = 'button'; link.className = 'rm-primary'; link.textContent = 'Vincular motorista'; link.disabled = true;
-            select.addEventListener('change', () => { link.disabled = !select.value; });
-            link.addEventListener('click', async () => {
-              if (!select.value) return;
-              link.disabled = true;
-              try { await request(`/admin/memberships/${member.membershipId}/driver`, { method: 'PUT', body: JSON.stringify({ driverId: select.value }) }); await loadAdmin(); }
-              catch (error) { feedback.textContent = message(error); link.disabled = !select.value; }
-            });
-            linkBox.append(select, link, feedback);
-          }
-        }
-        const driverCard=document.createElement('article'); driverCard.className='rm-member';
-        const driverIdentity=document.createElement('strong'); driverIdentity.textContent=member.email; driverCard.append(driverIdentity,linkBox);
-        driverList?.append(driverCard);
-      }
       list.append(card);
     });
+    if(driverList){
+      const driverSummary=adminPage.querySelector('[data-driver-summary]');
+      const driverFeedback=adminPage.querySelector('[data-driver-feedback]');
+      const linkedMembers=memberRows.filter(member=>member.driverId);
+      const accountCandidates=memberRows.filter(member=>!member.driverId&&
+        (member.permissions?.includes('sync.pull')||member.permissions?.includes('sync.push')));
+      const linkedIds=new Set(linkedMembers.map(member=>member.driverId));
+      const identityEmails=new Set(memberRows.map(member=>String(member.email||'').trim().toLowerCase()).filter(Boolean));
+      const unlinkedDrivers=driverRows.filter(row=>!linkedIds.has(row.id)&&!identityEmails.has(String(row.record?.email||'').trim().toLowerCase()));
+      const linkableStatuses=new Set(['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED',
+        'OFFLINE','UNAVAILABLE','INDISPONIVEL','BUSY','OCUPADO','PAUSED','PAUSADO']);
+      const normalizedStatus=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').trim().toUpperCase();
+      const driverStatusLabel=value=>({ACTIVE:'Ativo',AVAILABLE:'Disponível',DISPONIVEL:'Disponível','EM ROTA':'Em rota',
+        CHEGOU:'Chegou','IN ROUTE':'Em rota',ARRIVED:'Chegou',OFFLINE:'Offline',UNAVAILABLE:'Indisponível',
+        INDISPONIVEL:'Indisponível',BUSY:'Ocupado',OCUPADO:'Ocupado',PAUSED:'Pausado',PAUSADO:'Pausado',
+        DISABLED:'Desativado',INACTIVE:'Inativo',INATIVO:'Inativo',INATIVA:'Inativo'})[normalizedStatus(value)]||
+        (value?'Estado não reconhecido':'Estado não informado');
+      const availabilityLabel=driverId=>{
+        if(availabilityReadFailed)return 'Disponibilidade não consultada';
+        const availability=availabilityByDriver.get(driverId);
+        if(!availability)return 'Disponibilidade não informada';
+        return availability.effectiveStatus==='online'?'Online agora':'Offline';
+      };
+      if(driverSummary)driverSummary.textContent=`${linkedMembers.length} contas vinculadas · ${driverRows.length} cadastros operacionais`;
+      if(driverFeedback)driverFeedback.textContent=availabilityReadFailed?'A disponibilidade não pôde ser consultada; os vínculos e cadastros foram carregados normalmente.':'';
+      const group=(title,description,items,emptyText)=>{
+        const section=document.createElement('section');section.className='rm-driver-group';
+        const heading=document.createElement('div');heading.className='rm-driver-group-heading';
+        const copy=document.createElement('div');const label=document.createElement('h3');label.textContent=`${title} · ${items.length}`;
+        const note=document.createElement('p');note.textContent=description;copy.append(label,note);heading.append(copy);section.append(heading);
+        const rows=document.createElement('div');rows.className='rm-driver-group-rows';
+        if(!items.length){const empty=document.createElement('p');empty.className='rm-driver-empty';empty.textContent=emptyText;rows.append(empty)}
+        section.append(rows);driverList.append(section);return rows;
+      };
+      const linkedRows=group('Contas vinculadas','A conta, o perfil e o cadastro operacional são exibidos separadamente.',linkedMembers,'Nenhuma conta está vinculada a um cadastro de motoboy.');
+      for(const member of linkedMembers){
+        const driver=driverRows.find(row=>row.id===member.driverId);
+        const details=document.createElement('details');details.className='rm-driver-card';
+        const summary=document.createElement('summary');summary.className='rm-driver-row';
+        const identity=document.createElement('span');identity.className='rm-driver-row-identity';
+        const email=document.createElement('strong');email.textContent=member.email;
+        const meta=document.createElement('small');meta.textContent=`${member.roleName} · ${member.disabled?'Conta desativada':member.status==='active'?'Conta ativa':member.status==='suspended'?'Acesso suspenso':member.status==='revoked'?'Vínculo encerrado':'Estado não disponível'}`;
+        const arrow=document.createElement('span');arrow.className='rm-team-chevron';arrow.setAttribute('aria-hidden','true');arrow.textContent='›';identity.append(email,meta);summary.append(identity,arrow);details.append(summary);
+        const content=document.createElement('div');content.className='rm-driver-card-content';
+        const driverName=document.createElement('strong');driverName.textContent=driver?.record?.name||driver?.record?.displayName||'Cadastro operacional não carregado';content.append(driverName);
+        const driverState=document.createElement('p');driverState.textContent=`Cadastro: ${driverStatusLabel(driver?.record?.status)}`;content.append(driverState);
+        const availability=document.createElement('p');availability.textContent=`Disponibilidade: ${availabilityLabel(member.driverId)}`;content.append(availability);
+        const status=document.createElement('p');status.className='rm-driver-link-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+        if(driver&&!linkableStatuses.has(normalizedStatus(driver.record?.status)))status.textContent='Este cadastro está inativo ou sem estado reconhecido. O Motoboy não autoriza o acesso operacional.';
+        else if(!driver)status.textContent='O vínculo permanece registrado, mas o cadastro não veio na lista atual. Atualize a lista antes de qualquer alteração.';
+        const unlink=document.createElement('button');unlink.type='button';unlink.className='rm-secondary';unlink.textContent='Encerrar vínculo';
+        unlink.addEventListener('click',async()=>{
+          const confirmation=await window.RotaMotoDialog.confirm({title:'Encerrar vínculo com o Motoboy?',
+            message:`A conta ${member.email} perderá o acesso ao cadastro operacional. Entregas em andamento precisam ser reatribuídas ou concluídas antes; o histórico será preservado.`,
+            danger:true,confirmLabel:'Encerrar vínculo'});if(!confirmation?.confirmed)return;
+          unlink.disabled=true;content.setAttribute('aria-busy','true');status.textContent='Verificando e encerrando o vínculo…';let persisted=false;
+          try{
+            const result=await request(`/admin/memberships/${member.membershipId}/driver`,{method:'DELETE'});
+            if(result?.membershipId!==member.membershipId||result.driverId!==null||typeof result.changed!=='boolean')throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});
+            persisted=true;const refreshed=await loadAdmin();
+            if(!refreshed?.members?.members?.some(item=>item.membershipId===member.membershipId&&item.driverId===null))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});
+            if(driverFeedback)driverFeedback.textContent=result.changed?'Vínculo encerrado e confirmado pelo servidor. A disponibilidade e a presença operacional foram finalizadas quando estavam ativas.':'Esta conta já não tinha um vínculo ativo.';
+          }catch(error){const text=persisted?`Vínculo encerrado, mas a lista não pôde ser confirmada: ${message(error)}`:message(error);status.textContent=text;if(driverFeedback)driverFeedback.textContent=text;if(!persisted)unlink.disabled=false;}
+          finally{content.removeAttribute('aria-busy')}
+        });
+        content.append(status,unlink);details.append(content);linkedRows.append(details);
+      }
+      const accountRows=group('Contas autorizadas sem cadastro','Somente contas ativas, confirmadas e autorizadas podem ser vinculadas.',accountCandidates,'Nenhuma conta com acesso de sincronização aguarda um cadastro.');
+      for(const member of accountCandidates){
+        const details=document.createElement('details');details.className='rm-driver-card';const summary=document.createElement('summary');summary.className='rm-driver-row';
+        const identity=document.createElement('span');identity.className='rm-driver-row-identity';const email=document.createElement('strong');email.textContent=member.email;
+        const accountState=document.createElement('small');accountState.textContent=`${member.roleName} · ${member.disabled?'Conta desativada':member.status==='active'?'Conta ativa':member.status==='invited'?'Aguardando convite':member.status==='suspended'?'Acesso suspenso':'Vínculo encerrado'}`;
+        const arrow=document.createElement('span');arrow.className='rm-team-chevron';arrow.setAttribute('aria-hidden','true');arrow.textContent='›';identity.append(email,accountState);summary.append(identity,arrow);details.append(summary);
+        const content=document.createElement('div');content.className='rm-driver-card-content';
+        const eligible=member.status==='active'&&!member.disabled&&member.emailVerified&&member.permissions?.includes('sync.pull')&&member.permissions?.includes('sync.push');
+        const note=document.createElement('p');note.className='rm-driver-link-status';note.setAttribute('role','status');
+        if(!eligible)note.textContent='Ative a conta, confirme o email e revise as permissões de sincronização em Equipe e permissões.';
+        else if(!canReadDrivers)note.textContent='Seu perfil não pode listar os cadastros operacionais desta empresa.';
+        else{
+          const select=document.createElement('select');select.setAttribute('aria-label',`Cadastro operacional para ${member.email}`);
+          const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Selecione um cadastro operacional';select.append(placeholder);
+          const linkedElsewhere=new Set(memberRows.filter(item=>item.membershipId!==member.membershipId&&item.driverId).map(item=>item.driverId));
+          driverRows.filter(row=>!linkedElsewhere.has(row.id)).forEach(row=>{
+            const statusKey=normalizedStatus(row.record?.status),linkable=linkableStatuses.has(statusKey);
+            const option=document.createElement('option');option.value=row.id;option.disabled=!linkable;
+            const name=row.record?.name||row.record?.displayName||'Motoboy';
+            option.textContent=`${name} · ${driverStatusLabel(row.record?.status)}${linkable?'':' · indisponível para vínculo'}`;select.append(option);
+          });
+          const link=document.createElement('button');link.type='button';link.className='rm-primary';link.textContent='Vincular cadastro';link.disabled=true;
+          select.addEventListener('change',()=>{link.disabled=!select.value});
+          link.addEventListener('click',async()=>{
+            const selectedDriverId=select.value;if(!selectedDriverId)return;
+            link.disabled=true;content.setAttribute('aria-busy','true');note.textContent='Confirmando o vínculo no servidor…';let persisted=false;
+            try{
+              const result=await request(`/admin/memberships/${member.membershipId}/driver`,{method:'PUT',body:JSON.stringify({driverId:selectedDriverId})});
+              if(result?.membershipId!==member.membershipId||result.driverId!==selectedDriverId||typeof result.changed!=='boolean')throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});
+              persisted=true;const refreshed=await loadAdmin();
+              if(!refreshed?.members?.members?.some(item=>item.membershipId===member.membershipId&&item.driverId===selectedDriverId))throw Object.assign(new Error(),{code:'INVALID_RESPONSE'});
+              const driverFeedback=adminPage.querySelector('[data-driver-feedback]');if(driverFeedback)driverFeedback.textContent='Vínculo confirmado pelo servidor e relido da empresa.';
+            }catch(error){const text=persisted?`Vínculo salvo, mas a lista não pôde ser confirmada: ${message(error)}`:message(error);note.textContent=text;if(!persisted)link.disabled=!select.value;}
+            finally{content.removeAttribute('aria-busy')}
+          });
+          content.append(select,link,note);
+        }
+        if(!eligible||!canReadDrivers)content.append(note);
+        details.append(content);accountRows.append(details);
+      }
+      const unlinkedMessage=!canReadDrivers?'Seu perfil não pode consultar os cadastros operacionais desta empresa.':'Todos os cadastros carregados já têm uma conta reconhecida ou vínculo.';
+      const unlinkedRows=group('Cadastros sem conta vinculada','Cadastros operacionais não são contas e não enviam convites por si só.',unlinkedDrivers,unlinkedMessage);
+      for(const row of unlinkedDrivers){
+        const item=document.createElement('article');item.className='rm-driver-card rm-driver-unlinked';
+        const identity=document.createElement('div');identity.className='rm-driver-row-identity';const name=document.createElement('strong');name.textContent=row.record?.name||row.record?.displayName||'Motoboy';
+        const state=document.createElement('small');state.textContent=`Cadastro ${driverStatusLabel(row.record?.status)} · sem conta vinculada`;identity.append(name,state);
+        item.append(identity);
+        if(current.permissions.includes('members.invite')){
+          const inviteButton=document.createElement('button');inviteButton.type='button';inviteButton.className='rm-secondary';inviteButton.textContent='Convidar pessoa';
+          inviteButton.addEventListener('click',()=>{adminPage.showPage?.('team');const emailInput=$('[data-invite] input[name="email"]');if(emailInput&&row.record?.email)emailInput.value=row.record.email;emailInput?.focus();});
+          item.append(inviteButton);
+        }else{
+          const inviteNote=document.createElement('small');inviteNote.className='rm-driver-link-status';inviteNote.textContent='Seu perfil não permite enviar convites.';item.append(inviteNote);
+        }
+        unlinkedRows.append(item);
+      }
+    }
     if (driverCursor && canReadDrivers) {
       const more = document.createElement('button'); more.type = 'button'; more.className = 'rm-secondary'; more.textContent = 'Carregar mais motoristas';
       more.addEventListener('click', async () => { more.disabled = true; try { await loadAdmin({ appendDrivers: true }); } catch (error) { $('[data-admin-error]').textContent = message(error); more.disabled = false; } });

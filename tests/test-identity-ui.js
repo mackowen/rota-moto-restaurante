@@ -182,9 +182,9 @@ assert.match(source, /data-permissions/u, 'role permissions retain the server pe
 assert.match(appSource, /Controles locais deste aparelho/u, 'local users and profiles are clearly scoped to this browser');
 assert.match(source, /Reenviar convite/u, 'pending invitations can be resent through the existing identity invitation service');
 assert.match(source, /Revogar convite/u, 'pending invitations can be revoked through audited membership status changes');
-assert.match(source, /normalize\('NFD'\)[\s\S]*?authorizedDriverStatuses\.has\(driverStatus\)/u,
-  'Driver status labels normalize canonical status casing and accent rules before reporting access');
-assert.match(source, /\['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED'[\s\S]*?'OFFLINE','UNAVAILABLE','INDISPONIVEL','BUSY','OCUPADO','PAUSED','PAUSADO'\]/u,
+assert.match(source, /normalizedStatus=value=>String\(value\|\|''\)\.normalize\('NFD'\)[\s\S]*?linkableStatuses\.has\(normalizedStatus\(driver\.record\?\.status\)\)/u,
+  'Driver status labels normalize canonical status casing and accents before reporting access');
+assert.match(source, /const linkableStatuses=new Set\(\['ACTIVE','AVAILABLE','DISPONIVEL','EM ROTA','CHEGOU','IN ROUTE','ARRIVED'[\s\S]*?'OFFLINE','UNAVAILABLE','INDISPONIVEL','BUSY','OCUPADO','PAUSED','PAUSADO'\]\)/u,
   'Driver UI authorization status vocabulary stays aligned with the backend access allowlist');
 assert.match(source, /Convites para acompanhar: \$\{pendingInvitations\.length\}/u, 'pending and expired invitations are counted independently from team members');
 assert.match(source, /members\.members\.filter\(member=>member\.status==='invited'\)/u, 'invitation records are rendered in a separate team section');
@@ -305,6 +305,21 @@ assert.match(styles, /\.rm-account-dialog-footer\s*\{[^}]*safe-area-inset-bottom
 assert.doesNotMatch(source, /window\.(?:confirm|alert|prompt)\s*\(/u, 'account flows do not fall back to native JavaScript dialogs');
 assert.match(source, /visibleControls\(\)/u, 'account dialog keeps keyboard focus within visible controls');
 assert.match(source, /driverCursor/u, 'driver linking can navigate a paginated driver list');
+assert.match(source, /data-driver-summary[\s\S]*?contas vinculadas/u, 'Motoboys has a compact summary of server-loaded identity links and operational records');
+assert.match(source, /if\(current\.permissions\.includes\('members\.invite'\)\)[\s\S]*?Convidar pessoa[\s\S]*?Seu perfil não permite enviar convites/u,
+  'the driver page only offers invitation navigation to identities authorized to invite');
+assert.match(source, /const driverPage = canReadDrivers[\s\S]*?if\(generation!==adminLoadGeneration\)return;[\s\S]*?availabilityByDriver/u,
+  'stale driver and availability responses cannot render over a newer company admin load');
+assert.match(source, /request\('\/driver-availability'\)[\s\S]*?Disponibilidade não consultada/u, 'live availability is queried separately and is not inferred from Driver registration state');
+assert.match(source, /Vínculo confirmado pelo servidor e relido da empresa/u, 'link feedback requires server acknowledgement and membership readback');
+assert.match(source, /refreshed\?\.members\?\.members\?\.some\(item=>item\.membershipId===member\.membershipId&&item\.driverId===null\)/u, 'unlink feedback follows a canonical membership readback');
+assert.match(source, /DRIVER_HAS_ACTIVE_DELIVERIES: 'Reatribua ou conclua/u, 'an unlink blocked by ongoing work has a user-readable explanation');
+assert.match(styles, /\.rm-admin-subpage\[data-admin-subpage="drivers"\][\s\S]*?\.rm-driver-group[\s\S]*?@media\(max-width:520px\)[\s\S]*?\.rm-driver-unlinked/u, 'Motoboys uses scoped compact and mobile-adaptive layout rules');
+const linkableMatch = source.match(/const linkableStatuses=new Set\(\[([\s\S]*?)\]\);/u);
+assert(linkableMatch, 'link selector exposes a finite operational status allowlist');
+const uiDriverStatuses = new Set(vm.runInNewContext(`[${linkableMatch[1]}]`));
+assert.deepEqual([...uiDriverStatuses].sort(), [...require('../backend/domain/driver-access').AUTHORIZED_DRIVER_STATUSES].sort(),
+  'UI and backend share the same allowed Driver identity states');
 assert.match(source, /app\.inert = open \|\| gated/u, 'authentication keeps the application inaccessible until authorized');
 assert.match(source, /mfaLocked = Boolean\(session && \(session\.mfaEnrollmentRequired \|\| \(session\.mfaRequired && !session\.mfaVerified\)\)\)/u,
   'an enrollment-pending or unverified required-MFA session locks the application root');

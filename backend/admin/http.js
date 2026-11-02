@@ -232,12 +232,15 @@ function createAdminHttpHandler({ identityService, adminService, rateLimiter = c
         REVISION_CONFLICT: 409, UNAUTHENTICATED: 401, FORBIDDEN: 403, MFA_REQUIRED: 403,
         CSRF_INVALID: 403, ORIGIN_INVALID: 403, NOT_FOUND: 404, RATE_LIMITED: 429,
         PAYLOAD_TOO_LARGE: 413, UNSUPPORTED_MEDIA_TYPE: 415, DEPENDENCY_UNAVAILABLE: 503,
-        DRIVER_MEMBERSHIP_INELIGIBLE: 409, DRIVER_NOT_FOUND: 404, DRIVER_ALREADY_LINKED: 409, MEMBERSHIP_DRIVER_CONFLICT: 409,
+        DRIVER_MEMBERSHIP_INELIGIBLE: 409, DRIVER_INACTIVE: 409, DRIVER_HAS_ACTIVE_DELIVERIES: 409,
+        DRIVER_NOT_FOUND: 404, DRIVER_ALREADY_LINKED: 409, MEMBERSHIP_DRIVER_CONFLICT: 409,
         FINANCE_PERMISSION_CATALOG_UNAVAILABLE: 409 };
       status = map[errorCode] || 500;
       const messages = { INVALID_INPUT: 'Dados inválidos.', INVALID_STATE_TRANSITION: 'Transição de conta inválida.',
         LAST_OWNER_REQUIRED: 'A empresa precisa manter ao menos um owner ativo.', UNAUTHENTICATED: 'Sessão inválida ou expirada.',
         DRIVER_MEMBERSHIP_INELIGIBLE: 'A associação não está apta para sincronização Motoboy.',
+        DRIVER_INACTIVE: 'O cadastro operacional está inativo ou não está autorizado para o aplicativo Motoboy.',
+        DRIVER_HAS_ACTIVE_DELIVERIES: 'Reatribua ou conclua as entregas em andamento antes de encerrar este vínculo.',
         DRIVER_NOT_FOUND: 'Motorista canônico não encontrado nesta empresa.',
         DRIVER_ALREADY_LINKED: 'Este motorista já está vinculado a outra associação.',
         FINANCE_PERMISSION_CATALOG_UNAVAILABLE: 'As permissões financeiras não estão disponíveis no catálogo desta empresa.',
