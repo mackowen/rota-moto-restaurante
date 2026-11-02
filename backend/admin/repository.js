@@ -138,6 +138,17 @@ function createAdminRepository() {
   }
   async function updateMembership(client, principal, membershipId, input) {
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1::text,0))`, [principal.company_id]);
+    if (['suspended', 'revoked'].includes(input.status)) {
+      const invitationTarget = await client.query(`SELECT user_id::text,status FROM rotamoto.memberships
+        WHERE company_id=$1 AND id=$2`, [principal.company_id, membershipId]);
+      if (invitationTarget.rows[0]?.status === 'invited') {
+        // Invitation acceptance locks the token before the membership. Consume
+        // pending tokens in that same order to avoid a revoke/accept deadlock.
+        await client.query(`UPDATE rotamoto.identity_tokens SET consumed_at=coalesce(consumed_at,now())
+          WHERE company_id=$1 AND user_id=$2 AND purpose='membership_invitation' AND consumed_at IS NULL`,
+        [principal.company_id, invitationTarget.rows[0].user_id]);
+      }
+    }
     const current = await client.query(`SELECT m.id::text,m.user_id::text,m.role_id::text,m.status,r.role_key,
         u.disabled_at,u.email_verified_at,c.password_phc,c.mfa_required
       FROM rotamoto.memberships m JOIN rotamoto.roles r ON r.id=m.role_id AND r.company_id=m.company_id
@@ -417,7 +428,8 @@ function createAdminRepository() {
         u.disabled_at,m.status,m.role_id::text,r.role_key,r.display_name,m.created_at,m.activated_at,
         to_char(m.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at_cursor,
         coalesce((SELECT jsonb_agg(rp.permission_key ORDER BY rp.permission_key)
-          FROM rotamoto.role_permissions rp WHERE rp.company_id=m.company_id AND rp.role_id=m.role_id),'[]'::jsonb) AS permissions
+          FROM rotamoto.role_permissions rp WHERE rp.company_id=m.company_id AND rp.role_id=m.role_id),'[]'::jsonb) AS permissions,
+        invitation.invitation_expires_at
       FROM rotamoto.memberships m JOIN rotamoto.users u ON u.id=m.user_id
       JOIN rotamoto.roles r ON r.id=m.role_id AND r.company_id=m.company_id
       LEFT JOIN LATERAL (

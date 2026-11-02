@@ -8,6 +8,8 @@ const uiPath = path.join(__dirname, '..', 'identity-ui.js');
 const assetManifest = require('./helpers/asset-manifest').readAssetManifest();
 const htmlPath = path.join(__dirname, '..', 'index.html');
 const source = fs.readFileSync(uiPath, 'utf8');
+assert.match(source, /INVALID_TOKEN:\s*'Este código não é válido, expirou ou já foi usado/u,
+  'expired or already consumed invitation tokens receive clear, non-technical feedback');
 const adminDialogSource = fs.readFileSync(path.join(__dirname, '..', 'admin-form-dialog.js'), 'utf8');
 const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 assert.match(appSource, /Situação do cadastro<select class="select" name="status">/u,

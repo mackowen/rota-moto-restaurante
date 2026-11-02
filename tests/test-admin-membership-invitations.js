@@ -28,11 +28,40 @@ async function main() {
   assert.match(statement, /LEFT JOIN LATERAL[\s\S]*rotamoto\.identity_tokens/u);
   assert.match(statement, /it\.company_id=m\.company_id AND it\.user_id=m\.user_id/u);
   assert.match(statement, /it\.purpose='membership_invitation' AND it\.consumed_at IS NULL/u);
+  assert.match(statement, /invitation\.invitation_expires_at/u,
+    'the membership DTO query returns the pending invitation expiration timestamp');
   assert.deepEqual(parameters, [companyId, 3]);
   assert.equal(result.members[0].invitationExpiresAt, expiresAt);
   assert.equal(result.members[1].invitationExpiresAt, null);
   assert.equal(result.members[1].status, 'active');
+  const revocationQueries = [];
+  const revocationClient = { async query(sql, values) {
+    revocationQueries.push({ sql: String(sql), values });
+    if (/SELECT user_id::text,status FROM rotamoto\.memberships/u.test(sql)) {
+      return { rowCount: 1, rows: [{ user_id: 'user-invited', status: 'invited' }] };
+    }
+    if (/SELECT m\.id::text,m\.user_id::text,m\.role_id::text,m\.status,r\.role_key/u.test(sql)) {
+      return { rowCount: 1, rows: [{ id: 'membership-invited', user_id: 'user-invited', role_id: 'role-operator',
+        status: 'invited', role_key: 'operator', disabled_at: null, email_verified_at: null, password_phc: null,
+        mfa_required: null }] };
+    }
+    if (/SELECT permission_key FROM rotamoto\.role_permissions/u.test(sql)) {
+      return { rowCount: 1, rows: [{ permission_key: 'orders.read' }] };
+    }
+    return { rowCount: 1, rows: [] };
+  } };
+  const changed = await createAdminRepository().updateMembership(revocationClient,
+    { company_id: companyId, user_id: 'qa-admin', role_id: 'role-admin' }, 'membership-invited', { status: 'revoked' });
+  assert.equal(changed.status, 'revoked');
+  const consumeInvite = revocationQueries.find(item => /UPDATE rotamoto\.identity_tokens SET consumed_at=coalesce\(consumed_at,now\(\)\)/u.test(item.sql));
+  assert.deepEqual(consumeInvite?.values, [companyId, 'user-invited'],
+    'revoking a pending membership consumes outstanding invite tokens in the same transaction');
+  const consumeIndex = revocationQueries.indexOf(consumeInvite);
+  const membershipLockIndex = revocationQueries.findIndex(item => /SELECT m\.id::text,m\.user_id::text,m\.role_id::text,m\.status,r\.role_key[\s\S]*FOR UPDATE OF m/u.test(item.sql));
+  assert(consumeIndex >= 0 && membershipLockIndex > consumeIndex,
+    'revocation locks/consumes invitation token before locking membership, matching acceptance order');
   process.stdout.write('Admin invitation expiry DTO tenant scope and active-token filter: PASS\n');
+  process.stdout.write('Admin invitation revocation consumes pending tokens: PASS\n');
 }
 
 main().catch(error => {
