@@ -9,7 +9,8 @@ async function main() {
   let state = 'ready';
   const handler = createIdentityHttpHandler({ identityService: { async getBootstrapStatus() {
     return { state, checks: { schema: true, pricing: true } };
-  } }, bootstrapReadiness: () => ({ mfaKeystoreConfigured: true, invitationDeliveryConfigured: true }) });
+  } }, bootstrapReadiness: () => ({ mfaKeystoreConfigured: true, smtpTransportConfigured: false,
+    invitationDeliveryConfigured: true, localOnlyBootstrapAvailable: false }) });
   const server = http.createServer(async (req, res) => { if (!await handler(req, res)) { res.writeHead(404); res.end(); } });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -21,7 +22,8 @@ async function main() {
       const body = await response.json();
       assert.equal(body.state, candidate);
       assert.deepEqual(body.checks, { databaseAndMigrations: true, pricingConfigurationAvailable: true,
-        mfaKeystoreConfigured: true, invitationDeliveryConfigured: true });
+        mfaKeystoreConfigured: true, smtpTransportConfigured: false, invitationDeliveryConfigured: true,
+        localOnlyBootstrapAvailable: false });
       assert.equal(Object.keys(body).some(key => /secret|token|founderId|userId|companyId/iu.test(key)), false,
         'public readiness does not reveal secret or identity material');
     }

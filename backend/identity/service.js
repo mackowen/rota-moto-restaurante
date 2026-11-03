@@ -109,7 +109,8 @@ async function audit(client, { companyId, actorUserId = null, actorKind, action,
 
 function validateProvisioningInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).some(key => !['companyName', 'email', 'idempotencyKey', 'initialSetup'].includes(key))) {
+      Object.keys(input).some(key => !['companyName', 'email', 'idempotencyKey', 'initialSetup', 'localOnly'].includes(key)) ||
+      input.localOnly !== undefined && typeof input.localOnly !== 'boolean') {
     throw new IdentityError('INVALID_INPUT', 'Dados de provisionamento inválidos.');
   }
   const companyName = requiredText(input.companyName, 'Nome da empresa', 160);
@@ -118,7 +119,7 @@ function validateProvisioningInput(input) {
   if (Buffer.byteLength(idempotencyKey, 'utf8') < 16) {
     throw new IdentityError('INVALID_INPUT', 'Chave idempotente inválida.');
   }
-  return { companyName, email, idempotencyKey,
+  return { companyName, email, idempotencyKey, localOnly: input.localOnly === true,
     initialSetup: input.initialSetup === undefined ? null : validateInitialSetup(input.initialSetup) };
 }
 
@@ -206,15 +207,18 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
   }
 
   async function provisionInitialOwner(input, context = undefined) {
-    const { companyName, email, idempotencyKey, initialSetup } = validateProvisioningInput(input);
+    const { companyName, email, idempotencyKey, initialSetup, localOnly: requestedLocalOnly } = validateProvisioningInput(input);
     if (typeof authorizeProvisioner !== 'function') {
       throw new IdentityError('PROVISIONER_NOT_CONFIGURED', 'Autorização administrativa não configurada.');
     }
     let actorRef;
     let bootstrapCapabilityDigest = null;
+    let localOnly = false;
     try {
       const actor = await authorizeProvisioner({ action: 'tenant.owner.provision', email, context });
       actorRef = requiredText(actor?.actorRef, 'Identidade administrativa', 160);
+      localOnly = requestedLocalOnly && actor?.localOnly === true;
+      if (requestedLocalOnly && !localOnly) throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Modo de instalação local não autorizado.');
       if (actor?.bootstrapCapabilityDigest !== undefined) {
         if (!Buffer.isBuffer(actor.bootstrapCapabilityDigest) || actor.bootstrapCapabilityDigest.length !== 32)
           throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
@@ -225,8 +229,8 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     } catch (_) {
       throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
     }
-    const provider = requireEmailProvider(emailProvider);
-    const normalizedRequest = initialSetup === null ? { companyName, email } : { companyName, email, initialSetup };
+    const provider = localOnly ? null : requireEmailProvider(emailProvider);
+    const normalizedRequest = { companyName, email, localOnly, ...(initialSetup === null ? {} : { initialSetup }) };
     const requestDigest = digestText(JSON.stringify(normalizedRequest));
     const keyDigest = digestText(idempotencyKey);
     const client = await pool.connect();
@@ -285,7 +289,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
           if (previous.delivery_status === 'sent') {
             return { companyId, userId, replayed: true, send: false, delivery: 'sent', setupReadback: Boolean(initialSetup) };
           }
-          if (previous.delivery_status === 'pending' &&
+          if (previous.delivery_status === 'pending' && !localOnly &&
               new Date(previous.updated_at).getTime() > clock().getTime() - DELIVERY_LEASE_MS) {
             return { companyId, userId, replayed: true, send: false, delivery: 'pending', setupReadback: Boolean(initialSetup) };
           }
@@ -326,7 +330,8 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
           await client.query(`INSERT INTO rotamoto.memberships (id,company_id,user_id,role_id,status)
             VALUES ($1,$2,$3,$4,'invited')`, [membershipId, companyId, userId, roleId]);
           await audit(client, { companyId, actorKind: 'admin_provisioner', action: 'tenant.owner.provisioned',
-            resourceType: 'membership', resourceId: membershipId, details: { actor_ref: actorRef, delivery_status: 'pending' } });
+            resourceType: 'membership', resourceId: membershipId, details: { actor_ref: actorRef,
+              delivery_status: localOnly ? 'local_handoff' : 'pending', installation_mode: localOnly ? 'local_only' : 'public_invitation' } });
           if (browserBootstrapReady) await client.query(`INSERT INTO rotamoto.provisioning_requests
             (idempotency_key_digest,request_digest,company_id,user_id,delivery_status,bootstrap_capability_digest)
             VALUES ($1,$2,$3,$4,'pending',$5)`, [keyDigest, requestDigest, companyId, userId, bootstrapCapabilityDigest]);
@@ -346,7 +351,9 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
         await client.query(`INSERT INTO rotamoto.identity_tokens
           (id,company_id,user_id,purpose,token_digest,expires_at)
           VALUES ($1,$2,$3,'owner_invitation',$4,$5)`, [id(), companyId, userId, invitation.digest, expiresAt]);
-        return { companyId, userId, replayed: Boolean(existing.rowCount), send: true, setupReadback: Boolean(initialSetup),
+        if (localOnly) await audit(client, { companyId, actorKind: 'admin_provisioner', action: 'tenant.owner.local_invitation_ready',
+          resourceType: 'user', resourceId: userId, details: { installation_mode: 'local_only', delivery_status: 'local_handoff' } });
+        return { companyId, userId, replayed: Boolean(existing.rowCount), send: !localOnly, localOnly, setupReadback: Boolean(initialSetup),
           message: { to: email, kind: 'owner_invitation', token: invitation.token, expiresAt, companyName } };
       });
     } finally {
@@ -355,6 +362,9 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     if (delivery.setupReadback) {
       await verifyCommittedInitialSetup(delivery.companyId, companyName, initialSetup);
     }
+    if (delivery.localOnly) return { companyId: delivery.companyId, userId: delivery.userId,
+      delivery: 'local_handoff', localInvitationToken: delivery.message.token, replayed: delivery.replayed,
+      setupReadback: Boolean(delivery.setupReadback) };
     if (!delivery.send) return { companyId: delivery.companyId, userId: delivery.userId,
       delivery: delivery.delivery, replayed: true, setupReadback: Boolean(delivery.setupReadback) };
 
@@ -476,13 +486,15 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
         return inviteMembership(client, principal, { ...input, email, roleId });
       });
       try { await provider.send(prepared.message); }
-      catch (_) {
+      catch (deliveryError) {
         await transaction(client, async () => {
           await setTenant(client, prepared.companyId);
           await client.query(`UPDATE rotamoto.identity_tokens SET consumed_at=now() WHERE id=$1 AND consumed_at IS NULL`, [prepared.tokenId]);
           await audit(client, { companyId: prepared.companyId, actorUserId: prepared.actorUserId, actorKind: 'user',
             action: 'membership.invitation.delivery_failed', resourceType: 'membership', resourceId: prepared.membershipId });
         });
+        if (deliveryError?.code === 'INVITATION_LINKS_UNAVAILABLE')
+          throw new IdentityError('INVITATION_LINKS_UNAVAILABLE', 'Convites externos exigem uma URL pública HTTPS; nenhum convite local será enviado por SMTP.');
         throw new IdentityError('EMAIL_DELIVERY_FAILED', 'Entrega do convite indisponível.');
       }
       await transaction(client, async () => {

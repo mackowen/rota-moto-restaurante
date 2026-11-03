@@ -39,10 +39,12 @@ function validateSmtpSettings(input) {
   if (!username || username.length > 320 || /[\r\n\u0000-\u001f\u007f]/u.test(username) || typeof password !== 'string' || Buffer.byteLength(password, 'utf8') < 1 || Buffer.byteLength(password, 'utf8') > 4096 || password.includes('\0')) throw inputError('Informe usuário e credencial SMTP válidos.');
   if (!emailValid(senderEmail) || !emailValid(testRecipient)) throw inputError('Informe e-mails válidos para remetente e teste.');
   if (!senderName || Buffer.byteLength(senderName, 'utf8') > 120 || /[\r\n\u0000-\u001f\u007f]/u.test(senderName)) throw inputError('Informe um nome de exibição sem quebras de linha.');
-  let base;
-  try { base = new URL(publicBaseUrl); } catch (_) { throw inputError('Informe a URL HTTPS que os destinatários usarão para abrir convites.'); }
-  if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash || net.isIP(base.hostname) || ['localhost'].includes(base.hostname.toLowerCase()) || base.hostname.endsWith('.localhost')) throw inputError('A URL dos convites precisa ser pública, HTTPS e sem credenciais, query ou fragmento.');
-  return Object.freeze({ provider, senderEmail, senderName, host, port, tlsMode, username, password, testRecipient, publicBaseUrl: base.toString() });
+  let base = null;
+  if (publicBaseUrl) {
+    try { base = new URL(publicBaseUrl); } catch (_) { throw inputError('A URL dos convites precisa ser pública e HTTPS.'); }
+    if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash || net.isIP(base.hostname) || ['localhost'].includes(base.hostname.toLowerCase()) || base.hostname.endsWith('.localhost')) throw inputError('A URL dos convites precisa ser pública, HTTPS e sem credenciais, query ou fragmento.');
+  }
+  return Object.freeze({ provider, senderEmail, senderName, host, port, tlsMode, username, password, testRecipient, publicBaseUrl: base?.toString() || '' });
 }
 
 function safeSmtpError(error) {
@@ -138,7 +140,12 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
       const value = JSON.parse(text);
       if (value?.version !== 1 || value.disabled === true && Object.keys(value).some(key => !['version', 'disabled', 'disabledAt'].includes(key))) throw new Error('invalid');
       if (value.disabled === true) return value;
-      if (typeof value.passwordRef !== 'string' || !EMAIL.test(value.senderEmail) || !value.publicBaseUrl) throw new Error('invalid');
+      if (typeof value.passwordRef !== 'string' || !EMAIL.test(value.senderEmail) || typeof value.publicBaseUrl !== 'string') throw new Error('invalid');
+      if (value.publicBaseUrl) {
+        const base = new URL(value.publicBaseUrl);
+        if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash || net.isIP(base.hostname) ||
+            ['localhost'].includes(base.hostname.toLowerCase()) || base.hostname.endsWith('.localhost')) throw new Error('invalid');
+      }
       return value;
     } catch (_) { throw Object.assign(new Error('Configuração SMTP protegida indisponível.'), { code: 'SMTP_CONFIGURATION_UNAVAILABLE' }); }
   }
@@ -218,7 +225,7 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
   async function invitationProvider() {
     const stored = await loadStored();
     if (stored?.disabled) return null;
-    if (!stored) return null;
+    if (!stored || !stored.publicBaseUrl) return null;
     const password = await secretProvider.get(stored.passwordRef, { name: SECRET_NAME, scope: SECRET_SCOPE });
     return mailProviderFactory({ host: stored.host, port: stored.port, secure: stored.tlsMode === 'tls',
       requireTLS: stored.tlsMode === 'starttls', user: stored.username, password,
@@ -228,7 +235,7 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
   async function sendInvitation(message) {
     return serialize(async () => {
       const provider = await invitationProvider();
-      if (!provider) throw Object.assign(new Error('Serviço de e-mail ainda não foi testado e configurado.'), { code: 'EMAIL_PROVIDER_NOT_CONFIGURED' });
+      if (!provider) throw Object.assign(new Error('Convites por e-mail estão desativados até configurar uma URL pública HTTPS. Use o fluxo local de instalação ou configure o domínio depois.'), { code: 'INVITATION_LINKS_UNAVAILABLE' });
       try { return await provider.send(message); } finally { provider.close(); }
     });
   }
@@ -244,12 +251,22 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
     catch (_) { return false; }
   }
 
+  async function transportReadiness() {
+    try {
+      const stored = await loadStored();
+      if (stored?.disabled || !stored?.passwordRef || stored.lastTestStatus !== 'accepted_by_smtp') return false;
+      const password = await secretProvider.get(stored.passwordRef, { name: SECRET_NAME, scope: SECRET_SCOPE });
+      return typeof password === 'string' && password.length > 0;
+    } catch (_) { return false; }
+  }
+
   async function status() {
     const stored = await loadStored();
     if (stored?.disabled) return { configured: false, disabled: true, credentialStored: false, existingCredentialAvailable: false, oauthAvailable: false };
-    return stored ? { configured: true, provider: stored.provider, host: stored.host, port: stored.port,
+    return stored ? { configured: true, transportConfigured: stored.lastTestStatus === 'accepted_by_smtp',
+      invitationLinksConfigured: Boolean(stored.publicBaseUrl), provider: stored.provider, host: stored.host, port: stored.port,
       tlsMode: stored.tlsMode, senderEmail: stored.senderEmail, senderName: stored.senderName, testRecipient: stored.senderEmail,
-      publicBaseUrl: stored.publicBaseUrl,
+      publicBaseUrl: stored.publicBaseUrl || null,
       lastTestStatus: stored.lastTestStatus, lastTestAt: stored.lastTestAt, credentialStored: true, existingCredentialAvailable: false } :
       { configured: false, ...(legacy ? { provider: legacy.provider, host: legacy.host, port: legacy.port,
         tlsMode: legacy.tlsMode, senderEmail: legacy.senderEmail, senderName: legacy.senderName, testRecipient: legacy.testRecipient,
@@ -268,7 +285,7 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
     });
   }
 
-  return Object.freeze({ authorize, validate, test, testAsAdmin, sendInvitation, readiness, status, disable });
+  return Object.freeze({ authorize, validate, test, testAsAdmin, sendInvitation, readiness, transportReadiness, status, disable });
 }
 
 module.exports = { createSmtpConfigurationService, validateSmtpSettings, resolvePublicSmtpAddresses, safeSmtpError };

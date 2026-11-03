@@ -26,6 +26,8 @@
   let smtpSetupStatusLoaded = false;
   let smtpCredentialAvailable = false;
   let smtpConfigurationSaved = false;
+  let smtpTransportSaved = false;
+  let localOnlyMode = false;
   let operationKey = '';
   let busy = false;
   let finished = null;
@@ -88,6 +90,7 @@
       diagnostics = { state: bootstrap.state || 'not_ready', health: health.ok,
         checks: bootstrap.checks || {}, error: health.ok ? '' : 'A API ainda não confirmou a conexão e o schema necessários.' };
       smtpConfigurationSaved = diagnostics.checks.invitationDeliveryConfigured === true;
+      smtpTransportSaved = diagnostics.checks.smtpTransportConfigured === true;
     } catch (error) {
       diagnostics = { state: 'error', health: false, checks: {},
         error: error.name === 'AbortError' ? 'A API demorou demais para responder. Confira o serviço e tente novamente.' : 'Não foi possível consultar o serviço de instalação. Verifique a API e tente novamente.' };
@@ -101,7 +104,8 @@
   }
 
   function canSubmitBootstrap() {
-    return canBeginSetupFlow() && diagnostics.checks.invitationDeliveryConfigured === true;
+    return canBeginSetupFlow() && (localOnlyMode && diagnostics.checks.localOnlyBootstrapAvailable === true ||
+      !localOnlyMode && diagnostics.checks.invitationDeliveryConfigured === true);
   }
 
   function checkRow(label, value, detail = '') {
@@ -111,10 +115,10 @@
 
   function diagnosticView() {
     if (diagnostics.state === 'complete') return `<section class="bootstrap-notice bootstrap-notice--success"><h2>Instalação já concluída</h2><p>O assistente de primeira instalação está bloqueado. Entre pela tela normal para acessar o sistema.</p><a class="bootstrap-link-button" href="/">Ir para o acesso</a></section>`;
-    if (diagnostics.state === 'pending_owner_activation' || diagnostics.state === 'pending_owner_mfa') return `<section class="bootstrap-notice"><h2>Ativação do titular em andamento</h2><p>${diagnostics.state === 'pending_owner_activation' ? 'A empresa e o convite inicial foram registrados. O titular precisa aceitar o convite recebido por e-mail, definir a senha e depois entrar para configurar o MFA obrigatório.' : 'O convite já foi aceito. O titular precisa entrar e confirmar o novo autenticador para concluir o primeiro acesso privilegiado.'}</p><a class="bootstrap-link-button" href="/">Abrir o acesso</a></section>`;
+    if (diagnostics.state === 'pending_owner_activation' || diagnostics.state === 'pending_owner_mfa') return `<section class="bootstrap-notice"><h2>Ativação do titular em andamento</h2><p>${diagnostics.state === 'pending_owner_activation' ? 'A empresa e o convite inicial foram registrados. O titular precisa abrir o convite local ou recebido por e-mail, definir a senha e depois entrar para configurar o MFA obrigatório.' : 'O convite já foi aceito. O titular precisa entrar e confirmar o novo autenticador para concluir o primeiro acesso privilegiado.'}</p><a class="bootstrap-link-button" href="/">Abrir o acesso</a></section>`;
     if (diagnostics.state === 'unavailable') return `<section class="bootstrap-notice bootstrap-notice--warning"><h2>Primeira instalação indisponível</h2><p>Este ambiente já tem uma instalação, uma reserva ou dados de identidade. O assistente não pode iniciar outra instalação.</p><a class="bootstrap-link-button" href="/">Voltar ao acesso</a></section>`;
     return `<section class="bootstrap-diagnostic"><div><h2>Antes de começar</h2><p>O assistente verifica o serviço e os requisitos. Com o schema vazio e o keystore de MFA pronto, você pode preencher os dados e configurar o e-mail na etapa seguinte.</p></div>
-      <ul class="bootstrap-checks">${checkRow('API e PostgreSQL', diagnostics.health)}${checkRow('Schema e migrations', diagnostics.checks.databaseAndMigrations)}${checkRow('Keystore de MFA', diagnostics.checks.mfaKeystoreConfigured, 'Necessário para guardar o fator sem expor o segredo no banco ou na interface.')}${checkRow('Envio de convites', diagnostics.checks.invitationDeliveryConfigured, 'Será configurado e testado neste assistente, sob autorização temporária.')}</ul>
+      <ul class="bootstrap-checks">${checkRow('API e PostgreSQL', diagnostics.health)}${checkRow('Schema e migrations', diagnostics.checks.databaseAndMigrations)}${checkRow('Keystore de MFA', diagnostics.checks.mfaKeystoreConfigured, 'Necessário para guardar o fator sem expor o segredo no banco ou na interface.')}${checkRow('Transporte SMTP', diagnostics.checks.smtpTransportConfigured, 'Pode ser testado e salvo sem ativar convites externos.')}${checkRow('Links externos de convite', diagnostics.checks.invitationDeliveryConfigured, 'Exige uma URL pública HTTPS alcançável pelos titulares.')}${checkRow('Instalação local-only', diagnostics.checks.localOnlyBootstrapAvailable, 'Disponível somente quando o backend confirma conexão loopback e origem local.')}</ul>
       ${diagnostics.error ? `<p class="bootstrap-inline-error" role="alert">${escapeHtml(diagnostics.error)}</p>` : ''}
       ${diagnostics.state === 'unavailable' || diagnostics.state === 'not_ready' || diagnostics.error
         ? '<button class="bootstrap-secondary-button" type="button" data-diagnose>Verificar novamente</button>' : ''}
@@ -128,7 +132,7 @@
 
   function stageMarkup(index) {
     if (index === 0) return diagnosticView();
-    if (index === 1) return `<section class="bootstrap-form-step"><div><h2>Administrador fundador</h2><p>O serviço enviará um convite para este endereço. O titular criará a senha no link e configurará o autenticador antes de receber privilégios globais.</p></div>
+    if (index === 1) return `<section class="bootstrap-form-step"><div><h2>Administrador fundador</h2><p>${localOnlyMode ? 'No modo local-only, o serviço não envia convite. Após a revisão, abrirá nesta máquina um link de uso único para o titular definir a senha e configurar o autenticador.' : 'O serviço enviará um convite para este endereço. O titular criará a senha no link e configurará o autenticador antes de receber privilégios globais.'}</p></div>
       ${formField('E-mail do titular', 'email', data.email, 'email', 'autocomplete="email" required maxlength="320"')}
       <label class="bootstrap-field">Autorização local de uso único<input name="capability" type="password" inputmode="text" autocomplete="off" spellcheck="false" value="${escapeHtml(capability)}" required minlength="43" maxlength="43" aria-describedby="bootstrap-capability-help"></label>
       <small id="bootstrap-capability-help" class="bootstrap-help">Gere a autorização no terminal local autorizado e cole-a somente nesta tela. Ela expira em poucos minutos e não será salva no navegador.</small>
@@ -179,16 +183,18 @@
         ? 'O SMTP AUTH precisa estar habilitado para a caixa no Microsoft 365. Este fluxo usa usuário e senha SMTP; OAuth não está implementado.'
         : 'Use o host oficial do seu provedor, com STARTTLS ou TLS implícito. Endereços IP, redes locais e SMTP sem TLS são bloqueados.';
     const statusKind = smtpStatus.state === 'success' ? 'success' : smtpStatus.state === 'working' ? 'working' : smtpStatus.state === 'error' ? 'error' : '';
-    return `<section class="bootstrap-form-step bootstrap-smtp-step"><div><h2>E-mail e notificações</h2><p>Configure e envie uma mensagem de teste antes de usar o SMTP para convites e recuperação de acesso.</p></div>
+    const required = localOnlyMode ? '' : 'required';
+    return `<section class="bootstrap-form-step bootstrap-smtp-step"><div><h2>E-mail e notificações</h2><p>O transporte SMTP pode ser configurado agora, independentemente dos links de convite. Sem URL HTTPS pública, convites por e-mail permanecem bloqueados.</p></div>
+      ${diagnostics.checks.localOnlyBootstrapAvailable === true ? `<label class="bootstrap-check-label bootstrap-check-label--card"><input name="localOnlyMode" type="checkbox" ${localOnlyMode?'checked':''}><span><strong>Instalação local-only nesta máquina</strong><small>Não envia convite por e-mail. O link de uso único será aberto somente nesta origem loopback após a revisão. A rede local não terá acesso a esta etapa.</small></span></label>` : ''}
       <label class="bootstrap-field">Provedor<select name="smtpProvider" data-smtp-provider><option value="gmail" ${smtpDraft.provider==='gmail'?'selected':''}>Gmail</option><option value="microsoft365" ${smtpDraft.provider==='microsoft365'?'selected':''}>Outlook / Microsoft 365</option><option value="custom" ${smtpDraft.provider==='custom'?'selected':''}>SMTP personalizado</option></select></label>
-      <div class="bootstrap-grid-2">${formField('E-mail do remetente','smtpSenderEmail',smtpDraft.senderEmail,'email','autocomplete="email" maxlength="254" required')}${formField('Nome de exibição','smtpSenderName',smtpDraft.senderName,'text','autocomplete="organization" maxlength="120" required')}</div>
-      <div class="bootstrap-grid-2">${formField('Host SMTP','smtpHost',smtpDraft.host,'text','autocomplete="url" maxlength="253" autocapitalize="none" spellcheck="false" required')}${formField('Porta','smtpPort',smtpDraft.port,'number','min="1" max="65535" step="1" inputmode="numeric" required')}</div>
+      <div class="bootstrap-grid-2">${formField('E-mail do remetente','smtpSenderEmail',smtpDraft.senderEmail,'email',`autocomplete="email" maxlength="254" ${required}`)}${formField('Nome de exibição','smtpSenderName',smtpDraft.senderName,'text',`autocomplete="organization" maxlength="120" ${required}`)}</div>
+      <div class="bootstrap-grid-2">${formField('Host SMTP','smtpHost',smtpDraft.host,'text',`autocomplete="url" maxlength="253" autocapitalize="none" spellcheck="false" ${required}`)}${formField('Porta','smtpPort',smtpDraft.port,'number',`min="1" max="65535" step="1" inputmode="numeric" ${required}`)}</div>
       <div class="bootstrap-grid-2"><label class="bootstrap-field">Segurança de transporte<select name="smtpTls"><option value="starttls" ${smtpDraft.tlsMode==='starttls'?'selected':''}>STARTTLS · recomendado na porta 587</option><option value="tls" ${smtpDraft.tlsMode==='tls'?'selected':''}>TLS implícito · normalmente porta 465</option></select></label><label class="bootstrap-field">Autenticação<select name="smtpAuth"><option value="password" selected>Usuário e senha SMTP</option><option value="oauth" disabled>OAuth · indisponível</option></select></label></div>
       ${smtpCredentialAvailable ? `<label class="bootstrap-check-label bootstrap-check-label--card"><input name="smtpReuseCredential" type="checkbox" ${smtpDraft.reuseStoredCredential?'checked':''}><span><strong>Reutilizar a credencial SMTP protegida já existente</strong><small>O usuário e a senha permanecem no keystore e não são enviados de volta ao navegador.</small></span></label>` : ''}
-      <div class="bootstrap-grid-2">${formField('Usuário SMTP','smtpUsername',smtpDraft.username,'text',`autocomplete="username" maxlength="320" ${smtpDraft.reuseStoredCredential?'disabled':'required'}`)}${formField('Senha SMTP / senha de app','smtpPassword','', 'password',`autocomplete="new-password" maxlength="4096" ${smtpDraft.reuseStoredCredential?'disabled':'required'}`)}</div>
+      <div class="bootstrap-grid-2">${formField('Usuário SMTP','smtpUsername',smtpDraft.username,'text',`autocomplete="username" maxlength="320" ${smtpDraft.reuseStoredCredential?'disabled':required}`)}${formField('Senha SMTP / senha de app','smtpPassword','', 'password',`autocomplete="new-password" maxlength="4096" ${smtpDraft.reuseStoredCredential?'disabled':required}`)}</div>
       <p class="bootstrap-help bootstrap-smtp-provider-note">${escapeHtml(note)}</p>
-      <div class="bootstrap-grid-2">${formField('Enviar teste para','smtpTestRecipient',smtpDraft.testRecipient,'email','autocomplete="email" maxlength="254" required')}${formField('URL HTTPS pública dos convites','smtpPublicBaseUrl',smtpDraft.publicBaseUrl,'url','inputmode="url" autocomplete="url" maxlength="2048" required placeholder="https://seu-dominio.example"')}</div>
-      <p class="bootstrap-help">A URL precisa ser alcançável pelas pessoas convidadas. Um endereço local 127.0.0.1 não funciona para destinatários externos.</p>
+      <div class="bootstrap-grid-2">${formField('Enviar teste para','smtpTestRecipient',smtpDraft.testRecipient,'email','autocomplete="email" maxlength="254" '+(localOnlyMode?'':'required'))}${formField('URL HTTPS pública dos convites (opcional)','smtpPublicBaseUrl',smtpDraft.publicBaseUrl,'url','inputmode="url" autocomplete="url" maxlength="2048" placeholder="https://seu-dominio.example"')}</div>
+      <p class="bootstrap-help">Sem URL pública HTTPS, o SMTP pode ser salvo para uso futuro, mas convites externos não serão enviados. A configuração pode receber um domínio depois, sem reinstalação.</p>
       <div class="bootstrap-smtp-actions"><button class="bootstrap-secondary-button" type="button" data-smtp-validate ${busy?'disabled':''}>Validar parâmetros</button><button class="bootstrap-primary-button" type="button" data-smtp-test ${busy?'disabled':''}>${busy?'Testando…':'Testar e-mail'}</button></div>
       <p class="bootstrap-smtp-status" data-smtp-status data-kind="${statusKind}" role="status" aria-live="polite">${escapeHtml(smtpStatus.message || (smtpConfigurationSaved ? 'Configuração de e-mail testada e protegida.' : 'O SMTP ainda não foi testado.'))}</p>
       ${smtpConfigurationSaved ? '<p class="bootstrap-note">O servidor SMTP aceitou a mensagem de teste. Isso não confirma a chegada à caixa de entrada.</p>' : ''}
@@ -216,6 +222,8 @@
     try {
       const value = await fetchJson('/identity/bootstrap/smtp/status', { method: 'POST', headers: bootstrapHeaders(), body: '{}' });
       smtpCredentialAvailable = value.credentialStored === true || value.existingCredentialAvailable === true;
+      smtpTransportSaved = value.transportConfigured === true;
+      smtpConfigurationSaved = value.invitationLinksConfigured === true && smtpTransportSaved;
       for (const key of ['provider', 'senderEmail', 'senderName', 'host', 'port', 'tlsMode', 'testRecipient', 'publicBaseUrl'])
         if (value[key] !== null && value[key] !== undefined && value[key] !== '') smtpDraft[key] = String(value[key]);
       if (smtpCredentialAvailable) { smtpDraft.reuseStoredCredential = true; smtpDraft.username = ''; smtpDraft.password = ''; }
@@ -239,18 +247,22 @@
     if (busy) return;
     const settings = readSmtpForm();
     if (!capability) { smtpStatus = { state: 'error', message: 'Informe a autorização local antes de testar o SMTP.' }; render(); return; }
+    setSmtpFieldsRequired(true);
     if (!stage.querySelector('form')?.reportValidity()) return;
     busy = true; smtpStatus = { state: 'working', message: 'Conectando, autenticando e enviando uma mensagem de teste…' }; render();
     try {
       const result = await fetchJson('/identity/bootstrap/smtp/test', { method: 'POST', headers: bootstrapHeaders(),
         body: JSON.stringify({ requestId: crypto.randomUUID(), settings }) });
-      smtpConfigurationSaved = result.configurationSaved === true;
-      diagnostics.checks.invitationDeliveryConfigured = smtpConfigurationSaved;
-      if (smtpConfigurationSaved) {
+      smtpTransportSaved = result.configurationSaved === true;
+      smtpConfigurationSaved = false;
+      diagnostics.checks.smtpTransportConfigured = smtpTransportSaved;
+      if (smtpTransportSaved) {
         smtpCredentialAvailable = true;
         smtpDraft = { ...smtpDraft, username: '', password: '', reuseStoredCredential: true };
         try {
           const saved = await fetchJson('/identity/bootstrap/smtp/status', { method: 'POST', headers: bootstrapHeaders(), body: '{}' });
+          smtpConfigurationSaved = saved.invitationLinksConfigured === true;
+          diagnostics.checks.invitationDeliveryConfigured = smtpConfigurationSaved;
           smtpDraft = { ...smtpDraft, ...Object.fromEntries(['provider', 'senderEmail', 'senderName', 'host', 'port', 'tlsMode', 'testRecipient', 'publicBaseUrl']
             .filter(key => saved[key] !== null && saved[key] !== undefined).map(key => [key, String(saved[key])])) };
         } catch (_) { /* Save succeeded; the secret remains cleared from browser memory. */ }
@@ -275,10 +287,15 @@
       ['Agrupamento de rotas', data.routeGroupingPolicy === 'nearest_extension' ? 'Rota próxima' : data.routeGroupingPolicy === 'nearest_origin_round_robin' ? 'Alternância entre origens próximas' : 'Pendente'],
       ['Cobrança de entrega', pricing], ['MFA do titular', 'Obrigatório após aceitar o convite']
     ];
-    return `<section class="bootstrap-form-step"><div><h2>Revise antes de iniciar</h2><p>O assistente gravará os campos abaixo. Horários, modalidades e outros recursos sem contrato de instalação ficarão pendentes.</p></div><dl class="bootstrap-review">${rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl><div class="bootstrap-callout"><strong>Esta ação cria a primeira empresa e envia um convite.</strong><span>A confirmação do MFA pelo titular conclui o bootstrap e libera o privilégio fundador. A instalação não será concluída nesta tela.</span></div></section>`;
+    return `<section class="bootstrap-form-step"><div><h2>Revise antes de iniciar</h2><p>O assistente gravará os campos abaixo. Horários, modalidades e outros recursos sem contrato de instalação ficarão pendentes.</p></div><dl class="bootstrap-review">${rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl><div class="bootstrap-callout"><strong>${localOnlyMode ? 'Esta ação cria a primeira empresa e prepara um convite local de uso único.' : 'Esta ação cria a primeira empresa e envia um convite.'}</strong><span>O titular define a senha e confirma o MFA pelos controles existentes antes de receber o privilégio fundador. A instalação não será concluída nesta tela.</span></div></section>`;
   }
 
   function finishedMarkup() {
+    if (finished?.delivery === 'local_handoff') {
+      const localLink = new URL('/', window.location.origin);
+      localLink.hash = new URLSearchParams({ action: 'owner_invitation', token: finished.localInvitationToken }).toString();
+      return `<section class="bootstrap-form-step bootstrap-finished"><div class="bootstrap-finished-icon" aria-hidden="true">✓</div><h2>Instalação local preparada</h2><p>Nenhum e-mail foi enviado. Abra o link nesta mesma máquina para definir a senha do titular. Ele expira em 24 horas e só pode ser usado uma vez.</p><a class="bootstrap-link-button" href="${escapeHtml(localLink.href)}" rel="noreferrer">Abrir ativação local do titular</a><p>Depois do convite, o titular entra, configura o autenticador e confirma o MFA. O privilégio fundador só será concedido após essa confirmação.</p></section>`;
+    }
     if (finished?.delivery === 'sent') return `<section class="bootstrap-form-step bootstrap-finished"><div class="bootstrap-finished-icon" aria-hidden="true">✓</div><h2>Cadastro inicial registrado</h2><p>A empresa e as configurações foram confirmadas pelo servidor. O serviço de e-mail aceitou o convite; a entrega na caixa de entrada depende do provedor.</p><ol><li>O titular abre o convite e define uma senha forte.</li><li>Depois, entra no RotaMoto e configura o autenticador e os códigos de recuperação.</li><li>O privilégio fundador só é registrado após a confirmação do MFA.</li></ol><a class="bootstrap-link-button" href="/">Ir para o acesso</a></section>`;
     if (finished?.delivery === 'pending') return `<section class="bootstrap-form-step"><h2>Envio ainda em processamento</h2><p>O cadastro foi gravado, mas o serviço ainda não confirmou o convite. Aguarde alguns minutos e tente verificar novamente com a mesma autorização.</p></section>`;
     return `<section class="bootstrap-form-step"><h2>Não foi possível confirmar o envio</h2><p>O cadastro e o rascunho foram preservados. Corrija o serviço de e-mail e tente novamente; a mesma chave impede criar uma segunda empresa.</p></section>`;
@@ -298,12 +315,12 @@
       actions.replaceChildren(); return;
     }
     if (finished) {
-      actions.innerHTML = finished.delivery === 'sent' ? '' : `<button type="button" class="bootstrap-secondary-button" data-retry ${busy ? 'disabled' : ''}>${busy ? 'Verificando…' : 'Tentar novamente'}</button>`;
+      actions.innerHTML = ['sent', 'local_handoff'].includes(finished.delivery) ? '' : `<button type="button" class="bootstrap-secondary-button" data-retry ${busy ? 'disabled' : ''}>${busy ? 'Verificando…' : 'Tentar novamente'}</button>`;
       $('[data-retry]', actions)?.addEventListener('click', submitProvision);
       return;
     }
     const nextLabel = currentStep === 6 ? 'Continuar para finalização' : currentStep === 7 ? 'Iniciar instalação' : 'Continuar';
-    const blocked = currentStep === 0 ? !canBeginSetupFlow() : currentStep === 5 && !smtpConfigurationSaved || currentStep === 7 && !canSubmitBootstrap();
+    const blocked = currentStep === 0 ? !canBeginSetupFlow() : currentStep === 5 && !smtpConfigurationSaved && !localOnlyMode || currentStep === 7 && !canSubmitBootstrap();
     actions.innerHTML = `${currentStep > 0 ? '<button type="button" class="bootstrap-secondary-button" data-back>Voltar</button>' : ''}<button type="button" class="bootstrap-primary-button" data-next ${busy || blocked ? 'disabled' : ''}>${busy ? 'Verificando…' : nextLabel}</button>`;
     $('[data-back]', actions)?.addEventListener('click', () => { syncForm(); currentStep = Math.max(0, currentStep - 1); setMessage(); render(); });
     $('[data-next]', actions)?.addEventListener('click', async () => {
@@ -330,6 +347,13 @@
   }
 
   function onInput(event) {
+    if (event.target.name === 'localOnlyMode') {
+      localOnlyMode = event.target.checked;
+      readSmtpForm();
+      setSmtpFieldsRequired(!localOnlyMode);
+      renderActions();
+      return;
+    }
     if (event.target.name === 'smtpReuseCredential') {
       readSmtpForm();
       for (const name of ['smtpUsername', 'smtpPassword']) {
@@ -337,17 +361,23 @@
         if (field) { field.disabled = smtpDraft.reuseStoredCredential; field.required = !smtpDraft.reuseStoredCredential; }
       }
       smtpConfigurationSaved = false;
+      smtpTransportSaved = false;
       if (diagnostics.checks) diagnostics.checks.invitationDeliveryConfigured = false;
+      if (diagnostics.checks) diagnostics.checks.smtpTransportConfigured = false;
       smtpStatus = { state: 'idle', message: '' }; return;
     }
     if (event.target.name === 'smtpProvider') {
       readSmtpForm(); applySmtpPreset(event.target.value); smtpConfigurationSaved = false;
+      smtpTransportSaved = false;
       if (diagnostics.checks) diagnostics.checks.invitationDeliveryConfigured = false;
+      if (diagnostics.checks) diagnostics.checks.smtpTransportConfigured = false;
       smtpStatus = { state: 'idle', message: '' }; render(); return;
     }
     if (event.target.name?.startsWith('smtp')) {
       readSmtpForm(); smtpConfigurationSaved = false;
+      smtpTransportSaved = false;
       if (diagnostics.checks) diagnostics.checks.invitationDeliveryConfigured = false;
+      if (diagnostics.checks) diagnostics.checks.smtpTransportConfigured = false;
       smtpStatus = { state: 'idle', message: 'A configuração mudou. Teste o SMTP novamente antes de continuar.' }; return;
     }
     if (event.target.name === 'configurePricing') { syncForm(); saveDraft(); render(); return; }
@@ -376,6 +406,7 @@
 
   function validateStep(index) {
     const form = stage.querySelector('form');
+    if (index === 5) setSmtpFieldsRequired(!localOnlyMode);
     if (form && !form.reportValidity()) return false;
     if (index === 1) {
       const email = data.email.trim();
@@ -400,8 +431,16 @@
       if (data.pricingModel === 'range' && (!data.ranges.length || data.ranges.some((range, i) => !number(range.from) || !number(range.value) || i < data.ranges.length - 1 && !number(range.to)))) return setMessage('Complete todas as faixas de distância e seus valores.', 'error'), false;
       if (!data.repasseMode || data.repasseMode === 'percentage' && (!number(data.repassePercent) || Number(data.repassePercent) < 0 || Number(data.repassePercent) > 100)) return setMessage('Informe a regra de repasse ao motoboy.', 'error'), false;
     }
-    if (index === 5 && !smtpConfigurationSaved) return setMessage('Teste o SMTP e confirme a aceitação da mensagem antes de continuar.', 'error'), false;
+    if (index === 5 && !localOnlyMode && !smtpConfigurationSaved) return setMessage('Para convites externos, teste o SMTP e informe uma URL HTTPS pública. Ou selecione instalação local-only.', 'error'), false;
     setMessage(); return true;
+  }
+
+  function setSmtpFieldsRequired(required) {
+    for (const name of ['smtpSenderEmail', 'smtpSenderName', 'smtpHost', 'smtpPort', 'smtpUsername', 'smtpPassword', 'smtpTestRecipient']) {
+      const field = stage.querySelector(`[name="${name}"]`);
+      if (field && !field.disabled) field.required = required && !(name === 'smtpUsername' || name === 'smtpPassword') ||
+        required && (name === 'smtpUsername' || name === 'smtpPassword') && !smtpDraft.reuseStoredCredential;
+    }
   }
 
   function makeInitialSetup() {
@@ -429,20 +468,23 @@
     if (!operationKey) operationKey = `bootstrap-${crypto.randomUUID()}`;
     try { sessionStorage.setItem(idempotencyKey, operationKey); } catch (_) {}
     const request = { companyName: data.companyName.trim(), email: data.email.trim().toLowerCase(),
-      idempotencyKey: operationKey, initialSetup: makeInitialSetup() };
+      idempotencyKey: operationKey, initialSetup: makeInitialSetup(), localOnly: localOnlyMode };
     try {
       const result = await fetchJson('/admin/tenants/provision', { method: 'POST', headers: {
         'Content-Type': 'application/json', 'X-RotaMoto-Bootstrap-Authorization': capability }, body: JSON.stringify(request) });
       if (result.setupState !== 'awaiting_owner_activation_and_mfa' || result.setupReadback !== true ||
-          !['sent', 'failed', 'pending'].includes(result.delivery))
+          !['sent', 'failed', 'pending', 'local_handoff'].includes(result.delivery) ||
+          result.delivery === 'local_handoff' && !/^[A-Za-z0-9_-]{43}$/u.test(result.localInvitationToken || ''))
         throw Object.assign(new Error('O servidor não confirmou o estado esperado da instalação.'), { code: 'INVALID_RESPONSE' });
       finished = { ...result, message: result.delivery === 'failed' ? 'O envio do convite não foi confirmado.' : '' };
-      if (result.delivery === 'sent') {
+      if (result.delivery === 'sent' || result.delivery === 'local_handoff') {
         capability = '';
         const codeInput = stage.querySelector('[name="capability"]'); if (codeInput) codeInput.value = '';
         try { sessionStorage.removeItem(storageKey); sessionStorage.removeItem(idempotencyKey); } catch (_) {}
       }
-      setMessage(result.delivery === 'sent' ? 'A configuração inicial foi gravada e o serviço aceitou o envio do convite.' : 'O cadastro foi preservado, mas o envio ainda não foi confirmado.', result.delivery === 'sent' ? 'success' : 'error');
+      setMessage(result.delivery === 'sent' ? 'A configuração inicial foi gravada e o servidor SMTP aceitou o convite.' :
+        result.delivery === 'local_handoff' ? 'Cadastro inicial registrado. O link local de uso único está disponível abaixo; o MFA continua obrigatório.' :
+          'O cadastro foi preservado, mas o envio ainda não foi confirmado.', ['sent','local_handoff'].includes(result.delivery) ? 'success' : 'error');
     } catch (error) {
       finished = { delivery: 'failed', message: error.name === 'AbortError' ? 'A resposta demorou. A operação pode ter sido registrada; use a mesma autorização para tentar novamente.' : error.message || 'Não foi possível confirmar a operação.' };
       setMessage(finished.message, 'error');

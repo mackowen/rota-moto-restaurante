@@ -52,7 +52,7 @@ function problemStatus(code) {
   if (code === 'UNAUTHENTICATED') return 401;
   if (['FORBIDDEN', 'PROVISIONER_UNAUTHORIZED', 'MFA_REQUIRED', 'CSRF_INVALID', 'ORIGIN_INVALID'].includes(code)) return 403;
   if (['BOOTSTRAP_NOT_AVAILABLE', 'BOOTSTRAP_STATE_INVALID'].includes(code)) return 409;
-  if (['PROVISIONER_NOT_CONFIGURED', 'BOOTSTRAP_NOT_READY', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE', 'SMTP_CONFIGURATION_UNAVAILABLE'].includes(code)) return 503;
+  if (['PROVISIONER_NOT_CONFIGURED', 'BOOTSTRAP_NOT_READY', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'INVITATION_LINKS_UNAVAILABLE', 'MFA_PROVIDER_UNAVAILABLE', 'SMTP_CONFIGURATION_UNAVAILABLE'].includes(code)) return 503;
   if (code === 'AUTHENTICATION_REQUIRED') return 401;
   if (code === 'IDEMPOTENCY_CONFLICT') return 409;
   if (['CONFLICT', 'REVISION_CONFLICT', 'RECOVERY_LOCAL_OPERATOR_REQUIRED'].includes(code)) return 409;
@@ -200,6 +200,7 @@ function publicError(error) {
     BOOTSTRAP_STATE_INVALID: 'Não foi possível concluir a instalação com segurança. Procure o operador local.',
     EMAIL_PROVIDER_NOT_CONFIGURED: 'Entrega de email indisponível.',
     EMAIL_DELIVERY_FAILED: 'Entrega do convite indisponível.',
+    INVITATION_LINKS_UNAVAILABLE: 'Envio de convites está desativado: configure uma URL pública HTTPS ou use a ativação local do primeiro titular.',
     AUTHENTICATION_REQUIRED: 'Entre na conta existente para aceitar o convite.',
     MFA_REQUIRED: 'A autenticação multifator é obrigatória ou inválida.',
     MFA_PROVIDER_UNAVAILABLE: 'Verificação multifator indisponível.',
@@ -287,14 +288,16 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
       if (path === '/api/identity/bootstrap/status' && req.method === 'GET') {
         const [installation, deployment] = await Promise.all([
-          identityService.getBootstrapStatus(), Promise.resolve(bootstrapReadiness()).catch(() => ({}))
+          identityService.getBootstrapStatus(), Promise.resolve(bootstrapReadiness(req)).catch(() => ({}))
         ]);
         status = 200;
         send(res, status, { state: installation.state, checks: {
           databaseAndMigrations: installation.checks?.schema === true,
           pricingConfigurationAvailable: installation.checks?.pricing === true,
           mfaKeystoreConfigured: deployment?.mfaKeystoreConfigured === true,
-          invitationDeliveryConfigured: deployment?.invitationDeliveryConfigured === true
+          smtpTransportConfigured: deployment?.smtpTransportConfigured === true,
+          invitationDeliveryConfigured: deployment?.invitationDeliveryConfigured === true,
+          localOnlyBootstrapAvailable: deployment?.localOnlyBootstrapAvailable === true
         } });
         return true;
       }
@@ -305,7 +308,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         const digest = await smtpConfiguration.authorize(req, 'smtp.validate');
         try {
           const raw = await smtpConfiguration.status();
-          const config = { configured: raw?.configured === true, disabled: raw?.disabled === true,
+          const config = { configured: raw?.configured === true, transportConfigured: raw?.transportConfigured === true,
+            invitationLinksConfigured: raw?.invitationLinksConfigured === true, disabled: raw?.disabled === true,
             credentialStored: raw?.credentialStored === true, existingCredentialAvailable: raw?.existingCredentialAvailable === true,
             provider: raw?.provider || null, host: raw?.host || null, port: Number(raw?.port) || null,
             tlsMode: raw?.tlsMode || null, senderEmail: raw?.senderEmail || null, senderName: raw?.senderName || null, testRecipient: raw?.testRecipient || null,
@@ -335,7 +339,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
       if (path === '/api/admin/smtp/config' && req.method === 'GET') {
         if (!smtpConfiguration) throw fail('NOT_FOUND', 'Rota não encontrada.');
         const raw = await platformSmtpAdmin(req, false, () => smtpConfiguration.status());
-        const config = { configured: raw?.configured === true, disabled: raw?.disabled === true, credentialStored: raw?.credentialStored === true,
+        const config = { configured: raw?.configured === true, transportConfigured: raw?.transportConfigured === true,
+          invitationLinksConfigured: raw?.invitationLinksConfigured === true, disabled: raw?.disabled === true, credentialStored: raw?.credentialStored === true,
           provider: raw?.provider || null, host: raw?.host || null, port: Number(raw?.port) || null,
           tlsMode: raw?.tlsMode || null, senderEmail: raw?.senderEmail || null, senderName: raw?.senderName || null, testRecipient: raw?.testRecipient || null,
           publicBaseUrl: raw?.publicBaseUrl || null, lastTestStatus: raw?.lastTestStatus || null,
@@ -579,12 +584,20 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
 
       if (path === '/api/admin/tenants/provision' && req.method === 'POST') {
         const body = await readJson(req);
-        exactKeys(body, ['companyName', 'email', 'idempotencyKey', 'initialSetup']);
-        const provisioned = await identityService.provisionInitialOwner(body, { request: req });
+        exactKeys(body, ['companyName', 'email', 'idempotencyKey', 'initialSetup', 'localOnly']);
+        if (body.localOnly === true) {
+          const deployment = await bootstrapReadiness(req).catch(() => ({}));
+          if (deployment.localOnlyBootstrapAvailable !== true) throw fail('PROVISIONER_UNAUTHORIZED', 'A instalação local só pode ser iniciada nesta máquina.');
+        } else {
+          const deployment = await bootstrapReadiness(req).catch(() => ({}));
+          if (deployment.invitationDeliveryConfigured !== true) throw fail('BOOTSTRAP_NOT_READY', 'O transporte SMTP e a URL pública HTTPS dos convites precisam estar configurados.');
+        }
+        const provisioned = await identityService.provisionInitialOwner(body, { request: req, requestedLocalOnly: body.localOnly === true });
+        const localHandoff = provisioned.delivery === 'local_handoff' && typeof provisioned.localInvitationToken === 'string' && /^[A-Za-z0-9_-]{43}$/u.test(provisioned.localInvitationToken);
         status = 202;
         send(res, status, { companyId: provisioned.companyId, userId: provisioned.userId,
           delivery: provisioned.delivery, replayed: provisioned.replayed, setupReadback: provisioned.setupReadback,
-          setupState: 'awaiting_owner_activation_and_mfa' });
+          setupState: 'awaiting_owner_activation_and_mfa', ...(localHandoff ? { localInvitationToken: provisioned.localInvitationToken } : {}) });
         return true;
       }
 

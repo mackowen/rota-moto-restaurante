@@ -22,7 +22,7 @@ async function main() {
     if (/bootstrap_authorizations/u.test(sql)) return { rows: [{ ok: true }], rowCount: 1 };
     if (/platform_admin_bootstrap_status/u.test(sql)) return { rows: [{ state: 'ready' }], rowCount: 1 };
     if (/platform_admin_record_bootstrap_smtp_test/u.test(sql)) {
-      const id = values[1]; const accepted = !attempts.has(id) && attempts.size < 5; attempts.add(id);
+      const id = values[1]; const accepted = !attempts.has(id) && attempts.size < 10; attempts.add(id);
       return { rows: [{ accepted }], rowCount: 1 };
     }
     throw new Error('unexpected SQL');
@@ -58,12 +58,31 @@ async function main() {
     notice: 'O servidor SMTP aceitou a mensagem. A entrega na caixa de entrada não é confirmada pelo SMTP.' });
   assert.equal(sent.length, 1); assert.equal(sent[0].to, 'qa@example.test');
   assert.equal(await service.readiness(), true);
+  assert.equal(await service.transportReadiness(), true);
   assert.equal(await service.sendInvitation({ kind: 'owner_invitation', to: 'qa-owner@example.test', token: 'opaque-test-token' }), true);
   assert.equal(invitations.length, 1); assert.equal(invitations[0].host, 'smtp.example.test');
   assert.equal(invitations[0].message.kind, 'owner_invitation', 'the saved SMTP transport is consumed by the invitation provider');
   const status = await service.status();
   assert.equal(status.configured, true); assert.equal(status.credentialStored, true);
+  assert.equal(status.transportConfigured, true); assert.equal(status.invitationLinksConfigured, true);
   assert.equal(JSON.stringify(status).includes('test-secret-only'), false);
+  const localOnlyConfig = path.join(identity, 'smtp-config-local-only.json');
+  const localOnlyService = createSmtpConfigurationService({ pool, secretProvider: secrets, configFile: localOnlyConfig,
+    resolveAddresses: async () => ['127.0.0.1'],
+    transportFactory: () => ({ async verify() {}, async sendMail(message) { sent.push(message); return { accepted: [message.to] }; }, close() {} }),
+    mailProviderFactory: options => ({ async send(message) { invitations.push({ host: options.host, message }); return true; }, close() {} }), audit: async () => {} });
+  const localSmtp = { ...settings, publicBaseUrl: '' };
+  assert.equal((await localOnlyService.test(localSmtp, request, '0069a5f8-873c-4fb8-b977-9375f414ce6e')).configurationSaved, true,
+    'SMTP test and encrypted persistence do not require a public invite URL');
+  assert.equal(await localOnlyService.transportReadiness(), true, 'SMTP transport is ready independently of invitation URLs');
+  assert.equal(await localOnlyService.readiness(), false, 'external invitations stay unready without a public HTTPS URL');
+  assert.equal((await localOnlyService.status()).invitationLinksConfigured, false);
+  await assert.rejects(localOnlyService.sendInvitation({ kind: 'owner_invitation', to: 'qa-owner@example.test', token: 'opaque' }),
+    { code: 'INVITATION_LINKS_UNAVAILABLE' }, 'a local/unreachable invitation link is never sent through external SMTP');
+  assert.equal(invitations.length, 1, 'blocked invite was not added to the capture transport');
+  assert.equal((await localOnlyService.test(settings, request, '2f7cf4c6-721b-4668-97ba-52efb61a14d8')).configurationSaved, true,
+    'a public HTTPS URL can be added later and validated by the next SMTP test');
+  assert.equal(await localOnlyService.readiness(), true, 'adding a public URL enables the invitation channel without reinstalling');
   const storedRef = JSON.parse(await fs.readFile(path.join(identity, 'smtp-config.json'), 'utf8')).passwordRef;
   const reuseSettings = { ...settings, username: '', password: '', reuseStoredCredential: true };
   assert.equal((await service.validate(reuseSettings)).valid, true, 'a protected prior credential can be validated without returning it');
@@ -98,11 +117,11 @@ async function main() {
   const concurrentId = 'e0b842f9-4317-4f0f-9128-0e31f9c4b142';
   const concurrent = await Promise.allSettled([service.test(settings, request, concurrentId), service.test(settings, request, concurrentId)]);
   assert.equal(concurrent.filter(entry => entry.status === 'fulfilled').length, 1, 'concurrent duplicate submissions send once');
-  assert.equal(sent.length, 3);
+  assert.equal(sent.length, 5);
   assert.deepEqual(await service.disable(), { disabled: true, configured: false });
   assert.equal((await service.status()).disabled, true, 'disable state overrides protected legacy credentials');
   assert.equal(await service.readiness(), false);
-  await assert.rejects(service.sendInvitation({ kind: 'owner_invitation', to: 'qa-owner@example.test', token: 'opaque' }), /ainda não foi testado/u);
+  await assert.rejects(service.sendInvitation({ kind: 'owner_invitation', to: 'qa-owner@example.test', token: 'opaque' }), { code: 'INVITATION_LINKS_UNAVAILABLE' });
   const failurePool = { async query(sql) {
     if (/current_database\(\)/u.test(sql)) return { rows: [{ database: 'rotamoto', role: 'rotamoto_app', session_role: 'rotamoto_app' }] };
     if (/bootstrap_authorizations/u.test(sql)) return { rows: [{}], rowCount: 1 };

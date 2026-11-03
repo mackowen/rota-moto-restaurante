@@ -12,6 +12,7 @@ const {createIdentityService}=require('./backend/identity/service');
 const {createNativeMfaProvider}=require('./backend/identity/native-mfa-provider');
 const {createSmtpMailProvider}=require('./backend/identity/smtp-mail-provider');
 const {createSmtpConfigurationService}=require('./backend/identity/smtp-configuration');
+const {isLocalOnlyBootstrapRequest}=require('./backend/identity/local-only-bootstrap');
 const {createIdentityHttpHandler}=require('./backend/identity/http');
 const {createSyncService}=require('./backend/domain/sync-service');
 const {createMediaStorage}=require('./backend/domain/media-storage');
@@ -167,22 +168,30 @@ async function authorizeInitialBootstrap({action,context}){
     !['127.0.0.1','::1','localhost'].includes(originHost)||
     typeof capability!=='string'||!/^[A-Za-z0-9_-]{43}$/u.test(capability))
     throw new Error('Local one-time deployment authorization required.');
-  return {actorRef:'local-deployment-operator',bootstrapCapabilityDigest:crypto.createHash('sha256').update(capability,'utf8').digest()};
+  const localOnlyEnabled=process.env.ROTAMOTO_OFFICIAL_OPERATOR_CONFIG==='true'&&CONFIG.databaseName==='rotamoto';
+  if(context?.requestedLocalOnly===true&&!isLocalOnlyBootstrapRequest(req,{enabled:localOnlyEnabled,databaseName:CONFIG.databaseName}))
+    throw new Error('Loopback-only installation mode unavailable.');
+  return {actorRef:'local-deployment-operator',localOnly:context?.requestedLocalOnly===true,
+    bootstrapCapabilityDigest:crypto.createHash('sha256').update(capability,'utf8').digest()};
 }
 const identityService=createIdentityService({pool:identityPool,authorizeProvisioner:authorizeInitialBootstrap,
   requireBootstrapAuthorization:true,emailProvider,mfaProvider,secretProvider});
-const bootstrapReadiness=async()=>{
-  const result={mfaKeystoreConfigured:false,invitationDeliveryConfigured:false};
+const bootstrapReadiness=async req=>{
+  const localOnlyEnabled=process.env.ROTAMOTO_OFFICIAL_OPERATOR_CONFIG==='true'&&CONFIG.databaseName==='rotamoto';
+  const result={mfaKeystoreConfigured:false,smtpTransportConfigured:false,invitationDeliveryConfigured:false,
+    localOnlyBootstrapAvailable:isLocalOnlyBootstrapRequest(req,{enabled:localOnlyEnabled,databaseName:CONFIG.databaseName})};
   if(!secretProvider)return result;
   try{
     const secrets=await secretProvider;
     result.mfaKeystoreConfigured=Boolean(secrets&&typeof secrets.get==='function'&&typeof secrets.put==='function'&&typeof secrets.remove==='function');
-    if(smtpConfiguration){result.invitationDeliveryConfigured=result.mfaKeystoreConfigured&&await smtpConfiguration.readiness();return result}
+    if(smtpConfiguration){result.smtpTransportConfigured=result.mfaKeystoreConfigured&&await smtpConfiguration.transportReadiness();
+      result.invitationDeliveryConfigured=result.mfaKeystoreConfigured&&await smtpConfiguration.readiness();return result}
     const smtp=CONFIG.smtp;
     if(result.mfaKeystoreConfigured&&smtp?.host&&smtp?.user&&smtp?.passwordRef&&smtp?.from&&smtp?.baseUrl&&
       Number.isInteger(smtp.port)&&smtp.port>=1&&smtp.port<=65535){
       const password=await secrets.get(smtp.passwordRef,{name:'smtp/password',scope:'installation'});
-      result.invitationDeliveryConfigured=typeof password==='string'&&password.length>0;
+      result.smtpTransportConfigured=typeof password==='string'&&password.length>0;
+      result.invitationDeliveryConfigured=result.smtpTransportConfigured&&Boolean(smtp.baseUrl);
     }
   }catch(_){ /* Readiness is fail-closed without surfacing secret-store diagnostics. */ }
   return result;
