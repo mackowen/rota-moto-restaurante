@@ -11,7 +11,7 @@ async function main(){
  });
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)});
  const provider=createSmtpMailProvider({host:'127.0.0.1',port:server.address().port,secure:false,requireTLS:false,password:'test-only-unused',
-  from:'RotaMoto <noreply@example.test>',baseUrl:'https://app.example.test/'});
+  from:'RotaMoto <noreply@example.test>',baseUrl:'https://app.example.test/',resolveAddresses:async()=>['127.0.0.1']});
  try{
   assert.equal(await provider.verify(),true);
   await assert.rejects(()=>verifySmtpConnection({host:'127.0.0.1',port:server.address().port,secure:true,

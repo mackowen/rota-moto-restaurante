@@ -12,6 +12,8 @@ const RATE_POLICIES = Object.freeze({
   password: { limit: 8, windowMs: 15 * 60 * 1000 },
   invitation: { limit: 10, windowMs: 15 * 60 * 1000 },
   provision: { limit: 5, windowMs: 15 * 60 * 1000 },
+  smtpTest: { limit: 5, windowMs: 15 * 60 * 1000 },
+  smtpValidate: { limit: 10, windowMs: 15 * 60 * 1000 },
   mfa: { limit: 8, windowMs: 15 * 60 * 1000 },
   default: { limit: 60, windowMs: 60 * 1000 }
 });
@@ -21,6 +23,13 @@ const ROUTE_METHODS = Object.freeze({
   '/api/identity/password/change': 'POST',
   '/api/identity/session': 'GET',
   '/api/identity/bootstrap/status': 'GET',
+  '/api/identity/bootstrap/smtp/status': 'POST',
+  '/api/identity/bootstrap/smtp/validate': 'POST',
+  '/api/identity/bootstrap/smtp/test': 'POST',
+  '/api/admin/smtp/config': 'GET',
+  '/api/admin/smtp/validate': 'POST',
+  '/api/admin/smtp/test': 'POST',
+  '/api/admin/smtp/disable': 'POST',
   '/api/identity/mfa/enrollment': 'POST',
   '/api/identity/mfa/enrollment/cancel': 'POST',
   '/api/identity/mfa/enrollment/confirm': 'POST',
@@ -38,12 +47,12 @@ const ROUTE_METHODS = Object.freeze({
 });
 
 function problemStatus(code) {
-  if (['INVALID_INPUT', 'PASSWORD_UNCHANGED', 'CURRENT_PASSWORD_INVALID'].includes(code)) return 400;
+  if (['INVALID_INPUT', 'PASSWORD_UNCHANGED', 'CURRENT_PASSWORD_INVALID', 'SMTP_CONFIGURATION_INVALID'].includes(code)) return 400;
   if (['INVALID_TOKEN', 'INVALID_CREDENTIALS'].includes(code)) return 401;
   if (code === 'UNAUTHENTICATED') return 401;
   if (['FORBIDDEN', 'PROVISIONER_UNAUTHORIZED', 'MFA_REQUIRED', 'CSRF_INVALID', 'ORIGIN_INVALID'].includes(code)) return 403;
   if (['BOOTSTRAP_NOT_AVAILABLE', 'BOOTSTRAP_STATE_INVALID'].includes(code)) return 409;
-  if (['PROVISIONER_NOT_CONFIGURED', 'BOOTSTRAP_NOT_READY', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE'].includes(code)) return 503;
+  if (['PROVISIONER_NOT_CONFIGURED', 'BOOTSTRAP_NOT_READY', 'EMAIL_PROVIDER_NOT_CONFIGURED', 'EMAIL_DELIVERY_FAILED', 'MFA_PROVIDER_UNAVAILABLE', 'SMTP_CONFIGURATION_UNAVAILABLE'].includes(code)) return 503;
   if (code === 'AUTHENTICATION_REQUIRED') return 401;
   if (code === 'IDEMPOTENCY_CONFLICT') return 409;
   if (['CONFLICT', 'REVISION_CONFLICT', 'RECOVERY_LOCAL_OPERATOR_REQUIRED'].includes(code)) return 409;
@@ -51,6 +60,7 @@ function problemStatus(code) {
   if (['INVALID_STATE_TRANSITION', 'LAST_OWNER_REQUIRED'].includes(code)) return 409;
   if (['NOT_FOUND', 'TENANT_NOT_FOUND'].includes(code)) return 404;
   if (code === 'RATE_LIMITED') return 429;
+  if (['SMTP_TEST_FAILED', 'ECONNECTION', 'ECONNREFUSED', 'ETIMEDOUT', 'ESOCKET', 'EDNS', 'EAUTH', 'EENVELOPE'].includes(code)) return 502;
   if (code === 'PAYLOAD_TOO_LARGE') return 413;
   if (code === 'UNSUPPORTED_MEDIA_TYPE') return 415;
   if (code === 'METHOD_NOT_ALLOWED') return 405;
@@ -147,6 +157,8 @@ function createRateLimiter({ clock = Date.now, policies = RATE_POLICIES, maxKeys
 }
 
 function rateCategory(path) {
+  if (path === '/api/identity/bootstrap/smtp/test' || path === '/api/admin/smtp/test') return 'smtpTest';
+  if (path === '/api/identity/bootstrap/smtp/status' || path === '/api/identity/bootstrap/smtp/validate' || path === '/api/admin/smtp/validate') return 'smtpValidate';
   if (path === '/api/identity/login') return 'login';
   if (path === '/api/identity/password/change') return 'password';
   if (path.startsWith('/api/identity/recovery')) return 'recovery';
@@ -199,6 +211,16 @@ function publicError(error) {
     NOT_FOUND: 'Recurso não encontrado.',
     TENANT_NOT_FOUND: 'Empresa não encontrada.',
     RATE_LIMITED: 'Limite de tentativas excedido.',
+    SMTP_CONFIGURATION_INVALID: error.message,
+    SMTP_CONFIGURATION_UNAVAILABLE: 'Configuração SMTP protegida indisponível.',
+    SMTP_TEST_FAILED: 'Não foi possível testar o envio SMTP. Confira os parâmetros e tente novamente.',
+    ECONNECTION: 'Não foi possível conectar ao servidor SMTP.',
+    ECONNREFUSED: 'O servidor SMTP recusou a conexão.',
+    ETIMEDOUT: 'O servidor SMTP excedeu o tempo limite.',
+    ESOCKET: 'Falha de comunicação segura com o servidor SMTP.',
+    EDNS: 'Não foi possível resolver o servidor SMTP.',
+    EAUTH: 'O servidor SMTP recusou a autenticação.',
+    EENVELOPE: 'O servidor SMTP recusou o remetente ou destinatário do teste.',
     PAYLOAD_TOO_LARGE: 'Payload excede o limite permitido.',
     UNSUPPORTED_MEDIA_TYPE: 'Content-Type application/json obrigatório.',
     METHOD_NOT_ALLOWED: 'Método não permitido.',
@@ -210,7 +232,7 @@ function publicError(error) {
 }
 
 function createIdentityHttpHandler({ identityService, rateLimiter = createRateLimiter(), logger = () => {},
-  requestId = req => req.requestId || crypto.randomUUID(), allowedOrigin, bootstrapReadiness = async () => ({}) }) {
+  requestId = req => req.requestId || crypto.randomUUID(), allowedOrigin, bootstrapReadiness = async () => ({}), smtpConfiguration = null }) {
   if (!identityService) throw new TypeError('Serviço de identidade obrigatório.');
 
   async function requireSessionMutation(req, permissionKey, operation) {
@@ -225,9 +247,25 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
     }, permissionKey);
   }
 
+  async function platformSmtpAdmin(req, mutation, operation) {
+    const sessionToken = parseCookie(req);
+    if (!sessionToken) throw fail('UNAUTHENTICATED', 'Sessão inválida ou expirada.');
+    const run = async (client, principal) => {
+      if (!principal.mfa_verified_at) throw fail('MFA_REQUIRED', 'Esta alteração exige uma sessão com MFA confirmado.');
+      const administrator = await client.query(`SELECT 1 FROM rotamoto.platform_administrators
+        WHERE user_id=$1 AND revoked_at IS NULL AND grant_kind='founder_bootstrap'`, [principal.user_id]);
+      if (!administrator.rowCount) throw fail('FORBIDDEN', 'Operação não autorizada.');
+      return operation(principal);
+    };
+    if (mutation) return requireSessionMutation(req, 'company.manage', run);
+    return identityService.withAuthenticatedTenant(sessionToken, run, 'company.manage');
+  }
+
   return async function identityHttpHandler(req, res) {
     const path = new URL(req.url, 'http://127.0.0.1').pathname;
-    if (!path.startsWith('/api/identity/') && !['/api/admin/tenants/provision', '/api/admin/invitations', '/api/admin/mfa-recovery'].includes(path) && !/^\/api\/admin\/mfa-recovery\/[0-9a-f-]{36}\/approve$/iu.test(path)) return false;
+    if (!path.startsWith('/api/identity/') && !['/api/admin/tenants/provision', '/api/admin/invitations', '/api/admin/mfa-recovery',
+      '/api/admin/smtp/config', '/api/admin/smtp/validate', '/api/admin/smtp/test', '/api/admin/smtp/disable'].includes(path) &&
+      !/^\/api\/admin\/mfa-recovery\/[0-9a-f-]{36}\/approve$/iu.test(path)) return false;
     const id = requestId(req);
     const startedAt = Date.now();
     let status = 500;
@@ -259,6 +297,72 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           invitationDeliveryConfigured: deployment?.invitationDeliveryConfigured === true
         } });
         return true;
+      }
+
+      if (path === '/api/identity/bootstrap/smtp/status' && req.method === 'POST') {
+        if (!smtpConfiguration) throw fail('NOT_FOUND', 'Rota não encontrada.');
+        exactKeys(await readJson(req), []);
+        const digest = await smtpConfiguration.authorize(req, 'smtp.validate');
+        try {
+          const raw = await smtpConfiguration.status();
+          const config = { configured: raw?.configured === true, disabled: raw?.disabled === true,
+            credentialStored: raw?.credentialStored === true, existingCredentialAvailable: raw?.existingCredentialAvailable === true,
+            provider: raw?.provider || null, host: raw?.host || null, port: Number(raw?.port) || null,
+            tlsMode: raw?.tlsMode || null, senderEmail: raw?.senderEmail || null, senderName: raw?.senderName || null, testRecipient: raw?.testRecipient || null,
+            publicBaseUrl: raw?.publicBaseUrl || null, lastTestStatus: raw?.lastTestStatus || null };
+          status = 200; send(res, status, config); return true;
+        } finally { digest.fill(0); }
+      }
+
+      if (path === '/api/identity/bootstrap/smtp/validate' && req.method === 'POST') {
+        if (!smtpConfiguration) throw fail('NOT_FOUND', 'Rota não encontrada.');
+        const body = await readJson(req);
+        const digest = await smtpConfiguration.authorize(req, 'smtp.validate');
+        let validated;
+        try { validated = await smtpConfiguration.validate(body); } finally { digest.fill(0); }
+        status = 200; send(res, status, validated); return true;
+      }
+
+      if (path === '/api/identity/bootstrap/smtp/test' && req.method === 'POST') {
+        if (!smtpConfiguration) throw fail('NOT_FOUND', 'Rota não encontrada.');
+        const body = await readJson(req);
+        exactKeys(body, ['requestId', 'settings']);
+        if (!body.settings || typeof body.settings !== 'object' || Array.isArray(body.settings)) throw fail('INVALID_INPUT', 'Configuração SMTP inválida.');
+        const result = await smtpConfiguration.test(body.settings, req, body.requestId);
+        status = 200; send(res, status, result); return true;
+      }
+
+      if (path === '/api/admin/smtp/config' && req.method === 'GET') {
+        if (!smtpConfiguration) throw fail('NOT_FOUND', 'Rota não encontrada.');
+        const raw = await platformSmtpAdmin(req, false, () => smtpConfiguration.status());
+        const config = { configured: raw?.configured === true, disabled: raw?.disabled === true, credentialStored: raw?.credentialStored === true,
+          provider: raw?.provider || null, host: raw?.host || null, port: Number(raw?.port) || null,
+          tlsMode: raw?.tlsMode || null, senderEmail: raw?.senderEmail || null, senderName: raw?.senderName || null, testRecipient: raw?.testRecipient || null,
+          publicBaseUrl: raw?.publicBaseUrl || null, lastTestStatus: raw?.lastTestStatus || null,
+          lastTestAt: raw?.lastTestAt || null, existingCredentialAvailable: raw?.existingCredentialAvailable === true };
+        status = 200; send(res, status, config); return true;
+      }
+
+      if (path === '/api/admin/smtp/validate' && req.method === 'POST') {
+        if (!smtpConfiguration) throw fail('NOT_FOUND', 'Rota não encontrada.');
+        const body = await readJson(req);
+        const validated = await platformSmtpAdmin(req, true, () => smtpConfiguration.validate(body));
+        status = 200; send(res, status, validated); return true;
+      }
+
+      if (path === '/api/admin/smtp/test' && req.method === 'POST') {
+        if (!smtpConfiguration) throw fail('NOT_FOUND', 'Rota não encontrada.');
+        const body = await readJson(req); exactKeys(body, ['requestId', 'settings']);
+        if (!body.settings || typeof body.settings !== 'object' || Array.isArray(body.settings)) throw fail('INVALID_INPUT', 'Configuração SMTP inválida.');
+        const result = await platformSmtpAdmin(req, true, principal => smtpConfiguration.testAsAdmin(body.settings, principal.user_id, body.requestId));
+        status = 200; send(res, status, result); return true;
+      }
+
+      if (path === '/api/admin/smtp/disable' && req.method === 'POST') {
+        if (!smtpConfiguration) throw fail('NOT_FOUND', 'Rota não encontrada.');
+        exactKeys(await readJson(req), []);
+        const result = await platformSmtpAdmin(req, true, () => smtpConfiguration.disable());
+        status = 200; send(res, status, result); return true;
       }
 
       if (path === '/api/identity/login' && req.method === 'POST') {

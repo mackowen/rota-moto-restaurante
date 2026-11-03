@@ -11,6 +11,7 @@ const fs=require('node:fs');
 const {createIdentityService}=require('./backend/identity/service');
 const {createNativeMfaProvider}=require('./backend/identity/native-mfa-provider');
 const {createSmtpMailProvider}=require('./backend/identity/smtp-mail-provider');
+const {createSmtpConfigurationService}=require('./backend/identity/smtp-configuration');
 const {createIdentityHttpHandler}=require('./backend/identity/http');
 const {createSyncService}=require('./backend/domain/sync-service');
 const {createMediaStorage}=require('./backend/domain/media-storage');
@@ -145,8 +146,15 @@ async function getMarketplaceHttp(){
   })();
   return marketplaceHttpPromise;
 }
+const resolvedSecretProvider=secretProvider?Object.freeze({
+  get:(...args)=>Promise.resolve(secretProvider).then(provider=>provider.get(...args)),
+  put:(...args)=>Promise.resolve(secretProvider).then(provider=>provider.put(...args)),
+  remove:(...args)=>Promise.resolve(secretProvider).then(provider=>provider.remove(...args))
+}):null;
+const smtpConfiguration=process.env.ROTAMOTO_OFFICIAL_OPERATOR_CONFIG==='true'&&CONFIG.databaseName==='rotamoto'&&resolvedSecretProvider&&process.env.ROTAMOTO_SMTP_CONFIG_FILE
+  ?createSmtpConfigurationService({pool:identityPool,secretProvider:resolvedSecretProvider,configFile:process.env.ROTAMOTO_SMTP_CONFIG_FILE,existingConfig:CONFIG.smtp}):null;
 let smtpProviderPromise=null;
-const emailProvider=CONFIG.smtp?.host?{async send(message){if(!smtpProviderPromise)smtpProviderPromise=(async()=>{const secrets=await secretProvider;if(!secrets)throw new Error('Secret provider indisponível.');const password=await secrets.get(CONFIG.smtp.passwordRef,{name:'smtp/password',scope:'installation'});return createSmtpMailProvider({...CONFIG.smtp,password})})();return (await smtpProviderPromise).send(message)}}:null;
+const emailProvider=smtpConfiguration?{send:message=>smtpConfiguration.sendInvitation(message)}:CONFIG.smtp?.host?{async send(message){if(!smtpProviderPromise)smtpProviderPromise=(async()=>{const secrets=await secretProvider;if(!secrets)throw new Error('Secret provider indisponível.');const password=await secrets.get(CONFIG.smtp.passwordRef,{name:'smtp/password',scope:'installation'});return createSmtpMailProvider({...CONFIG.smtp,password})})();return (await smtpProviderPromise).send(message)}}:null;
 let nativeMfaPromise=null;
 const mfaProvider=secretProvider?{async verify(input){if(!nativeMfaPromise)nativeMfaPromise=(async()=>createNativeMfaProvider({secretProvider:await secretProvider}))();return (await nativeMfaPromise).verify(input)}}:null;
 async function authorizeInitialBootstrap({action,context}){
@@ -169,6 +177,7 @@ const bootstrapReadiness=async()=>{
   try{
     const secrets=await secretProvider;
     result.mfaKeystoreConfigured=Boolean(secrets&&typeof secrets.get==='function'&&typeof secrets.put==='function'&&typeof secrets.remove==='function');
+    if(smtpConfiguration){result.invitationDeliveryConfigured=result.mfaKeystoreConfigured&&await smtpConfiguration.readiness();return result}
     const smtp=CONFIG.smtp;
     if(result.mfaKeystoreConfigured&&smtp?.host&&smtp?.user&&smtp?.passwordRef&&smtp?.from&&smtp?.baseUrl&&
       Number.isInteger(smtp.port)&&smtp.port>=1&&smtp.port<=65535){
@@ -194,7 +203,7 @@ const requestLogger=entry=>{
 const runtimeMetrics=createRuntimeMetrics();
 const queueMetrics=createQueueMetrics({pool:identityPool,tenantResolver:async()=>[]});
 const queueMetricsHttp=createQueueMetricsHttpHandler({identityService,metrics:queueMetrics,logger:requestLogger});
-const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS,bootstrapReadiness});
+const identityHttp=createIdentityHttpHandler({identityService,logger:()=>{},allowedOrigin:ALLOWED_ORIGINS,bootstrapReadiness,smtpConfiguration});
 let mediaProviderPromise=null;
 async function getMediaStorage(){if(!CONFIG.mediaDirectory)return createMediaStorage();if(!mediaProviderPromise)mediaProviderPromise=createFilesystemObjectStore({directory:CONFIG.mediaDirectory}).then(objectStore=>createMediaStorage({objectStore}));return mediaProviderPromise}
 const mediaStorage=Object.freeze({configured:()=>Boolean(CONFIG.mediaDirectory),status:()=>CONFIG.mediaDirectory?{configured:true,provider:'filesystem-v1'}:{configured:false,provider:null},

@@ -29,9 +29,6 @@ async function main() {
   if (!secrets || typeof secrets.put !== 'function' || typeof secrets.get !== 'function' || typeof secrets.remove !== 'function')
     throw safeError('BOOTSTRAP_KEYSTORE_UNAVAILABLE', 'Configure um keystore protegido com leitura, gravação e remoção antes da instalação.');
   await verifyKeystore(secrets);
-  if (!completeInvitationConfiguration(config.smtp))
-    throw safeError('BOOTSTRAP_EMAIL_UNAVAILABLE', 'Configure o serviço de convites por e-mail antes da instalação. Nenhum convite foi enviado.');
-  await verifyInvitationDelivery(secrets, config.smtp);
 
   const pool = createPool({ connectionString: config.databaseUrl, max: 1, connectionTimeoutMillis: 3000,
     application_name: 'rotamoto-browser-bootstrap-operator' });

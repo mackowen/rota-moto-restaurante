@@ -20,7 +20,7 @@
 .bootstrap-card h1{margin:0;color:var(--text-primary);font-size:clamp(22px,4vw,30px);line-height:1.2;letter-spacing:-.035em}
 .bootstrap-lead{max-width:70ch;margin:8px 0 0;color:var(--text-secondary);font-size:13px;line-height:1.55}
 .bootstrap-step-count{flex:none;padding:7px 10px;border:1px solid var(--border-subtle);border-radius:999px;background:var(--surface-soft);color:var(--text-secondary);font-size:11px;font-weight:750;white-space:nowrap}
-.bootstrap-progress{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin:23px 0 17px;padding:0;list-style:none}
+.bootstrap-progress{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;margin:23px 0 17px;padding:0;list-style:none}
 .bootstrap-progress-step{position:relative;min-width:0;display:grid;justify-items:center;gap:5px;color:var(--text-muted);text-align:center}
 .bootstrap-progress-step:before{content:"";position:absolute;z-index:0;top:13px;left:calc(-50% + 16px);right:calc(50% + 16px);height:1px;background:var(--border-strong)}
 .bootstrap-progress-step:first-child:before{display:none}
@@ -56,6 +56,11 @@
 .bootstrap-field input:focus-visible,.bootstrap-field select:focus-visible,.bootstrap-check-label input:focus-visible{outline:none;box-shadow:var(--focus-ring);border-color:var(--accent)}
 .bootstrap-grid-2,.bootstrap-grid-3{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .bootstrap-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.bootstrap-smtp-actions{display:flex;flex-wrap:wrap;gap:9px}
+.bootstrap-smtp-status{margin:0;padding:10px 12px;border:1px solid var(--border-subtle);border-radius:11px;background:var(--surface-soft);color:var(--text-secondary);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.bootstrap-smtp-status[data-kind="success"]{border-color:color-mix(in srgb,var(--success) 35%,var(--border-subtle));background:var(--success-soft);color:var(--text-primary)}
+.bootstrap-smtp-status[data-kind="error"]{border-color:color-mix(in srgb,var(--danger) 35%,var(--border-subtle));background:var(--danger-soft);color:var(--text-primary)}
+.bootstrap-smtp-status[data-kind="working"]{background:var(--surface-soft);color:var(--text-secondary)}
 .bootstrap-location,.bootstrap-ranges{min-width:0;margin:0;padding:13px;border:1px solid var(--border-subtle);border-radius:13px;background:var(--surface-soft)}
 .bootstrap-location legend,.bootstrap-ranges legend{padding:0 5px;color:var(--text-primary);font-size:12px;font-weight:800}
 .bootstrap-location>p{margin:0 0 10px;color:var(--text-muted);font-size:11px;line-height:1.45}
@@ -103,6 +108,7 @@
  .bootstrap-progress-step:before{top:12px;left:calc(-50% + 14px);right:calc(50% + 14px)}
  .bootstrap-progress-step>span{width:25px;height:25px;font-size:10px}
  .bootstrap-grid-2,.bootstrap-grid-3{grid-template-columns:1fr;gap:10px}
+ .bootstrap-smtp-actions{display:grid;grid-template-columns:1fr}
  .bootstrap-check{grid-template-columns:25px minmax(0,1fr);gap:8px;padding:9px}
  .bootstrap-check>b{grid-column:2}
  .bootstrap-review>div{grid-template-columns:1fr;gap:3px;padding:9px 10px}
