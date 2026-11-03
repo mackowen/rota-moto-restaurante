@@ -32,8 +32,12 @@ async function freePort() {
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
 }
 
-async function runBrowserBootstrapCliInPty({ port, root }) {
+async function runBrowserBootstrapCliInPty({ port, root, auditAvailable = true }) {
   await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  const operatorHome = path.join(root, 'operator-home');
+  const auditDirectory = path.join(operatorHome, 'rotamoto-data', 'identity', 'audit');
+  if (auditAvailable) await fs.mkdir(auditDirectory, { recursive: true, mode: 0o700 });
+  const auditFile = path.join(auditDirectory, 'operator-audit.jsonl');
   const secretDirectory = path.join(root, 'operator-keystore');
   await fs.mkdir(secretDirectory, { mode: 0o700 });
   const masterKeyFile = path.join(root, 'operator-master.key');
@@ -42,9 +46,12 @@ async function runBrowserBootstrapCliInPty({ port, root }) {
   const appDirectory = path.resolve(__dirname, '..');
   const shellCommand = `cd "${appDirectory}" && npm run bootstrap:prepare-browser`;
   const env = { ...process.env, NODE_ENV: 'development', DATABASE_URL: `postgresql://rotamoto_app@127.0.0.1:${port}/rotamoto`,
-    ROTAMOTO_SECRET_STORE_DIRECTORY: secretDirectory, ROTAMOTO_SECRET_MASTER_KEY_FILE: masterKeyFile,
-    ROTAMOTO_OPERATOR_AUDIT_LOG: path.join(root, 'operator-audit.jsonl'), ROTAMOTO_OPERATOR_ACTOR_REF: 'test:local-termux-operator',
+    HOME: operatorHome, ROTAMOTO_SECRET_STORE_DIRECTORY: secretDirectory, ROTAMOTO_SECRET_MASTER_KEY_FILE: masterKeyFile,
     SSH_CONNECTION: '', SSH_CLIENT: '', SSH_TTY: '' };
+  delete env.ROTAMOTO_OPERATOR_AUDIT_LOG;
+  delete env.ROTAMOTO_OPERATOR_ACTOR_REF;
+  assert.equal(env.ROTAMOTO_OPERATOR_AUDIT_LOG, undefined, 'issuer test does not inject the audit path into the shell');
+  assert.equal(env.ROTAMOTO_OPERATOR_ACTOR_REF, undefined, 'issuer test does not inject the audit actor into the shell');
   return new Promise((resolve, reject) => {
     const child = spawn('script', ['-q', '-e', '-c', shellCommand, '/dev/null'], { cwd: appDirectory,
       env, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -59,13 +66,13 @@ async function runBrowserBootstrapCliInPty({ port, root }) {
         const errorCode = /"code":"([A-Z0-9_]{2,48})"/u.exec(`${stderr}${stdout}`)?.[1] || null;
         stdout = '';
         stderr = '';
-        return resolve({ code: code ?? 1, errorCode, token: null, auditFile: path.join(root, 'operator-audit.jsonl') });
+        return resolve({ code: code ?? 1, errorCode, token: null, auditFile });
       }
       const tokens = stdout.split(/\r?\n/u).map(line => line.trim()).filter(line => /^[A-Za-z0-9_-]{43}$/u.test(line));
       if (tokens.length !== 1 || !stdout.includes('Autorização inicial (válida por 10 minutos; use uma única vez)'))
         return reject(new Error('Local bootstrap CLI did not emit exactly one expected temporary authorization.'));
       const token = tokens[0]; stdout = '';
-      resolve({ code: 0, errorCode: null, token, auditFile: path.join(root, 'operator-audit.jsonl') });
+      resolve({ code: 0, errorCode: null, token, auditFile });
     });
     child.stdin.end('PREPARAR PRIMEIRA INSTALACAO\n');
   });
@@ -207,6 +214,13 @@ async function main() {
     const expiredAuthorization = await call('/api/admin/tenants/provision', { companyName: 'Sintética', email: 'expired@example.invalid',
       idempotencyKey: `expired-${crypto.randomUUID()}`, initialSetup, localOnly: true }, capability);
     assert.equal(expiredAuthorization.status, 403, 'expired authorization is rejected');
+    const auditFailure = await runBrowserBootstrapCliInPty({ port, root: path.join(root, 'issuer-audit-failure'), auditAvailable: false });
+    assert.equal(auditFailure.code, 1);
+    assert.equal(auditFailure.errorCode, 'BOOTSTRAP_AUDIT_UNAVAILABLE', 'post-commit audit failure has a safe operational code');
+    assert.equal(auditFailure.token, null, 'token is never printed when audit persistence fails');
+    const revokedAfterAuditFailure = await pool.query(`SELECT count(*)::int AS active FROM rotamoto.bootstrap_authorizations
+      WHERE consumed_at IS NULL AND expires_at>now()`);
+    assert.equal(revokedAfterAuditFailure.rows[0].active, 0, 'an unreported token is atomically consumed after audit failure');
     const reissued = await runBrowserBootstrapCliInPty({ port, root: path.join(root, 'issuer-after-expiry') });
     assert.equal(reissued.code, 0, 'the real Termux CLI may issue again after the prior authorization expires');
     capability = reissued.token;

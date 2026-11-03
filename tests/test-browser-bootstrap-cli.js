@@ -6,7 +6,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const { completeInvitationConfiguration, verifyKeystore, verifyInvitationDelivery,
-  isLocalTermuxOperator, loadConfiguredSecretProvider } = require('../scripts/prepare-browser-bootstrap');
+  isLocalTermuxOperator, loadConfiguredSecretProvider, classifySafeFailure } = require('../scripts/prepare-browser-bootstrap');
 const { initializeFileSecretStore } = require('../backend/runtime/file-secret-provider');
 const { loadSecretProvider } = require('../backend/runtime/secret-provider');
 
@@ -30,6 +30,19 @@ assert.equal(isLocalTermuxOperator('android', { ...termux, SSH_CONNECTION: '192.
   'SSH sessions cannot issue local installation authorization');
 assert.equal(isLocalTermuxOperator('android', { ...termux, PREFIX: '/tmp/fake-termux' }), false,
   'spoofed/non-Termux prefix cannot issue authorization');
+assert.equal(classifySafeFailure({ code: 'OPERATOR_AUDIT_CONFIGURATION_REQUIRED' }).code,
+  'BOOTSTRAP_AUDIT_UNAVAILABLE', 'operator audit configuration failures have a safe actionable code');
+assert.equal(classifySafeFailure({ code: 'WRAPPED', cause: { code: '42501' } }).code,
+  'BOOTSTRAP_DATABASE_PERMISSION_DENIED', 'nested PostgreSQL permission failures retain their operational class');
+assert.equal(classifySafeFailure({ code: 'WRAPPED', cause: { code: 'ECONNREFUSED' } }).code,
+  'BOOTSTRAP_DATABASE_UNAVAILABLE', 'nested connection failures retain their operational class');
+assert.equal(classifySafeFailure({ code: 'WRAPPED', cause: { code: 'SECRET_STORE_CONFIGURATION_INVALID' } }).code,
+  'BOOTSTRAP_KEYSTORE_UNAVAILABLE', 'nested keystore failures retain their operational class');
+const sanitizedFailure = classifySafeFailure({ code: 'WRAPPED', message: 'synthetic-private-detail',
+  cause: { code: '42501', message: 'synthetic-sql-detail' } });
+assert.equal(sanitizedFailure.code, 'BOOTSTRAP_DATABASE_PERMISSION_DENIED');
+assert.doesNotMatch(sanitizedFailure.message, /synthetic-private-detail|synthetic-sql-detail/u,
+  'operational error classification never exposes nested details');
 
 const smtp = { host: 'smtp.example.invalid', user: 'bootstrap', passwordRef: 'secret-ref', from: 'noreply@example.invalid',
   baseUrl: 'https://example.invalid', port: 587 };

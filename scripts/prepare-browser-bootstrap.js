@@ -15,7 +15,12 @@ async function main() {
     throw safeError('BOOTSTRAP_TTY_REQUIRED', 'Use um terminal local interativo do Termux, sem SSH, e confirme --confirm-database=rotamoto.');
   // The HTTP runtime intentionally does not receive keystore paths. Resolve
   // the private operator configuration rather than relying on shell exports.
-  const config = await loadOperatorRuntimeConfig();
+  let config;
+  try { config = await loadOperatorRuntimeConfig(); }
+  catch (error) {
+    throw safeError('BOOTSTRAP_OPERATOR_CONFIGURATION_INVALID',
+      'A configuração privada do operador não passou na validação.', error);
+  }
   const database = new URL(config.databaseUrl);
   if (config.nodeEnv === 'test' || database.pathname !== '/rotamoto' ||
       !['127.0.0.1', 'localhost', '::1', '[::1]'].includes(database.hostname) ||
@@ -28,10 +33,15 @@ async function main() {
         'PREPARAR PRIMEIRA INSTALACAO') throw safeError('BOOTSTRAP_CONFIRMATION_REQUIRED', 'Confirmação local não reconhecida.');
   } finally { terminal.close(); }
 
-  const secrets = await loadConfiguredSecretProvider(config);
+  let secrets;
+  try { secrets = await loadConfiguredSecretProvider(config); }
+  catch (error) {
+    throw safeError('BOOTSTRAP_KEYSTORE_UNAVAILABLE', 'O keystore não passou na validação local.', error);
+  }
   if (!secrets || typeof secrets.put !== 'function' || typeof secrets.get !== 'function' || typeof secrets.remove !== 'function')
     throw safeError('BOOTSTRAP_KEYSTORE_UNAVAILABLE', 'Configure um keystore protegido com leitura, gravação e remoção antes da instalação.');
-  await verifyKeystore(secrets);
+  try { await verifyKeystore(secrets); }
+  catch (error) { throw safeError('BOOTSTRAP_KEYSTORE_UNAVAILABLE', 'O keystore não passou na verificação local.', error); }
 
   const pool = createPool({ connectionString: config.databaseUrl, max: 1, connectionTimeoutMillis: 3000,
     application_name: 'rotamoto-browser-bootstrap-operator' });
@@ -47,15 +57,28 @@ async function main() {
     capability = issued.capability;
     digest = issued.digest;
     await client.query('COMMIT'); committed = true;
-    await appendOperatorAudit('identity.bootstrap.browser_authorization_prepared', { database: 'rotamoto', expiresInMinutes: 10 });
+    try {
+      await appendOperatorAudit('identity.bootstrap.browser_authorization_prepared',
+        { database: 'rotamoto', expiresInMinutes: 10 }, config.operatorAudit);
+    } catch (error) {
+      throw safeError('BOOTSTRAP_AUDIT_UNAVAILABLE',
+        'A auditoria local falhou; a autorização não será disponibilizada.', error);
+    }
     stdout.write('\nAutorização inicial (válida por 10 minutos; use uma única vez):\n');
     stdout.write(`${capability.toString('base64url')}\n\n`);
     stdout.write('Cole o código somente na página local de primeira instalação. Não o salve nem o envie a outra pessoa.\n');
   } catch (error) {
     if (!committed) await client?.query('ROLLBACK').catch(() => {});
     else {
-      await client?.query('BEGIN').then(() => client.query('UPDATE rotamoto.bootstrap_authorizations SET consumed_at=now() WHERE token_digest=$1 AND consumed_at IS NULL', [digest]))
-        .then(() => client.query('COMMIT')).catch(() => client?.query('ROLLBACK').catch(() => {}));
+      try {
+        await client?.query('BEGIN');
+        await client?.query('UPDATE rotamoto.bootstrap_authorizations SET consumed_at=now() WHERE token_digest=$1 AND consumed_at IS NULL', [digest]);
+        await client?.query('COMMIT');
+      } catch (cleanupError) {
+        await client?.query('ROLLBACK').catch(() => {});
+        throw safeError('BOOTSTRAP_AUTHORIZATION_CLEANUP_FAILED',
+          'Não foi possível confirmar o cancelamento seguro. Não tente outra emissão agora; aguarde a expiração e consulte o operador.', cleanupError);
+      }
     }
     throw error;
   } finally {
@@ -133,25 +156,68 @@ async function verifyInvitationDelivery(provider, smtp) {
   }
 }
 
-function safeError(code, message) { return Object.assign(new Error(message), { code }); }
+function safeError(code, message, cause) {
+  const error = Object.assign(new Error(message), { code });
+  if (cause) error.cause = cause;
+  return error;
+}
 
-function reportSafeFailure(error) {
-  const safeMessages = {
+function classifySafeFailure(error) {
+  const known = {
     BOOTSTRAP_TTY_REQUIRED: 'Preparação disponível somente no terminal local interativo do Termux, sem SSH.',
     BOOTSTRAP_TARGET_INVALID: 'O alvo ou a identidade da conexão não corresponde ao serviço autorizado.',
     BOOTSTRAP_CONFIRMATION_REQUIRED: 'A confirmação local não foi reconhecida.',
     BOOTSTRAP_KEYSTORE_UNAVAILABLE: 'O keystore não passou na verificação local.',
     BOOTSTRAP_EMAIL_UNAVAILABLE: 'O serviço de convites não passou na verificação local.',
     BOOTSTRAP_NOT_AVAILABLE: 'O banco já possui estado de instalação; nenhuma autorização foi emitida.',
-    BOOTSTRAP_AUTHORIZATION_EXISTS: 'Já há autorização local ativa; nenhuma autorização adicional foi emitida.'
+    BOOTSTRAP_AUTHORIZATION_EXISTS: 'Já há autorização local ativa; nenhuma autorização adicional foi emitida.',
+    BOOTSTRAP_AUDIT_UNAVAILABLE: 'A auditoria local falhou; a autorização foi cancelada com segurança.',
+    BOOTSTRAP_AUTHORIZATION_CLEANUP_FAILED: 'Não foi possível confirmar o cancelamento seguro. Não tente outra emissão agora; aguarde a expiração e consulte o operador.',
+    BOOTSTRAP_OPERATOR_CONFIGURATION_INVALID: 'A configuração privada do operador está inválida.',
+    BOOTSTRAP_DATABASE_UNAVAILABLE: 'Não foi possível conectar ao PostgreSQL local; nenhuma autorização foi emitida.',
+    BOOTSTRAP_DATABASE_PERMISSION_DENIED: 'O papel autorizado não tem os privilégios SQL necessários.',
+    BOOTSTRAP_DATABASE_BUSY: 'O PostgreSQL está ocupado; nenhuma autorização foi emitida.',
+    BOOTSTRAP_DATABASE_SCHEMA_UNAVAILABLE: 'O schema do Bootstrap não está disponível ou está incompatível.',
+    BOOTSTRAP_AUTHORIZATION_CONFLICT: 'O estado de autorização mudou durante a operação; tente novamente após verificar o status.'
   };
-  const code = safeMessages[error?.code] ? error.code : 'BOOTSTRAP_PREPARATION_FAILED';
+  const byCause = new Set();
+  const seen = new Set();
+  let current = error;
+  for (let depth = 0; current && depth < 8 && !seen.has(current); depth += 1, current = current.cause) {
+    seen.add(current);
+    if (known[current.code]) return { code: current.code, message: known[current.code] };
+    const code = current.code;
+    if (code === 'OPERATOR_AUDIT_CONFIGURATION_REQUIRED' || code === 'EACCES' || code === 'EPERM')
+      byCause.add('BOOTSTRAP_AUDIT_UNAVAILABLE');
+    else if (code === 'SECRET_STORE_CONFIGURATION_INVALID') byCause.add('BOOTSTRAP_KEYSTORE_UNAVAILABLE');
+    else if (['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EHOSTUNREACH', '57P01', '57P03'].includes(code))
+      byCause.add('BOOTSTRAP_DATABASE_UNAVAILABLE');
+    else if (code === '42501') byCause.add('BOOTSTRAP_DATABASE_PERMISSION_DENIED');
+    else if (['55P03', '57014'].includes(code)) byCause.add('BOOTSTRAP_DATABASE_BUSY');
+    else if (['42P01', '42883', '3F000'].includes(code)) byCause.add('BOOTSTRAP_DATABASE_SCHEMA_UNAVAILABLE');
+    else if (code === '23505') byCause.add('BOOTSTRAP_AUTHORIZATION_CONFLICT');
+    else if (code === 'OPERATOR_CONFIGURATION_INVALID') byCause.add('BOOTSTRAP_OPERATOR_CONFIGURATION_INVALID');
+  }
+  const priority = ['BOOTSTRAP_AUDIT_UNAVAILABLE', 'BOOTSTRAP_KEYSTORE_UNAVAILABLE',
+    'BOOTSTRAP_DATABASE_PERMISSION_DENIED', 'BOOTSTRAP_DATABASE_SCHEMA_UNAVAILABLE',
+    'BOOTSTRAP_DATABASE_BUSY', 'BOOTSTRAP_DATABASE_UNAVAILABLE',
+    'BOOTSTRAP_AUTHORIZATION_CONFLICT', 'BOOTSTRAP_OPERATOR_CONFIGURATION_INVALID'];
+  const code = priority.find(candidate => byCause.has(candidate));
+  return code ? { code, message: known[code] } : {
+    code: 'BOOTSTRAP_PREPARATION_FAILED',
+    message: 'Preparação não concluída. Consulte o operador local sem compartilhar diagnósticos sensíveis.'
+  };
+}
+
+function reportSafeFailure(error) {
+  const safe = classifySafeFailure(error);
+  const code = safe.code;
   process.stderr.write(`${JSON.stringify({ event: 'identity.bootstrap.browser_authorization_failed', code })}\n`);
-  process.stderr.write(`${safeMessages[code] || 'Preparação não concluída. Consulte o operador local sem compartilhar diagnósticos sensíveis.'}\n`);
+  process.stderr.write(`${safe.message}\n`);
   process.exitCode = 1;
 }
 
 if (require.main === module) main().catch(reportSafeFailure);
 
 module.exports = Object.freeze({ completeInvitationConfiguration, verifyKeystore, verifyInvitationDelivery,
-  isLocalTermuxOperator, loadConfiguredSecretProvider });
+  isLocalTermuxOperator, loadConfiguredSecretProvider, classifySafeFailure });
