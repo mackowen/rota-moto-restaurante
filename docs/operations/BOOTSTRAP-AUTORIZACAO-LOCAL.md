@@ -26,6 +26,8 @@ cd "$HOME/projetos/repos/rota-moto-restaurante" && npm run bootstrap:prepare-bro
 
 O script npm expande para `node scripts/prepare-browser-bootstrap.js --confirm-database=rotamoto`. A verificação automatizada dos gates pode ser feita sem emissão usando `node tests/test-browser-bootstrap-cli.js`; ela não prepara uma autorização real.
 
+O emissor carrega a configuração privada do contexto de operador e resolve o keystore já provisionado. Não é necessário exportar paths no shell. A API HTTP supervisionada recebe um ambiente separado, sem paths do keystore, por desenho. Se a verificação falhar, interrompa a emissão e confira `npm run operator`; não inicialize, substitua nem rotacione a chave como tentativa de recuperação.
+
 O emissor requer terminal interativo (stdin e stdout TTY), Android/Termux local (sem sessão SSH), confirmação textual `PREPARAR PRIMEIRA INSTALACAO`, ambiente diferente de test, URL do banco oficial sem senha embutida, usuário e banco exatos, keystore MFA válido, estado inicial `ready` e nenhuma autorização ainda ativa. Ele toma um lock transacional no banco, gera 32 bytes criptograficamente aleatórios, codifica-os em Base64URL e grava apenas SHA-256 da representação Base64URL que a API validará. O token expira em 10 minutos e é impresso uma vez no terminal. Não registre, fotografe, envie por mensagem nem coloque o valor em argumentos de shell.
 
 Saída ilustrativa, com marcador fictício não utilizável:

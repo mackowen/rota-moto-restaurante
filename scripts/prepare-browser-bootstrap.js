@@ -3,7 +3,7 @@
 const crypto = require('node:crypto');
 const readline = require('node:readline/promises');
 const { stdin, stdout } = require('node:process');
-const { loadRuntimeConfig } = require('../backend/runtime/config');
+const { loadOperatorRuntimeConfig } = require('../backend/runtime/operator-config');
 const { createPool } = require('../backend/postgres/connection');
 const { createFileSecretProvider } = require('../backend/runtime/file-secret-provider');
 const { loadSecretProvider, loadLocalSecretProvider } = require('../backend/runtime/secret-provider');
@@ -13,7 +13,9 @@ async function main() {
   if (stdin.isTTY !== true || stdout.isTTY !== true || !isLocalTermuxOperator(process.platform, process.env) ||
       !process.argv.includes('--confirm-database=rotamoto'))
     throw safeError('BOOTSTRAP_TTY_REQUIRED', 'Use um terminal local interativo do Termux, sem SSH, e confirme --confirm-database=rotamoto.');
-  const config = loadRuntimeConfig();
+  // The HTTP runtime intentionally does not receive keystore paths. Resolve
+  // the private operator configuration rather than relying on shell exports.
+  const config = await loadOperatorRuntimeConfig();
   const database = new URL(config.databaseUrl);
   if (config.nodeEnv === 'test' || database.pathname !== '/rotamoto' ||
       !['127.0.0.1', 'localhost', '::1', '[::1]'].includes(database.hostname) ||
@@ -64,9 +66,8 @@ async function main() {
 async function loadConfiguredSecretProvider(config) {
   if (config.production) return config.secretProviderModule ? loadSecretProvider(config.secretProviderModule) :
     loadLocalSecretProvider({ directory: config.secretStoreDirectory, masterKeyFile: config.secretMasterKeyFile });
-  if (process.env.ROTAMOTO_SECRET_STORE_DIRECTORY && process.env.ROTAMOTO_SECRET_MASTER_KEY_FILE)
-    return createFileSecretProvider({ directory: process.env.ROTAMOTO_SECRET_STORE_DIRECTORY,
-      masterKeyFile: process.env.ROTAMOTO_SECRET_MASTER_KEY_FILE });
+  if (config.secretStoreDirectory && config.secretMasterKeyFile)
+    return createFileSecretProvider({ directory: config.secretStoreDirectory, masterKeyFile: config.secretMasterKeyFile });
   return null;
 }
 
@@ -153,4 +154,4 @@ function reportSafeFailure(error) {
 if (require.main === module) main().catch(reportSafeFailure);
 
 module.exports = Object.freeze({ completeInvitationConfiguration, verifyKeystore, verifyInvitationDelivery,
-  isLocalTermuxOperator });
+  isLocalTermuxOperator, loadConfiguredSecretProvider });

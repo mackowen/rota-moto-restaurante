@@ -6,7 +6,8 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const { completeInvitationConfiguration, verifyKeystore, verifyInvitationDelivery,
-  isLocalTermuxOperator } = require('../scripts/prepare-browser-bootstrap');
+  isLocalTermuxOperator, loadConfiguredSecretProvider } = require('../scripts/prepare-browser-bootstrap');
+const { initializeFileSecretStore } = require('../backend/runtime/file-secret-provider');
 const { loadSecretProvider } = require('../backend/runtime/secret-provider');
 
 const script = path.join(__dirname, '..', 'scripts', 'prepare-browser-bootstrap.js');
@@ -48,6 +49,22 @@ const secretProvider = {
 // preflight reads only the configured reference and never reports its value.
 verifyKeystore(secretProvider).then(async () => {
   assert.equal(removed, true, 'preflight removes only its own temporary keystore canary');
+  const localDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'rotamoto-bootstrap-keystore-'));
+  try {
+    const keyDirectory = path.join(localDirectory, 'keys');
+    fs.mkdirSync(keyDirectory, { mode: 0o700 });
+    fs.chmodSync(localDirectory, 0o700);
+    const storeDirectory = path.join(localDirectory, 'keystore');
+    const masterKeyFile = path.join(keyDirectory, 'master.key');
+    await initializeFileSecretStore({ directory: storeDirectory, masterKeyFile });
+    const provider = await loadConfiguredSecretProvider({ production: false, secretProviderModule: null,
+      secretStoreDirectory: storeDirectory, secretMasterKeyFile: masterKeyFile });
+    const saved = await provider.put({ name: 'smtp/password', scope: 'installation', value: 'synthetic-existing-secret' });
+    await verifyKeystore(provider);
+    assert.equal(await provider.get(saved.secretRef, { name: 'smtp/password', scope: 'installation' }),
+      'synthetic-existing-secret', 'canary verification preserves existing encrypted entries');
+    assert.equal(fs.readdirSync(storeDirectory).length, 1, 'only the synthetic pre-existing entry remains after preflight');
+  } finally { fs.rmSync(localDirectory, { recursive: true, force: true }); }
   await verifyInvitationDelivery(secretProvider, smtp);
   await assert.rejects(verifyInvitationDelivery({ get: async () => { throw new Error('secret path/value must not leak'); } }, smtp),
     error => error.code === 'BOOTSTRAP_EMAIL_UNAVAILABLE' && !/secret path|value/u.test(error.message));
