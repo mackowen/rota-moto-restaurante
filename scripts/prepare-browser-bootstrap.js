@@ -153,4 +153,4 @@ function reportSafeFailure(error) {
 if (require.main === module) main().catch(reportSafeFailure);
 
 module.exports = Object.freeze({ completeInvitationConfiguration, verifyKeystore, verifyInvitationDelivery,
-  isLocalTermuxOperator, issueBrowserBootstrapAuthorization });
+  isLocalTermuxOperator });

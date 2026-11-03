@@ -15,7 +15,6 @@ const { createIdentityService } = require('../backend/identity/service');
 const { createIdentityHttpHandler } = require('../backend/identity/http');
 const { createNativeMfaProvider } = require('../backend/identity/native-mfa-provider');
 const { codeAt } = require('../backend/identity/totp');
-const { issueBrowserBootstrapAuthorization } = require('../scripts/prepare-browser-bootstrap');
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -34,6 +33,7 @@ async function freePort() {
 }
 
 async function runBrowserBootstrapCliInPty({ port, root }) {
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
   const secretDirectory = path.join(root, 'operator-keystore');
   await fs.mkdir(secretDirectory, { mode: 0o700 });
   const masterKeyFile = path.join(root, 'operator-master.key');
@@ -55,12 +55,17 @@ async function runBrowserBootstrapCliInPty({ port, root }) {
     child.once('error', error => { clearTimeout(timer); reject(new Error(`Could not start local bootstrap CLI PTY: ${error.code || 'ERROR'}`)); });
     child.once('close', code => {
       clearTimeout(timer);
-      if (code !== 0) return reject(new Error(`Local bootstrap CLI failed in disposable Termux PTY (${code ?? 'signal'}): ${stderr.replace(/[A-Za-z0-9_-]{43}/gu, '[redacted]').slice(-500)}`));
+      if (code !== 0) {
+        const errorCode = /"code":"([A-Z0-9_]{2,48})"/u.exec(`${stderr}${stdout}`)?.[1] || null;
+        stdout = '';
+        stderr = '';
+        return resolve({ code: code ?? 1, errorCode, token: null, auditFile: path.join(root, 'operator-audit.jsonl') });
+      }
       const tokens = stdout.split(/\r?\n/u).map(line => line.trim()).filter(line => /^[A-Za-z0-9_-]{43}$/u.test(line));
       if (tokens.length !== 1 || !stdout.includes('Autorização inicial (válida por 10 minutos; use uma única vez)'))
         return reject(new Error('Local bootstrap CLI did not emit exactly one expected temporary authorization.'));
       const token = tokens[0]; stdout = '';
-      resolve(token);
+      resolve({ code: 0, errorCode: null, token, auditFile: path.join(root, 'operator-audit.jsonl') });
     });
     child.stdin.end('PREPARAR PRIMEIRA INSTALACAO\n');
   });
@@ -135,32 +140,24 @@ async function main() {
       async get(secretRef) { if (!secretValues.has(secretRef)) throw new Error('disposable secret not found'); return secretValues.get(secretRef); },
       async remove(secretRef) { secretValues.delete(secretRef); }
     };
-    async function issueInTransaction() {
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        const issued = await issueBrowserBootstrapAuthorization(client);
-        await client.query('COMMIT');
-        return issued;
-      } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
-      finally { client.release(); }
-    }
-    const issuanceRace = await Promise.allSettled([issueInTransaction(), issueInTransaction()]);
-    const issuedCandidates = issuanceRace.filter(item => item.status === 'fulfilled').map(item => item.value);
-    const blockedIssuers = issuanceRace.filter(item => item.status === 'rejected');
+    const issuanceRace = await Promise.all([
+      runBrowserBootstrapCliInPty({ port, root: path.join(root, 'issuer-race-a') }),
+      runBrowserBootstrapCliInPty({ port, root: path.join(root, 'issuer-race-b') })
+    ]);
+    const issuedCandidates = issuanceRace.filter(item => item.code === 0);
+    const blockedIssuers = issuanceRace.filter(item => item.code !== 0);
     assert.equal(issuedCandidates.length, 1, 'the advisory lock permits exactly one active authorization issuance');
     assert.equal(blockedIssuers.length, 1);
-    assert.equal(blockedIssuers[0].reason.code, 'BOOTSTRAP_AUTHORIZATION_EXISTS');
-    let currentAuthorization = issuedCandidates[0];
-    let capability = currentAuthorization.capability.toString('base64url');
-    let digest = Buffer.from(currentAuthorization.digest);
+    assert.equal(blockedIssuers[0].errorCode, 'BOOTSTRAP_AUTHORIZATION_EXISTS');
+    let capability = issuedCandidates[0].token;
+    let digest = crypto.createHash('sha256').update(capability, 'utf8').digest();
     assert.match(capability, /^[A-Za-z0-9_-]{43}$/u);
-    assert.equal(digest.equals(crypto.createHash('sha256').update(capability).digest()), true);
+    assert.equal(digest.equals(crypto.createHash('sha256').update(capability, 'utf8').digest()), true);
     const persistedDigest = await pool.query('SELECT token_digest FROM rotamoto.bootstrap_authorizations WHERE token_digest=$1', [digest]);
     assert.equal(persistedDigest.rowCount, 1, 'issuer persisted the digest under the installation scope');
     assert.equal(persistedDigest.rows[0].token_digest.equals(Buffer.from(capability, 'base64url')), false,
       'database never stores the raw capability');
-    currentAuthorization.capability.fill(0); currentAuthorization.digest.fill(0);
+    issuedCandidates[0].token = null;
     const emailDeliveries = [];
     const identityService = createIdentityService({ pool, requireBootstrapAuthorization: true, emailProvider: { async send(message) { emailDeliveries.push(message); } },
       secretProvider, mfaProvider: createNativeMfaProvider({ secretProvider }), authorizeProvisioner: async ({ context }) => {
@@ -210,12 +207,14 @@ async function main() {
     const expiredAuthorization = await call('/api/admin/tenants/provision', { companyName: 'Sintética', email: 'expired@example.invalid',
       idempotencyKey: `expired-${crypto.randomUUID()}`, initialSetup, localOnly: true }, capability);
     assert.equal(expiredAuthorization.status, 403, 'expired authorization is rejected');
-    capability = await runBrowserBootstrapCliInPty({ port, root });
+    const reissued = await runBrowserBootstrapCliInPty({ port, root: path.join(root, 'issuer-after-expiry') });
+    assert.equal(reissued.code, 0, 'the real Termux CLI may issue again after the prior authorization expires');
+    capability = reissued.token;
     digest = crypto.createHash('sha256').update(capability, 'utf8').digest();
     const emitted = await pool.query(`SELECT token_digest FROM rotamoto.bootstrap_authorizations WHERE token_digest=$1
       AND installation_scope='rotamoto' AND consumed_at IS NULL AND expires_at>now()`, [digest]);
     assert.equal(emitted.rowCount, 1, 'the real Termux CLI output is usable by the official capability verifier');
-    const operatorAudit = await fs.readFile(path.join(root, 'operator-audit.jsonl'), 'utf8');
+    const operatorAudit = await fs.readFile(reissued.auditFile, 'utf8');
     assert.equal(operatorAudit.includes(capability), false, 'operator audit never records the raw authorization');
     assert.doesNotMatch(operatorAudit, /[A-Za-z0-9_-]{43}/u, 'operator audit contains no token-shaped value');
     const unauthenticated = await call('/api/admin/tenants/provision', { companyName: 'Sintética', email: 'synthetic@example.invalid',
@@ -248,8 +247,10 @@ async function main() {
     assert.equal(enrolled.recoveryCodes.length, 10);
     const installed = await identityService.getBootstrapStatus();
     assert(['complete', 'pending_owner_mfa'].includes(installed.state), `founder/MFA state must be a valid completed path: ${installed.state}`);
-    await assert.rejects(issueInTransaction(), error => error.code === 'BOOTSTRAP_NOT_AVAILABLE',
-      'the official issuer refuses a second authorization after the installation latch is complete');
+    const afterInstallIssuance = await runBrowserBootstrapCliInPty({ port, root: path.join(root, 'issuer-after-install') });
+    assert.equal(afterInstallIssuance.code, 1);
+    assert.equal(afterInstallIssuance.errorCode, 'BOOTSTRAP_NOT_AVAILABLE',
+      'the actual CLI refuses a second authorization after the installation latch is complete');
     capability = '';
     digest.fill(0);
     verifier = new Client({ connectionString: `postgresql://rm_local_test_admin@127.0.0.1:${port}/rotamoto` }); verifier.on('error', () => {}); await verifier.connect();
