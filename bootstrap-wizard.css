@@ -61,10 +61,13 @@
 .bootstrap-grid-2,.bootstrap-grid-3{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .bootstrap-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .bootstrap-smtp-actions{display:flex;flex-wrap:wrap;gap:9px}
-.bootstrap-smtp-status{margin:0;padding:10px 12px;border:1px solid var(--border-subtle);border-radius:11px;background:var(--surface-soft);color:var(--text-secondary);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.bootstrap-smtp-status{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-width:0;margin:0;padding:10px 12px;border:1px solid var(--border-subtle);border-radius:11px;background:var(--surface-soft);color:var(--text-secondary);font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+.bootstrap-smtp-status>span{min-width:0;flex:1}
+.bootstrap-smtp-status>button{flex:none;padding:2px 0;border:0;background:transparent;color:inherit;font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.bootstrap-smtp-status>button:focus-visible{outline:none;box-shadow:var(--focus-ring);border-radius:4px}
 .bootstrap-smtp-status[data-kind="success"]{border-color:color-mix(in srgb,var(--success) 35%,var(--border-subtle));background:var(--success-soft);color:var(--text-primary)}
 .bootstrap-smtp-status[data-kind="error"]{border-color:color-mix(in srgb,var(--danger) 35%,var(--border-subtle));background:var(--danger-soft);color:var(--text-primary)}
-.bootstrap-smtp-status[data-kind="working"]{background:var(--surface-soft);color:var(--text-secondary)}
+.bootstrap-smtp-status[data-kind="working"],.bootstrap-smtp-status[data-kind="info"]{background:var(--surface-soft);color:var(--text-secondary)}
 .bootstrap-location,.bootstrap-ranges{min-width:0;margin:0;padding:13px;border:1px solid var(--border-subtle);border-radius:13px;background:var(--surface-soft)}
 .bootstrap-smtp-configuration{min-width:0;border:1px solid var(--border-subtle);border-radius:13px;background:var(--surface-soft)}
 .bootstrap-smtp-configuration>summary{min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;color:var(--text-primary);font-size:13px;font-weight:800;cursor:pointer;list-style:none}

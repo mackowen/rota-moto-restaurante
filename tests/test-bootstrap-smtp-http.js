@@ -28,12 +28,13 @@ async function main() {
     assert.equal(permission, 'company.manage');
     return operation({ async query() { return { rowCount: adminActive ? 1 : 0 }; } },
       { user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', mfa_verified_at: mfaVerified ? new Date() : null });
-  }, async verifyCsrf() { return true; } }, smtpConfiguration });
+  }, async verifyCsrf() { return true; } }, smtpConfiguration,
+  allowedOrigin: ['http://127.0.0.1:8083', 'http://localhost:8083'] });
   const server = http.createServer((req, res) => { req.clientIp = req.socket.remoteAddress; void handler(req, res); });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const origin = `http://127.0.0.1:${server.address().port}`;
-  async function call(path, { method = 'POST', authorization = null, body = {}, requestOrigin = origin, session = false, csrf = false } = {}) {
-    return fetch(`${origin}${path}`, { method, headers: { Origin: requestOrigin, ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+  async function call(path, { method = 'POST', authorization = null, body = {}, requestOrigin = origin, requestHost = null, session = false, csrf = false } = {}) {
+    return fetch(`${origin}${path}`, { method, headers: { Origin: requestOrigin, ...(requestHost ? { Host: requestHost } : {}), ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
       ...(authorization ? { 'X-RotaMoto-Bootstrap-Authorization': authorization } : {}), ...(session ? { Cookie: `__Host-rotamoto_session=${'S'.repeat(43)}` } : {}), ...(csrf ? { 'X-CSRF-Token': 'csrf-test-token' } : {}) }, ...(method === 'POST' ? { body: JSON.stringify(body) } : {}) });
   }
   try {
@@ -48,6 +49,16 @@ async function main() {
     assert.equal((await call(testPath, { body: { requestId: 'ee0c1383-9b9d-46e3-8677-c4a946f8a92f', settings: {} } })).status, 403);
     const crossOrigin = await call(validatePath, { authorization: 'A'.repeat(43), requestOrigin: 'https://attacker.example' });
     assert.equal(crossOrigin.status, 403);
+    const proxiedLoopback = await call(validatePath, { authorization: 'A'.repeat(43), requestOrigin: 'http://127.0.0.1:8083',
+      requestHost: '127.0.0.1', body: { provider: 'custom' } });
+    assert.equal(proxiedLoopback.status, 200, 'the exact loopback origin works through nginx Host rewriting');
+    const proxiedLocalhost = await call(validatePath, { authorization: 'A'.repeat(43), requestOrigin: 'http://localhost:8083',
+      requestHost: '127.0.0.1', body: { provider: 'custom' } });
+    assert.equal(proxiedLocalhost.status, 200, 'the explicit localhost origin works through the loopback proxy');
+    const proxiedLan = await call(validatePath, { authorization: 'A'.repeat(43), requestOrigin: 'http://192.168.1.20:8083',
+      requestHost: '127.0.0.1', body: { provider: 'custom' } });
+    assert.equal(proxiedLan.status, 403);
+    assert.equal((await proxiedLan.json()).error.code, 'ORIGIN_INVALID', 'LAN origins stay outside the exact allowlist');
     const config = { provider: 'custom', senderEmail: 'a@example.test', senderName: 'RotaMoto', host: 'smtp.example.test',
       port: 587, tlsMode: 'starttls', authMethod: 'password', username: 'smtp-user', password: 'must-not-echo',
       testRecipient: 'qa@example.test', publicBaseUrl: 'https://app.example.test/' };

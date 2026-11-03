@@ -25,6 +25,7 @@
     tlsMode: 'tls', authMethod: 'password', username: '', password: '', testRecipient: '', publicBaseUrl: '', reuseStoredCredential: false };
   let smtpStatus = { state: 'idle', message: '' };
   let smtpSetupStatusLoaded = false;
+  let smtpEditRevision = 0;
   let smtpCredentialAvailable = false;
   let smtpConfigurationSaved = false;
   let smtpTransportSaved = false;
@@ -188,8 +189,9 @@
       : smtpDraft.provider === 'microsoft365'
         ? 'O SMTP AUTH precisa estar habilitado para a caixa no Microsoft 365. Este fluxo usa usuário e senha SMTP; OAuth não está implementado.'
         : 'Use o host oficial do seu provedor, com STARTTLS ou TLS implícito. Endereços IP, redes locais e SMTP sem TLS são bloqueados.';
-    const statusKind = smtpStatus.state === 'success' ? 'success' : smtpStatus.state === 'working' ? 'working' : smtpStatus.state === 'error' ? 'error' : '';
+    const statusKind = ['success', 'working', 'error', 'info'].includes(smtpStatus.state) ? smtpStatus.state : 'info';
     const required = localOnlyMode ? '' : 'required';
+    const statusMessage = smtpStatus.message || (smtpConfigurationSaved ? 'Configuração de e-mail testada e protegida.' : 'O SMTP ainda não foi testado.');
     return `<section class="bootstrap-form-step bootstrap-smtp-step"><div><h2>E-mail e notificações</h2><p>O transporte SMTP pode ser configurado agora, independentemente dos links de convite. Sem URL HTTPS pública, convites por e-mail permanecem bloqueados.</p></div>
       ${diagnostics.checks.localOnlyBootstrapAvailable === true ? `<label class="bootstrap-check-label bootstrap-check-label--card"><input name="localOnlyMode" type="checkbox" ${localOnlyMode?'checked':''}><span><strong>Instalação local-only nesta máquina</strong><small>Não envia convite por e-mail. O link de uso único será aberto somente nesta origem loopback após a revisão. A rede local não terá acesso a esta etapa.</small></span></label>` : ''}
       <details class="bootstrap-smtp-configuration" data-smtp-configuration ${localOnlyMode?'':'open'}><summary><span>Configurar SMTP externo<small>Opcional para instalação local. Necessário para testes de envio e convites por e-mail.</small></span></summary><div class="bootstrap-smtp-configuration-content">
@@ -202,8 +204,9 @@
       <p class="bootstrap-help bootstrap-smtp-provider-note">${escapeHtml(note)}</p>
       <div class="bootstrap-grid-2">${formField('Enviar teste para','smtpTestRecipient',smtpDraft.testRecipient,'email','autocomplete="email" maxlength="254" '+(localOnlyMode?'':'required'))}${formField('URL HTTPS pública dos convites (opcional)','smtpPublicBaseUrl',smtpDraft.publicBaseUrl,'url','inputmode="url" autocomplete="url" maxlength="2048" placeholder="https://seu-dominio.example"')}</div>
       <p class="bootstrap-help">Sem URL pública HTTPS, o SMTP pode ser salvo para uso futuro, mas convites externos não serão enviados. A configuração pode receber um domínio depois, sem reinstalação.</p>
-      <div class="bootstrap-smtp-actions"><button class="bootstrap-secondary-button" type="button" data-smtp-validate ${busy?'disabled':''}>Validar parâmetros</button><button class="bootstrap-primary-button" type="button" data-smtp-test ${busy?'disabled':''}>${busy?'Testando…':'Testar e-mail'}</button></div>
-      <p class="bootstrap-smtp-status" data-smtp-status data-kind="${statusKind}" role="status" aria-live="polite">${escapeHtml(smtpStatus.message || (smtpConfigurationSaved ? 'Configuração de e-mail testada e protegida.' : 'O SMTP ainda não foi testado.'))}</p>
+      <p class="bootstrap-help">Validar parâmetros verifica formato, host público e opções de TLS; não conecta nem envia. Testar e-mail conecta, autentica e envia uma mensagem real para o destinatário informado. O servidor aceitar o envio não confirma a entrega na caixa de entrada.</p>
+      <div class="bootstrap-smtp-actions"><button class="bootstrap-secondary-button" type="button" data-smtp-validate ${busy?'disabled':''}>${busy && smtpStatus.action==='validate'?'Validando…':'Validar parâmetros'}</button><button class="bootstrap-primary-button" type="button" data-smtp-test ${busy?'disabled':''}>${busy && smtpStatus.action==='test'?'Enviando…':'Testar e-mail'}</button></div>
+      <div class="bootstrap-smtp-status" data-smtp-status data-kind="${statusKind}" role="${statusKind==='error'?'alert':'status'}" aria-live="${statusKind==='error'?'assertive':'polite'}" aria-busy="${busy?'true':'false'}"><span data-smtp-status-message>${escapeHtml(statusMessage)}</span>${smtpStatus.message && statusKind!=='working' ? '<button type="button" data-smtp-dismiss aria-label="Dispensar mensagem SMTP">Dispensar</button>' : ''}</div>
       ${smtpConfigurationSaved ? '<p class="bootstrap-note">O servidor SMTP aceitou a mensagem de teste. Isso não confirma a chegada à caixa de entrada.</p>' : ''}
       <div class="bootstrap-callout"><strong>Segredos e instalação</strong><span>A credencial nunca é devolvida pela API nem salva no rascunho do navegador. Ela será criptografada no keystore local somente depois que o servidor aceitar a mensagem de teste.</span></div></div></details></section>`;
   }
@@ -226,8 +229,10 @@
   async function loadBootstrapSmtpStatus() {
     if (smtpSetupStatusLoaded || currentStep !== 5 || !capability) return;
     smtpSetupStatusLoaded = true;
+    const revision = smtpEditRevision;
     try {
       const value = await fetchJson('/identity/bootstrap/smtp/status', { method: 'POST', headers: bootstrapHeaders(), body: '{}' });
+      if (revision !== smtpEditRevision || currentStep !== 5) return;
       smtpCredentialAvailable = value.credentialStored === true || value.existingCredentialAvailable === true;
       smtpTransportSaved = value.transportConfigured === true;
       smtpConfigurationSaved = value.invitationLinksConfigured === true && smtpTransportSaved;
@@ -235,28 +240,76 @@
         if (value[key] !== null && value[key] !== undefined && value[key] !== '') smtpDraft[key] = String(value[key]);
       if (smtpCredentialAvailable) { smtpDraft.reuseStoredCredential = true; smtpDraft.username = ''; smtpDraft.password = ''; }
     } catch (_) { /* Manual SMTP entry remains available if protected status cannot be read. */ }
+    if (revision === smtpEditRevision && currentStep === 5) render();
+  }
+
+  function smtpFailureMessage(error, action) {
+    const messages = {
+      ORIGIN_INVALID: 'A origem local foi rejeitada. Abra o Bootstrap em http://127.0.0.1:8083/bootstrap.html e tente novamente.',
+      CSRF_INVALID: 'A validação de segurança da solicitação falhou. Recarregue o Bootstrap e repita a operação.',
+      PROVISIONER_UNAUTHORIZED: 'A autorização local está inválida ou expirou. Se expirou, aguarde os 10 minutos de validade antes de gerar outra pelo comando oficial do Termux.',
+      SMTP_CONFIGURATION_INVALID: 'Há parâmetros inválidos. Revise remetente, host, porta, TLS, usuário, senha de app e destinatário.',
+      INVALID_INPUT: 'Há campos inválidos. Corrija os campos indicados e tente novamente.',
+      SMTP_CONFIGURATION_UNAVAILABLE: 'A configuração protegida do SMTP está indisponível. Nenhuma credencial foi exibida; consulte o operador local.',
+      EAUTH: 'O provedor recusou a autenticação. Confira usuário e senha SMTP; no Gmail, use uma senha de app.',
+      ECONNECTION: 'Não foi possível conectar ao servidor SMTP. Confira host, porta e conexão de rede.',
+      ECONNREFUSED: 'O servidor SMTP recusou a conexão. Confira host, porta e TLS.',
+      ETIMEDOUT: 'O servidor SMTP não respondeu no tempo limite. Confira a rede e tente novamente.',
+      ESOCKET: 'A conexão TLS com o servidor SMTP falhou. Confira TLS/STARTTLS e a porta.',
+      EDNS: 'O host SMTP não pôde ser localizado. Confira o nome do host.',
+      EENVELOPE: 'O provedor recusou o remetente ou o destinatário de teste. Confira os dois endereços.',
+      SMTP_TEST_FAILED: 'O provedor não aceitou o teste. Confira os parâmetros e tente novamente.',
+      RATE_LIMITED: 'O limite de tentativas foi atingido. Aguarde antes de testar novamente.'
+    };
+    if (error?.name === 'AbortError') return 'A solicitação excedeu o tempo limite. Confira a API local e tente novamente.';
+    if (messages[error?.code]) return messages[error.code];
+    return action === 'validate'
+      ? 'Não foi possível validar os parâmetros com a API local. Confira a conexão e tente novamente.'
+      : 'Não foi possível concluir o teste de e-mail. Confira a conexão com a API local e tente novamente.';
+  }
+
+  function invalidSmtpFields(form) {
+    const labelFor = {
+      smtpSenderEmail: 'e-mail do remetente', smtpSenderName: 'nome de exibição', smtpHost: 'host SMTP',
+      smtpPort: 'porta', smtpUsername: 'usuário SMTP', smtpPassword: 'senha SMTP/senha de app',
+      smtpTestRecipient: 'destinatário do teste'
+    };
+    return [...form.querySelectorAll(':invalid')].map(field => labelFor[field.name] || 'campo SMTP');
+  }
+
+  function reportSmtpFieldErrors(action, missing) {
+    const verb = action === 'validate' ? 'validar' : 'testar o envio';
+    smtpStatus = { state: 'error', action, message: `Não foi possível ${verb}. Corrija: ${[...new Set(missing)].join(', ')}.` };
     render();
+    const invalid = stage.querySelector('form :invalid');
+    if (invalid) { invalid.focus(); invalid.reportValidity(); }
   }
 
   async function validateSmtpFromForm() {
     if (busy) return;
     const settings = readSmtpForm();
-    if (!capability) { setMessage('Informe a autorização local antes de validar o SMTP.', 'error'); return; }
-    busy = true; smtpStatus = { state: 'working', message: 'Validando host, porta, TLS e parâmetros…' }; render();
+    if (!capability) { smtpStatus = { state: 'error', action: 'validate', message: 'Informe a autorização local na etapa Administrador antes de validar.' }; render(); return; }
+    setSmtpFieldsRequired(true);
+    const form = stage.querySelector('form');
+    const invalid = invalidSmtpFields(form);
+    if (invalid.length) return reportSmtpFieldErrors('validate', invalid);
+    busy = true; smtpStatus = { state: 'working', action: 'validate', message: 'Validando formato, host público, porta e TLS. Nenhuma conexão SMTP ou mensagem será enviada.' }; render();
     try {
       const result = await fetchJson('/identity/bootstrap/smtp/validate', { method: 'POST', headers: bootstrapHeaders(), body: JSON.stringify(settings) });
-      smtpStatus = { state: 'success', message: `Parâmetros válidos para ${result.host}:${result.port} com ${result.tlsMode === 'tls' ? 'TLS' : 'STARTTLS'}.` };
-    } catch (error) { smtpStatus = { state: 'error', message: error.message || 'Não foi possível validar o SMTP.' }; }
+      smtpStatus = { state: 'success', action: 'validate', message: `Parâmetros válidos para ${result.host}:${result.port} com ${result.tlsMode === 'tls' ? 'TLS' : 'STARTTLS'}. Formato e resolução segura do host passaram; não houve autenticação nem envio.` };
+    } catch (error) { smtpStatus = { state: 'error', action: 'validate', message: smtpFailureMessage(error, 'validate') }; }
     finally { busy = false; render(); }
   }
 
   async function testSmtpFromForm() {
     if (busy) return;
     const settings = readSmtpForm();
-    if (!capability) { smtpStatus = { state: 'error', message: 'Informe a autorização local antes de testar o SMTP.' }; render(); return; }
+    if (!capability) { smtpStatus = { state: 'error', action: 'test', message: 'Informe a autorização local na etapa Administrador antes de testar o SMTP.' }; render(); return; }
     setSmtpFieldsRequired(true);
-    if (!stage.querySelector('form')?.reportValidity()) return;
-    busy = true; smtpStatus = { state: 'working', message: 'Conectando, autenticando e enviando uma mensagem de teste…' }; render();
+    const form = stage.querySelector('form');
+    const invalid = invalidSmtpFields(form);
+    if (invalid.length) return reportSmtpFieldErrors('test', invalid);
+    busy = true; smtpStatus = { state: 'working', action: 'test', message: 'Conectando, autenticando e enviando a mensagem ao destinatário informado…' }; render();
     try {
       const result = await fetchJson('/identity/bootstrap/smtp/test', { method: 'POST', headers: bootstrapHeaders(),
         body: JSON.stringify({ requestId: crypto.randomUUID(), settings }) });
@@ -274,8 +327,8 @@
             .filter(key => saved[key] !== null && saved[key] !== undefined).map(key => [key, String(saved[key])])) };
         } catch (_) { /* Save succeeded; the secret remains cleared from browser memory. */ }
       }
-      smtpStatus = { state: 'success', message: result.notice || 'Servidor SMTP aceitou a mensagem; entrega final não confirmada.' };
-    } catch (error) { smtpStatus = { state: 'error', message: error.message || 'Falha ao testar o serviço SMTP.' }; }
+      smtpStatus = { state: 'success', action: 'test', message: result.notice || 'O servidor SMTP aceitou a mensagem. A entrega na caixa de entrada não foi confirmada.' };
+    } catch (error) { smtpStatus = { state: 'error', action: 'test', message: smtpFailureMessage(error, 'test') }; }
     finally { busy = false; render(); }
   }
 
@@ -345,9 +398,13 @@
   }
 
   function render({ focusStage = false } = {}) {
+    const existingPassword = currentStep === 5 ? stage.querySelector('[name="smtpPassword"]') : null;
+    if (existingPassword && !smtpDraft.reuseStoredCredential) smtpDraft = { ...smtpDraft, password: existingPassword.value };
     renderProgress();
     const content = stageMarkup(currentStep);
     stage.innerHTML = currentStep > 0 && !finished ? `<form class="bootstrap-wizard-form" novalidate>${content}</form>` : content;
+    const passwordInput = currentStep === 5 ? stage.querySelector('[name="smtpPassword"]') : null;
+    if (passwordInput && !smtpDraft.reuseStoredCredential) passwordInput.value = smtpDraft.password;
     const heading = stage.querySelector('h2');
     if (heading) {
       heading.id = 'bootstrap-stage-heading';
@@ -370,8 +427,10 @@
       renderActions();
       return;
     }
+    if (event.target.name?.startsWith('smtp')) smtpEditRevision += 1;
     if (event.target.name === 'smtpReuseCredential') {
       readSmtpForm();
+      if (smtpDraft.reuseStoredCredential) smtpDraft = { ...smtpDraft, password: '' };
       for (const name of ['smtpUsername', 'smtpPassword']) {
         const field = stage.querySelector(`[name="${name}"]`);
         if (field) { field.disabled = smtpDraft.reuseStoredCredential; field.required = !smtpDraft.reuseStoredCredential; }
@@ -380,21 +439,21 @@
       smtpTransportSaved = false;
       if (diagnostics.checks) diagnostics.checks.invitationDeliveryConfigured = false;
       if (diagnostics.checks) diagnostics.checks.smtpTransportConfigured = false;
-      smtpStatus = { state: 'idle', message: '' }; return;
+      smtpStatus = { state: 'info', message: 'A credencial selecionada mudou. Valide e teste a configuração novamente.' }; render(); return;
     }
     if (event.target.name === 'smtpProvider') {
       readSmtpForm(); applySmtpPreset(event.target.value); smtpConfigurationSaved = false;
       smtpTransportSaved = false;
       if (diagnostics.checks) diagnostics.checks.invitationDeliveryConfigured = false;
       if (diagnostics.checks) diagnostics.checks.smtpTransportConfigured = false;
-      smtpStatus = { state: 'idle', message: '' }; render(); return;
+      smtpStatus = { state: 'info', message: 'O provedor mudou. Confira os parâmetros e teste a configuração novamente.' }; render(); return;
     }
     if (event.target.name?.startsWith('smtp')) {
       readSmtpForm(); smtpConfigurationSaved = false;
       smtpTransportSaved = false;
       if (diagnostics.checks) diagnostics.checks.invitationDeliveryConfigured = false;
       if (diagnostics.checks) diagnostics.checks.smtpTransportConfigured = false;
-      smtpStatus = { state: 'idle', message: 'A configuração mudou. Teste o SMTP novamente antes de continuar.' }; return;
+      smtpStatus = { state: 'info', message: 'A configuração mudou. Valide os parâmetros e teste o SMTP novamente antes de continuar.' }; return;
     }
     if (event.target.name === 'configurePricing') { syncForm(); saveDraft(); render(); return; }
     if (event.target.name === 'pricingModel' || event.target.name === 'repasseMode' || event.target.name === 'round') {
@@ -495,7 +554,9 @@
       finished = { ...result, message: result.delivery === 'failed' ? 'O envio do convite não foi confirmado.' : '' };
       if (result.delivery === 'sent' || result.delivery === 'local_handoff') {
         capability = '';
+        smtpDraft = { ...smtpDraft, password: '' };
         const codeInput = stage.querySelector('[name="capability"]'); if (codeInput) codeInput.value = '';
+        const passwordInput = stage.querySelector('[name="smtpPassword"]'); if (passwordInput) passwordInput.value = '';
         try { sessionStorage.removeItem(storageKey); sessionStorage.removeItem(idempotencyKey); } catch (_) {}
       }
       setMessage(result.delivery === 'sent' ? 'A configuração inicial foi gravada e o servidor SMTP aceitou o convite.' :
@@ -519,6 +580,7 @@
   stage.addEventListener('input', onInput);
   stage.addEventListener('change', onInput);
   stage.addEventListener('click', event => {
+    if (event.target.closest('[data-smtp-dismiss]')) { smtpStatus = { state: 'idle', message: '' }; render(); return; }
     if (event.target.closest('[data-copy-bootstrap-command]')) {
       const button = event.target.closest('[data-copy-bootstrap-command]');
       if (!navigator.clipboard?.writeText) {
@@ -545,6 +607,14 @@
       if (Number.isInteger(index) && data.ranges.length > 1) data.ranges.splice(index, 1);
       saveDraft(); render();
     }
+  });
+  window.addEventListener('pagehide', () => {
+    smtpDraft = { ...smtpDraft, password: '' };
+    capability = '';
+    const passwordField = stage.querySelector('[name="smtpPassword"]');
+    if (passwordField) passwordField.value = '';
+    const capabilityField = stage.querySelector('[name="capability"]');
+    if (capabilityField) capabilityField.value = '';
   });
   setupTheme();
   render();

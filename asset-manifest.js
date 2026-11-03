@@ -2,7 +2,7 @@
 self.RotaMotoAssetManifest = Object.freeze({
   "appId": "restaurante",
   "cachePrefix": "rotamoto-restaurante-shell-",
-  "cacheName": "rotamoto-restaurante-shell-83fda15a2cb5791b",
+  "cacheName": "rotamoto-restaurante-shell-ee909d69da1074e6",
   "assets": [
     "./",
     "./index.html",
@@ -52,11 +52,11 @@ self.RotaMotoAssetManifest = Object.freeze({
     "./platform-admin-disclosure.js?v=188a5e1b2618c853",
     "./admin-form-dialog.js?v=f88137aac742bb55",
     "./identity-ui.js?v=6e4e0dacc8ac2171",
-    "./bootstrap-wizard.css?v=3e7ae0a4310701a4",
-    "./bootstrap-wizard.js?v=4ff077f9758271d6",
-    "bootstrap.html?v=6176603df9b22520",
-    "bootstrap-wizard.js?v=4ff077f9758271d6",
-    "bootstrap-wizard.css?v=3e7ae0a4310701a4",
+    "./bootstrap-wizard.css?v=9d10733abd58c997",
+    "./bootstrap-wizard.js?v=7bae9bca213f7b20",
+    "bootstrap.html?v=53c494dce94728fa",
+    "bootstrap-wizard.js?v=7bae9bca213f7b20",
+    "bootstrap-wizard.css?v=9d10733abd58c997",
     "vendor/maplibre/maplibre-gl-worker.js?v=5f1e2f0e1624082b",
     "./vendor/maplibre/maplibre-gl-worker.js?v=5f1e2f0e1624082b"
   ],
