@@ -10,6 +10,7 @@
   const stepCount = $('[data-step-count]');
   const storageKey = 'rotamoto.bootstrap.draft.v1';
   const idempotencyKey = 'rotamoto.bootstrap.operation.v1';
+  const operatorCommand = 'cd "$HOME/projetos/repos/rota-moto-restaurante" && npm run bootstrap:prepare-browser';
   const api = '/api';
   const steps = ['Diagnóstico', 'Administrador', 'Restaurante', 'Operação', 'Entregas', 'E-mail e notificações', 'Revisão', 'Finalização'];
   const template = {
@@ -112,13 +113,16 @@
     const text = value === true ? 'Pronto' : value === false ? 'Pendente' : 'Verificando';
     return `<li class="bootstrap-check" data-result="${value === true ? 'pass' : value === false ? 'pending' : 'checking'}"><span class="bootstrap-check-mark" aria-hidden="true">${value === true ? '✓' : value === false ? '!' : '…'}</span><span><strong>${label}</strong>${detail ? `<small>${detail}</small>` : ''}</span><b>${text}</b></li>`;
   }
+  function checkGroup(label, items) {
+    return `<li class="bootstrap-check-group"><strong>${label}</strong><ul>${items.join('')}</ul></li>`;
+  }
 
   function diagnosticView() {
     if (diagnostics.state === 'complete') return `<section class="bootstrap-notice bootstrap-notice--success"><h2>Instalação já concluída</h2><p>O assistente de primeira instalação está bloqueado. Entre pela tela normal para acessar o sistema.</p><a class="bootstrap-link-button" href="/">Ir para o acesso</a></section>`;
     if (diagnostics.state === 'pending_owner_activation' || diagnostics.state === 'pending_owner_mfa') return `<section class="bootstrap-notice"><h2>Ativação do titular em andamento</h2><p>${diagnostics.state === 'pending_owner_activation' ? 'A empresa e o convite inicial foram registrados. O titular precisa abrir o convite local ou recebido por e-mail, definir a senha e depois entrar para configurar o MFA obrigatório.' : 'O convite já foi aceito. O titular precisa entrar e confirmar o novo autenticador para concluir o primeiro acesso privilegiado.'}</p><a class="bootstrap-link-button" href="/">Abrir o acesso</a></section>`;
     if (diagnostics.state === 'unavailable') return `<section class="bootstrap-notice bootstrap-notice--warning"><h2>Primeira instalação indisponível</h2><p>Este ambiente já tem uma instalação, uma reserva ou dados de identidade. O assistente não pode iniciar outra instalação.</p><a class="bootstrap-link-button" href="/">Voltar ao acesso</a></section>`;
-    return `<section class="bootstrap-diagnostic"><div><h2>Antes de começar</h2><p>O assistente verifica o serviço e os requisitos. Com o schema vazio e o keystore de MFA pronto, você pode preencher os dados e configurar o e-mail na etapa seguinte.</p></div>
-      <ul class="bootstrap-checks">${checkRow('API e PostgreSQL', diagnostics.health)}${checkRow('Schema e migrations', diagnostics.checks.databaseAndMigrations)}${checkRow('Keystore de MFA', diagnostics.checks.mfaKeystoreConfigured, 'Necessário para guardar o fator sem expor o segredo no banco ou na interface.')}${checkRow('Transporte SMTP', diagnostics.checks.smtpTransportConfigured, 'Pode ser testado e salvo sem ativar convites externos.')}${checkRow('Links externos de convite', diagnostics.checks.invitationDeliveryConfigured, 'Exige uma URL pública HTTPS alcançável pelos titulares.')}${checkRow('Instalação local-only', diagnostics.checks.localOnlyBootstrapAvailable, 'Disponível somente quando o backend confirma conexão loopback e origem local.')}</ul>
+    return `<section class="bootstrap-diagnostic"><div><h2>Antes de começar</h2><p>O assistente separa o que bloqueia a instalação das opções que podem ser configuradas agora ou depois.</p></div>
+      <ul class="bootstrap-checks">${checkGroup('Obrigatório para iniciar', [checkRow('API e PostgreSQL', diagnostics.health), checkRow('Schema e migrations', diagnostics.checks.databaseAndMigrations), checkRow('Keystore de MFA', diagnostics.checks.mfaKeystoreConfigured, 'Obrigatório para proteger o autenticador do titular.')])}${checkGroup('Avisos e opções', [checkRow('Transporte SMTP', diagnostics.checks.smtpTransportConfigured, 'Pendente não impede instalação local: configure SMTP na etapa de e-mail quando desejar.'), checkRow('Convites externos por e-mail', diagnostics.checks.invitationDeliveryConfigured, 'Exigem SMTP funcional e URL HTTPS pública acessível aos titulares.'), checkRow('Instalação local-only', diagnostics.checks.localOnlyBootstrapAvailable, 'Loopback significa o próprio dispositivo. LAN são outros dispositivos da rede e não recebe esta autorização; acesso público exige HTTPS e URL pública.')])}</ul>
       ${diagnostics.error ? `<p class="bootstrap-inline-error" role="alert">${escapeHtml(diagnostics.error)}</p>` : ''}
       ${diagnostics.state === 'unavailable' || diagnostics.state === 'not_ready' || diagnostics.error
         ? '<button class="bootstrap-secondary-button" type="button" data-diagnose>Verificar novamente</button>' : ''}
@@ -133,9 +137,10 @@
   function stageMarkup(index) {
     if (index === 0) return diagnosticView();
     if (index === 1) return `<section class="bootstrap-form-step"><div><h2>Administrador fundador</h2><p>${localOnlyMode ? 'No modo local-only, o serviço não envia convite. Após a revisão, abrirá nesta máquina um link de uso único para o titular definir a senha e configurar o autenticador.' : 'O serviço enviará um convite para este endereço. O titular criará a senha no link e configurará o autenticador antes de receber privilégios globais.'}</p></div>
+      <details class="bootstrap-operator-guide"><summary><strong>Obter autorização no Termux</strong><small>Expira em 10 minutos · uso único · somente sessão local</small></summary><div class="bootstrap-operator-instructions"><ol><li>Abra uma sessão local do Termux no dispositivo que executa o RotaMoto.</li><li>Execute o comando abaixo e confirme quando estiver pronto para preencher este assistente.</li><li>Copie a autorização exibida no Termux e cole no campo desta etapa.</li></ol><div class="bootstrap-command"><code>${escapeHtml(operatorCommand)}</code><button type="button" class="bootstrap-secondary-button" data-copy-bootstrap-command>Copiar comando</button></div><p>A autorização permite uma instalação inicial e não funciona pelo navegador, por SSH/LAN ou depois que a instalação for iniciada. Se expirar, aguarde 10 minutos e emita outra; uma autorização ativa impede uma emissão adicional.</p><p>O Termux confirma o destino <code>rotamoto</code>, a identidade SQL, o keystore e o estado inicial. Loopback limita a origem da requisição; a autorização também depende desses controles locais.</p></div></details>
       ${formField('E-mail do titular', 'email', data.email, 'email', 'autocomplete="email" required maxlength="320"')}
       <label class="bootstrap-field">Autorização local de uso único<input name="capability" type="password" inputmode="text" autocomplete="off" spellcheck="false" value="${escapeHtml(capability)}" required minlength="43" maxlength="43" aria-describedby="bootstrap-capability-help"></label>
-      <small id="bootstrap-capability-help" class="bootstrap-help">Gere a autorização no terminal local autorizado e cole-a somente nesta tela. Ela expira em poucos minutos e não será salva no navegador.</small>
+      <small id="bootstrap-capability-help" class="bootstrap-help">Cole a autorização somente nesta tela. O navegador não a grava no rascunho; ela é enviada apenas no cabeçalho protegido da requisição local.</small>
       <div class="bootstrap-callout"><strong>Não informe uma senha aqui.</strong><span>A senha é definida pelo próprio titular no convite. Nenhum privilégio fundador será aplicado antes da confirmação do MFA.</span></div></section>`;
     if (index === 2) return `<section class="bootstrap-form-step"><div><h2>Dados do restaurante</h2><p>Informe apenas os dados que serão gravados na configuração canônica da empresa.</p></div>
       ${formField('Nome da empresa', 'companyName', data.companyName, 'text', 'autocomplete="organization" required maxlength="160"')}
@@ -514,6 +519,20 @@
   stage.addEventListener('input', onInput);
   stage.addEventListener('change', onInput);
   stage.addEventListener('click', event => {
+    if (event.target.closest('[data-copy-bootstrap-command]')) {
+      const button = event.target.closest('[data-copy-bootstrap-command]');
+      if (!navigator.clipboard?.writeText) {
+        setMessage('Não foi possível copiar automaticamente. Selecione e copie o comando exibido.', 'error');
+        return;
+      }
+      button.disabled = true;
+      navigator.clipboard.writeText(operatorCommand).then(() => {
+        setMessage('Comando copiado. Ele não contém a autorização; copie o código gerado no Termux separadamente.', 'success');
+      }).catch(() => {
+        setMessage('Não foi possível copiar automaticamente. Selecione e copie o comando exibido.', 'error');
+      }).finally(() => { button.disabled = false; });
+      return;
+    }
     if (event.target.closest('[data-smtp-validate]')) { void validateSmtpFromForm(); return; }
     if (event.target.closest('[data-smtp-test]')) { void testSmtpFromForm(); return; }
     const add = event.target.closest('[data-add-range]');

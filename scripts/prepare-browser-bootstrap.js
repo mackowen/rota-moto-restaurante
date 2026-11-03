@@ -10,8 +10,9 @@ const { loadSecretProvider, loadLocalSecretProvider } = require('../backend/runt
 const { appendOperatorAudit } = require('../backend/runtime/operator-audit');
 
 async function main() {
-  if (stdin.isTTY !== true || stdout.isTTY !== true || !process.argv.includes('--confirm-database=rotamoto'))
-    throw safeError('BOOTSTRAP_TTY_REQUIRED', 'Use um terminal interativo e confirme --confirm-database=rotamoto.');
+  if (stdin.isTTY !== true || stdout.isTTY !== true || !isLocalTermuxOperator(process.platform, process.env) ||
+      !process.argv.includes('--confirm-database=rotamoto'))
+    throw safeError('BOOTSTRAP_TTY_REQUIRED', 'Use um terminal local interativo do Termux, sem SSH, e confirme --confirm-database=rotamoto.');
   const config = loadRuntimeConfig();
   const database = new URL(config.databaseUrl);
   if (config.nodeEnv === 'test' || database.pathname !== '/rotamoto' ||
@@ -32,26 +33,17 @@ async function main() {
 
   const pool = createPool({ connectionString: config.databaseUrl, max: 1, connectionTimeoutMillis: 3000,
     application_name: 'rotamoto-browser-bootstrap-operator' });
-  const capability = crypto.randomBytes(32);
-  const digest = crypto.createHash('sha256').update(capability).digest();
+  let capability = Buffer.alloc(0);
+  let digest = Buffer.alloc(0);
   let client;
   let committed = false;
   try {
     client = await pool.connect();
     await client.query('BEGIN');
     await client.query("SET LOCAL lock_timeout='3s'");
-    const identity = await client.query('SELECT current_database() AS database,current_user AS role,session_user AS session_role');
-    if (identity.rows[0]?.database !== 'rotamoto' || identity.rows[0]?.role !== 'rotamoto_app' || identity.rows[0]?.session_role !== 'rotamoto_app')
-      throw safeError('BOOTSTRAP_TARGET_INVALID', 'A conexão não corresponde à identidade local autorizada.');
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended('rotamoto:browser-bootstrap-authorization',817231))");
-    const status = await client.query('SELECT rotamoto.platform_admin_bootstrap_status() AS state');
-    if (status.rows[0]?.state !== 'ready')
-      throw safeError('BOOTSTRAP_NOT_AVAILABLE', 'O banco já possui instalação, reserva ou dados de identidade. Nenhuma autorização foi emitida.');
-    const active = await client.query(`SELECT 1 FROM rotamoto.bootstrap_authorizations
-      WHERE installation_scope='rotamoto' AND consumed_at IS NULL AND expires_at>now() LIMIT 1`);
-    if (active.rowCount) throw safeError('BOOTSTRAP_AUTHORIZATION_EXISTS', 'Já existe uma autorização local ativa. Aguarde sua expiração antes de emitir outra.');
-    await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
-      VALUES($1,'rotamoto',now()+interval '10 minutes')`, [digest]);
+    const issued = await issueBrowserBootstrapAuthorization(client);
+    capability = issued.capability;
+    digest = issued.digest;
     await client.query('COMMIT'); committed = true;
     await appendOperatorAudit('identity.bootstrap.browser_authorization_prepared', { database: 'rotamoto', expiresInMinutes: 10 });
     stdout.write('\nAutorização inicial (válida por 10 minutos; use uma única vez):\n');
@@ -76,6 +68,36 @@ async function loadConfiguredSecretProvider(config) {
     return createFileSecretProvider({ directory: process.env.ROTAMOTO_SECRET_STORE_DIRECTORY,
       masterKeyFile: process.env.ROTAMOTO_SECRET_MASTER_KEY_FILE });
   return null;
+}
+
+function isLocalTermuxOperator(platform, env) {
+  const prefix = typeof env?.PREFIX === 'string' ? env.PREFIX : '';
+  const termuxPrefix = /^\/data\/(?:data|user\/0)\/[A-Za-z0-9._-]+\/files\/usr$/u.test(prefix);
+  const remoteShell = Boolean(env?.SSH_CONNECTION || env?.SSH_CLIENT || env?.SSH_TTY);
+  return platform === 'android' && Boolean(env?.TERMUX_VERSION) && termuxPrefix && !remoteShell;
+}
+
+async function issueBrowserBootstrapAuthorization(client, randomBytes = crypto.randomBytes) {
+  const identity = await client.query('SELECT current_database() AS database,current_user AS role,session_user AS session_role');
+  if (identity.rows[0]?.database !== 'rotamoto' || identity.rows[0]?.role !== 'rotamoto_app' || identity.rows[0]?.session_role !== 'rotamoto_app')
+    throw safeError('BOOTSTRAP_TARGET_INVALID', 'A conexão não corresponde à identidade local autorizada.');
+  await client.query("SELECT pg_advisory_xact_lock(hashtextextended('rotamoto:browser-bootstrap-authorization',817231))");
+  const status = await client.query('SELECT rotamoto.platform_admin_bootstrap_status() AS state');
+  if (status.rows[0]?.state !== 'ready')
+    throw safeError('BOOTSTRAP_NOT_AVAILABLE', 'O banco já possui instalação, reserva ou dados de identidade. Nenhuma autorização foi emitida.');
+  const active = await client.query(`SELECT 1 FROM rotamoto.bootstrap_authorizations
+    WHERE installation_scope='rotamoto' AND consumed_at IS NULL AND expires_at>now() LIMIT 1`);
+  if (active.rowCount) throw safeError('BOOTSTRAP_AUTHORIZATION_EXISTS', 'Já existe uma autorização local ativa. Aguarde sua expiração antes de emitir outra.');
+  const capability = randomBytes(32);
+  const encodedCapability = capability.toString('base64url');
+  const digest = crypto.createHash('sha256').update(encodedCapability, 'utf8').digest();
+  try {
+    await client.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
+      VALUES($1,'rotamoto',now()+interval '10 minutes')`, [digest]);
+    return { capability: Buffer.from(capability), digest: Buffer.from(digest) };
+  } catch (error) {
+    capability.fill(0); digest.fill(0); throw error;
+  } finally { capability.fill(0); digest.fill(0); }
 }
 
 function completeInvitationConfiguration(smtp) {
@@ -114,7 +136,7 @@ function safeError(code, message) { return Object.assign(new Error(message), { c
 
 function reportSafeFailure(error) {
   const safeMessages = {
-    BOOTSTRAP_TTY_REQUIRED: 'Preparação disponível somente no terminal local interativo.',
+    BOOTSTRAP_TTY_REQUIRED: 'Preparação disponível somente no terminal local interativo do Termux, sem SSH.',
     BOOTSTRAP_TARGET_INVALID: 'O alvo ou a identidade da conexão não corresponde ao serviço autorizado.',
     BOOTSTRAP_CONFIRMATION_REQUIRED: 'A confirmação local não foi reconhecida.',
     BOOTSTRAP_KEYSTORE_UNAVAILABLE: 'O keystore não passou na verificação local.',
@@ -130,4 +152,5 @@ function reportSafeFailure(error) {
 
 if (require.main === module) main().catch(reportSafeFailure);
 
-module.exports = Object.freeze({ completeInvitationConfiguration, verifyKeystore, verifyInvitationDelivery });
+module.exports = Object.freeze({ completeInvitationConfiguration, verifyKeystore, verifyInvitationDelivery,
+  isLocalTermuxOperator, issueBrowserBootstrapAuthorization });

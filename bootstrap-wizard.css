@@ -40,6 +40,9 @@
 .bootstrap-diagnostic>div:first-child h2,.bootstrap-form-step h2,.bootstrap-notice h2{margin:0;color:var(--text-primary);font-size:18px;line-height:1.3;letter-spacing:-.02em}
 .bootstrap-diagnostic>div:first-child p,.bootstrap-form-step>div>p,.bootstrap-form-step>p,.bootstrap-notice p{margin:4px 0 0;color:var(--text-secondary);font-size:13px;line-height:1.5}
 .bootstrap-checks{display:grid;gap:7px;margin:0;padding:0;list-style:none}
+.bootstrap-check-group{display:grid;gap:6px;min-width:0}
+.bootstrap-check-group>strong{color:var(--text-secondary);font-size:11px;letter-spacing:.025em}
+.bootstrap-check-group>ul{display:grid;gap:7px;margin:0;padding:0;list-style:none}
 .bootstrap-check{display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border-subtle);border-radius:12px;background:var(--surface-soft)}
 .bootstrap-check-mark{display:grid;place-items:center;width:25px;height:25px;border-radius:8px;background:var(--surface);color:var(--text-secondary);font-size:13px;font-weight:800}
 .bootstrap-check[data-result="pass"] .bootstrap-check-mark{background:var(--success-soft);color:var(--success)}
@@ -84,6 +87,20 @@
 .bootstrap-check-label--card small{color:var(--text-secondary)}
 .bootstrap-callout,.bootstrap-pending{display:grid;gap:4px;padding:11px 13px;border:1px solid var(--border-subtle);border-radius:12px;background:var(--surface-soft);color:var(--text-secondary);font-size:12px;line-height:1.45}
 .bootstrap-callout strong,.bootstrap-pending strong{color:var(--text-primary)}
+.bootstrap-operator-guide{min-width:0;border:1px solid var(--border-subtle);border-radius:13px;background:var(--surface-soft);color:var(--text-secondary);font-size:12px;line-height:1.5}
+.bootstrap-operator-guide>summary{position:relative;display:grid;gap:2px;min-height:48px;align-content:center;padding:9px 34px 9px 13px;color:var(--text-primary);cursor:pointer;list-style:none}
+.bootstrap-operator-guide>summary::-webkit-details-marker{display:none}
+.bootstrap-operator-guide>summary:after{content:"＋";position:absolute;right:13px;color:var(--accent);font-size:17px}
+.bootstrap-operator-guide[open]>summary:after{content:"−"}
+.bootstrap-operator-guide>summary:focus-visible{outline:none;box-shadow:var(--focus-ring);border-radius:12px}
+.bootstrap-operator-guide>summary strong{font-size:13px}
+.bootstrap-operator-guide>summary small{color:var(--text-secondary);font-size:11px}
+.bootstrap-operator-instructions{display:grid;gap:9px;padding:0 13px 13px}
+.bootstrap-operator-instructions ol{display:grid;gap:4px;margin:0;padding-left:21px}
+.bootstrap-operator-instructions p{margin:0}
+.bootstrap-command{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:9px;min-width:0;padding:9px;border:1px solid var(--border-subtle);border-radius:10px;background:var(--surface)}
+.bootstrap-command code{min-width:0;color:var(--text-primary);font-size:11px;overflow-wrap:anywhere;user-select:all}
+.bootstrap-command .bootstrap-secondary-button{min-height:38px;padding:7px 10px;font-size:11px}
 .bootstrap-pending{border-color:color-mix(in srgb,var(--warning) 30%,var(--border-subtle));background:var(--warning-soft)}
 .bootstrap-pending--inline{align-content:center}
 .bootstrap-range-row{display:grid;gap:8px;padding:11px 0;border-bottom:1px solid var(--border-subtle)}
@@ -123,6 +140,8 @@
  .bootstrap-check{grid-template-columns:25px minmax(0,1fr);gap:8px;padding:9px}
  .bootstrap-check>b{grid-column:2}
  .bootstrap-review>div{grid-template-columns:1fr;gap:3px;padding:9px 10px}
+ .bootstrap-command{grid-template-columns:1fr}
+ .bootstrap-command .bootstrap-secondary-button{justify-self:start}
  .bootstrap-actions{justify-content:stretch}
  .bootstrap-actions>*{flex:1}
  .bootstrap-actions:has([data-back]){display:grid;grid-template-columns:minmax(100px,.65fr) minmax(0,1.35fr)}

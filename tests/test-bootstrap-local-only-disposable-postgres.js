@@ -15,6 +15,7 @@ const { createIdentityService } = require('../backend/identity/service');
 const { createIdentityHttpHandler } = require('../backend/identity/http');
 const { createNativeMfaProvider } = require('../backend/identity/native-mfa-provider');
 const { codeAt } = require('../backend/identity/totp');
+const { issueBrowserBootstrapAuthorization } = require('../scripts/prepare-browser-bootstrap');
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -30,6 +31,39 @@ async function freePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const port = server.address().port; await new Promise(resolve => server.close(resolve)); return port;
+}
+
+async function runBrowserBootstrapCliInPty({ port, root }) {
+  const secretDirectory = path.join(root, 'operator-keystore');
+  await fs.mkdir(secretDirectory, { mode: 0o700 });
+  const masterKeyFile = path.join(root, 'operator-master.key');
+  const key = crypto.randomBytes(32);
+  try { await fs.writeFile(masterKeyFile, key, { flag: 'wx', mode: 0o600 }); } finally { key.fill(0); }
+  const appDirectory = path.resolve(__dirname, '..');
+  const shellCommand = `cd "${appDirectory}" && npm run bootstrap:prepare-browser`;
+  const env = { ...process.env, NODE_ENV: 'development', DATABASE_URL: `postgresql://rotamoto_app@127.0.0.1:${port}/rotamoto`,
+    ROTAMOTO_SECRET_STORE_DIRECTORY: secretDirectory, ROTAMOTO_SECRET_MASTER_KEY_FILE: masterKeyFile,
+    ROTAMOTO_OPERATOR_AUDIT_LOG: path.join(root, 'operator-audit.jsonl'), ROTAMOTO_OPERATOR_ACTOR_REF: 'test:local-termux-operator',
+    SSH_CONNECTION: '', SSH_CLIENT: '', SSH_TTY: '' };
+  return new Promise((resolve, reject) => {
+    const child = spawn('script', ['-q', '-e', '-c', shellCommand, '/dev/null'], { cwd: appDirectory,
+      env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8').on('data', chunk => { if (stdout.length < 12000) stdout += chunk.slice(0, 12000 - stdout.length); });
+    child.stderr.setEncoding('utf8').on('data', chunk => { if (stderr.length < 1200) stderr += chunk.slice(0, 1200 - stderr.length); });
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('The local bootstrap CLI exceeded its disposable test timeout.')); }, 25000);
+    child.once('error', error => { clearTimeout(timer); reject(new Error(`Could not start local bootstrap CLI PTY: ${error.code || 'ERROR'}`)); });
+    child.once('close', code => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(`Local bootstrap CLI failed in disposable Termux PTY (${code ?? 'signal'}): ${stderr.replace(/[A-Za-z0-9_-]{43}/gu, '[redacted]').slice(-500)}`));
+      const tokens = stdout.split(/\r?\n/u).map(line => line.trim()).filter(line => /^[A-Za-z0-9_-]{43}$/u.test(line));
+      if (tokens.length !== 1 || !stdout.includes('Autorização inicial (válida por 10 minutos; use uma única vez)'))
+        return reject(new Error('Local bootstrap CLI did not emit exactly one expected temporary authorization.'));
+      const token = tokens[0]; stdout = '';
+      resolve(token);
+    });
+    child.stdin.end('PREPARAR PRIMEIRA INSTALACAO\n');
+  });
 }
 
 async function main() {
@@ -101,9 +135,32 @@ async function main() {
       async get(secretRef) { if (!secretValues.has(secretRef)) throw new Error('disposable secret not found'); return secretValues.get(secretRef); },
       async remove(secretRef) { secretValues.delete(secretRef); }
     };
-    const capability = crypto.randomBytes(32).toString('base64url'), digest = crypto.createHash('sha256').update(capability, 'utf8').digest();
-    await pool.query(`INSERT INTO rotamoto.bootstrap_authorizations(token_digest,installation_scope,expires_at)
-      VALUES($1,'rotamoto',now()+interval '15 minutes')`, [digest]);
+    async function issueInTransaction() {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const issued = await issueBrowserBootstrapAuthorization(client);
+        await client.query('COMMIT');
+        return issued;
+      } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+      finally { client.release(); }
+    }
+    const issuanceRace = await Promise.allSettled([issueInTransaction(), issueInTransaction()]);
+    const issuedCandidates = issuanceRace.filter(item => item.status === 'fulfilled').map(item => item.value);
+    const blockedIssuers = issuanceRace.filter(item => item.status === 'rejected');
+    assert.equal(issuedCandidates.length, 1, 'the advisory lock permits exactly one active authorization issuance');
+    assert.equal(blockedIssuers.length, 1);
+    assert.equal(blockedIssuers[0].reason.code, 'BOOTSTRAP_AUTHORIZATION_EXISTS');
+    let currentAuthorization = issuedCandidates[0];
+    let capability = currentAuthorization.capability.toString('base64url');
+    let digest = Buffer.from(currentAuthorization.digest);
+    assert.match(capability, /^[A-Za-z0-9_-]{43}$/u);
+    assert.equal(digest.equals(crypto.createHash('sha256').update(capability).digest()), true);
+    const persistedDigest = await pool.query('SELECT token_digest FROM rotamoto.bootstrap_authorizations WHERE token_digest=$1', [digest]);
+    assert.equal(persistedDigest.rowCount, 1, 'issuer persisted the digest under the installation scope');
+    assert.equal(persistedDigest.rows[0].token_digest.equals(Buffer.from(capability, 'base64url')), false,
+      'database never stores the raw capability');
+    currentAuthorization.capability.fill(0); currentAuthorization.digest.fill(0);
     const emailDeliveries = [];
     const identityService = createIdentityService({ pool, requireBootstrapAuthorization: true, emailProvider: { async send(message) { emailDeliveries.push(message); } },
       secretProvider, mfaProvider: createNativeMfaProvider({ secretProvider }), authorizeProvisioner: async ({ context }) => {
@@ -112,12 +169,15 @@ async function main() {
         const received = req.headers['x-rotamoto-bootstrap-authorization'];
         assert.equal(peer, '127.0.0.1', 'backend authority is tied to the actual socket peer');
         assert(['127.0.0.1', '::1', 'localhost'].includes(origin.hostname), 'origin is loopback-only');
-        assert.equal(received, capability);
+        if (typeof received !== 'string' || !/^[A-Za-z0-9_-]{43}$/u.test(received))
+          throw Object.assign(new Error('unauthorized'), { code: 'PROVISIONER_UNAUTHORIZED' });
         const target = await pool.query('SELECT current_database() AS database,current_user AS role,session_user AS session_role');
         assert.deepEqual(target.rows[0], { database: 'rotamoto', role: 'rotamoto_app', session_role: 'rotamoto_app' });
+        const receivedDigest = crypto.createHash('sha256').update(received, 'utf8').digest();
         const active = await pool.query(`SELECT 1 FROM rotamoto.bootstrap_authorizations WHERE token_digest=$1
-          AND installation_scope='rotamoto' AND consumed_at IS NULL AND expires_at>now()`, [digest]);
-        assert.equal(active.rowCount, 1, 'temporary proof must be live and unconsumed');
+          AND installation_scope='rotamoto' AND consumed_at IS NULL AND expires_at>now()`, [receivedDigest]);
+        receivedDigest.fill(0);
+        if (!active.rowCount) throw Object.assign(new Error('unauthorized'), { code: 'PROVISIONER_UNAUTHORIZED' });
         assert.equal((await identityService.getBootstrapStatus()).state, 'ready');
         return { actorRef: 'test:local-only-disposable', localOnly: context.requestedLocalOnly === true,
           bootstrapCapabilityDigest: crypto.createHash('sha256').update(received, 'utf8').digest() };
@@ -142,6 +202,22 @@ async function main() {
     assert.equal(status.body.checks.smtpTransportConfigured, false);
     assert.equal(status.body.checks.invitationDeliveryConfigured, false);
     const initialSetup = { company: { supportPhone: null, timeZone: 'UTC', routeGroupingPolicy: 'nearest_extension', operationalLocation: null }, deliveryPricing: null };
+    const invalidAuthorization = await call('/api/admin/tenants/provision', { companyName: 'Sintética', email: 'invalid@example.invalid',
+      idempotencyKey: `invalid-${crypto.randomUUID()}`, initialSetup, localOnly: true }, 'not-a-capability');
+    assert.equal(invalidAuthorization.status, 403, 'malformed authorization is rejected');
+    await pool.query(`UPDATE rotamoto.bootstrap_authorizations SET created_at=now()-interval '11 minutes',
+      expires_at=now()-interval '1 minute' WHERE token_digest=$1`, [digest]);
+    const expiredAuthorization = await call('/api/admin/tenants/provision', { companyName: 'Sintética', email: 'expired@example.invalid',
+      idempotencyKey: `expired-${crypto.randomUUID()}`, initialSetup, localOnly: true }, capability);
+    assert.equal(expiredAuthorization.status, 403, 'expired authorization is rejected');
+    capability = await runBrowserBootstrapCliInPty({ port, root });
+    digest = crypto.createHash('sha256').update(capability, 'utf8').digest();
+    const emitted = await pool.query(`SELECT token_digest FROM rotamoto.bootstrap_authorizations WHERE token_digest=$1
+      AND installation_scope='rotamoto' AND consumed_at IS NULL AND expires_at>now()`, [digest]);
+    assert.equal(emitted.rowCount, 1, 'the real Termux CLI output is usable by the official capability verifier');
+    const operatorAudit = await fs.readFile(path.join(root, 'operator-audit.jsonl'), 'utf8');
+    assert.equal(operatorAudit.includes(capability), false, 'operator audit never records the raw authorization');
+    assert.doesNotMatch(operatorAudit, /[A-Za-z0-9_-]{43}/u, 'operator audit contains no token-shaped value');
     const unauthenticated = await call('/api/admin/tenants/provision', { companyName: 'Sintética', email: 'synthetic@example.invalid',
       idempotencyKey: `local-only-${crypto.randomUUID()}`, initialSetup, localOnly: true });
     assert.equal(unauthenticated.status, 403, 'local-only still requires temporary proof');
@@ -155,7 +231,12 @@ async function main() {
     assert.equal(provisioned.status, 202, JSON.stringify(provisioned.body));
     assert.equal(provisioned.body.delivery, 'local_handoff');
     assert.match(provisioned.body.localInvitationToken, /^[A-Za-z0-9_-]{43}$/u);
+    const consumedAuthorization = await pool.query('SELECT consumed_at IS NOT NULL AS consumed FROM rotamoto.bootstrap_authorizations WHERE token_digest=$1', [digest]);
+    assert.equal(consumedAuthorization.rows[0]?.consumed, true, 'the accepted install atomically consumes the operator authorization');
     assert.equal(emailDeliveries.length, 0, 'local-only never invokes external email transport');
+    const consumedReplayAsNewInstall = await call('/api/admin/tenants/provision', { companyName: 'Outra instalação', email: 'replay@example.invalid',
+      idempotencyKey: `replay-${crypto.randomUUID()}`, initialSetup, localOnly: true }, capability);
+    assert([403, 429].includes(consumedReplayAsNewInstall.status), 'a consumed capability cannot authorize a different installation (direct rejection or rate limit)');
     const rawToken = provisioned.body.localInvitationToken;
     const activated = await identityService.consumeOwnerInvitation({ token: rawToken, password });
     assert.equal(activated.mfaRequired, true);
@@ -167,6 +248,10 @@ async function main() {
     assert.equal(enrolled.recoveryCodes.length, 10);
     const installed = await identityService.getBootstrapStatus();
     assert(['complete', 'pending_owner_mfa'].includes(installed.state), `founder/MFA state must be a valid completed path: ${installed.state}`);
+    await assert.rejects(issueInTransaction(), error => error.code === 'BOOTSTRAP_NOT_AVAILABLE',
+      'the official issuer refuses a second authorization after the installation latch is complete');
+    capability = '';
+    digest.fill(0);
     verifier = new Client({ connectionString: `postgresql://rm_local_test_admin@127.0.0.1:${port}/rotamoto` }); verifier.on('error', () => {}); await verifier.connect();
     const counts = await verifier.query(`SELECT (SELECT count(*)::int FROM rotamoto.companies) AS companies,
       (SELECT count(*)::int FROM rotamoto.users) AS users,
