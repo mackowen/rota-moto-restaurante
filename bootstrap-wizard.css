@@ -1,3 +1,4 @@
+.bootstrap-body,.bootstrap-body *,.bootstrap-body *::before,.bootstrap-body *::after{box-sizing:border-box}
 .bootstrap-body{min-height:100vh;min-height:100dvh;margin:0;padding:calc(18px + env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:var(--canvas);color:var(--text-primary)}
 .bootstrap-shell{width:min(100%,920px);margin:0 auto;display:grid;gap:16px}
 .bootstrap-header{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}
@@ -13,7 +14,7 @@
 .bootstrap-primary-button:hover,.bootstrap-link-button:hover{background:var(--accent-hover)}
 .bootstrap-theme:focus-visible,.bootstrap-secondary-button:focus-visible,.bootstrap-primary-button:focus-visible,.bootstrap-link-button:focus-visible,.bootstrap-text-button:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 .bootstrap-theme:disabled,.bootstrap-secondary-button:disabled,.bootstrap-primary-button:disabled{cursor:not-allowed;opacity:.58}
-.bootstrap-card{padding:clamp(16px,3.5vw,30px);border:1px solid var(--border-subtle);border-radius:20px;background:var(--surface);box-shadow:var(--elevation-1);min-width:0}
+.bootstrap-card{padding:clamp(16px,3.5vw,30px);border:1px solid var(--border-subtle);border-radius:16px;background:var(--surface);box-shadow:var(--elevation-1);min-width:0}
 .bootstrap-card-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:18px}
 .bootstrap-card-heading>div:first-child{min-width:0}
 .bootstrap-eyebrow{margin:0 0 5px;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.09em}
@@ -46,13 +47,13 @@
 .bootstrap-check>span:nth-child(2){min-width:0}
 .bootstrap-check strong,.bootstrap-check small{display:block}
 .bootstrap-check strong{font-size:13px}
-.bootstrap-check small{margin-top:2px;color:var(--text-muted);font-size:11px;line-height:1.4}
+.bootstrap-check small{margin-top:2px;color:var(--text-secondary);font-size:11px;line-height:1.4}
 .bootstrap-check>b{color:var(--text-secondary);font-size:11px;white-space:nowrap}
 .bootstrap-note,.bootstrap-help{color:var(--text-muted);font-size:11px;line-height:1.5}
-.bootstrap-note{margin:0;padding:10px 12px;border-left:3px solid var(--info);border-radius:0 9px 9px 0;background:var(--info-soft)}
+.bootstrap-note{margin:0;padding:10px 12px;border-left:3px solid var(--info);border-radius:0 9px 9px 0;background:var(--info-soft);color:var(--text-secondary)}
 .bootstrap-help{display:block;margin-top:-8px}
 .bootstrap-field{display:grid;gap:6px;min-width:0;color:var(--text-secondary);font-size:12px;font-weight:700}
-.bootstrap-field input,.bootstrap-field select{width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface-raised);color:var(--text-primary);font:inherit;font-size:14px}
+.bootstrap-field input,.bootstrap-field select{width:100%;min-width:0;height:var(--control-h);min-height:var(--control-h);padding:10px 12px;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface-raised);color:var(--text-primary);font:inherit;font-size:14px}
 .bootstrap-field input:focus-visible,.bootstrap-field select:focus-visible,.bootstrap-check-label input:focus-visible{outline:none;box-shadow:var(--focus-ring);border-color:var(--accent)}
 .bootstrap-grid-2,.bootstrap-grid-3{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .bootstrap-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -62,8 +63,17 @@
 .bootstrap-smtp-status[data-kind="error"]{border-color:color-mix(in srgb,var(--danger) 35%,var(--border-subtle));background:var(--danger-soft);color:var(--text-primary)}
 .bootstrap-smtp-status[data-kind="working"]{background:var(--surface-soft);color:var(--text-secondary)}
 .bootstrap-location,.bootstrap-ranges{min-width:0;margin:0;padding:13px;border:1px solid var(--border-subtle);border-radius:13px;background:var(--surface-soft)}
+.bootstrap-smtp-configuration{min-width:0;border:1px solid var(--border-subtle);border-radius:13px;background:var(--surface-soft)}
+.bootstrap-smtp-configuration>summary{min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;color:var(--text-primary);font-size:13px;font-weight:800;cursor:pointer;list-style:none}
+.bootstrap-smtp-configuration>summary::-webkit-details-marker{display:none}
+.bootstrap-smtp-configuration>summary:after{content:"＋";flex:none;color:var(--accent);font-size:17px;line-height:1}
+.bootstrap-smtp-configuration[open]>summary:after{content:"−"}
+.bootstrap-smtp-configuration>summary:focus-visible{outline:none;box-shadow:var(--focus-ring);border-radius:12px}
+.bootstrap-smtp-configuration>summary small{display:block;margin-top:2px;color:var(--text-secondary);font-size:11px;font-weight:500;line-height:1.4}
+.bootstrap-smtp-configuration-content{display:grid;gap:14px;padding:0 13px 13px}
+.bootstrap-smtp-configuration .bootstrap-help{color:var(--text-secondary)}
 .bootstrap-location legend,.bootstrap-ranges legend{padding:0 5px;color:var(--text-primary);font-size:12px;font-weight:800}
-.bootstrap-location>p{margin:0 0 10px;color:var(--text-muted);font-size:11px;line-height:1.45}
+.bootstrap-location>p{margin:0 0 10px;color:var(--text-secondary);font-size:11px;line-height:1.45}
 .bootstrap-location .bootstrap-grid-2{margin-top:11px}
 .bootstrap-check-label{display:flex;align-items:flex-start;gap:10px;min-width:0;color:var(--text-secondary);font-size:12px;line-height:1.45;cursor:pointer}
 .bootstrap-check-label input{width:20px;height:20px;flex:none;margin:0;accent-color:var(--accent)}
@@ -71,6 +81,7 @@
 .bootstrap-check-label strong,.bootstrap-check-label small{display:block}
 .bootstrap-check-label strong{color:var(--text-primary)}
 .bootstrap-check-label small{margin-top:4px;color:var(--text-muted);font-size:11px}
+.bootstrap-check-label--card small{color:var(--text-secondary)}
 .bootstrap-callout,.bootstrap-pending{display:grid;gap:4px;padding:11px 13px;border:1px solid var(--border-subtle);border-radius:12px;background:var(--surface-soft);color:var(--text-secondary);font-size:12px;line-height:1.45}
 .bootstrap-callout strong,.bootstrap-pending strong{color:var(--text-primary)}
 .bootstrap-pending{border-color:color-mix(in srgb,var(--warning) 30%,var(--border-subtle));background:var(--warning-soft)}

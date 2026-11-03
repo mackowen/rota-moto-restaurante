@@ -152,7 +152,8 @@
     if (index === 5) return smtpMarkup();
     if (index === 6) return reviewMarkup();
     if (finished) return finishedMarkup();
-    return `<section class="bootstrap-form-step"><h2>Pronto para iniciar</h2><p>Revise os dados e confirme para criar a empresa inicial e enviar o convite ao titular.</p>${diagnostics.checks.invitationDeliveryConfigured !== true ? '<p class="bootstrap-inline-error" role="status">O envio está bloqueado até o teste SMTP ser aceito e a URL HTTPS pública dos convites estar configurada. Nenhum dado será enviado enquanto esse requisito estiver pendente.</p>' : ''}</section>`;
+    if (localOnlyMode) return `<section class="bootstrap-form-step"><h2>Pronto para iniciar</h2><p>Revise os dados e confirme para preparar a primeira empresa. Nenhum e-mail será enviado.</p><div class="bootstrap-callout"><strong>Ativação nesta máquina</strong><span>Depois da confirmação, um link local de uso único permitirá ao titular definir a senha. A confirmação do MFA continua obrigatória antes de conceder o privilégio fundador.</span></div></section>`;
+    return `<section class="bootstrap-form-step"><h2>Pronto para iniciar</h2><p>Revise os dados e confirme para criar a empresa inicial e enviar o convite ao titular por e-mail.</p>${diagnostics.checks.invitationDeliveryConfigured !== true ? '<p class="bootstrap-inline-error" role="status">O envio está bloqueado até o teste SMTP ser aceito e a URL HTTPS pública dos convites estar configurada. Nenhum dado será enviado enquanto esse requisito estiver pendente.</p>' : ''}</section>`;
   }
 
   function rangeMarkup(item, index) {
@@ -186,6 +187,7 @@
     const required = localOnlyMode ? '' : 'required';
     return `<section class="bootstrap-form-step bootstrap-smtp-step"><div><h2>E-mail e notificações</h2><p>O transporte SMTP pode ser configurado agora, independentemente dos links de convite. Sem URL HTTPS pública, convites por e-mail permanecem bloqueados.</p></div>
       ${diagnostics.checks.localOnlyBootstrapAvailable === true ? `<label class="bootstrap-check-label bootstrap-check-label--card"><input name="localOnlyMode" type="checkbox" ${localOnlyMode?'checked':''}><span><strong>Instalação local-only nesta máquina</strong><small>Não envia convite por e-mail. O link de uso único será aberto somente nesta origem loopback após a revisão. A rede local não terá acesso a esta etapa.</small></span></label>` : ''}
+      <details class="bootstrap-smtp-configuration" data-smtp-configuration ${localOnlyMode?'':'open'}><summary><span>Configurar SMTP externo<small>Opcional para instalação local. Necessário para testes de envio e convites por e-mail.</small></span></summary><div class="bootstrap-smtp-configuration-content">
       <label class="bootstrap-field">Provedor<select name="smtpProvider" data-smtp-provider><option value="gmail" ${smtpDraft.provider==='gmail'?'selected':''}>Gmail</option><option value="microsoft365" ${smtpDraft.provider==='microsoft365'?'selected':''}>Outlook / Microsoft 365</option><option value="custom" ${smtpDraft.provider==='custom'?'selected':''}>SMTP personalizado</option></select></label>
       <div class="bootstrap-grid-2">${formField('E-mail do remetente','smtpSenderEmail',smtpDraft.senderEmail,'email',`autocomplete="email" maxlength="254" ${required}`)}${formField('Nome de exibição','smtpSenderName',smtpDraft.senderName,'text',`autocomplete="organization" maxlength="120" ${required}`)}</div>
       <div class="bootstrap-grid-2">${formField('Host SMTP','smtpHost',smtpDraft.host,'text',`autocomplete="url" maxlength="253" autocapitalize="none" spellcheck="false" ${required}`)}${formField('Porta','smtpPort',smtpDraft.port,'number',`min="1" max="65535" step="1" inputmode="numeric" ${required}`)}</div>
@@ -198,7 +200,7 @@
       <div class="bootstrap-smtp-actions"><button class="bootstrap-secondary-button" type="button" data-smtp-validate ${busy?'disabled':''}>Validar parâmetros</button><button class="bootstrap-primary-button" type="button" data-smtp-test ${busy?'disabled':''}>${busy?'Testando…':'Testar e-mail'}</button></div>
       <p class="bootstrap-smtp-status" data-smtp-status data-kind="${statusKind}" role="status" aria-live="polite">${escapeHtml(smtpStatus.message || (smtpConfigurationSaved ? 'Configuração de e-mail testada e protegida.' : 'O SMTP ainda não foi testado.'))}</p>
       ${smtpConfigurationSaved ? '<p class="bootstrap-note">O servidor SMTP aceitou a mensagem de teste. Isso não confirma a chegada à caixa de entrada.</p>' : ''}
-      <div class="bootstrap-callout"><strong>Segredos e instalação</strong><span>A credencial nunca é devolvida pela API nem salva no rascunho do navegador. Ela será criptografada no keystore local somente depois que o servidor aceitar a mensagem de teste.</span></div></section>`;
+      <div class="bootstrap-callout"><strong>Segredos e instalação</strong><span>A credencial nunca é devolvida pela API nem salva no rascunho do navegador. Ela será criptografada no keystore local somente depois que o servidor aceitar a mensagem de teste.</span></div></div></details></section>`;
   }
 
   function readSmtpForm() {
@@ -285,7 +287,8 @@
       ['Titular', data.email || '—'], ['Empresa', data.companyName || '—'], ['Telefone', data.supportPhone || 'Não informado'],
       ['Endereço operacional', location], ['Fuso horário', data.timeZone || 'Pendente'],
       ['Agrupamento de rotas', data.routeGroupingPolicy === 'nearest_extension' ? 'Rota próxima' : data.routeGroupingPolicy === 'nearest_origin_round_robin' ? 'Alternância entre origens próximas' : 'Pendente'],
-      ['Cobrança de entrega', pricing], ['MFA do titular', 'Obrigatório após aceitar o convite']
+      ['Cobrança de entrega', pricing], ['MFA do titular', 'Obrigatório após aceitar o convite'],
+      ['Ativação do titular', localOnlyMode ? 'Link local de uso único · sem envio de e-mail' : 'Convite por e-mail · SMTP e URL HTTPS públicos']
     ];
     return `<section class="bootstrap-form-step"><div><h2>Revise antes de iniciar</h2><p>O assistente gravará os campos abaixo. Horários, modalidades e outros recursos sem contrato de instalação ficarão pendentes.</p></div><dl class="bootstrap-review">${rows.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl><div class="bootstrap-callout"><strong>${localOnlyMode ? 'Esta ação cria a primeira empresa e prepara um convite local de uso único.' : 'Esta ação cria a primeira empresa e envia um convite.'}</strong><span>O titular define a senha e confirma o MFA pelos controles existentes antes de receber o privilégio fundador. A instalação não será concluída nesta tela.</span></div></section>`;
   }
@@ -322,26 +325,32 @@
     const nextLabel = currentStep === 6 ? 'Continuar para finalização' : currentStep === 7 ? 'Iniciar instalação' : 'Continuar';
     const blocked = currentStep === 0 ? !canBeginSetupFlow() : currentStep === 5 && !smtpConfigurationSaved && !localOnlyMode || currentStep === 7 && !canSubmitBootstrap();
     actions.innerHTML = `${currentStep > 0 ? '<button type="button" class="bootstrap-secondary-button" data-back>Voltar</button>' : ''}<button type="button" class="bootstrap-primary-button" data-next ${busy || blocked ? 'disabled' : ''}>${busy ? 'Verificando…' : nextLabel}</button>`;
-    $('[data-back]', actions)?.addEventListener('click', () => { syncForm(); currentStep = Math.max(0, currentStep - 1); setMessage(); render(); });
+    $('[data-back]', actions)?.addEventListener('click', () => { syncForm(); currentStep = Math.max(0, currentStep - 1); setMessage(); render({ focusStage: true }); });
     $('[data-next]', actions)?.addEventListener('click', async () => {
       syncForm();
       if (currentStep === 0) {
         if (!canBeginSetupFlow()) return setMessage('Corrija os requisitos de banco, schema e MFA antes de avançar.', 'error');
-        currentStep = 1; render(); return;
+        currentStep = 1; render({ focusStage: true }); return;
       }
       if (!validateStep(currentStep)) return;
-      if (currentStep === 6) { currentStep = 7; render(); return; }
+      if (currentStep === 6) { currentStep = 7; render({ focusStage: true }); return; }
       if (currentStep === 7) { await submitProvision(); return; }
-      currentStep += 1; setMessage(); render();
+      currentStep += 1; setMessage(); render({ focusStage: true });
     });
   }
 
-  function render() {
+  function render({ focusStage = false } = {}) {
     renderProgress();
     const content = stageMarkup(currentStep);
     stage.innerHTML = currentStep > 0 && !finished ? `<form class="bootstrap-wizard-form" novalidate>${content}</form>` : content;
+    const heading = stage.querySelector('h2');
+    if (heading) {
+      heading.id = 'bootstrap-stage-heading';
+      stage.setAttribute('aria-labelledby', heading.id);
+    } else stage.removeAttribute('aria-labelledby');
     renderActions();
     stage.querySelector('form')?.addEventListener('submit', event => { event.preventDefault(); $('[data-next]', actions)?.click(); });
+    if (focusStage) stage.focus({ preventScroll: true });
     $('[data-theme-toggle]').textContent = document.documentElement.dataset.resolvedTheme === 'dark' ? 'Tema claro' : 'Tema escuro';
     if (currentStep === 5) void loadBootstrapSmtpStatus();
   }
@@ -350,6 +359,8 @@
     if (event.target.name === 'localOnlyMode') {
       localOnlyMode = event.target.checked;
       readSmtpForm();
+      const smtpConfiguration = stage.querySelector('[data-smtp-configuration]');
+      if (smtpConfiguration) smtpConfiguration.open = !localOnlyMode;
       setSmtpFieldsRequired(!localOnlyMode);
       renderActions();
       return;
@@ -483,12 +494,12 @@
         try { sessionStorage.removeItem(storageKey); sessionStorage.removeItem(idempotencyKey); } catch (_) {}
       }
       setMessage(result.delivery === 'sent' ? 'A configuração inicial foi gravada e o servidor SMTP aceitou o convite.' :
-        result.delivery === 'local_handoff' ? 'Cadastro inicial registrado. O link local de uso único está disponível abaixo; o MFA continua obrigatório.' :
+        result.delivery === 'local_handoff' ? 'Cadastro inicial registrado.' :
           'O cadastro foi preservado, mas o envio ainda não foi confirmado.', ['sent','local_handoff'].includes(result.delivery) ? 'success' : 'error');
     } catch (error) {
       finished = { delivery: 'failed', message: error.name === 'AbortError' ? 'A resposta demorou. A operação pode ter sido registrada; use a mesma autorização para tentar novamente.' : error.message || 'Não foi possível confirmar a operação.' };
       setMessage(finished.message, 'error');
-    } finally { busy = false; render(); }
+    } finally { busy = false; render({ focusStage: Boolean(finished) }); }
   }
 
   function setupTheme() {
