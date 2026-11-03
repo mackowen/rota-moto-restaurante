@@ -5,7 +5,7 @@ const http = require('node:http');
 const { createIdentityHttpHandler } = require('../backend/identity/http');
 
 async function main() {
-  let tested = 0;
+  let tested = 0, smtpFailure = null;
   let adminActive = true, mfaVerified = true;
   const smtpConfiguration = {
     async authorize(req, action) {
@@ -16,6 +16,7 @@ async function main() {
     async validate() { return { valid: true, host: 'smtp.example.test', port: 587, tlsMode: 'starttls', authentication: 'password', oauthAvailable: false }; },
     async test(_settings, req, requestId) {
       if (req.headers['x-rotamoto-bootstrap-authorization'] !== 'A'.repeat(43)) throw Object.assign(new Error('unauthorized'), { code: 'PROVISIONER_UNAUTHORIZED' });
+      if (smtpFailure) throw smtpFailure;
       tested++; return { submission: 'accepted_by_smtp', delivery: 'unconfirmed', configurationSaved: true, requestId };
     },
     async testAsAdmin(_settings, userId, requestId) { assert.equal(userId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'); tested++; return { submission: 'accepted_by_smtp', delivery: 'unconfirmed', configurationSaved: true, requestId }; },
@@ -70,6 +71,17 @@ async function main() {
     assert.equal(sent.status, 200); const sentBody = await sent.json(); assert.equal(sentBody.submission, 'accepted_by_smtp');
     assert.equal(sentBody.delivery, 'unconfirmed'); assert.equal(JSON.stringify(sentBody).includes('must-not-echo'), false);
     assert.equal(tested, 1);
+    smtpFailure = Object.assign(new Error('SMTP accepted; local audit path unavailable'), { code: 'SMTP_ACCEPTED_AUDIT_FAILED', acceptedBySmtp: true });
+    const acceptedLocalFailure = await call(testPath, { authorization: 'A'.repeat(43), body: {
+      requestId: 'cc17bccd-e8be-492c-9db4-df2958e8e1fa', settings: config } });
+    assert.equal(acceptedLocalFailure.status, 503);
+    const acceptedBody = await acceptedLocalFailure.json();
+    assert.equal(acceptedBody.error.code, 'SMTP_ACCEPTED_AUDIT_FAILED');
+    assert.equal(acceptedBody.error.submission, 'accepted_by_smtp'); assert.equal(acceptedBody.error.delivery, 'unconfirmed');
+    assert.equal(acceptedBody.error.configurationSaved, false);
+    assert.match(acceptedBody.error.message, /aceitou a mensagem/u);
+    assert.doesNotMatch(JSON.stringify(acceptedBody), /SMTP accepted; local audit path unavailable/u);
+    smtpFailure = null;
     assert.equal((await call(validatePath, { method: 'GET' })).status, 405);
     assert.equal((await call('/api/admin/smtp/config', { method: 'GET' })).status, 401, 'admin SMTP state requires a session');
     adminActive = false;

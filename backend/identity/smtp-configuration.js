@@ -12,6 +12,27 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const SECRET_NAME = 'smtp/password';
 const SECRET_SCOPE = 'installation';
 
+async function appendProtectedDiagnostic(file, error, action) {
+  if (!file) return;
+  if (!path.isAbsolute(file)) throw new Error('SMTP diagnostic path must be absolute.');
+  const directory = path.dirname(file);
+  const dir = await fs.lstat(directory);
+  if (!dir.isDirectory() || dir.isSymbolicLink() || (typeof process.getuid === 'function' && dir.uid !== process.getuid()) || (dir.mode & 0o077))
+    throw new Error('SMTP diagnostic directory is not private.');
+  const flags = fs.constants.O_CREAT | fs.constants.O_APPEND | fs.constants.O_WRONLY | (fs.constants.O_NOFOLLOW || 0);
+  const handle = await fs.open(file, flags, 0o600);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1 || (typeof process.getuid === 'function' && stat.uid !== process.getuid()) || (stat.mode & 0o077))
+      throw new Error('SMTP diagnostic file is not private.');
+    await handle.write(`${JSON.stringify({ at: new Date().toISOString(), action, code: error?.code || null,
+      command: error?.command || null, responseCode: error?.responseCode || null,
+      response: error?.response || null, message: error?.message || null, stack: error?.stack || null,
+      causeCode: error?.cause?.code || null, causeMessage: error?.cause?.message || null, causeStack: error?.cause?.stack || null })}\n`);
+    await handle.sync();
+  } finally { await handle.close(); }
+}
+
 function inputError(message = 'Revise os parâmetros SMTP informados.') {
   return Object.assign(new Error(message), { code: 'SMTP_CONFIGURATION_INVALID' });
 }
@@ -47,13 +68,42 @@ function validateSmtpSettings(input) {
   return Object.freeze({ provider, senderEmail, senderName, host, port, tlsMode, username, password, testRecipient, publicBaseUrl: base?.toString() || '' });
 }
 
-function safeSmtpError(error) {
-  const code = ['ETIMEDOUT', 'ECONNECTION', 'ECONNREFUSED', 'EAUTH', 'EENVELOPE', 'EDNS', 'ESOCKET'].includes(error?.code)
-    ? error.code : 'SMTP_TEST_FAILED';
-  const message = code === 'EAUTH' ? 'O servidor SMTP recusou a autenticação.' :
-    code === 'ETIMEDOUT' ? 'O servidor SMTP excedeu o tempo limite.' :
-    code === 'EENVELOPE' ? 'O servidor SMTP recusou o remetente ou destinatário do teste.' :
-    'Não foi possível testar o envio SMTP. Confira host, porta, TLS e credenciais.';
+function safeSmtpError(error, { submissionInFlight = false } = {}) {
+  const rawCode = typeof error?.code === 'string' ? error.code.toUpperCase() : '';
+  const command = typeof error?.command === 'string' ? error.command.toUpperCase() : '';
+  const responseCode = Number(error?.responseCode) || 0;
+  const technicalText = `${error?.message || ''} ${error?.cause?.message || ''}`;
+  let code = 'SMTP_TEST_FAILED';
+  if (submissionInFlight && ['ECONNECTION', 'ESOCKET', 'ETIMEDOUT'].includes(rawCode) && (!responseCode || responseCode < 400))
+    code = 'SMTP_SUBMISSION_UNKNOWN';
+  else if (['EDNS', 'ENOTFOUND', 'EAI_AGAIN'].includes(rawCode)) code = 'SMTP_DNS_FAILED';
+  else if (rawCode === 'ECONNREFUSED') code = 'SMTP_TCP_REFUSED';
+  else if (rawCode === 'ETIMEDOUT') code = 'SMTP_TIMEOUT';
+  else if (rawCode === 'ECONNECTION') code = 'SMTP_CONNECTION_FAILED';
+  else if (rawCode === 'EAUTH') code = 'SMTP_AUTH_REJECTED';
+  else if (rawCode === 'EENVELOPE' && /MAIL|FROM/u.test(command)) code = 'SMTP_SENDER_REJECTED';
+  else if (rawCode === 'EENVELOPE' && /RCPT|TO/u.test(command)) code = 'SMTP_RECIPIENT_REJECTED';
+  else if (rawCode === 'EENVELOPE') code = /DATA/u.test(command) || responseCode >= 550 && !/MAIL|FROM|RCPT|TO/u.test(command)
+    ? 'SMTP_MESSAGE_REJECTED' : /MAIL|FROM/u.test(command) ? 'SMTP_SENDER_REJECTED' : 'SMTP_RECIPIENT_REJECTED';
+  else if (/STARTTLS/u.test(command) || /STARTTLS/u.test(technicalText)) code = 'SMTP_STARTTLS_FAILED';
+  else if (/CERT|TLS|SSL/u.test(rawCode) || /certificate|self[- ]signed|unable to verify|hostname.*mismatch|cert.*expired/iu.test(technicalText) || error?.name === 'CertificateError') code = 'SMTP_CERTIFICATE_FAILED';
+  else if (rawCode === 'ESOCKET' && /CONN/u.test(command)) code = 'SMTP_TCP_FAILED';
+  const messages = {
+    SMTP_DNS_FAILED: 'Não foi possível resolver o servidor SMTP (DNS).',
+    SMTP_TCP_REFUSED: 'A conexão TCP com o servidor SMTP foi recusada.',
+    SMTP_TIMEOUT: 'A conexão com o servidor SMTP excedeu o tempo limite.',
+    SMTP_CONNECTION_FAILED: 'Não foi possível estabelecer conexão com o servidor SMTP.',
+    SMTP_TCP_FAILED: 'A conexão TCP com o servidor SMTP falhou.',
+    SMTP_STARTTLS_FAILED: 'O servidor SMTP não concluiu STARTTLS.',
+    SMTP_CERTIFICATE_FAILED: 'O certificado TLS do servidor SMTP não pôde ser validado.',
+    SMTP_AUTH_REJECTED: 'O servidor SMTP recusou a autenticação.',
+    SMTP_SENDER_REJECTED: 'O servidor SMTP recusou o remetente.',
+    SMTP_RECIPIENT_REJECTED: 'O servidor SMTP recusou o destinatário de teste.',
+    SMTP_MESSAGE_REJECTED: 'O servidor SMTP rejeitou a mensagem de teste.',
+    SMTP_SUBMISSION_UNKNOWN: 'A conexão terminou durante o envio e o servidor não confirmou o resultado. A mensagem pode ter sido aceita; confira antes de repetir.',
+    SMTP_TEST_FAILED: 'Não foi possível testar o envio SMTP. Confira os parâmetros e tente novamente.'
+  };
+  const message = messages[code];
   return Object.assign(new Error(message), { code });
 }
 
@@ -74,6 +124,7 @@ function legacySettings(config) {
 }
 
 function createSmtpConfigurationService({ pool, secretProvider, configFile, existingConfig = null, audit = appendOperatorAudit,
+  diagnosticFile = process.env.ROTAMOTO_SMTP_DIAGNOSTIC_LOG,
   resolveAddresses = resolvePublicSmtpAddresses, transportFactory = createSmtpTransport, mailProviderFactory = createSmtpMailProvider } = {}) {
   if (!pool || !secretProvider || typeof secretProvider.put !== 'function' || !path.isAbsolute(configFile || ''))
     throw new TypeError('SMTP setup requires a pool, protected secret provider and absolute private config path.');
@@ -168,13 +219,21 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
   async function executeTest(input, requestId, recordAttempt, auditAction) {
     const resolved = await resolveSettings(input);
     const parsed = resolved.settings;
-    await resolveAddresses(parsed.host);
+    try { await resolveAddresses(parsed.host); }
+    catch (error) {
+      const safe = safeSmtpError(error);
+      try { await appendProtectedDiagnostic(diagnosticFile, error, auditAction.replace(/\.accepted$/u, '.failed')); } catch (_) {}
+      await audit(auditAction.replace(/\.accepted$/u, '.failed'), { provider: parsed.provider, errorCode: safe.code }).catch(() => {});
+      throw safe;
+    }
     if (typeof requestId !== 'string' || !UUID.test(requestId)) throw inputError('Identificador de teste inválido.');
     const replay = await recordAttempt(requestId);
     if (replay.rows[0]?.accepted !== true) throw Object.assign(new Error('O teste foi repetido, a autorização expirou ou o limite foi atingido.'), { code: 'RATE_LIMITED' });
     return serialize(async () => {
       let temp;
       let previous;
+      let acceptedBySmtp = false;
+      let submissionInFlight = false;
       try {
         const addresses = await resolveAddresses(parsed.host);
         temp = transportFactory({ host: parsed.host, port: parsed.port, secure: parsed.tlsMode === 'tls',
@@ -182,10 +241,13 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
           resolveAddresses: async () => addresses });
         await temp.verify();
         const from = `${parsed.senderName.replace(/[\\"]/gu, '\\$&')} <${parsed.senderEmail}>`;
+        submissionInFlight = true;
         const result = await temp.sendMail({ from, to: parsed.testRecipient, subject: 'Teste do transporte de e-mail RotaMoto',
           text: 'Esta mensagem confirma que o servidor SMTP aceitou o envio do teste. A entrega na caixa de entrada depende do provedor.' });
         const accepted = Array.isArray(result.accepted) && result.accepted.some(value => String(value).toLowerCase() === parsed.testRecipient.toLowerCase());
         if (!accepted) throw Object.assign(new Error('O servidor SMTP não aceitou o destinatário de teste.'), { code: 'EENVELOPE' });
+        acceptedBySmtp = true;
+        submissionInFlight = false;
         await audit(auditAction, { provider: parsed.provider });
         previous = await loadStored();
         const secret = resolved.passwordRef ? { secretRef: resolved.passwordRef } :
@@ -199,7 +261,20 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
         return { connection: 'verified', submission: 'accepted_by_smtp', delivery: 'unconfirmed', configurationSaved: true,
           notice: 'O servidor SMTP aceitou a mensagem. A entrega na caixa de entrada não é confirmada pelo SMTP.' };
       } catch (error) {
-        const safe = ['RATE_LIMITED', 'SMTP_CONFIGURATION_INVALID', 'SMTP_CONFIGURATION_UNAVAILABLE'].includes(error?.code) ? error : safeSmtpError(error);
+        if (acceptedBySmtp) {
+          const auditFailed = error?.code === 'OPERATOR_AUDIT_CONFIGURATION_REQUIRED' || error?.code === 'OPERATOR_AUDIT_UNAVAILABLE';
+          const code = auditFailed ? 'SMTP_ACCEPTED_AUDIT_FAILED' : 'SMTP_ACCEPTED_CONFIGURATION_SAVE_FAILED';
+          try { await appendProtectedDiagnostic(diagnosticFile, error, auditAction.replace(/\.accepted$/u, '.post_accept_failed')); } catch (_) {}
+          if (!auditFailed) await audit(auditAction.replace(/\.accepted$/u, '.post_accept_failed'), { provider: parsed.provider, errorCode: code }).catch(() => {});
+          throw Object.assign(new Error(auditFailed
+            ? 'O servidor SMTP aceitou a mensagem, mas não foi possível registrar a auditoria. O resultado do teste não deve ser repetido automaticamente.'
+            : 'O servidor SMTP aceitou a mensagem, mas a configuração não pôde ser persistida. Uma nova tentativa enviará outra mensagem.'),
+          { code, acceptedBySmtp: true, cause: error });
+        }
+        const safe = ['RATE_LIMITED', 'SMTP_CONFIGURATION_INVALID', 'SMTP_CONFIGURATION_UNAVAILABLE'].includes(error?.code) ? error : safeSmtpError(error, { submissionInFlight });
+        if (!['RATE_LIMITED', 'SMTP_CONFIGURATION_INVALID', 'SMTP_CONFIGURATION_UNAVAILABLE'].includes(error?.code)) {
+          try { await appendProtectedDiagnostic(diagnosticFile, error, auditAction.replace(/\.accepted$/u, '.failed')); } catch (_) {}
+        }
         await audit(auditAction.replace(/\.accepted$/u, '.failed'), { provider: parsed.provider, errorCode: safe.code || 'SMTP_TEST_FAILED' }).catch(() => {});
         throw safe;
       } finally { temp?.close(); }

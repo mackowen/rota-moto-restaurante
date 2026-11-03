@@ -20,7 +20,7 @@ async function resolvePublicSmtpAddresses(host) {
     throw Object.assign(new Error('O host SMTP precisa ser um domínio DNS público.'), { code: 'SMTP_CONFIGURATION_INVALID' });
   let answers;
   try { answers = await dns.lookup(host, { all: true, family: 4, verbatim: true }); }
-  catch (_) { throw Object.assign(new Error('Não foi possível resolver o host SMTP.'), { code: 'SMTP_CONFIGURATION_INVALID' }); }
+  catch (error) { throw Object.assign(new Error('Não foi possível resolver o host SMTP.', { cause: error }), { code: 'EDNS' }); }
   if (!answers.length || answers.some(answer => !isPublicV4(answer.address)))
     throw Object.assign(new Error('O host SMTP resolve para uma rede não permitida.'), { code: 'SMTP_CONFIGURATION_INVALID' });
   return answers.map(answer => answer.address);

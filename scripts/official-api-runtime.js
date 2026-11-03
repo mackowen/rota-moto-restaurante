@@ -31,6 +31,11 @@ function applyOfficialOperatorConfig(config, env = process.env) {
   env.ROTAMOTO_SECRET_STORE_DIRECTORY = config.secretStoreDirectory;
   env.ROTAMOTO_SECRET_MASTER_KEY_FILE = config.secretMasterKeyFile;
   env.ROTAMOTO_SMTP_CONFIG_FILE = path.join(path.dirname(config.secretStoreDirectory), 'smtp-config.json');
+  if (config.operatorAudit?.file && config.operatorAudit?.actorRef) {
+    env.ROTAMOTO_OPERATOR_AUDIT_LOG = config.operatorAudit.file;
+    env.ROTAMOTO_OPERATOR_ACTOR_REF = config.operatorAudit.actorRef;
+    env.ROTAMOTO_SMTP_DIAGNOSTIC_LOG = path.join(path.dirname(config.operatorAudit.file), 'smtp-diagnostics.jsonl');
+  }
   env.SMTP_HOST = config.smtp.host || '';
   env.SMTP_PORT = String(config.smtp.port);
   env.SMTP_SECURE = String(config.smtp.secure);

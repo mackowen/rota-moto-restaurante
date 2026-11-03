@@ -1,0 +1,202 @@
+{
+  "result": "PASS",
+  "testedAt": "2026-11-03T20:59:09.823Z",
+  "url": "http://127.0.0.1:8083/bootstrap.html",
+  "initial": {
+    "title": "Primeira instalação · RotaMoto",
+    "html": true,
+    "status": {
+      "state": "ready",
+      "checks": {
+        "databaseAndMigrations": true,
+        "pricingConfigurationAvailable": true,
+        "mfaKeystoreConfigured": true,
+        "smtpTransportConfigured": false,
+        "invitationDeliveryConfigured": false,
+        "localOnlyBootstrapAvailable": true
+      }
+    },
+    "health": {
+      "status": "ready",
+      "service": "rotamoto-api",
+      "dependencies": {
+        "postgres": "ready"
+      },
+      "time": "2026-11-03T20:59:07.459Z",
+      "requestId": "359429dd-b643-446e-a26a-f418a5baedd9"
+    },
+    "assets": [
+      {
+        "url": "http://127.0.0.1:8083/design-system.css?v=3cf184ae73a556ff",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:8083/bootstrap-wizard.css?v=9d10733abd58c997",
+        "status": 200
+      },
+      {
+        "url": "http://127.0.0.1:8083/bootstrap-wizard.js?v=642a2dbd07114e39",
+        "status": 200
+      }
+    ]
+  },
+  "step": "E-mail e notificações",
+  "externalNextDisabled": true,
+  "localOnlyCanProceed": true,
+  "viewports": [
+    {
+      "theme": "light",
+      "width": 390,
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "overflow": false,
+      "cardWidth": 366,
+      "heading": "E-mail e notificações",
+      "provider": true,
+      "testButton": true,
+      "reuseAvailable": true,
+      "recipientPrefilled": true,
+      "passwordDisabled": true,
+      "continueDisabled": false,
+      "localOnlySelected": true,
+      "publicUrlOptional": true,
+      "passwordStoredInSession": false,
+      "screenshot": "smtp-light-390.png"
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "viewportWidth": 768,
+      "documentWidth": 768,
+      "overflow": false,
+      "cardWidth": 740,
+      "heading": "E-mail e notificações",
+      "provider": true,
+      "testButton": true,
+      "reuseAvailable": true,
+      "recipientPrefilled": true,
+      "passwordDisabled": true,
+      "continueDisabled": false,
+      "localOnlySelected": true,
+      "publicUrlOptional": true,
+      "passwordStoredInSession": false,
+      "screenshot": "smtp-light-768.png"
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "overflow": false,
+      "cardWidth": 920,
+      "heading": "E-mail e notificações",
+      "provider": true,
+      "testButton": true,
+      "reuseAvailable": true,
+      "recipientPrefilled": true,
+      "passwordDisabled": true,
+      "continueDisabled": false,
+      "localOnlySelected": true,
+      "publicUrlOptional": true,
+      "passwordStoredInSession": false,
+      "screenshot": "smtp-light-1440.png"
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "viewportWidth": 390,
+      "documentWidth": 390,
+      "overflow": false,
+      "cardWidth": 366,
+      "heading": "E-mail e notificações",
+      "provider": true,
+      "testButton": true,
+      "reuseAvailable": true,
+      "recipientPrefilled": true,
+      "passwordDisabled": true,
+      "continueDisabled": false,
+      "localOnlySelected": true,
+      "publicUrlOptional": true,
+      "passwordStoredInSession": false,
+      "screenshot": "smtp-dark-390.png"
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "viewportWidth": 768,
+      "documentWidth": 768,
+      "overflow": false,
+      "cardWidth": 740,
+      "heading": "E-mail e notificações",
+      "provider": true,
+      "testButton": true,
+      "reuseAvailable": true,
+      "recipientPrefilled": true,
+      "passwordDisabled": true,
+      "continueDisabled": false,
+      "localOnlySelected": true,
+      "publicUrlOptional": true,
+      "passwordStoredInSession": false,
+      "screenshot": "smtp-dark-768.png"
+    },
+    {
+      "theme": "dark",
+      "width": 1440,
+      "viewportWidth": 1440,
+      "documentWidth": 1440,
+      "overflow": false,
+      "cardWidth": 920,
+      "heading": "E-mail e notificações",
+      "provider": true,
+      "testButton": true,
+      "reuseAvailable": true,
+      "recipientPrefilled": true,
+      "passwordDisabled": true,
+      "continueDisabled": false,
+      "localOnlySelected": true,
+      "publicUrlOptional": true,
+      "passwordStoredInSession": false,
+      "screenshot": "smtp-dark-1440.png"
+    }
+  ],
+  "blocked": {
+    "disabled": false,
+    "localOnlySelected": true,
+    "localOnlyAvailable": true,
+    "publicUrlOptional": true,
+    "heading": "E-mail e notificações",
+    "oauthDisabled": true,
+    "reuseAvailable": true,
+    "recipientPrefilled": true,
+    "passwordDisabled": true,
+    "recipient": true,
+    "httpsInvitation": true
+  },
+  "errorUi": {
+    "text": true,
+    "raw": false
+  },
+  "mockedTestCount": 2,
+  "dialogCount": 1,
+  "consoleErrors": [],
+  "httpErrors": [
+    {
+      "status": 503,
+      "url": "http://127.0.0.1:8083/api/identity/bootstrap/smtp/test"
+    },
+    {
+      "status": 503,
+      "url": "http://127.0.0.1:8083/api/identity/bootstrap/smtp/test"
+    }
+  ],
+  "protectedOperationPosts": [
+    {
+      "url": "http://127.0.0.1:8083/api/identity/bootstrap/smtp/test"
+    },
+    {
+      "url": "http://127.0.0.1:8083/api/identity/bootstrap/smtp/test"
+    }
+  ],
+  "externalSend": "not attempted; both SMTP test responses were intercepted and simulated as accepted-by-SMTP followed by audit failure",
+  "syntheticData": "only .invalid metadata in browser memory; no real SMTP request, email, provision, or installation"
+}

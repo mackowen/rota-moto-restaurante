@@ -47,8 +47,13 @@ async function main() {
   assert.throws(() => validateSmtpSettings({ ...settings, provider: 'gmail', host: 'smtp.example.test' }), /Gmail exige/u);
   for (const address of ['127.0.0.1','10.0.0.1','172.16.0.1','192.168.1.1','169.254.1.1','100.64.1.1','198.18.0.1','203.0.113.1']) assert.equal(isPublicV4(address), false, `${address} is not a public SMTP target`);
   assert.equal(isPublicV4('8.8.8.8'), true);
-  assert.equal(safeSmtpError(Object.assign(new Error('secret smtp host details'), { code: 'EAUTH' })).message, 'O servidor SMTP recusou a autenticação.');
-  assert.equal(safeSmtpError(Object.assign(new Error('raw socket data'), { code: 'ETIMEDOUT' })).code, 'ETIMEDOUT');
+  assert.equal(safeSmtpError(Object.assign(new Error('secret smtp host details'), { code: 'EAUTH' })).code, 'SMTP_AUTH_REJECTED');
+  assert.equal(safeSmtpError(Object.assign(new Error('raw socket data'), { code: 'ETIMEDOUT' })).code, 'SMTP_TIMEOUT');
+  assert.equal(safeSmtpError(Object.assign(new Error('connection closed during DATA'), { code: 'ETIMEDOUT' }), { submissionInFlight: true }).code, 'SMTP_SUBMISSION_UNKNOWN');
+  assert.equal(safeSmtpError(Object.assign(new Error('certificate detail'), { code: 'ESOCKET', command: 'CONN', name: 'CertificateError' })).code, 'SMTP_CERTIFICATE_FAILED');
+  assert.equal(safeSmtpError(Object.assign(new Error('sender denied'), { code: 'EENVELOPE', command: 'MAIL FROM', responseCode: 550 })).code, 'SMTP_SENDER_REJECTED');
+  assert.equal(safeSmtpError(Object.assign(new Error('recipient denied'), { code: 'EENVELOPE', command: 'RCPT TO', responseCode: 550 })).code, 'SMTP_RECIPIENT_REJECTED');
+  assert.equal(safeSmtpError(Object.assign(new Error('data denied'), { code: 'EENVELOPE', command: 'DATA', responseCode: 554 })).code, 'SMTP_MESSAGE_REJECTED');
   const validated = await service.validate(settings);
   assert.equal(validated.valid, true); assert.equal(validated.authentication, 'password'); assert.equal(validated.oauthAvailable, false);
 
@@ -131,19 +136,51 @@ async function main() {
   } };
   const failureAudits = [];
   for (const [suffix, behavior, code] of [
-    ['auth', { async verify() { throw Object.assign(new Error('credential detail secret'), { code: 'EAUTH' }); } }, 'EAUTH'],
-    ['timeout', { async verify() { throw Object.assign(new Error('connection detail secret'), { code: 'ETIMEDOUT' }); } }, 'ETIMEDOUT'],
-    ['recipient', { async verify() {}, async sendMail() { return { accepted: [] }; } }, 'EENVELOPE']
+    ['auth', { async verify() { throw Object.assign(new Error('credential detail secret'), { code: 'EAUTH' }); } }, 'SMTP_AUTH_REJECTED'],
+    ['timeout', { async verify() { throw Object.assign(new Error('connection detail secret'), { code: 'ETIMEDOUT' }); } }, 'SMTP_TIMEOUT'],
+    ['submission-unknown', { async verify() {}, async sendMail() { throw Object.assign(new Error('connection detail secret'), { code: 'ETIMEDOUT', command: 'DATA' }); } }, 'SMTP_SUBMISSION_UNKNOWN'],
+    ['recipient', { async verify() {}, async sendMail() { return { accepted: [] }; } }, 'SMTP_RECIPIENT_REJECTED']
   ]) {
     const failedConfig = path.join(identity, `smtp-failure-${suffix}.json`);
-    const failing = createSmtpConfigurationService({ pool: failurePool, secretProvider: secrets, configFile: failedConfig,
+    const diagnosticFile = path.join(identity, `smtp-failure-${suffix}.diagnostic.jsonl`);
+    const failing = createSmtpConfigurationService({ pool: failurePool, secretProvider: secrets, configFile: failedConfig, diagnosticFile,
       resolveAddresses: async () => ['127.0.0.1'], transportFactory: () => ({ ...behavior, close() {} }), audit: async (action, details) => failureAudits.push({ action, details }) });
-    await assert.rejects(failing.test(settings, request, `2a82ee31-7d52-4ce1-9f${suffix==='auth'?'00':suffix==='timeout'?'01':'02'}-14210865e01c`), error => {
+    const suffixHex = suffix === 'auth' ? '10' : suffix === 'timeout' ? '11' : suffix === 'submission-unknown' ? '12' : '13';
+    await assert.rejects(failing.test(settings, request, `2a82ee31-7d52-4ce1-9f${suffixHex}-14210865e01c`), error => {
       assert.equal(error.code, code); assert.doesNotMatch(error.message, /secret|detail/u); return true;
     });
     await assert.rejects(fs.access(failedConfig), { code: 'ENOENT' }, 'failed SMTP tests never persist a configuration');
+    const diagnosticStat = await fs.stat(diagnosticFile);
+    assert.equal(diagnosticStat.mode & 0o077, 0, 'raw SMTP diagnostics are private to the local operator');
+    const diagnostic = await fs.readFile(diagnosticFile, 'utf8');
+    if (suffix === 'auth') assert.match(diagnostic, /credential detail secret/u);
+    if (suffix === 'timeout') assert.match(diagnostic, /connection detail secret/u);
   }
-  assert.equal(failureAudits.length, 3); assert(failureAudits.every(event => event.action === 'smtp.bootstrap_test.failed' && !('password' in event.details)))
+  assert.equal(failureAudits.length, 4); assert(failureAudits.every(event => event.action === 'smtp.bootstrap_test.failed' && !('password' in event.details)))
+  const acceptedAuditFailure = createSmtpConfigurationService({ pool: failurePool, secretProvider: secrets,
+    configFile: path.join(identity, 'smtp-accepted-audit-failure.json'), resolveAddresses: async () => ['127.0.0.1'],
+    transportFactory: () => ({ async verify() {}, async sendMail(message) { return { accepted: [message.to] }; }, close() {} }),
+    audit: async () => { const error = new Error('audit config details'); error.code = 'OPERATOR_AUDIT_CONFIGURATION_REQUIRED'; throw error; } });
+  await assert.rejects(acceptedAuditFailure.test(settings, request, '52aaee31-7d52-4ce1-9f00-14210865e01c'), error => {
+    assert.equal(error.code, 'SMTP_ACCEPTED_AUDIT_FAILED'); assert.equal(error.acceptedBySmtp, true);
+    assert.match(error.message, /aceitou a mensagem/u); assert.doesNotMatch(error.message, /audit config details/u); return true;
+  });
+  await assert.rejects(fs.access(path.join(identity, 'smtp-accepted-audit-failure.json')), { code: 'ENOENT' },
+    'audit failure after SMTP acceptance is explicit and does not falsely claim provider rejection');
+  const failedPersistenceSecrets = { get: (...args) => secrets.get(...args), async put() { throw new Error('keystore unavailable after SMTP acceptance'); },
+    remove: (...args) => secrets.remove(...args) };
+  const acceptedPersistenceFailure = createSmtpConfigurationService({ pool: failurePool, secretProvider: failedPersistenceSecrets,
+    configFile: path.join(identity, 'smtp-accepted-persist-failure.json'), resolveAddresses: async () => ['127.0.0.1'],
+    transportFactory: () => ({ async verify() {}, async sendMail(message) { return { accepted: [message.to] }; }, close() {} }), audit: async () => {} });
+  await assert.rejects(acceptedPersistenceFailure.test(settings, request, '52aaee31-7d52-4ce1-9f01-14210865e01c'), error => {
+    assert.equal(error.code, 'SMTP_ACCEPTED_CONFIGURATION_SAVE_FAILED'); assert.equal(error.acceptedBySmtp, true);
+    assert.match(error.message, /aceitou a mensagem/u); assert.doesNotMatch(error.message, /keystore unavailable/u); return true;
+  });
+  await assert.rejects(fs.access(path.join(identity, 'smtp-accepted-persist-failure.json')), { code: 'ENOENT' });
+  const dnsFailure = createSmtpConfigurationService({ pool: failurePool, secretProvider: secrets,
+    configFile: path.join(identity, 'smtp-dns-failure.json'), resolveAddresses: async () => { throw Object.assign(new Error('ENOTFOUND smtp.gmail.com'), { code: 'EDNS' }); },
+    transportFactory: () => { throw new Error('DNS failure must happen before TCP transport'); }, audit: async () => {} });
+  await assert.rejects(dnsFailure.test(settings, request, '52aaee31-7d52-4ce1-9f02-14210865e01c'), { code: 'SMTP_DNS_FAILED' });
   const expiredPool = { ...pool, async query(sql, values = []) {
     if (/bootstrap_authorizations/u.test(sql)) return { rows: [], rowCount: 0 };
     return pool.query(sql, values);

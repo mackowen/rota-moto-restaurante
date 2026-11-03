@@ -60,7 +60,11 @@ function problemStatus(code) {
   if (['INVALID_STATE_TRANSITION', 'LAST_OWNER_REQUIRED'].includes(code)) return 409;
   if (['NOT_FOUND', 'TENANT_NOT_FOUND'].includes(code)) return 404;
   if (code === 'RATE_LIMITED') return 429;
-  if (['SMTP_TEST_FAILED', 'ECONNECTION', 'ECONNREFUSED', 'ETIMEDOUT', 'ESOCKET', 'EDNS', 'EAUTH', 'EENVELOPE'].includes(code)) return 502;
+  if (['SMTP_ACCEPTED_AUDIT_FAILED', 'SMTP_ACCEPTED_CONFIGURATION_SAVE_FAILED'].includes(code)) return 503;
+  if (['SMTP_TEST_FAILED', 'ECONNECTION', 'ECONNREFUSED', 'ETIMEDOUT', 'ESOCKET', 'EDNS', 'EAUTH', 'EENVELOPE',
+    'SMTP_DNS_FAILED', 'SMTP_TCP_REFUSED', 'SMTP_TIMEOUT', 'SMTP_CONNECTION_FAILED', 'SMTP_TCP_FAILED',
+    'SMTP_STARTTLS_FAILED', 'SMTP_CERTIFICATE_FAILED', 'SMTP_AUTH_REJECTED', 'SMTP_SENDER_REJECTED',
+    'SMTP_RECIPIENT_REJECTED', 'SMTP_MESSAGE_REJECTED', 'SMTP_SUBMISSION_UNKNOWN'].includes(code)) return 502;
   if (code === 'PAYLOAD_TOO_LARGE') return 413;
   if (code === 'UNSUPPORTED_MEDIA_TYPE') return 415;
   if (code === 'METHOD_NOT_ALLOWED') return 405;
@@ -222,14 +226,30 @@ function publicError(error) {
     EDNS: 'Não foi possível resolver o servidor SMTP.',
     EAUTH: 'O servidor SMTP recusou a autenticação.',
     EENVELOPE: 'O servidor SMTP recusou o remetente ou destinatário do teste.',
+    SMTP_DNS_FAILED: 'Não foi possível resolver o servidor SMTP (DNS).',
+    SMTP_TCP_REFUSED: 'A conexão TCP com o servidor SMTP foi recusada.',
+    SMTP_TIMEOUT: 'A conexão com o servidor SMTP excedeu o tempo limite.',
+    SMTP_CONNECTION_FAILED: 'Não foi possível estabelecer conexão com o servidor SMTP.',
+    SMTP_TCP_FAILED: 'A conexão TCP com o servidor SMTP falhou.',
+    SMTP_STARTTLS_FAILED: 'O servidor SMTP não concluiu STARTTLS.',
+    SMTP_CERTIFICATE_FAILED: 'O certificado TLS do servidor SMTP não pôde ser validado.',
+    SMTP_AUTH_REJECTED: 'O servidor SMTP recusou a autenticação.',
+    SMTP_SENDER_REJECTED: 'O servidor SMTP recusou o remetente.',
+    SMTP_RECIPIENT_REJECTED: 'O servidor SMTP recusou o destinatário de teste.',
+    SMTP_MESSAGE_REJECTED: 'O servidor SMTP rejeitou a mensagem de teste.',
+    SMTP_SUBMISSION_UNKNOWN: 'A conexão terminou durante o envio e o servidor não confirmou o resultado. A mensagem pode ter sido aceita; confira antes de repetir.',
     PAYLOAD_TOO_LARGE: 'Payload excede o limite permitido.',
     UNSUPPORTED_MEDIA_TYPE: 'Content-Type application/json obrigatório.',
     METHOD_NOT_ALLOWED: 'Método não permitido.',
     CSRF_INVALID: 'Validação CSRF inválida.',
     ORIGIN_INVALID: 'Origem não permitida.'
   };
-  return { status, payload: { error: { code: status === 500 ? 'INTERNAL_ERROR' : code,
-    message: messages[code] || 'Falha interna ao processar a solicitação.' } } };
+  const payloadError = { code: status === 500 ? 'INTERNAL_ERROR' : code,
+    message: messages[code] || 'Falha interna ao processar a solicitação.' };
+  if (error?.acceptedBySmtp === true) Object.assign(payloadError, { submission: 'accepted_by_smtp', delivery: 'unconfirmed', configurationSaved: false });
+  if (code === 'SMTP_ACCEPTED_AUDIT_FAILED') payloadError.message = 'O servidor SMTP aceitou a mensagem, mas a auditoria local falhou. O resultado não foi rejeição do provedor; confira o estado antes de repetir.';
+  if (code === 'SMTP_ACCEPTED_CONFIGURATION_SAVE_FAILED') payloadError.message = 'O servidor SMTP aceitou a mensagem, mas a configuração não foi persistida. O teste foi concluído e não será repetido automaticamente.';
+  return { status, payload: { error: payloadError } };
 }
 
 function createIdentityHttpHandler({ identityService, rateLimiter = createRateLimiter(), logger = () => {},

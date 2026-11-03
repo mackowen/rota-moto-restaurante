@@ -6,6 +6,7 @@ const { assertOfficialOperatorConfig, applyOfficialOperatorConfig } = require('.
 const config = { nodeEnv: 'development', production: false, databaseName: 'rotamoto', databaseUser: 'rotamoto_app',
   databaseSessionUser: 'rotamoto_app', host: '127.0.0.1', port: 8788,
   secretStoreDirectory: '/private/identity/keystore', secretMasterKeyFile: '/private/identity/keys/master.key',
+  operatorAudit: { file: '/private/identity/audit/operator-audit.jsonl', actorRef: 'operator:termux-local' },
   smtp: { host: 'smtp.gmail.com', port: 465, secure: true, user: 'operator-account',
     passwordRef: 'local-v1:00000000-0000-4000-8000-000000000000', from: 'RotaMoto <operator@example.invalid>', baseUrl: null } };
 assert.equal(assertOfficialOperatorConfig(config), config);
@@ -14,6 +15,9 @@ applyOfficialOperatorConfig(config, env);
 assert.equal(env.ROTAMOTO_SECRET_STORE_DIRECTORY, config.secretStoreDirectory);
 assert.equal(env.ROTAMOTO_SECRET_MASTER_KEY_FILE, config.secretMasterKeyFile);
 assert.equal(env.ROTAMOTO_OFFICIAL_OPERATOR_CONFIG, 'true');
+assert.equal(env.ROTAMOTO_OPERATOR_AUDIT_LOG, config.operatorAudit.file);
+assert.equal(env.ROTAMOTO_OPERATOR_ACTOR_REF, config.operatorAudit.actorRef);
+assert.equal(env.ROTAMOTO_SMTP_DIAGNOSTIC_LOG, '/private/identity/audit/smtp-diagnostics.jsonl');
 assert.equal(env.SMTP_HOST, 'smtp.gmail.com');
 assert.equal(env.SMTP_PORT, '465');
 assert.equal(env.SMTP_SECURE, 'true');

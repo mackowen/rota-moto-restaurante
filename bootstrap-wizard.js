@@ -10,6 +10,7 @@
   const stepCount = $('[data-step-count]');
   const storageKey = 'rotamoto.bootstrap.draft.v1';
   const idempotencyKey = 'rotamoto.bootstrap.operation.v1';
+  const smtpAttemptStateKey = 'rotamoto.bootstrap.smtp-attempt.v1';
   const operatorCommand = 'cd "$HOME/projetos/repos/rota-moto-restaurante" && npm run bootstrap:prepare-browser';
   const api = '/api';
   const steps = ['Diagnóstico', 'Administrador', 'Restaurante', 'Operação', 'Entregas', 'E-mail e notificações', 'Revisão', 'Finalização'];
@@ -29,6 +30,7 @@
   let smtpCredentialAvailable = false;
   let smtpConfigurationSaved = false;
   let smtpTransportSaved = false;
+  let smtpRetryConfirmationRequired = false;
   let localOnlyMode = false;
   let operationKey = '';
   let busy = false;
@@ -41,6 +43,9 @@
       ranges: Array.isArray(draft.ranges) ? draft.ranges : template.ranges };
     const savedKey = sessionStorage.getItem(idempotencyKey);
     if (typeof savedKey === 'string' && /^bootstrap-[0-9a-f-]{36}$/u.test(savedKey)) operationKey = savedKey;
+    smtpRetryConfirmationRequired = ['pending', 'unknown', 'accepted_unpersisted'].includes(sessionStorage.getItem(smtpAttemptStateKey));
+    if (smtpRetryConfirmationRequired) smtpStatus = { state: 'error', action: 'test',
+      message: 'O resultado da tentativa anterior não foi confirmado. A mensagem pode ter sido enviada; confira antes de repetir.' };
   } catch (_) { /* Private browsing may disable session storage; the wizard remains usable in memory. */ }
 
   function saveDraft() {
@@ -258,10 +263,25 @@
       ESOCKET: 'A conexão TLS com o servidor SMTP falhou. Confira TLS/STARTTLS e a porta.',
       EDNS: 'O host SMTP não pôde ser localizado. Confira o nome do host.',
       EENVELOPE: 'O provedor recusou o remetente ou o destinatário de teste. Confira os dois endereços.',
+      SMTP_DNS_FAILED: 'Não foi possível localizar o host SMTP (DNS). Confira o nome do host e o DNS do aparelho.',
+      SMTP_TCP_REFUSED: 'A conexão TCP foi recusada. Confira rede, host e porta SMTP.',
+      SMTP_TIMEOUT: 'A conexão com o servidor SMTP excedeu o tempo limite. Confira a conectividade do aparelho.',
+      SMTP_CONNECTION_FAILED: 'Não foi possível estabelecer conexão com o servidor SMTP.',
+      SMTP_TCP_FAILED: 'A conexão TCP com o servidor SMTP falhou.',
+      SMTP_STARTTLS_FAILED: 'O servidor SMTP não concluiu STARTTLS. Confira TLS e a porta configurada.',
+      SMTP_CERTIFICATE_FAILED: 'O certificado TLS do servidor SMTP não foi validado. Confira a data do aparelho e a cadeia de certificados.',
+      SMTP_AUTH_REJECTED: 'O provedor recusou a autenticação. Confira a conta e, no Gmail, use uma senha de app válida.',
+      SMTP_SENDER_REJECTED: 'O provedor recusou o remetente. Use um endereço autorizado pela conta Gmail.',
+      SMTP_RECIPIENT_REJECTED: 'O provedor recusou o destinatário de teste. Confira o endereço e a política da conta.',
+      SMTP_MESSAGE_REJECTED: 'O provedor rejeitou a mensagem de teste após validar o remetente e o destinatário.',
+      SMTP_SUBMISSION_UNKNOWN: 'A conexão terminou durante o envio. A mensagem pode ter sido aceita; confira antes de repetir.',
+      SMTP_ACCEPTED_AUDIT_FAILED: 'O servidor aceitou a mensagem, mas a auditoria local falhou. Confira o estado antes de testar novamente; outra tentativa enviará outro e-mail.',
+      SMTP_ACCEPTED_CONFIGURATION_SAVE_FAILED: 'O servidor aceitou a mensagem, mas a configuração não foi salva. Confira o estado antes de testar novamente; outra tentativa enviará outro e-mail.',
       SMTP_TEST_FAILED: 'O provedor não aceitou o teste. Confira os parâmetros e tente novamente.',
       RATE_LIMITED: 'O limite de tentativas foi atingido. Aguarde antes de testar novamente.'
     };
-    if (error?.name === 'AbortError') return 'A solicitação excedeu o tempo limite. Confira a API local e tente novamente.';
+    if (error?.name === 'AbortError' || error instanceof TypeError)
+      return 'A API não confirmou o resultado. A mensagem pode ter sido enviada; confira o estado antes de repetir.';
     if (messages[error?.code]) return messages[error.code];
     return action === 'validate'
       ? 'Não foi possível validar os parâmetros com a API local. Confira a conexão e tente novamente.'
@@ -309,11 +329,23 @@
     const form = stage.querySelector('form');
     const invalid = invalidSmtpFields(form);
     if (invalid.length) return reportSmtpFieldErrors('test', invalid);
+    if (smtpRetryConfirmationRequired) {
+      const confirmed = window.confirm('O resultado do teste anterior não foi confirmado por completo e a mensagem pode já ter sido enviada. Se continuar, uma nova mensagem real será enviada. Deseja iniciar outro teste?');
+      if (!confirmed) return;
+      smtpRetryConfirmationRequired = false;
+    }
+    try { sessionStorage.setItem(smtpAttemptStateKey, 'pending'); } catch (_) {}
     busy = true; smtpStatus = { state: 'working', action: 'test', message: 'Conectando, autenticando e enviando a mensagem ao destinatário informado…' }; render();
     try {
+      const requestId = crypto.randomUUID();
       const result = await fetchJson('/identity/bootstrap/smtp/test', { method: 'POST', headers: bootstrapHeaders(),
-        body: JSON.stringify({ requestId: crypto.randomUUID(), settings }) });
+        body: JSON.stringify({ requestId, settings }) });
       smtpTransportSaved = result.configurationSaved === true;
+      if (result.submission === 'accepted_by_smtp' && !smtpTransportSaved) {
+        smtpRetryConfirmationRequired = true;
+        try { sessionStorage.setItem(smtpAttemptStateKey, 'accepted_unpersisted'); } catch (_) {}
+      }
+      else { smtpRetryConfirmationRequired = false; try { sessionStorage.removeItem(smtpAttemptStateKey); } catch (_) {} }
       smtpConfigurationSaved = false;
       diagnostics.checks.smtpTransportConfigured = smtpTransportSaved;
       if (smtpTransportSaved) {
@@ -328,7 +360,14 @@
         } catch (_) { /* Save succeeded; the secret remains cleared from browser memory. */ }
       }
       smtpStatus = { state: 'success', action: 'test', message: result.notice || 'O servidor SMTP aceitou a mensagem. A entrega na caixa de entrada não foi confirmada.' };
-    } catch (error) { smtpStatus = { state: 'error', action: 'test', message: smtpFailureMessage(error, 'test') }; }
+    } catch (error) {
+      if (error?.code === 'SMTP_ACCEPTED_AUDIT_FAILED' || error?.code === 'SMTP_ACCEPTED_CONFIGURATION_SAVE_FAILED' || error?.code === 'SMTP_SUBMISSION_UNKNOWN' ||
+          error?.name === 'AbortError' || error instanceof TypeError) {
+        smtpRetryConfirmationRequired = true;
+        try { sessionStorage.setItem(smtpAttemptStateKey, error?.code?.startsWith('SMTP_ACCEPTED_') ? 'accepted_unpersisted' : 'unknown'); } catch (_) {}
+      } else { smtpRetryConfirmationRequired = false; try { sessionStorage.removeItem(smtpAttemptStateKey); } catch (_) {} }
+      smtpStatus = { state: 'error', action: 'test', message: smtpFailureMessage(error, 'test') };
+    }
     finally { busy = false; render(); }
   }
 
