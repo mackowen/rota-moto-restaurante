@@ -64,6 +64,8 @@ async function runBrowserBootstrapCliInPty({ port, root, auditAvailable = true }
       clearTimeout(timer);
       if (code !== 0) {
         const errorCode = /"code":"([A-Z0-9_]{2,48})"/u.exec(`${stderr}${stdout}`)?.[1] || null;
+        const tokenShapedOutput = stdout.split(/\r?\n/u).map(line => line.trim()).filter(line => /^[A-Za-z0-9_-]{43}$/u.test(line));
+        if (tokenShapedOutput.length) return reject(new Error('Failed local bootstrap CLI unexpectedly printed a token-shaped value.'));
         stdout = '';
         stderr = '';
         return resolve({ code: code ?? 1, errorCode, token: null, auditFile });
