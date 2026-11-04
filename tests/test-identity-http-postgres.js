@@ -71,9 +71,11 @@ async function main() {
   assert.equal(process.env.NODE_ENV,'test','HTTP PostgreSQL integration fixtures require NODE_ENV=test');
   const clients=createE2eClients(process.env);
   const client=clients.runtime;
+  const authNoTenantMode=process.env.IDENTITY_HTTP_AUTH_NO_TENANT_ONLY==='1';
   await client.connect();
-  await clients.migrator.connect();
+  if(!authNoTenantMode)await clients.migrator.connect();
   await assertConnectedIdentity(client,{database:clients.database,role:'rotamoto_app',env:process.env});
+  if(!authNoTenantMode)await assertConnectedIdentity(clients.migrator,{database:clients.database,role:'rotamoto_migrator',env:process.env});
   await client.query('BEGIN');
   const pool = savepointPool(client);
   const delivered = [];
@@ -121,6 +123,24 @@ async function main() {
   };
 
   try {
+    if(authNoTenantMode){
+      const invalid=await call('/api/identity/login',{method:'POST',body:{email:`missing-${crypto.randomUUID()}@example.invalid`,password:'synthetic-invalid-login-900'}});
+      assert.equal(invalid.status,401,`email/password login without companyId reaches generic credential validation; events=${logs.map(event=>event.errorCode||event.code||event.event||'event').join(',')}`);
+      assert.deepEqual(invalid.body.error,{code:'INVALID_CREDENTIALS',message:'Email ou senha inválidos.'});
+      assert.equal(Object.hasOwn(invalid.body,'companies'),false);
+      assert.equal(Object.hasOwn(invalid.body,'companyId'),false);
+      assert.equal(invalid.headers.get('set-cookie'),null,'invalid credentials create no session cookie');
+      const unknown=await call('/api/identity/login',{method:'POST',body:{email:`unknown-${crypto.randomUUID()}@example.invalid`,password:'synthetic-invalid-login-900'}});
+      assert.equal(unknown.status,401);
+      assert.deepEqual(unknown.body.error,invalid.body.error,'unknown emails have the same generic public response');
+      assert.equal(Object.hasOwn(unknown.body,'companies'),false,'unknown emails reveal no company choices');
+      const session=await call('/api/identity/session');
+      assert.equal(session.status,401,'session endpoint remains protected without a cookie');
+      const admin=await call('/api/admin/memberships?limit=10');
+      assert.equal(admin.status,401,'administrative routes remain protected without a cookie');
+      process.stdout.write('Identity HTTP E2E: missing-companyId request shape, generic unknown-user response, no session creation and protected routes PASS (transaction rolled back)\n');
+      return;
+    }
     const provisionBody = { companyName: 'Synthetic HTTP Tenant', email, idempotencyKey: `http-${crypto.randomUUID()}` };
     const unauthorized = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody });
     assert.equal(unauthorized.status, 403, `unauthorized synthetic provisioning status; events=${logs.map(event=>event.errorCode||event.code||event.event||'event').join(',')}`);
