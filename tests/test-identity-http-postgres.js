@@ -77,7 +77,12 @@ async function main() {
   await client.query('BEGIN');
   const pool = savepointPool(client);
   const delivered = [];
-  const provider = createEmailDeliveryProvider(async message => { delivered.push(message); return { accepted: true }; });
+  const activationNotices = [];
+  const provider = createEmailDeliveryProvider(async message => {
+    if (message.kind === 'account_activated') activationNotices.push(message);
+    else delivered.push(message);
+    return { accepted: true };
+  });
   const logs = [];
   const syntheticSecrets=new Map();
   // Match the runtime contract: loadLocalSecretProvider is asynchronous and
@@ -145,9 +150,12 @@ async function main() {
       body: { token: delivered[0].token, password } });
     assert.equal(accepted.status, 200);
     assert.equal(accepted.body.mfaRequired, true);
+    assert.deepEqual(activationNotices, [{ to: email, kind: 'account_activated' }],
+      'successful owner activation sends only the minimal confirmation notice');
     const acceptedAgain = await call('/api/identity/invitations/accept', { method: 'POST',
       body: { token: delivered[0].token, password } });
     assert.equal(acceptedAgain.status, 401, 'invite token is single-use');
+    assert.equal(activationNotices.length, 1, 'consumed invite retry does not duplicate the activation notice');
     const invalidInvitation = await call('/api/identity/invitations/accept', { method: 'POST',
       body: { token: crypto.randomBytes(32).toString('base64url'), password } });
     assert.equal(invalidInvitation.status, 401);

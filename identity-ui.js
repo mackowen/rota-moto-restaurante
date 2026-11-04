@@ -980,6 +980,9 @@
       setStatus(offlineMode ? 'Sem conta do servidor · dados deste aparelho' : navigator.onLine === false ? 'Sem conexão · usando dados deste aparelho' : 'Entre para acessar sua conta.');
     }
   }
+  window.addEventListener('rotamoto:app-ready', event => {
+    if (event.detail?.ok === false && current) setStatus('Sessão ativa · falha ao carregar os dados da empresa');
+  });
   window.addEventListener('rotamoto:auth-revoked', () => {
     if (!accountPage.isConnected) { host.append(accountPage); accountPage.hidden = true; }
   });

@@ -11,8 +11,11 @@ function createEmailDeliveryProvider(send) {
   if (typeof send !== 'function') throw new TypeError('O provider de email deve implementar send(message).');
   return Object.freeze({
     async send(message) {
-      if (!message || typeof message.to !== 'string' || typeof message.token !== 'string' ||
-          !['owner_invitation', 'membership_invitation', 'email_verification', 'password_recovery', 'mfa_recovery'].includes(message.kind)) {
+      const activationNotice = message?.kind === 'account_activated';
+      if (!message || typeof message.to !== 'string' || !message.to ||
+          activationNotice && Object.keys(message).some(key => !['to', 'kind'].includes(key)) ||
+          !activationNotice && (typeof message.token !== 'string' ||
+            !['owner_invitation', 'membership_invitation', 'email_verification', 'password_recovery', 'mfa_recovery'].includes(message.kind))) {
         throw new TypeError('Mensagem de identidade inválida.');
       }
       const result = await send(Object.freeze({ ...message }));

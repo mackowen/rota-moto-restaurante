@@ -12,6 +12,8 @@ async function main(){
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)});
  const provider=createSmtpMailProvider({host:'127.0.0.1',port:server.address().port,secure:false,requireTLS:false,password:'test-only-unused',
   from:'RotaMoto <noreply@example.test>',baseUrl:'https://app.example.test/',resolveAddresses:async()=>['127.0.0.1']});
+ const localNotificationProvider=createSmtpMailProvider({host:'127.0.0.1',port:server.address().port,secure:false,requireTLS:false,password:'test-only-unused',
+  from:'RotaMoto <noreply@example.test>',resolveAddresses:async()=>['127.0.0.1']});
  try{
   assert.equal(await provider.verify(),true);
   await assert.rejects(()=>verifySmtpConnection({host:'127.0.0.1',port:server.address().port,secure:true,
@@ -19,13 +21,23 @@ async function main(){
   assert.equal(await provider.send({kind:'password_recovery',to:'recipient@example.test',token:'opaque-token-only-in-mail',expiresAt:new Date()}),true);
   assert.equal(await provider.send({kind:'owner_invitation',to:'owner@example.test',token:'invite-token-only-in-mail',expiresAt:new Date()}),true);
   assert.equal(await provider.send({kind:'mfa_recovery',to:'owner@example.test',token:'mfa-recovery-token-only-in-mail',expiresAt:new Date()}),true);
+  assert.equal(await provider.send({kind:'account_activated',to:'owner@example.test'}),true);
+  await assert.rejects(()=>provider.send({kind:'account_activated',to:'owner@example.test',token:'must-not-be-accepted'}),/Mensagem de identidade inválida/u);
+  assert.equal(await localNotificationProvider.send({kind:'account_activated',to:'owner@example.test'}),true,
+    'local-only SMTP activation notifications do not require a public invite URL');
   assert.match(captured[0],/To: recipient@example\.test/iu);
   assert.match(captured[0],/^Subject: =\?UTF-8\?Q\?/imu);
   assert.match(captured[0].replace(/=\r\n/gu,''),/https:\/\/app\.example\.test\/#action=3Dpassword_recovery&token=3Dopaque-token-only-in-mail/iu);
   assert.match(captured[1],/To: owner@example\.test/iu);
   assert.match(captured[1].replace(/=\r\n/gu,''),/action=3Downer_invitation&token=3Dinvite-token-only-in-mail/iu);
   assert.match(captured[2].replace(/=\r\n/gu,''),/action=3Dmfa_recovery&token=3Dmfa-recovery-token-only-in-mail/iu);
- }finally{provider.close();await new Promise(resolve=>server.close(resolve))}
+  assert.match(captured[3],/Subject: Conta RotaMoto ativada/iu);
+  assert.match(captured[3],/Sua conta RotaMoto foi ativada/u);
+  assert.doesNotMatch(captured[3],/token=|action=|codigo de verificacao|senha:/iu,
+    'activation confirmation contains no activation token, MFA code or password');
+  assert.doesNotMatch(captured[4],/token=|action=|https:\/\//iu,
+    'local-only activation notice contains no link or token');
+ }finally{provider.close();localNotificationProvider.close();await new Promise(resolve=>server.close(resolve))}
  console.log('SMTP local test-only transport: verify and password recovery delivery OK');
 }
 main().catch(error=>{console.error(error.message);process.exitCode=1});

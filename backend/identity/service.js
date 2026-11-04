@@ -397,12 +397,13 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     const passwordHash = await hashPassword(password);
     const client = await pool.connect();
     try {
-      return await transaction(client, async () => {
-        const found = await client.query(`SELECT id::text,company_id::text,user_id::text FROM rotamoto.identity_tokens
-          WHERE token_digest=$1 AND purpose='owner_invitation' AND consumed_at IS NULL AND expires_at>now()
-          FOR UPDATE`, [digest]);
+      const activation = await transaction(client, async () => {
+        const found = await client.query(`SELECT t.id::text,t.company_id::text,t.user_id::text,u.email
+          FROM rotamoto.identity_tokens t JOIN rotamoto.users u ON u.id=t.user_id
+          WHERE t.token_digest=$1 AND t.purpose='owner_invitation' AND t.consumed_at IS NULL AND t.expires_at>now()
+          FOR UPDATE OF t,u`, [digest]);
         if (!found.rowCount) throw new IdentityError('INVALID_TOKEN', 'Token inválido ou expirado.');
-        const { id: tokenId, company_id: companyId, user_id: userId } = found.rows[0];
+        const { id: tokenId, company_id: companyId, user_id: userId, email } = found.rows[0];
         await setTenant(client, companyId);
         const eligible = await client.query(`SELECT 1 FROM rotamoto.users u JOIN rotamoto.memberships m ON m.user_id=u.id
           JOIN rotamoto.companies c ON c.id=m.company_id WHERE u.id=$1 AND m.company_id=$2
@@ -420,8 +421,30 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
           resourceType: 'user', resourceId: userId });
         await audit(client, { companyId, actorUserId: userId, actorKind: 'user', action: 'identity.email.verified',
           resourceType: 'user', resourceId: userId, details: { verification_method: 'owner_invitation' } });
-        return { userId, companyId, mfaRequired: true };
+        await audit(client, { companyId, actorUserId: userId, actorKind: 'user', action: 'identity.activation_confirmation.queued',
+          resourceType: 'user', resourceId: userId, details: { notification: 'account_activated' } });
+        return { userId, companyId, email };
       });
+      let notificationStatus = 'not_configured';
+      let notificationCode = null;
+      if (emailProvider?.send) {
+        try {
+          const sent = await emailProvider.send({ to: activation.email, kind: 'account_activated' });
+          if (sent !== true) throw Object.assign(new Error('Activation notification was not accepted.'), { code: 'EMAIL_DELIVERY_FAILED' });
+          notificationStatus = 'sent';
+        } catch (error) {
+          notificationStatus = 'failed';
+          notificationCode = typeof error?.code === 'string' && /^(?:SMTP_[A-Z0-9_]{1,60}|EMAIL_[A-Z0-9_]{1,60}|INVITATION_LINKS_UNAVAILABLE)$/u.test(error.code)
+            ? error.code : 'EMAIL_DELIVERY_FAILED';
+        }
+      }
+      await transaction(client, async () => {
+        await setTenant(client, activation.companyId);
+        await audit(client, { companyId: activation.companyId, actorUserId: activation.userId, actorKind: 'user',
+          action: `identity.activation_confirmation.${notificationStatus}`, resourceType: 'user', resourceId: activation.userId,
+          details: { notification: 'account_activated', ...(notificationCode ? { errorCode: notificationCode } : {}) } });
+      }).catch(() => {});
+      return { userId: activation.userId, companyId: activation.companyId, mfaRequired: true };
     } finally { client.release(); }
   }
 

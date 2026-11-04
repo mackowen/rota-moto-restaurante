@@ -129,4 +129,5 @@ assert.match(index,/orders-v2\.css\?v=[a-f0-9]{16}/u,'Orders V2 layout uses a co
 assert.match(index,/design-system\.css\?v=[a-f0-9]{16}/u,'shared header spacing uses a content revision');
 console.log('Official Dashboard v2 integration, tenant projection, actions and More navigation: PASS');
 
-assert.match(app,/const session=await restoreSyncSession\(\);if\(session\)\{const editing=[\s\S]*?if\(!editing\)render\(\);scheduleServerSync\(0\);queueFinanceLedgerRead\(\);flushFinanceOutbox\(\)\.catch\(\(\)=>\{\}\)\}/u,'authenticated startup reprojects local state, reads finance ledger and resumes its outbox after restoring the tenant');
+assert.match(app,/await isolateRestaurantCacheToCompany\(syncSession\.companyId\)/u,'authenticated session scopes cached records before they are rendered or synced');
+assert.match(app,/root\.hidden=true;root\.inert=true;root\.setAttribute\('aria-hidden','true'\)[\s\S]*?const session=await restoreSyncSession\(\);if\(session\)\{[\s\S]*?if\(!editing\)render\(\);if\(root\)\{root\.hidden=false;root\.inert=false;root\.removeAttribute\('aria-hidden'\)\}/u,'authenticated startup keeps the operational shell hidden until tenant cache isolation and render finish');

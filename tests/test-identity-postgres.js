@@ -52,8 +52,13 @@ async function main() {
   const password = 'synthetic-owner-password-42';
   const newPassword = 'synthetic-recovery-password-73';
   const delivered = [];
+  const activationNotices = [];
   const auditEntries = [];
-  const provider = createEmailDeliveryProvider(async message => { delivered.push(message); return { accepted: true }; });
+  const provider = createEmailDeliveryProvider(async message => {
+    if (message.kind === 'account_activated') activationNotices.push(message);
+    else delivered.push(message);
+    return { accepted: true };
+  });
   const mfaProvider = createMfaProvider(async ({ code }) => code === '654321');
   const pool = savepointPool(client, (sql, values = []) => {
     if (/INSERT\s+INTO\s+rotamoto\.audit_log/iu.test(sql)) {
@@ -103,7 +108,15 @@ async function main() {
     assert.equal(retried.replayed, true);
     assert.equal(delivered.length, 2);
     await expectCode(service.consumeOwnerInvitation({ token: failedInvitation.token, password }), 'INVALID_TOKEN');
-    assert.equal((await service.consumeOwnerInvitation({ token: delivered.at(-1).token, password })).mfaRequired, true);
+    const activationToken = delivered.at(-1).token;
+    const activatedOwner = await service.consumeOwnerInvitation({ token: activationToken, password });
+    assert.equal(activatedOwner.mfaRequired, true);
+    assert.deepEqual(activationNotices, [{ to: retryEmail, kind: 'account_activated' }],
+      'owner activation sends one notification without password, MFA code or token');
+    assert.equal(auditEntries.filter(entry => String(entry.action).startsWith('identity.activation_confirmation.')).length, 2,
+      'activation notification queue and outcome are audited');
+    await expectCode(service.consumeOwnerInvitation({ token: activationToken, password }), 'INVALID_TOKEN');
+    assert.equal(activationNotices.length, 1, 'replaying activation does not send a duplicate confirmation');
 
     const concurrentRequest = { companyName: 'Synthetic Concurrent Tenant', email: `qa-concurrent-${crypto.randomUUID()}@example.invalid`,
       idempotencyKey: `concurrent-${crypto.randomUUID()}` };

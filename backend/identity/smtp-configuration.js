@@ -307,10 +307,23 @@ function createSmtpConfigurationService({ pool, secretProvider, configFile, exis
       from: `${stored.senderName.replace(/[\\"]/gu, '\\$&')} <${stored.senderEmail}>`, baseUrl: stored.publicBaseUrl, resolveAddresses });
   }
 
+  async function activationNotificationProvider() {
+    const stored = await loadStored();
+    if (stored?.disabled || !stored?.passwordRef) return null;
+    const password = await secretProvider.get(stored.passwordRef, { name: SECRET_NAME, scope: SECRET_SCOPE });
+    return mailProviderFactory({ host: stored.host, port: stored.port, secure: stored.tlsMode === 'tls',
+      requireTLS: stored.tlsMode === 'starttls', user: stored.username, password,
+      from: `${stored.senderName.replace(/[\\"]/gu, '\\$&')} <${stored.senderEmail}>`,
+      ...(stored.publicBaseUrl ? { baseUrl: stored.publicBaseUrl } : {}), resolveAddresses });
+  }
+
   async function sendInvitation(message) {
     return serialize(async () => {
-      const provider = await invitationProvider();
-      if (!provider) throw Object.assign(new Error('Convites por e-mail estão desativados até configurar uma URL pública HTTPS. Use o fluxo local de instalação ou configure o domínio depois.'), { code: 'INVITATION_LINKS_UNAVAILABLE' });
+      const activationNotice = message?.kind === 'account_activated';
+      const provider = activationNotice ? await activationNotificationProvider() : await invitationProvider();
+      if (!provider) throw Object.assign(new Error(activationNotice ? 'Notificações por e-mail não estão configuradas.' :
+        'Convites por e-mail estão desativados até configurar uma URL pública HTTPS. Use o fluxo local de instalação ou configure o domínio depois.'),
+      { code: activationNotice ? 'EMAIL_PROVIDER_NOT_CONFIGURED' : 'INVITATION_LINKS_UNAVAILABLE' });
       try { return await provider.send(message); } finally { provider.close(); }
     });
   }

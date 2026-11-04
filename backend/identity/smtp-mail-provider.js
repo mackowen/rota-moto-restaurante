@@ -53,9 +53,15 @@ async function verifySmtpConnection(options) {
   try { await transport.verify(); return true; } finally { transport.close(); }
 }
 function createSmtpMailProvider({ host, port, secure = false, requireTLS = true, user, password, from, baseUrl, resolveAddresses }) {
-  if (!from || !/^https:\/\//u.test(baseUrl || '')) throw new Error('Envio SMTP exige remetente e URL pública HTTPS.');
+  if (!from) throw new Error('Envio SMTP exige remetente.');
   const transport = createSmtpTransport({ host, port, secure, requireTLS, user, password, ...(resolveAddresses ? { resolveAddresses } : {}) });
   const send = async message => {
+    if (message.kind === 'account_activated') {
+      const result = await transport.sendMail({ from, to: message.to, subject: 'Conta RotaMoto ativada',
+        text: 'Sua conta RotaMoto foi ativada. Você já pode entrar no aplicativo com as credenciais que definiu durante a ativação.' });
+      return result.accepted?.some(address => address.toLowerCase() === message.to.toLowerCase()) === true;
+    }
+    if (!/^https:\/\//u.test(baseUrl || '')) throw new Error('Links de convite exigem uma URL pública HTTPS.');
     const link = new URL(baseUrl);
     link.hash = new URLSearchParams({ action: message.kind, token: message.token }).toString();
     const subjects = { owner_invitation: 'Convite para o RotaMoto', membership_invitation: 'Convite para o RotaMoto',
