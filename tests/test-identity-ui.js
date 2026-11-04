@@ -39,6 +39,8 @@ assert.match(source, /data-login-context[\s\S]*Onde deseja continuar\?[\s\S]*pla
   'multi-company and global-admin contexts are selected by a post-authentication prompt');
 assert.match(source, /código \$\{shortCodes\[index\]\.slice\(-codeLength\)\}/u,
   'companies with duplicate names receive a distinguishable, user-facing short code');
+assert.match(source, /error\.status === 400 && error\.code === 'INVALID_INPUT' && !String\(data\.get\('mfaCode'\) \|\| ''\)\.trim\(\)[\s\S]*?Este servidor ainda não oferece login sem código da empresa/u,
+  'a legacy API contract is distinguished from credential and MFA failures without exposing internal errors');
 assert.doesNotMatch(source, /hintedCompany\(\)|data-login\] \[name=companyId\]|localStorage\.getItem\(['"]rotaMoto\.activeCompanyHint/u,
   'login does not restore tenant context from browser storage');
 assert.match(source, /data-recovery-request/u, 'the existing access recovery flow remains present');

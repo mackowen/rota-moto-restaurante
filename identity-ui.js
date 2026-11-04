@@ -1221,7 +1221,8 @@
       const session = await restore();
       if (!session) throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
       if(session.mfaEnrollmentRequired){setOpen(true);$('[data-mfa-start]').focus()}else if(session.platformAdmin){platformAdminContext=true;showSession(session);setOpen(false);platformAdminPage.hidden=false;if(platformAdminPage.parentElement!==host)host.append(platformAdminPage);await loadPlatformAdmin('companies')}else{await syncAfterAuthentication({onAppReady:()=>setOpen(false)})}
-    } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } $('[data-login-error]').textContent = message(error); setStatus('Não foi possível autenticar'); }
+    } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } const loginMessage = error.status === 400 && error.code === 'INVALID_INPUT' && !String(data.get('mfaCode') || '').trim()
+      ? 'Este servidor ainda não oferece login sem código da empresa. Peça ao operador para atualizar o serviço; não altere sua senha.' : message(error); $('[data-login-error]').textContent = loginMessage; setStatus('Não foi possível autenticar'); }
     finally { working = false; setBusy(form, false); }
   });
   $('[data-switch]').addEventListener('submit', async event => {
