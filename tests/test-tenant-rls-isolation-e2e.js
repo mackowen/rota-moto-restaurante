@@ -99,7 +99,7 @@ async function main() {
 
     const policies = (await migrator.query(`SELECT tablename,policyname,permissive,roles,cmd,qual,with_check
       FROM pg_policies WHERE schemaname='rotamoto' ORDER BY tablename,policyname`)).rows;
-    assert.equal(policies.length, 44, 'financial tenant policy remains alongside the three explicit platform-admin policies');
+    assert.equal(policies.length, 47, 'financial, platform-admin and password-verified login-context policies remain explicit');
     for (const relation of relations.filter(row => row.relrowsecurity)) {
       const tablePolicies = policies.filter(policy => policy.tablename === relation.relname);
       if (relation.relname === 'marketplace_99food_rate_limits') {
@@ -151,7 +151,7 @@ async function main() {
       'fresh-install identity runtime grants match the least-privilege bootstrap contract');
 
     if (schemaOnly) {
-      console.log('Tenant RLS schema audit: PASS (56-table catalog through migration 0063, 41 forced-RLS tables, financial-event tenant policy, platform policies and runtime/internal ACLs); data-plane fixtures skipped to preserve E2E state.');
+      console.log('Tenant RLS schema audit: PASS (56-table catalog, 41 forced-RLS tables, financial/platform/login policies and runtime/internal ACLs); data-plane fixtures skipped to preserve E2E state.');
       completed = true;
       return;
     }
@@ -240,7 +240,7 @@ async function main() {
       counts: { companies: cleanupComplete ? 0 : created.length, roles: cleanupComplete ? 0 : created.length, role_permissions: cleanupComplete ? 0 : created.length } });
     if (cleanupError) throw cleanupError;
   }
-  if (completed && cleanupComplete && !schemaOnly) console.log('Tenant RLS E2E: PASS (56-table catalog through migration 0063, 41 forced-RLS tables, financial-event tenant policy, three explicit platform policies, two-tenant isolation, fresh-install identity runtime grants and runtime/internal ACLs; synthetic fixtures removed and absence verified)');
+  if (completed && cleanupComplete && !schemaOnly) console.log('Tenant RLS E2E: PASS (56-table catalog, 41 forced-RLS tables, financial/platform/login policies, two-tenant isolation, fresh-install identity runtime grants and runtime/internal ACLs; synthetic fixtures removed and absence verified)');
 }
 
 main().catch(error => {

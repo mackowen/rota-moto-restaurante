@@ -397,7 +397,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
         const session = await identityService.authenticate(body.email, body.password, body.companyId, body.mfaCode);
         status = 200;
         send(res, status, { userId: session.userId, companyId: session.companyId, csrfToken: session.csrfToken,
-          mfaEnrollmentRequired: Boolean(session.mfaEnrollmentRequired) }, {
+          mfaEnrollmentRequired: Boolean(session.mfaEnrollmentRequired),
+          ...(session.loginCompanies ? { companies: session.loginCompanies, platformAdmin: session.platformAdmin } : {}) }, {
           'Set-Cookie': `${COOKIE_NAME}=${session.sessionToken}; Path=/; Max-Age=${session.maxAgeSeconds}; Secure; HttpOnly; SameSite=Lax`
         });
         return true;

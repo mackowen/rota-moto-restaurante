@@ -123,7 +123,7 @@ async function main() {
   try {
     const provisionBody = { companyName: 'Synthetic HTTP Tenant', email, idempotencyKey: `http-${crypto.randomUUID()}` };
     const unauthorized = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody });
-    assert.equal(unauthorized.status, 403);
+    assert.equal(unauthorized.status, 403, `unauthorized synthetic provisioning status; events=${logs.map(event=>event.errorCode||event.code||event.event||'event').join(',')}`);
     assert.equal(unauthorized.body.error.code, 'PROVISIONER_UNAUTHORIZED');
     const provisioned = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody,
       extraHeaders: { 'X-Synthetic-Operator': 'test-only' } });
@@ -241,8 +241,10 @@ async function main() {
     const wrong = await call('/api/identity/login', { method: 'POST', body: { email, password: 'synthetic-wrong-password' , companyId } });
     assert.equal(wrong.status, 401);
     assert.deepEqual(wrong.body.error, { code: 'INVALID_CREDENTIALS', message: 'Email ou senha inválidos.' });
-    const login = await call('/api/identity/login', { method: 'POST', body: { email, password, companyId, mfaCode: '654321' } });
+    const login = await call('/api/identity/login', { method: 'POST', body: { email, password, mfaCode: '654321' } });
     assert.equal(login.status, 200);
+    assert.deepEqual(login.body.companies, [{ companyId, name: provisionBody.companyName }],
+      'single active membership is resolved automatically without a browser-supplied tenant identifier');
     const cookieHeader = login.headers.get('set-cookie');
     assert.match(cookieHeader, /^__Host-rotamoto_session=[A-Za-z0-9_-]{43}; Path=\/; Max-Age=43200; Secure; HttpOnly; SameSite=Lax$/u);
     const sessionCookie = cookieHeader.split(';', 1)[0];
@@ -472,6 +474,18 @@ async function main() {
     assert.equal(existingIdentityMembership.rows[0].user_id, accepted.body.userId, 'multi-company invite reuses the existing canonical User');
     assert.equal(existingIdentityMembership.rows[0].memberships, 1);
     assert.equal(existingIdentityMembership.rows[0].status, 'active');
+    const multiCompanyLogin = await call('/api/identity/login', { method: 'POST', body: { email, password, mfaCode: '654321' } });
+    assert.equal(multiCompanyLogin.status, 200, 'email/password plus MFA authenticates without a technical company identifier');
+    assert.deepEqual(multiCompanyLogin.body.companies.map(company => company.name),
+      ['Second Synthetic Tenant', 'Synthetic HTTP Tenant'], 'only companies linked to the authenticated identity are returned after valid MFA');
+    assert.equal(multiCompanyLogin.body.companyId, multiCompanyLogin.body.companies[0].companyId,
+      'a multi-company session starts in a backend-resolved authorized context while the UI gates operational startup for selection');
+    const unknownEmailLogin = await call('/api/identity/login', { method: 'POST', body: {
+      email: `unknown-${crypto.randomUUID()}@example.invalid`, password, mfaCode: '654321' } });
+    assert.equal(unknownEmailLogin.status, 401);
+    assert.deepEqual(unknownEmailLogin.body.error, { code: 'INVALID_CREDENTIALS', message: 'Email ou senha inválidos.' },
+      'email-only lookup does not disclose account or company existence');
+    assert.equal(Object.hasOwn(unknownEmailLogin.body, 'companies'), false);
     const wrongTenantUser = await call('/api/identity/membership-invitations/accept-authenticated', { method: 'POST',
       body: { token: invitedMembershipToken }, cookie: secondOwnerCookie, csrf: secondOwnerLogin.body.csrfToken });
     assert.equal(wrongTenantUser.status, 401, 'a session from another tenant cannot consume a token addressed to a different user');

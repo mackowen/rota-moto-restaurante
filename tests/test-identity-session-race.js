@@ -85,7 +85,10 @@ async function run() {
     'identity state changes invalidate in-flight shared reads as well as local UI generations');
   assert.match(source, /request\('\/identity\/login'[\s\S]*?\n\s*invalidateSessionReads\(\);\s*csrf = result\.csrfToken/u,
     'a successful login cannot reuse an anonymous session response already in flight');
-  assert.match(source, /window\.dispatchEvent\(new CustomEvent\(session && !mfaLocked \? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'\)\)/u);
+  assert.match(source, /const platformContext = Boolean\(session\?\.platformAdmin && platformAdminContext === true\)/u,
+    'global administrators enter their platform context without operational tenant access');
+  assert.match(source, /window\.dispatchEvent\(new CustomEvent\(session && !mfaLocked && !platformContext \? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'\)\)/u,
+    'operational app readiness is withheld in global administration context');
   assert.match(source, /const hadAuthenticatedSession = Boolean\(current\)/u);
   assert.match(source, /sessionRestoreErrorMessage\(error, hadAuthenticatedSession, message\)/u);
   const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');

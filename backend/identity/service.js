@@ -1103,7 +1103,15 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
         const reset = await client.query(`UPDATE rotamoto.credentials SET failed_attempts=0,locked_until=NULL,updated_at=now()
           WHERE user_id=$1 AND (locked_until IS NULL OR locked_until<=now()) RETURNING mfa_required`, [credential.user_id]);
         if (!reset.rowCount) return { error: 'INVALID_CREDENTIALS' };
-        const companyId = validateUuid(requestedCompanyId);
+        let loginOptions = null;
+        let companyId;
+        if (requestedCompanyId === undefined || requestedCompanyId === null || requestedCompanyId === '') {
+          await client.query("SELECT set_config('app.identity_login_user_id',$1,true)", [credential.user_id]);
+          const options = await client.query('SELECT * FROM rotamoto.identity_login_company_options($1)', [credential.user_id]);
+          if (!options.rowCount) return { error: 'INVALID_CREDENTIALS' };
+          loginOptions = options.rows;
+          companyId = loginOptions[0].company_id;
+        } else companyId = validateUuid(requestedCompanyId);
         await setTenant(client, companyId);
         const membership = await client.query(`SELECT m.company_id::text,m.role_id::text FROM rotamoto.memberships m
           JOIN rotamoto.companies c ON c.id=m.company_id WHERE m.user_id=$1 AND m.company_id=$2
@@ -1112,12 +1120,14 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
         const sensitive = await client.query(`SELECT EXISTS (SELECT 1 FROM rotamoto.role_permissions
           WHERE company_id=$1 AND role_id=$2 AND catalog_version=1 AND permission_key=ANY($3::text[])) AS required`,
         [companyId, membership.rows[0].role_id, MFA_PERMISSIONS]);
-        const mfaRequired = reset.rows[0].mfa_required || sensitive.rows[0].required;
+        const mfaRequired = reset.rows[0].mfa_required || sensitive.rows[0].required ||
+          Boolean(loginOptions?.some(option => option.requires_mfa));
         let mfaVerified = false;
         if (mfaRequired) {
           if (!credential.mfa_secret_ref) {
             await client.query('UPDATE rotamoto.credentials SET mfa_required=true,updated_at=now() WHERE user_id=$1', [credential.user_id]);
-            return { session: await createSession(client, credential.user_id, membership.rows[0].company_id, false), enrollmentRequired: true };
+            return { session: await createSession(client, credential.user_id, membership.rows[0].company_id, false), enrollmentRequired: true,
+              loginOptions };
           }
           if (credential.mfa_locked_until && new Date(credential.mfa_locked_until) > clock()) {
             await audit(client, { companyId, actorUserId: credential.user_id, actorKind: 'user',
@@ -1144,13 +1154,15 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
             action: 'identity.mfa.login_verified', resourceType: 'user', resourceId: credential.user_id,
             details: { method: /^\d{6}$/u.test(mfaCode) ? 'totp' : 'recovery_code' } });
         }
-        return createSession(client, credential.user_id, membership.rows[0].company_id, mfaVerified);
+        return { session: await createSession(client, credential.user_id, membership.rows[0].company_id, mfaVerified), loginOptions };
       });
       if (result?.error) {
         const messages = { INVALID_CREDENTIALS: 'Email ou senha inválidos.', MFA_REQUIRED: 'A autenticação multifator desta conta ainda não está configurada.' };
         throw new IdentityError(result.error, messages[result.error]);
       }
-      if (result?.session) return { ...result.session, mfaEnrollmentRequired: result.enrollmentRequired };
+      if (result?.session) return { ...result.session, mfaEnrollmentRequired: result.enrollmentRequired,
+        ...(!result.enrollmentRequired && result.loginOptions ? { loginCompanies: result.loginOptions.map(option => ({ companyId: option.company_id, name: option.company_name })),
+          platformAdmin: Boolean(result.loginOptions[0]?.platform_admin) } : {}) };
       return result;
     } finally { client.release(); }
   }

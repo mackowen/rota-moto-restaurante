@@ -71,9 +71,9 @@
           <label>Email<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg><input name="email" type="email" autocomplete="username" required maxlength="320"></span></label>
           <label>Senha<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input name="password" type="password" autocomplete="current-password" required maxlength="1024"><button class="rm-password-toggle" type="button" data-toggle-password aria-label="Mostrar senha" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
           <label data-mfa-label hidden>Código de verificação ou recuperação<input name="mfaCode" autocomplete="one-time-code" minlength="6" maxlength="128"></label>
-          <label>Código da empresa<span class="rm-login-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 10h1m4 0h1m-6 4h1m4 0h1m-5 7v-4h4v4"/></svg><input name="companyId" autocomplete="off" spellcheck="false" aria-describedby="companyHelp" required></span></label>
-          <small id="companyHelp">Use o código recebido no convite. O servidor confirma o vínculo da conta.</small>
           <button class="rm-primary rm-login-submit" type="submit"><span>Entrar</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><p data-login-error role="alert" aria-live="polite"></p></form>
+        <section data-login-context hidden><h2>Onde deseja continuar?</h2><p>Escolha uma empresa autorizada para esta conta. A escolha será confirmada pelo servidor.</p><form data-login-context-form><label>Empresa<select name="context" required></select></label><button class="rm-primary" type="submit">Continuar</button><p data-login-context-error role="alert"></p></form><button type="button" data-login-context-cancel>Cancelar e sair</button></section>
+        <section data-platform-admin-context hidden><h2>Administração RotaMoto</h2><p>Contexto administrativo da plataforma. Dados operacionais de empresas continuam isolados.</p><button type="button" data-admin-business-context>Selecionar empresa autorizada</button></section>
         <div data-authenticated hidden><div class="rm-account-summary"><b data-user-email></b><span data-email-verification></span><span data-company-name>Empresa ativa</span><span data-company-code-row>Identificador da empresa: <code data-company-id></code> <button type="button" data-copy-company-id>Copiar</button></span></div>
           <form data-password-change><p>Use a senha atual para definir uma nova. Sua sessão neste aparelho continuará ativa; as outras sessões serão encerradas após a confirmação.</p><label>Senha atual<input name="currentPassword" type="password" autocomplete="current-password" required maxlength="1024"></label><label>Nova senha<input name="newPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><label>Repita a nova senha<input name="confirmPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label><button type="submit">Alterar senha</button><p data-password-change-status role="status" aria-live="polite"></p></form>
           <section data-mfa hidden><p data-mfa-status role="status"></p>
@@ -517,7 +517,7 @@
   host.append(adminPage);
   const platformAdminPage=document.createElement('section');platformAdminPage.id='rmPlatformAdminPage';platformAdminPage.className='rm-company-admin-page';platformAdminPage.hidden=true;
   platformAdminPage.setAttribute('aria-label', 'Administração global');
-  platformAdminPage.innerHTML='<nav class="rm-admin-nav" aria-label="Administração global" aria-describedby="rmPlatformNavHint"><button type="button" aria-pressed="true" data-platform-list="companies">Empresas</button><button type="button" aria-pressed="false" data-platform-list="users">Usuários</button><button type="button" aria-pressed="false" data-platform-list="memberships">Vínculos</button><button type="button" aria-pressed="false" data-platform-list="roles">Perfis e permissões</button><button type="button" aria-pressed="false" data-platform-list="finance">Resumo financeiro</button><button type="button" aria-pressed="false" data-platform-list="settings">Configuração da plataforma</button></nav><p id="rmPlatformNavHint" class="rm-platform-nav-hint">No celular, deslize para acessar as seis seções.</p><p data-platform-error role="alert" aria-live="polite"></p><p data-platform-feedback role="status" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite" aria-busy="false"></div>';
+  platformAdminPage.innerHTML='<nav class="rm-admin-nav" aria-label="Administração global" aria-describedby="rmPlatformNavHint"><button type="button" aria-pressed="true" data-platform-list="companies">Empresas</button><button type="button" aria-pressed="false" data-platform-list="users">Usuários</button><button type="button" aria-pressed="false" data-platform-list="memberships">Vínculos</button><button type="button" aria-pressed="false" data-platform-list="roles">Perfis e permissões</button><button type="button" aria-pressed="false" data-platform-list="finance">Resumo financeiro</button><button type="button" aria-pressed="false" data-platform-list="settings">Configuração da plataforma</button></nav><p id="rmPlatformNavHint" class="rm-platform-nav-hint">No celular, deslize para acessar as seis seções.</p><button type="button" data-platform-business-context>Selecionar empresa para operar</button><p data-platform-error role="alert" aria-live="polite"></p><p data-platform-feedback role="status" aria-live="polite"></p><button type="button" data-platform-refresh>Atualizar lista</button><div data-platform-results aria-live="polite" aria-busy="false"></div>';
   host.append(platformAdminPage);
   let platformDisclosureSequence=0,platformFinanceCompanyId='';const platformAdminRequests=window.RotaMotoIdentityRequestState.createLatestRequestState(),platformFinanceRequests=window.RotaMotoIdentityRequestState.createLatestRequestState();
   function platformSchemaError(){return Object.assign(new Error('A resposta da administração está incompleta ou incompatível.'),{code:'INVALID_RESPONSE'})}
@@ -739,6 +739,9 @@
   document.addEventListener('rotamoto:settings-page',event=>{const section=event.detail?.section;if(section==='platform-admin'&&current?.platformAdmin&&!mfaLocked){loadPlatformAdmin('companies').catch(error=>{platformAdminPage.querySelector('[data-platform-error]').textContent=message(error)});return}if(!section?.startsWith('company-admin-')||!current||mfaLocked||!current.permissions?.includes('company.manage'))return;const page=section.slice('company-admin-'.length),id=({team:'team',drivers:'drivers',integrations:'integrations'})[page];if(!id)return;adminPage.showPage?.(id);loadAdmin().catch(error=>showAdminLoadError(error));});
   const applicationRoot = () => document.querySelector('#app, .app');
   let mfaLocked = false;
+  let platformAdminContext = null;
+  let pendingLoginCompanyId = '';
+  let loginContextCompanies = [];
   const appKind = document.currentScript?.dataset.app || 'restaurante';
   function updateTriggerLabel() {
     trigger.innerHTML = `<span class="rm-account-trigger-label">${offlineMode ? 'Dados locais' : 'Conta'}</span><svg class="rm-account-trigger-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/></svg>`;
@@ -750,6 +753,75 @@
   }
   if (appKind !== 'restaurante') adminPage.remove();
   function message(error) { return codeMessages[error?.code] || (error?.network ? codeMessages.NETWORK : 'Não foi possível concluir. Revise os dados e tente novamente.'); }
+  function presentLoginContext(companies, isPlatformAdmin, { defaultAdmin = true, fromAdmin = false } = {}) {
+    const section = $('[data-login-context]'), form = $('[data-login-context-form]'), select = form?.elements.context;
+    if (!section || !form || !select) throw Object.assign(new Error(), { code: 'INVALID_RESPONSE' });
+    loginContextCompanies = companies.filter(company => company && typeof company.companyId === 'string' && typeof company.name === 'string');
+    if (!loginContextCompanies.length) throw Object.assign(new Error(), { code: 'INVALID_RESPONSE' });
+    const duplicateNames = new Map();
+    for (const company of loginContextCompanies) duplicateNames.set(company.name.trim().toLocaleLowerCase(), (duplicateNames.get(company.name.trim().toLocaleLowerCase()) || 0) + 1);
+    select.replaceChildren();
+    if (isPlatformAdmin) select.add(new Option('Administração RotaMoto', '__platform_admin_context__'));
+    const shortCodes = loginContextCompanies.map(company => company.companyId.replace(/[^a-z0-9]/giu, '').toLocaleUpperCase());
+    loginContextCompanies.forEach((company, index) => {
+      const key = company.name.trim().toLocaleLowerCase();
+      let codeLength = 6;
+      while (shortCodes.some((code, codeIndex) => codeIndex !== index && code.slice(-codeLength) === shortCodes[index].slice(-codeLength)) && codeLength < shortCodes[index].length) codeLength += 1;
+      const label = duplicateNames.get(key) > 1 ? `${companyNameForDisplay(company)} · código ${shortCodes[index].slice(-codeLength)}` : companyNameForDisplay(company);
+      select.add(new Option(label, company.companyId));
+    });
+    select.value = isPlatformAdmin && defaultAdmin ? '__platform_admin_context__' :
+      (fromAdmin ? '' : pendingLoginCompanyId) || loginContextCompanies[0].companyId;
+    section.hidden = false; $('[data-login]').hidden = true; $('[data-platform-admin-context]').hidden = true;
+    $('[data-login-context-error]').textContent = ''; contextFromAdmin = fromAdmin; setOpen(true); select.focus();
+  }
+  let contextFromAdmin = false;
+  async function finishLoginContext(choice) {
+    const adminChoice = choice === '__platform_admin_context__';
+    if (adminChoice && !current?.platformAdmin && !pendingLoginPlatformAdmin) throw Object.assign(new Error(), { code: 'FORBIDDEN' });
+    if (!adminChoice) {
+      const company = loginContextCompanies.find(item => item.companyId === choice && item.canSwitch !== false);
+      if (!company) throw Object.assign(new Error(), { code: 'FORBIDDEN' });
+      const activeId = current?.activeCompanyId || pendingLoginCompanyId;
+      if (activeId !== choice) await request('/identity/tenant', { method: 'POST', body: JSON.stringify({ companyId: choice }) });
+    }
+    platformAdminContext = adminChoice;
+    $('[data-login-context]').hidden = true; pendingLoginCompanyId = ''; pendingLoginPlatformAdmin = false; contextFromAdmin = false;
+    const session = await restore();
+    if (!session) throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
+    if (adminChoice) {
+      if (appKind === 'restaurante') { setOpen(false); platformAdminPage.hidden = false; if (platformAdminPage.parentElement !== host) host.append(platformAdminPage); await loadPlatformAdmin('companies'); }
+      else { $('[data-platform-admin-context]').hidden = false; setOpen(true); }
+      return;
+    }
+    if (session.mfaEnrollmentRequired) { setOpen(true); $('[data-mfa-start]')?.focus(); return; }
+    await syncAfterAuthentication({ onAppReady: () => setOpen(false) }); setOpen(false);
+  }
+  let pendingLoginPlatformAdmin = false;
+  $('[data-login-context-form]')?.addEventListener('submit', async event => {
+    event.preventDefault(); const form = event.currentTarget; if (form.dataset.saving === 'true' || !form.reportValidity()) return;
+    form.dataset.saving = 'true'; setBusy(form, true); $('[data-login-context-error]').textContent = '';
+    try { await finishLoginContext(form.elements.context.value); }
+    catch (error) { $('[data-login-context-error]').textContent = message(error); }
+    finally { delete form.dataset.saving; setBusy(form, false); }
+  });
+  $('[data-login-context-cancel]')?.addEventListener('click', async () => {
+    if (contextFromAdmin && current?.platformAdmin) { $('[data-login-context]').hidden = true; contextFromAdmin = false; platformAdminContext = true; showSession(current); setOpen(false); return; }
+    try { await request('/identity/logout', { method: 'POST', body: '{}' }); } catch (_) {}
+    invalidateSessionReads(); csrf = null; current = null; window.RotaMotoSessionGuard?.clearCsrfToken();
+    pendingLoginCompanyId = ''; pendingLoginPlatformAdmin = false; loginContextCompanies = []; $('[data-login-context]').hidden = true;
+    showSession(null); setOpen(true);
+  });
+  $('[data-admin-business-context]')?.addEventListener('click', async () => {
+    try { await loadLinkedCompanies(); if (!linkedCompanies.length) throw Object.assign(new Error(), { code: 'INVALID_RESPONSE' });
+      presentLoginContext(linkedCompanies.filter(company => company.canSwitch), true, { defaultAdmin: false, fromAdmin: true }); }
+    catch (error) { if (appKind === 'restaurante') platformAdminPage.querySelector('[data-platform-error]').textContent = message(error); }
+  });
+  platformAdminPage.querySelector('[data-platform-business-context]')?.addEventListener('click', async () => {
+    try { await loadLinkedCompanies(); if (!linkedCompanies.length) throw Object.assign(new Error(), { code: 'INVALID_RESPONSE' });
+      presentLoginContext(linkedCompanies.filter(company => company.canSwitch), true, { defaultAdmin: false, fromAdmin: true }); }
+    catch (error) { platformAdminPage.querySelector('[data-platform-error]').textContent = message(error); }
+  });
   async function syncAfterAuthentication({ onAppReady } = {}) {
     if (mfaLocked) return;
     try {
@@ -786,7 +858,7 @@
   }
   function placeTrigger() {
     const app = document.querySelector('#app');
-    const anchor = current || offlineMode ? app?.querySelector('.pilot-command-head .pilot-head-actions, .top-actions, .top') : null;
+    const anchor = current && !platformAdminContext || offlineMode ? app?.querySelector('.pilot-command-head .pilot-head-actions, .top-actions, .top') : null;
     const parent = anchor || host;
     if (trigger.parentElement !== parent) parent.append(trigger);
     trigger.classList.toggle('rm-account-trigger--inline', Boolean(anchor));
@@ -912,10 +984,12 @@
 
   function showSession(session) {
     if (!session) clearSensitiveAccountState();
+    if (session && platformAdminContext === null) platformAdminContext = Boolean(session.platformAdmin);
+    if (!session) { platformAdminContext = null; try { localStorage.removeItem('rotaMoto.activeCompanyHint'); } catch (_) {} }
     current = session;
     offlineMode = false;
     if (session) authView = 'login';
-    if (!session) { linkedCompaniesRequestId += 1; linkedCompaniesLoad = null; linkedCompanies = []; requestedCompanySwitchId = ''; accountPageOverlayOpen = false; accountPage.classList.remove('rm-account-settings-page--overlay'); accountPage.removeAttribute('role'); accountPage.removeAttribute('aria-modal'); accountPage.removeAttribute('aria-labelledby'); closeAccountDialog(true); delete document.body.dataset.accountSettingsOpen; }
+    if (!session) { linkedCompaniesRequestId += 1; linkedCompaniesLoad = null; linkedCompanies = []; requestedCompanySwitchId = ''; loginContextCompanies = []; $('[data-login-context]').hidden = true; accountPageOverlayOpen = false; accountPage.classList.remove('rm-account-settings-page--overlay'); accountPage.removeAttribute('role'); accountPage.removeAttribute('aria-modal'); accountPage.removeAttribute('aria-labelledby'); closeAccountDialog(true); delete document.body.dataset.accountSettingsOpen; }
     $('[data-recovery]').hidden = Boolean(session);
     $('[data-invitation]').hidden = Boolean(session);
     const inviteForm = $('[data-invite]');
@@ -929,6 +1003,7 @@
     if (membersList) membersList.hidden = !session?.permissions?.includes('members.read');
     if (membersNote) membersNote.hidden = Boolean(session?.permissions?.includes('members.read'));
     mfaLocked = Boolean(session && (session.mfaEnrollmentRequired || (session.mfaRequired && !session.mfaVerified)));
+    const platformContext = Boolean(session?.platformAdmin && platformAdminContext === true);
     if (!mfaLocked && !showRecoveryCodesAfterEnrollment && accountPage.classList.contains('rm-mfa-only')) closeAccountDialog(true);
     $('[data-login]').hidden = Boolean(session);
     if (accountPage) {
@@ -944,13 +1019,15 @@
       }
     }
     const appRoot = applicationRoot();
-    if (appRoot) { const authorized = Boolean(session && !mfaLocked); appRoot.hidden = !authorized; appRoot.inert = !authorized; appRoot.setAttribute('aria-hidden', String(!authorized)); }
-    window.dispatchEvent(new CustomEvent(session && !mfaLocked ? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'));
+    if (appRoot) { const authorized = Boolean(session && !mfaLocked && !platformContext); appRoot.hidden = !authorized; appRoot.inert = !authorized; appRoot.setAttribute('aria-hidden', String(!authorized)); }
+    window.dispatchEvent(new CustomEvent(session && !mfaLocked && !platformContext ? 'rotamoto:auth-ready' : 'rotamoto:auth-revoked'));
     document.body.dataset.mfaLocked = String(mfaLocked);
     host.dataset.mfaLocked = String(mfaLocked);
     host.dataset.gated = String(!session && !offlineMode);
     adminPage.hidden = true;
-    platformAdminPage.hidden=true;
+    platformAdminPage.hidden = !platformContext;
+    $('[data-platform-admin-context]').hidden = !platformContext || appKind !== 'motoboy';
+    if (platformContext && appKind === 'restaurante') { if (platformAdminPage.parentElement !== host) host.append(platformAdminPage); queueMicrotask(() => loadPlatformAdmin('companies').catch(error => { platformAdminPage.querySelector('[data-platform-error]').textContent = message(error); })); }
     $('[data-close]').hidden = !session || mfaLocked;
     $('[data-accept-existing]').hidden = mfaLocked;
     $('[data-switch]').hidden = true;
@@ -961,7 +1038,6 @@
     if (session) {
       $('[data-user-email]').textContent = session.email;
       $('[data-company-id]').textContent = session.activeCompanyId;
-      try { localStorage.setItem('rotaMoto.activeCompanyHint', session.activeCompanyId); } catch (_) {}
       $('[data-email-verification]').textContent=session.emailVerified?'Email confirmado':'Email ainda não confirmado';
       const companyLabel = typeof session.activeCompanyName === 'string' && session.activeCompanyName.trim() ? session.activeCompanyName.trim() : 'Empresa ativa';
       $('[data-company-name]').textContent = companyLabel;
@@ -1027,7 +1103,6 @@
       return null;
     }
   }
-  function hintedCompany() { try { return localStorage.getItem('rotaMoto.activeCompanyHint') || ''; } catch (_) { return ''; } }
   function applyMailAction(){let params;try{params=new URLSearchParams(location.hash.slice(1))}catch(_){return}const action=params.get('action'),token=params.get('token');if(!token||token.length>43)return;if(action==='password_recovery'){$('[data-recovery-consume] [name=token]').value=token;setRecoveryStep('reset-password',false);setAuthView('recovery',false);setOpen(true)}else if(action==='mfa_recovery'){$('[data-mfa-recovery-confirm] [name=token]').value=token;mfaRecoveryConfirmReady=true;setRecoveryStep('recover-mfa',false);setAuthView('recovery',false);setOpen(true)}else if(['owner_invitation','membership_invitation'].includes(action)){invitationKind=action;$('[data-accept-invitation] [name=token]').value=token;setAuthView('invitation',false);setOpen(true)}if(action==='password_recovery'||action==='mfa_recovery'||['owner_invitation','membership_invitation'].includes(action))history.replaceState(null,'',location.pathname+location.search)}
   applyMailAction();
   $('[data-open-recovery]').addEventListener('click', event => { recoveryStep='recovery-menu'; mfaRecoveryConfirmReady=false; setRecoveryStep('recovery-menu',false); setAuthView('recovery'); });
@@ -1042,7 +1117,6 @@
     else setAuthView('login');
   });
   $('[data-invitation-back]').addEventListener('click', () => setAuthView('login'));
-  $('[data-login] [name=companyId]').value = hintedCompany();
   $('[data-toggle-password]').addEventListener('click', event => {
     const button = event.currentTarget;
     const input = $('[data-login] [name=password]');
@@ -1134,13 +1208,19 @@
     working = true; setBusy(form, true); $('[data-login-error]').textContent = ''; setStatus('Autenticando…');
     const data = new FormData(form); const password = data.get('password');
     try {
-      const body = { email: String(data.get('email')).trim(), password: String(password), ...(data.get('companyId') ? { companyId: String(data.get('companyId')).trim() } : {}), ...(data.get('mfaCode') ? { mfaCode: String(data.get('mfaCode')).trim() } : {}) };
+      const body = { email: String(data.get('email')).trim(), password: String(password), ...(data.get('mfaCode') ? { mfaCode: String(data.get('mfaCode')).trim() } : {}) };
       const result = await request('/identity/login', { method: 'POST', body: JSON.stringify(body) });
       invalidateSessionReads();
       csrf = result.csrfToken; window.RotaMotoSessionGuard?.setCsrfToken(csrf); form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true;
+      if (!result.mfaEnrollmentRequired && Array.isArray(result.companies) && result.companies.length &&
+          (result.companies.length > 1 || result.platformAdmin === true)) {
+        pendingLoginCompanyId = result.companyId; pendingLoginPlatformAdmin = result.platformAdmin === true;
+        presentLoginContext(result.companies, pendingLoginPlatformAdmin); return;
+      }
+      platformAdminContext = false; pendingLoginCompanyId = result.companyId || ''; pendingLoginPlatformAdmin = false;
       const session = await restore();
       if (!session) throw Object.assign(new Error(), { code: 'UNAUTHENTICATED' });
-      if(session.mfaEnrollmentRequired){setOpen(true);$('[data-mfa-start]').focus()}else{await syncAfterAuthentication({onAppReady:()=>setOpen(false)})}
+      if(session.mfaEnrollmentRequired){setOpen(true);$('[data-mfa-start]').focus()}else if(session.platformAdmin){platformAdminContext=true;showSession(session);setOpen(false);platformAdminPage.hidden=false;if(platformAdminPage.parentElement!==host)host.append(platformAdminPage);await loadPlatformAdmin('companies')}else{await syncAfterAuthentication({onAppReady:()=>setOpen(false)})}
     } catch (error) { if (error.code === 'MFA_REQUIRED') { $('[data-mfa-label]').hidden = false; form.elements.mfaCode.focus(); } else { form.elements.password.value = ''; form.elements.mfaCode.value = ''; $('[data-mfa-label]').hidden = true; } $('[data-login-error]').textContent = message(error); setStatus('Não foi possível autenticar'); }
     finally { working = false; setBusy(form, false); }
   });
@@ -1190,7 +1270,7 @@
     event.preventDefault(); const form = event.currentTarget; if (working || !form.reportValidity()) return;
     working = true; setBusy(form, true); const password = form.elements.password.value;
     try { const result = await request(invitationKind==='owner_invitation'?'/identity/invitations/accept':'/identity/membership-invitations/accept', { method: 'POST', body: JSON.stringify({ token: form.elements.token.value.trim(), password }) });
-      form.reset(); try { localStorage.setItem('rotaMoto.activeCompanyHint', result.companyId); } catch (_) {} $('[data-invitation-result]').textContent = 'Convite aceito. Agora entre com seu email e senha.'; $('[data-login] [name=companyId]').value = result.companyId; }
+      form.reset(); $('[data-invitation-result]').textContent = 'Convite aceito. Agora entre com seu email e senha.'; }
     catch (error) { form.elements.password.value = ''; $('[data-invitation-result]').textContent = message(error); }
     finally { working = false; setBusy(form, false); }
   });

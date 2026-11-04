@@ -33,7 +33,14 @@ assert.match(source, /Gestão completa de entregas para o seu restaurante/u, 'lo
 assert.match(source, /data-login-mobile-brand/u, 'mobile login has a compact brand treatment');
 assert.match(source, /data-toggle-password/u, 'password visibility is a real accessible control');
 assert.match(source, /autocomplete="username"/u, 'email uses the username autocomplete contract');
-assert.match(source, /name="companyId" autocomplete="off"[^>]*required/u, 'the server-validated company code remains required');
+assert.doesNotMatch(source.match(/<form data-login[\s\S]*?<\/form>/u)?.[0] || '', /name="companyId"/u,
+  'email and password login does not require or submit a tenant identifier');
+assert.match(source, /data-login-context[\s\S]*Onde deseja continuar\?[\s\S]*platformAdmin/u,
+  'multi-company and global-admin contexts are selected by a post-authentication prompt');
+assert.match(source, /código \$\{shortCodes\[index\]\.slice\(-codeLength\)\}/u,
+  'companies with duplicate names receive a distinguishable, user-facing short code');
+assert.doesNotMatch(source, /hintedCompany\(\)|data-login\] \[name=companyId\]|localStorage\.getItem\(['"]rotaMoto\.activeCompanyHint/u,
+  'login does not restore tenant context from browser storage');
 assert.match(source, /data-recovery-request/u, 'the existing access recovery flow remains present');
 assert.match(source, /data-accept-invitation/u, 'the existing invitation flow remains present');
 assert.match(source, /data-recovery-choice="request-code"[\s\S]*data-recovery-choice="reset-password"[\s\S]*data-recovery-choice="recover-mfa"/u,
