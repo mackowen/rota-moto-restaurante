@@ -122,4 +122,3 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION rotamoto.platform_admin_complete_initial_bootstrap(uuid,uuid,bytea,bytea) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION rotamoto.platform_admin_complete_initial_bootstrap(uuid,uuid,bytea,bytea) TO rotamoto_app;
-
