@@ -56,6 +56,7 @@ SELECT jsonb_build_object(
 TRUNCATE TABLE
   rotamoto.audit_log,
   rotamoto.bootstrap_authorizations,
+  rotamoto.bootstrap_smtp_test_attempts,
   rotamoto.companies,
   rotamoto.company_delivery_pricing,
   rotamoto.credentials,
@@ -91,6 +92,7 @@ TRUNCATE TABLE
   rotamoto.platform_admin_audit_log,
   rotamoto.platform_admin_bootstrap_latch,
   rotamoto.platform_administrators,
+  rotamoto.platform_smtp_test_attempts,
   rotamoto.proof_media_upload_intents,
   rotamoto.provider_command_outbox,
   rotamoto.provider_event_inbox,
