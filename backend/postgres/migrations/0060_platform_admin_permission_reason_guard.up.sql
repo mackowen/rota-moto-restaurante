@@ -37,3 +37,4 @@ BEGIN
       jsonb_build_object('company_id',target_company,'reason',reason_code,'before',before_keys,'after',requested));
   RETURN jsonb_build_object('companyId',target_company::text,'roleId',target_role::text,'roleKey',role_key,'permissions',requested);
 END $$;
+
