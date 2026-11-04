@@ -126,6 +126,7 @@ function validateProvisioningInput(input) {
 function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecoveryOperator, emailProvider, mfaProvider, secretProvider,
   requireBootstrapAuthorization = false, clock = () => new Date() }) {
   if (!pool || typeof pool.connect !== 'function') throw new TypeError('Pool PostgreSQL obrigatório.');
+  const provisionerProofs = new WeakMap();
   // Runtime secret stores may require asynchronous filesystem/keystore validation
   // during startup. Resolve once per operation instead of treating the Promise as
   // the provider object (which would silently make put/get unavailable).
@@ -206,29 +207,46 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     } finally { client.release(); }
   }
 
-  async function provisionInitialOwner(input, context = undefined) {
-    const { companyName, email, idempotencyKey, initialSetup, localOnly: requestedLocalOnly } = validateProvisioningInput(input);
+  async function authorizeProvisionerRequest(input, context = undefined) {
+    const { email } = validateProvisioningInput(input);
     if (typeof authorizeProvisioner !== 'function') {
       throw new IdentityError('PROVISIONER_NOT_CONFIGURED', 'Autorização administrativa não configurada.');
     }
-    let actorRef;
-    let bootstrapCapabilityDigest = null;
-    let localOnly = false;
+    let actor;
     try {
-      const actor = await authorizeProvisioner({ action: 'tenant.owner.provision', email, context });
-      actorRef = requiredText(actor?.actorRef, 'Identidade administrativa', 160);
-      localOnly = requestedLocalOnly && actor?.localOnly === true;
-      if (requestedLocalOnly && !localOnly) throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Modo de instalação local não autorizado.');
-      if (actor?.bootstrapCapabilityDigest !== undefined) {
-        if (!Buffer.isBuffer(actor.bootstrapCapabilityDigest) || actor.bootstrapCapabilityDigest.length !== 32)
-          throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
-        bootstrapCapabilityDigest = actor.bootstrapCapabilityDigest;
-      }
-      if (requireBootstrapAuthorization && !bootstrapCapabilityDigest)
+      actor = await authorizeProvisioner({ action: 'tenant.owner.provision', email, context });
+      requiredText(actor?.actorRef, 'Identidade administrativa', 160);
+      if (context?.requestedLocalOnly === true && actor?.localOnly !== true)
+        throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Modo de instalação local não autorizado.');
+      if (actor?.bootstrapCapabilityDigest !== undefined &&
+          (!Buffer.isBuffer(actor.bootstrapCapabilityDigest) || actor.bootstrapCapabilityDigest.length !== 32))
+        throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
+      if (requireBootstrapAuthorization && !actor?.bootstrapCapabilityDigest)
         throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
     } catch (_) {
       throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
     }
+    const proof = Object.freeze({});
+    provisionerProofs.set(proof, { actor, email, request: context?.request,
+      requestedLocalOnly: context?.requestedLocalOnly === true });
+    return proof;
+  }
+
+  async function provisionInitialOwner(input, context = undefined, authorizationProof = undefined) {
+    const { companyName, email, idempotencyKey, initialSetup, localOnly: requestedLocalOnly } = validateProvisioningInput(input);
+    const suppliedProof = authorizationProof === undefined ? null : provisionerProofs.get(authorizationProof);
+    if (authorizationProof !== undefined && (!suppliedProof || suppliedProof.email !== email ||
+        suppliedProof.request !== context?.request || suppliedProof.requestedLocalOnly !== (context?.requestedLocalOnly === true)))
+      throw new IdentityError('PROVISIONER_UNAUTHORIZED', 'Provisionamento administrativo não autorizado.');
+    const proof = authorizationProof === undefined ? await authorizeProvisionerRequest(input, context) : authorizationProof;
+    const { actor } = provisionerProofs.get(proof);
+    provisionerProofs.delete(proof);
+    let actorRef;
+    let bootstrapCapabilityDigest = null;
+    let localOnly = false;
+    actorRef = requiredText(actor?.actorRef, 'Identidade administrativa', 160);
+    localOnly = requestedLocalOnly && actor?.localOnly === true;
+    if (actor?.bootstrapCapabilityDigest !== undefined) bootstrapCapabilityDigest = actor.bootstrapCapabilityDigest;
     const provider = localOnly ? null : requireEmailProvider(emailProvider);
     const normalizedRequest = { companyName, email, localOnly, ...(initialSetup === null ? {} : { initialSetup }) };
     const requestDigest = digestText(JSON.stringify(normalizedRequest));
@@ -1311,7 +1329,7 @@ function createIdentityService({ pool, authorizeProvisioner, authorizeMfaRecover
     } finally { client.release(); }
   }
 
-  return Object.freeze({ provisionInitialOwner, getBootstrapStatus, consumeOwnerInvitation, inviteMembershipWithSession, consumeMembershipInvitation,
+  return Object.freeze({ authorizeProvisionerRequest, provisionInitialOwner, getBootstrapStatus, consumeOwnerInvitation, inviteMembershipWithSession, consumeMembershipInvitation,
     acceptExistingMembershipInvitation, requestPasswordRecovery, requestMfaRecovery, confirmMfaRecoveryChallenge,
     listMfaRecoveryRequestsForPrincipal, approveMfaRecoveryForPrincipal, approveSoleOwnerMfaRecoveryLocally, finishMfaRecovery,
     consumePasswordRecovery, changePasswordForPrincipal, authenticate, startMfaEnrollment, startMfaEnrollmentForPrincipal,

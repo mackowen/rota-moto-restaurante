@@ -125,6 +125,15 @@ async function main() {
     const unauthorized = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody });
     assert.equal(unauthorized.status, 403, `unauthorized synthetic provisioning status; events=${logs.map(event=>event.errorCode||event.code||event.event||'event').join(',')}`);
     assert.equal(unauthorized.body.error.code, 'PROVISIONER_UNAUTHORIZED');
+    if (process.env.IDENTITY_HTTP_PREFLIGHT_ONLY === '1') {
+      const authorizedButNotReady = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody,
+        extraHeaders: { 'X-Synthetic-Operator': 'test-only' } });
+      assert.equal(authorizedButNotReady.status, 503, 'authorized installation still respects bootstrap readiness');
+      assert.equal(authorizedButNotReady.body.error.code, 'BOOTSTRAP_NOT_READY');
+      assert.equal(delivered.length, 0, 'bootstrap readiness failure sends no invitation');
+      process.stdout.write('Identity HTTP provisioning authorization precedes readiness; authorized request remains blocked before tenant writes PASS (transaction rolled back)\n');
+      return;
+    }
     const provisioned = await call('/api/admin/tenants/provision', { method: 'POST', body: provisionBody,
       extraHeaders: { 'X-Synthetic-Operator': 'test-only' } });
     assert.equal(provisioned.status, 202, `synthetic bootstrap returned ${provisioned.body?.error?.code || 'unexpected-response'}; events=${logs.map(event=>event.errorCode||event.code||event.event||'event').join(',')}`);

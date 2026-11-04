@@ -606,6 +606,8 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
       if (path === '/api/admin/tenants/provision' && req.method === 'POST') {
         const body = await readJson(req);
         exactKeys(body, ['companyName', 'email', 'idempotencyKey', 'initialSetup', 'localOnly']);
+        const provisionerContext = { request: req, requestedLocalOnly: body.localOnly === true };
+        const authorizationProof = await identityService.authorizeProvisionerRequest(body, provisionerContext);
         if (body.localOnly === true) {
           const deployment = await bootstrapReadiness(req).catch(() => ({}));
           if (deployment.localOnlyBootstrapAvailable !== true) throw fail('PROVISIONER_UNAUTHORIZED', 'A instalação local só pode ser iniciada nesta máquina.');
@@ -613,7 +615,7 @@ function createIdentityHttpHandler({ identityService, rateLimiter = createRateLi
           const deployment = await bootstrapReadiness(req).catch(() => ({}));
           if (deployment.invitationDeliveryConfigured !== true) throw fail('BOOTSTRAP_NOT_READY', 'O transporte SMTP e a URL pública HTTPS dos convites precisam estar configurados.');
         }
-        const provisioned = await identityService.provisionInitialOwner(body, { request: req, requestedLocalOnly: body.localOnly === true });
+        const provisioned = await identityService.provisionInitialOwner(body, provisionerContext, authorizationProof);
         const localHandoff = provisioned.delivery === 'local_handoff' && typeof provisioned.localInvitationToken === 'string' && /^[A-Za-z0-9_-]{43}$/u.test(provisioned.localInvitationToken);
         status = 202;
         send(res, status, { companyId: provisioned.companyId, userId: provisioned.userId,
